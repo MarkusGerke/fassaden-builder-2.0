@@ -116,7 +116,8 @@ export function applyGlassLook(material: THREE.MeshPhysicalMaterial, config: Ope
     material.transparent = false
     material.opacity = 1
     material.transmission = config.transmission > 0.08 ? config.transmission : 0.96
-    material.thickness = config.thickness
+    material.thickness = Math.min(config.thickness, 0.25)
+    material.roughness = Math.min(config.roughness, 0.02)
     material.attenuationColor.set('#ffffff')
     material.attenuationDistance = Infinity
     material.envMapIntensity = glassEnvMap ? 2.6 : 0
@@ -158,7 +159,10 @@ export function applyOrthographicGlassSeeThrough(
   if (enable) {
     material.transmission = 0
     material.transparent = true
-    material.opacity = 0.18
+    material.opacity = 0.06
+    material.roughness = 0
+    material.metalness = 0
+    material.clearcoat = 0
     material.depthWrite = false
     material.needsUpdate = true
     return

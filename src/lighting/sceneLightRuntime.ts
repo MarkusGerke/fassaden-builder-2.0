@@ -143,13 +143,20 @@ export class SceneLightRuntime {
     const roomOcclusion = options.roomOcclusion === true
     // Additive Glühen/Bloom stecken als Billboards durch Wände — im Render nur opake Kugel.
     updateLightGlowSprite(entry.marker, spec.color, roomOcclusion ? 0 : markerDiameter, glowBrightness)
+    const bloomCoreDiameter = roomOcclusion
+      ? markerOn
+        ? Math.max(8, markerRadius * 0.55)
+        : 0
+      : markerDiameter
+    const bloomCoreVisible =
+      markersGloballyOn && spec.showMarker !== false && spec.enabled && bloomCoreDiameter > 0
     updateLightBloomCore(
       entry.bloomCore,
       spec.color,
-      roomOcclusion ? 0 : markerDiameter,
+      bloomCoreDiameter,
       spec.intensity,
       options.bloomActive === true,
-      !roomOcclusion && markersGloballyOn && spec.showMarker !== false && spec.enabled,
+      bloomCoreVisible,
     )
     updateLightSolidMarker(entry.solidMarker, spec.color, roomOcclusion && markerOn, selected)
     const pickScale = (markerRadius > 0 ? Math.max(markerRadius * 1.6, 48) : 48) / PICK_RADIUS_CM

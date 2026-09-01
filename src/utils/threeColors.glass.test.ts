@@ -29,7 +29,7 @@ describe('Glas für Licht-Glühen', () => {
     applyOrthographicGlassSeeThrough(clear, true)
     expect(clear.transmission).toBe(0)
     expect(clear.transparent).toBe(true)
-    expect(clear.opacity).toBeLessThan(0.3)
+    expect(clear.opacity).toBeLessThan(0.1)
     applyOrthographicGlassSeeThrough(clear, false)
     expect(clear.transmission).toBeGreaterThan(0.9)
     expect(clear.transparent).toBe(false)

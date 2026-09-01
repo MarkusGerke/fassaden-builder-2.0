@@ -8,11 +8,11 @@ Glas-EnvMap: **CubeCamera vor dem Baukörper** (auf der Kameraseite, nicht im In
 
 Ein Zwei-Pass mit Scratch-RT ist **verworfen** (Viewport wurde leer/1×1). Die Haus-Silhouette kommt aus korrekten Grundrissflächen + Wänden, nicht aus einer zweiten Sonne.
 
-Bloom und Gobo-Schatten: frühere Laub-Gobo-UI entfernt (v0.7.341). **Unreal Bloom** und **Nebel** unter **Szene**, nur 3D.
+Bloom und Gobo-Schatten: frühere Laub-Gobo-UI entfernt (v0.7.341). **Unreal Bloom** und **Nebel** unter **Szene**, in **3D** und **2D-Front** (nicht Oben/Plan).
 
-### Bloom (3D)
+### Bloom (3D / 2D-Front)
 
-- `EffectComposer` + `RenderPass` + `UnrealBloomPass` + optional `SMAAPass` + `OutputPass` in `main.ts` (`render3dFrame`). **Dirty-Rendering (v0.7.74):** idle kein Vollbild-Render. **Bloom während Navigation (v0.7.184):** bleibt an, solange Bloom aktiviert ist (Orbit-Lite schaltet Bloom nicht mehr ab). **Schärfe (v0.7.186 / v0.7.187):** Composer-`setPixelRatio` folgt dem Renderer; Composer-RTs mit bis zu 8× MSAA (SMAA nur ohne GPU-Samples); kein extra Half-Res am Bloom-Pass. Selektion baut Edges/`applyRenderStyle` nicht neu; Shadow-Map-Rebuild nur bei Geometrie/Sonne.
+- `EffectComposer` + `RenderPass` + `UnrealBloomPass` + optional `SMAAPass` + `OutputPass` in `main.ts` (`renderLitSceneFrame`). **v2.0.55:** `syncComposerPixelRatio` setzt auch `composer.setSize` — ohne das blieb der Composer in der Front-Ansicht bei 1×1 px (schwarzes Bild). **Dirty-Rendering (v0.7.74):** idle kein Vollbild-Render. **Bloom während Navigation (v0.7.184):** bleibt an, solange Bloom aktiviert ist (Orbit-Lite schaltet Bloom nicht mehr ab). **Schärfe (v0.7.186 / v0.7.187):** Composer-`setPixelRatio` folgt dem Renderer; Composer-RTs mit bis zu 8× MSAA (SMAA nur ohne GPU-Samples); kein extra Half-Res am Bloom-Pass. Selektion baut Edges/`applyRenderStyle` nicht neu; Shadow-Map-Rebuild nur bei Geometrie/Sonne.
 - Checkbox, Schwelle / Stärke / Radius / Belichtung als Slider **und** Number (Schritt 0,001). Defaults (v0.7.290): an, Schwelle `0,85`, Stärke `0,12`, Radius `0,6`, Belichtung `1,116`. Bereiche: Schwelle `0…1,2`, Stärke `0…1,5`, Radius `0…1`, Belichtung `0,75…1,45`. **v0.7.290:** Slider-Änderungen markieren den Viewport dirty und rufen sofort `render3dFrame` auf (ohne Fog-UI-Rebuild während des Ziehens).
 - Bei an: `ACESFilmicToneMapping`, `toneMappingExposure = exposure ** 3` (OutputPass). Persistenz: `PersistedAppState.bloom`.
 - **Flackern (v0.7.260):** Takram-Himmel mit reduzierter Display-Exposure bei Bloom; Glas-CubeCamera-Bake pausiert während Orbit-Lite (HDR-Himmel + 6 Extra-Renders blitzten sonst weiß).

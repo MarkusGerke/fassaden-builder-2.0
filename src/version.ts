@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.54'
+export const APP_VERSION = '2.0.55'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,17 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.55',
+    date: '2026-09-01',
+    title: 'Bloom, scharfes Glas, Außenlicht',
+    changes: [
+      'Bloom in 2D-Front wieder sichtbar — EffectComposer wurde in der Front-Ansicht nicht mit der Viewport-Größe synchronisiert',
+      'Licht-Glühen (Bloom-Kern) im Render-Modus wieder aktiv — kleine HDR-Kugel statt ausgeblendetem Billboard',
+      'Glas schärfer: weniger Brechung in 3D, dünnere Alpha-Scheibe in 2D (kein milchiger Schleier)',
+      'Außenfassade empfängt weiterhin Sonne/Hemisphere — Punktlicht bleibt innen (Shader-Maske unverändert)',
+    ],
+  },
   {
     version: '2.0.54',
     date: '2026-09-01',

@@ -969,6 +969,7 @@ syncComposerPixelRatio = () => {
   composer.setPixelRatio(renderer.getPixelRatio())
   const w = viewportRenderWidth()
   const h = viewportRenderHeight()
+  composer.setSize(w, h)
   selectiveBloom.setSize(w, h, renderer.getPixelRatio())
 }
 syncComposerPixelRatio()
@@ -3845,11 +3846,7 @@ function applyFogToScene() {
 }
 
 function resizeComposer() {
-  const width = viewportRenderWidth()
-  const height = viewportRenderHeight()
-  composer.setPixelRatio(renderer.getPixelRatio())
-  composer.setSize(width, height)
-  // UnrealBloomPass.setSize() legt die Blur-Mips selbst auf ½…¼ an — kein zusätzliches Half-Res.
+  syncComposerPixelRatio?.()
 }
 
 /** CubeCamera-Bake blendet Selektion, Hilfslinien und Raster aus. */
@@ -3862,7 +3859,12 @@ let lastReflectionViewBucket = Number.NaN
 
 function renderLitSceneFrame(activeCamera: THREE.Camera) {
   dirLight.visible = true
-  dirLightIndoor.visible = false
+  const roomOcclusion = sceneLightRoomOcclusionActive()
+  dirLightIndoor.visible = roomOcclusion
+  if (roomOcclusion) {
+    dirLightIndoor.intensity = Math.max(0.28, hemiLight.intensity * 0.9)
+    dirLightIndoor.color.copy(dirLight.color)
+  }
   renderer.autoClear = true
   if (sceneLightRoomOcclusionActive()) {
     renderer.shadowMap.needsUpdate = true

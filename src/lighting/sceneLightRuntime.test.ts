@@ -30,8 +30,35 @@ describe('sceneLightRuntime', () => {
     expect(light!.shadow.camera.layers.isEnabled(SHADOW_LAYER_OCCLUDER)).toBe(true)
     const glow = light!.children.find((c) => (c as THREE.Sprite).isSprite)
     const solid = light!.children.find((c) => c.name === 'lightSolidMarker') as THREE.Mesh | undefined
+    const bloomCore = light!.children.find((c) => c.name === 'lightBloomCore') as THREE.Mesh | undefined
     expect(glow?.visible).toBe(false)
     expect(solid?.visible).toBe(true)
+    expect(bloomCore?.visible).toBe(false)
+    runtime.dispose()
+  })
+
+  it('Bloom-Kern bei Raum-Okklusion sichtbar wenn Bloom aktiv', () => {
+    const runtime = new SceneLightRuntime()
+    runtime.sync(
+      [
+        {
+          id: 'l1',
+          x: 0,
+          y: 200,
+          z: 0,
+          color: '#ffd080',
+          intensity: 12,
+          enabled: true,
+          showMarker: true,
+        },
+      ],
+      { roomOcclusion: true, bloomActive: true },
+    )
+    const light = runtime.root.children.find((c) => c.userData.kind === 'sceneLight') as
+      | import('three').PointLight
+      | undefined
+    const bloomCore = light!.children.find((c) => c.name === 'lightBloomCore') as THREE.Mesh | undefined
+    expect(bloomCore?.visible).toBe(true)
     runtime.dispose()
   })
 })

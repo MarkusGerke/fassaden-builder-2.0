@@ -2,6 +2,10 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Bloom, scharfes Glas, Außenlicht (2026-09-01) — v2.0.55
+
+**Bloom schwarz in 2D:** `syncComposerPixelRatio` setzte nur Pixelratio und Bloom-RT, nicht `composer.setSize` — in der Front-Ansicht blieb der Composer bei 1×1 px. **Glühen weg:** Im Render mit Raum-Okklusion war der Bloom-Kern aus (Billboard-Problem) — jetzt kleine HDR-Kugel mit Tiefentest. **Glas:** Klarglas dünner (`thickness` ≤ 0,25 cm), 2D-Alpha 0,06 statt 0,18. **Außenlicht:** Sonne/Hemisphere unverändert auf Außen-Materialien; `uSkipPointLights` blockiert nur Punktlicht. Dateien: `main.ts`, `sceneLightRuntime.ts`, `selectiveBloom.ts`, `threeColors.ts`.
+
 ### Wandflächen, Innenlicht, 2D-Glas (2026-09-01) — v2.0.54
 
 **Ursache:** ShapeGeometry blickt nach +Z; `faceReverse` war invertiert. Von außen war die nackte Wand über den Paneelen weggekullt (Loch), von innen sah man die unbeleuchtete Außenseite (schwarz). **Fix:** `wallFaceNormalReverse` dreht Außen nach außen / Innen in den Raum; Vertex-Normalen werden vor dem Accumulator genullt. Innenmaterialien ohne Punktlicht-Cube-Selbstschatten (`bindSkipPointShadows`). 2D-Front: Glas per Alpha statt Transmission (`setOrthographicGlassSeeThrough`). Dateien: `panelGeometry.ts`, `skipPointLights.ts`, `threeColors.ts`, `FacadeController.ts`, `main.ts`.

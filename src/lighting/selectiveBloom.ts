@@ -62,7 +62,7 @@ export class SelectiveBloomPipeline {
   readonly bloomRenderPass: RenderPass
 
   constructor(
-    renderer: THREE.WebGLRenderer,
+    private readonly renderer: THREE.WebGLRenderer,
     private readonly scene: THREE.Scene,
     camera: THREE.Camera,
     size: THREE.Vector2,
@@ -104,9 +104,15 @@ export class SelectiveBloomPipeline {
 
   /** Bloom-Layer isolieren; anschließend composer.render() (RenderPass + Mix). */
   prepareMix(): void {
-    this.scene.traverse(darkenNonBloomed)
-    this.bloomComposer.render()
-    this.scene.traverse(restoreMaterials)
+    const prevTarget = this.renderer.getRenderTarget()
+    try {
+      this.scene.traverse(darkenNonBloomed)
+      this.bloomComposer.render()
+    } finally {
+      this.scene.traverse(restoreMaterials)
+      savedMaterials.clear()
+      this.renderer.setRenderTarget(prevTarget)
+    }
     this.mixPass.uniforms.bloomTexture.value = this.bloomComposer.readBuffer.texture
   }
 }

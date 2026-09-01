@@ -37,10 +37,10 @@ Im **Render**-Modus (3D/Front) ist die Okklusion **automatisch aktiv**, sobald m
 6. **Marker im Render:** kein additives Billboard-Glühen (sticht durch Wände). Stattdessen eine kleine **opake Kugel** mit Tiefentest. Additive Glühen nur in Vorschau/Entwurf.
 7. **Innen-Fill:** Bei aktivem Punktlicht im Render zusätzlich schwaches `dirLightIndoor` (nur Layer Innen).
 8. **Wand-Normalen:** Außenfläche nach außen, Innenfläche in den Raum (`wallFaceNormalReverse`). Sonst ist der Freistreifen über den Paneelen ein Loch, und Innenwände erscheinen schwarz.
-9. **2D-Glas:** Orthografische Front nutzt Alpha-Transparenz statt Physical-Transmission (`setOrthographicGlassSeeThrough`).
+9. **2D-Glas:** Orthografische Front nutzt dünne Alpha-Transparenz (opacity ~0,06) statt Physical-Transmission (`setOrthographicGlassSeeThrough`).
 10. **Innen-Schatten:** Innenwände bekommen Punktlicht, aber keine Cube-Selbstabschattung (`bindSkipPointShadows`).
 
-**Selective Bloom:** Nur Objekte auf **BLOOM_LAYER (2)** (Licht-Marker) erzeugen Bloom. **EnvMap** nur aus dem Außen-Layer.
+**Selective Bloom:** Nur Objekte auf **BLOOM_LAYER (2)** erzeugen Bloom — im Render mit Raum-Okklusion eine kleine **HDR-Kugel** am Licht (Tiefentest, kein Billboard durch Wände). **EnvMap** nur aus dem Außen-Layer. Sonne/Hemisphere auf der Außenfassade bleiben unbeeinflusst von `uSkipPointLights`.
 
 ## Einstellungen (Toolbar)
 
