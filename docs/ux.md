@@ -180,9 +180,9 @@ Das Fenster bleibt 24 cm hinter der Wandkörper-Außenkante; die Leibung holt di
 | Decke EG / Boden OG1 | Wandoberkante der Etage (`storeyTopY`, max. `wall.y + wall.height`) — **Oberseite** der 8-cm-Platte (`y = storeyTopY − INDOOR_SLAB_THICKNESS`) |
 | Fußboden EG / OG | Wandunterkante der Etage (`storeyBottomY`, min. `wall.y`) — **Unterseite** der 8-cm-Platte |
 
-Meshes sind per `userData.indoorRole` (`ceiling` \| `floor`) und `userData.kind` getaggt sowie `buildingId` / `floorIndex`. Nur Decken werfen Schatten; Böden empfangen. **3D-Render (v2.0.56):** Decke und Fußboden immer **weiß** (`DEFAULT_INTERIOR_COLOR`), mit EnvMap und ohne Gegenlicht-Abdunklung — wie Innenwände. `FloorPlan.ceilingColor` gilt weiter für Auswahl/2D-Grundriss, nicht für die 3D-Innenfläche.
+Meshes sind per `userData.indoorRole` (`ceiling` \| `floor`) und `userData.kind` getaggt sowie `buildingId` / `floorIndex`. Nur Decken werfen Schatten; Böden empfangen. **3D-Render (v2.0.56):** Decke und Fußboden hell wie Innenwände (`createIndoorSlabMaterial`: EnvMap, kein Gegenlicht-Dim). Default **Weiß**; `FloorPlan.ceilingColor` gilt für die 3D-Albedo (Farb-Toolbar).
 
-**Auswahl:** Linksklick auf die Decke in 3D setzt `selectedCeiling` (orange Highlight); Toolbar `#toolbar-ceiling` mit Farbe (`FloorPlan.ceilingColor`, Default Weiß). Dieselbe Farbe steht im Wand-Reiter **Farben** (Grundriss/Auswahl, nicht 3D-Albedo der Platten). Ebenenliste wie bisher.
+**Auswahl:** Linksklick auf die Decke in 3D setzt `selectedCeiling` (orange Highlight); Toolbar `#toolbar-ceiling` mit Farbe (`FloorPlan.ceilingColor`, Default Weiß). Dieselbe Farbe steht im Wand-Reiter **Farben**. Ebenenliste wie bisher.
 
 **Sichtbarkeit (3D):** `floors[fi].showCeiling !== false && !floors[fi].hidden` — die Platte trennt die Etage darüber von der darunter.
 

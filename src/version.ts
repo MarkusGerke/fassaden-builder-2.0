@@ -24,8 +24,9 @@ export const RELEASES: ReleaseNote[] = [
     date: '2026-09-01',
     title: 'Weiße Decken und Fußböden',
     changes: [
-      'Decken und Fußböden im 3D-Render sind wieder weiß wie die Innenwände',
+      'Decken und Fußböden im 3D-Render sind wieder weiß wie die Innenwände (Default)',
       'Gleiche Innenbeleuchtung: leichte EnvMap-Reflexion, kein Gegenlicht-Dim, keine Punktlicht-Selbstabschattung',
+      'Farb-Toolbar (`ceilingColor`) wirkt weiter auf Decke und Boden in 3D',
     ],
   },
   {

@@ -4,7 +4,7 @@ Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src
 
 ### Weiße Decken und Fußböden (2026-09-01) — v2.0.56
 
-**Decke/Boden grau oder dunkel:** Platten nutzten `ceilingColor` ohne Innenwand-Behandlung (kein EnvMap, Punktlicht-Schatten-Acne). **Fix:** `createIndoorRoomSurfaceMaterial()` — immer `#ffffff`, `interiorWallSurface`, `skipFacadeShade`, `bindSkipPointShadows`. Datei: `FacadeController.ts`.
+**Decke/Boden grau oder dunkel:** Platten nutzten `ceilingColor` ohne Innenwand-Behandlung (kein EnvMap, Punktlicht-Schatten-Acne). **Fix:** `createIndoorSlabMaterial()` — `interiorWallSurface`, `skipFacadeShade`, `bindSkipPointShadows`, EnvMap 0,42; Default `#ffffff`, Farbwähler (`ceilingColor`) bleibt wirksam. Datei: `FacadeController.ts`.
 
 ### Bloom, scharfes Glas, Außenlicht (2026-09-01) — v2.0.55
 

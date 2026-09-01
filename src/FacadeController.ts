@@ -4,6 +4,7 @@ import { LineSegments2 } from 'three/addons/lines/LineSegments2.js'
 import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js'
 import { JOIN_OVERLAP, PROFILE_OFFSET_CLASSICAL_V2, WALL_DEPTH, WINDOW_RECESS } from './constants/presets'
 import {
+  DEFAULT_CEILING_COLOR,
   DEFAULT_INTERIOR_COLOR,
   DEFAULT_PROFILE_COLOR,
   DEFAULT_JOINT_COLOR,
@@ -155,7 +156,6 @@ export class FacadeController {
   private readonly meshes = new Map<string, THREE.Mesh>()
   private readonly wallMaterials = new Map<string, THREE.MeshStandardMaterial>()
   private readonly wallInteriorMaterials = new Map<string, THREE.MeshStandardMaterial>()
-  private indoorSurfaceMaterial: THREE.MeshStandardMaterial | null = null
   private readonly material: THREE.MeshStandardMaterial
   private readonly selectedMaterial: THREE.MeshStandardMaterial
   private readonly selectionLineMaterial: THREE.LineBasicMaterial
@@ -1247,9 +1247,15 @@ export class FacadeController {
   }
 
   rebuildIndoorFloor() {
-    if (this.indoorSurfaceMaterial) {
-      this.indoorSurfaceMaterial.dispose()
-      this.indoorSurfaceMaterial = null
+    const slabMaterials = new Map<string, THREE.MeshStandardMaterial>()
+    const slabMatFor = (hex: string) => {
+      const key = hex.toLowerCase()
+      let mat = slabMaterials.get(key)
+      if (!mat) {
+        mat = this.createIndoorSlabMaterial(hex)
+        slabMaterials.set(key, mat)
+      }
+      return mat
     }
     while (this.indoorFloorGroup.children.length > 0) {
       const child = this.indoorFloorGroup.children[0] as THREE.Mesh
@@ -1262,8 +1268,6 @@ export class FacadeController {
       }
     }
     const slabThickness = INDOOR_SLAB_THICKNESS
-    this.indoorSurfaceMaterial = this.createIndoorRoomSurfaceMaterial()
-    const indoorSurfaceMat = this.indoorSurfaceMaterial
 
     const ringToShapeXY = (pts: Array<{ x: number; z: number }>) => {
       if (pts.length < 3) return null
@@ -1314,6 +1318,7 @@ export class FacadeController {
         const floorWalls = building.walls.filter(
           (wall) => !wall.hidden && floorIndex(wall, building.wallHeight) === fi,
         )
+        const slabMat = slabMatFor(plan.ceilingColor ?? DEFAULT_CEILING_COLOR)
         const faces = planFacesWithHoles(plan)
         for (const face of faces) {
           const inner = innerFaceRingFromWalls(face.outer, floorWalls, wallDepth)
@@ -1332,9 +1337,9 @@ export class FacadeController {
             shape.holes.push(path)
           }
           const ceilingY = storeyTopY(building, fi) - slabThickness
-          addFloorMesh(shape.clone(), ceilingY, indoorSurfaceMat, building.id, fi, 'ceiling')
+          addFloorMesh(shape.clone(), ceilingY, slabMat, building.id, fi, 'ceiling')
           const floorSurfaceY = storeyFloorSurfaceY(building, fi)
-          addFloorMesh(shape.clone(), floorSurfaceY - slabThickness, indoorSurfaceMat, building.id, fi, 'floor')
+          addFloorMesh(shape.clone(), floorSurfaceY - slabThickness, slabMat, building.id, fi, 'floor')
         }
       }
     }
@@ -2480,26 +2485,6 @@ export class FacadeController {
     }
 
     return isStudioWall(wall) ? [exterior, interior] : exterior
-  }
-
-  /** Decke und Fußboden: weiße Innenfläche wie Wände (EnvMap, kein Gegenlicht-Dim). */
-  private createIndoorRoomSurfaceMaterial(): THREE.MeshStandardMaterial {
-    const mat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(DEFAULT_INTERIOR_COLOR),
-      roughness: 0.88,
-      metalness: 0,
-      side: THREE.DoubleSide,
-      shadowSide: THREE.DoubleSide,
-    })
-    mat.userData.interiorWallSurface = true
-    mat.userData.skipFacadeShade = true
-    bindSkipPointShadows(mat)
-    const glassEnv = getGlassEnvironment()
-    if (glassEnv) {
-      mat.envMap = glassEnv
-      mat.envMapIntensity = 0.42
-    }
-    return mat
   }
 
   /** Studio-Wand: ein Mesh, zwei Materialien (außen/innen) — kein Geometrie-Split. */
