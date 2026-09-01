@@ -145,21 +145,13 @@ function patchSkyDisplayToneMap(material: SkyMaterial): void {
   }
 }
 
-/** Physikalische Sonne → Anzeige-Farbe; Intensität bleibt die der Slider. */
+/** Anzeige-Sonne: Kelvin-Slider färbt das Key-Light; Intensität bleibt celestial × Slider. */
 export function applyDisplaySunColor(
   light: THREE.DirectionalLight,
   celestial: CelestialState,
   intensityScale: number,
 ): void {
-  const peak = Math.max(light.color.r, light.color.g, light.color.b)
-  if (peak < 0.002 || celestial.sun.elevationRad <= 0) {
-    light.color.copy(kelvinToColor(celestial.lightColorTemp))
-  } else {
-    const lum = 0.2126 * light.color.r + 0.7152 * light.color.g + 0.0722 * light.color.b
-    light.color.multiplyScalar(1 / Math.max(lum, 1e-4))
-    const m = Math.max(light.color.r, light.color.g, light.color.b)
-    if (m > 1.35) light.color.multiplyScalar(1.35 / m)
-  }
+  light.color.copy(kelvinToColor(celestial.lightColorTemp))
   light.intensity = celestial.lightIntensity * intensityScale
 }
 

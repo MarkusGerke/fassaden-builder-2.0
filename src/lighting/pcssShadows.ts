@@ -12,6 +12,14 @@ export const PCSS_LIGHT_WORLD_SIZE_MAX_CM = 28
 /** Normalisierte Near-Plane in Shadow-Tiefenraum (0…1) — Suchradius für Blocker. */
 export const PCSS_NEAR_PLANE = 0.002
 
+/**
+ * Penumbra-Verstärker für Ortho-Shadow-Maps.
+ * Das Three.js-PCSS-Beispiel multipliziert mit NEAR_PLANE/z (z. B. 9,5 / ~0,5 ≈ 19),
+ * weil es Perspektiv-Tiefenzellen erwartet. Unsere Directional-Map liefert NDC-z (0…1);
+ * NEAR_PLANE 0,002 würde die Filtergröße ~5000× zusammendrücken — Slider wirkungslos.
+ */
+export const PCSS_PENUMBRA_SCALE = 8
+
 /** Mehr Samples = weniger sichtbares Poisson-Raster in der Penumbra (Three.js-Beispiel: 17). */
 export const PCSS_NUM_SAMPLES = 32
 export const PCSS_NUM_RINGS = 14
@@ -44,7 +52,7 @@ float pcssPenumbraSize( const in float zReceiver, const in float zBlocker ) {
 }
 
 float pcssFindBlocker( sampler2D shadowMap, const in vec2 uv, const in float zReceiver ) {
-	float searchRadius = PCSS_LIGHT_SIZE_UV * ( zReceiver - PCSS_NEAR_PLANE ) / zReceiver;
+	float searchRadius = pcssLightSizeUv * ( zReceiver - PCSS_NEAR_PLANE ) / zReceiver;
 	float blockerDepthSum = 0.0;
 	int numBlockers = 0;
 	for ( int i = 0; i < PCSS_BLOCKER_SEARCH_NUM_SAMPLES; i++ ) {
@@ -95,7 +103,7 @@ float pcssGetShadow( sampler2D shadowMap, vec4 coords ) {
 	float avgBlockerDepth = pcssFindBlocker( shadowMap, uv, zReceiver );
 	if ( avgBlockerDepth == -1.0 ) return 1.0;
 	float penumbraRatio = pcssPenumbraSize( zReceiver, avgBlockerDepth );
-	float filterRadius = penumbraRatio * PCSS_LIGHT_SIZE_UV * PCSS_NEAR_PLANE / zReceiver;
+	float filterRadius = penumbraRatio * pcssLightSizeUv * PCSS_PENUMBRA_SCALE;
 	return pcssFilter( shadowMap, uv, zReceiver, filterRadius );
 }
 `
@@ -143,7 +151,8 @@ const BASIC_GET_SHADOW_MARKER = `#else
 
 let originalShadowmapParsFragment: string | undefined
 let pcssEnabled = false
-let lastLightSizeUv = -1
+let pcssChunkApplied = false
+const pcssLightSizeUvUniform = { value: 0.002 }
 
 /** Nutzer-Slider 0,5…8 → Lichtfläche in cm (Penumbra-Breite). */
 export function pcssLightWorldSizeFromSoftness(softness: number): number {
@@ -157,11 +166,16 @@ export function pcssLightSizeUvFromSoftness(softness: number, frustumWidthCm: nu
   return pcssLightWorldSizeFromSoftness(softness) / frustum
 }
 
-function buildPcssShadowmapParsFragment(lightSizeUv: number): string {
+export function getPcssLightSizeUv(): number {
+  return pcssLightSizeUvUniform.value
+}
+
+function buildPcssShadowmapParsFragment(): string {
   const base = originalShadowmapParsFragment ?? THREE.ShaderChunk.shadowmap_pars_fragment
   const defines = `
-#define PCSS_LIGHT_SIZE_UV ${lightSizeUv.toFixed(10)}
+uniform float pcssLightSizeUv;
 #define PCSS_NEAR_PLANE ${PCSS_NEAR_PLANE.toFixed(8)}
+#define PCSS_PENUMBRA_SCALE ${PCSS_PENUMBRA_SCALE.toFixed(4)}
 `
   let shader = base.replace('#ifdef USE_SHADOWMAP', `#ifdef USE_SHADOWMAP${defines}${PCSS_GLSL_HELPERS}`)
   if (!shader.includes(BASIC_GET_SHADOW_MARKER)) {
@@ -171,19 +185,44 @@ function buildPcssShadowmapParsFragment(lightSizeUv: number): string {
   return shader
 }
 
-function applyShadowmapParsFragment(lightSizeUv: number): void {
-  THREE.ShaderChunk.shadowmap_pars_fragment = buildPcssShadowmapParsFragment(lightSizeUv)
-  lastLightSizeUv = lightSizeUv
+function applyPcssShadowmapChunk(): void {
+  THREE.ShaderChunk.shadowmap_pars_fragment = buildPcssShadowmapParsFragment()
+  pcssChunkApplied = true
 }
 
-/** Alle Shader mit Shadow-Map neu kompilieren (nach Chunk-Änderung). */
+function bindPcssLightSizeUniform(material: THREE.Material): boolean {
+  if (material.userData.pcssLightSizeBound) return false
+  material.userData.pcssLightSizeBound = true
+  const prev = material.onBeforeCompile.bind(material)
+  material.onBeforeCompile = (shader, renderer) => {
+    prev(shader, renderer)
+    shader.uniforms.pcssLightSizeUv = pcssLightSizeUvUniform
+  }
+  material.needsUpdate = true
+  return true
+}
+
+/** Materialien anbinden bzw. nach Chunk-Wechsel neu kompilieren. */
 export function invalidateShadowMaterials(root: THREE.Object3D): void {
   root.traverse((obj) => {
     const mesh = obj as THREE.Mesh
     if (!mesh.isMesh) return
     const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
     for (const mat of materials) {
-      if (mat) mat.needsUpdate = true
+      if (!mat) continue
+      bindPcssLightSizeUniform(mat)
+      mat.needsUpdate = true
+    }
+  })
+}
+
+function bindPcssUniformsOn(root: THREE.Object3D): void {
+  root.traverse((obj) => {
+    const mesh = obj as THREE.Mesh
+    if (!mesh.isMesh) return
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+    for (const mat of materials) {
+      if (mat) bindPcssLightSizeUniform(mat)
     }
   })
 }
@@ -194,11 +233,7 @@ export function enablePcssShadows(): void {
     originalShadowmapParsFragment = THREE.ShaderChunk.shadowmap_pars_fragment
   }
   pcssEnabled = true
-  if (lastLightSizeUv < 0) {
-    applyShadowmapParsFragment(pcssLightSizeUvFromSoftness(2.5, 4000))
-  } else {
-    applyShadowmapParsFragment(lastLightSizeUv)
-  }
+  if (!pcssChunkApplied) applyPcssShadowmapChunk()
 }
 
 /** PCSS deaktivieren und den Three.js-Standard-Chunk wiederherstellen. */
@@ -207,7 +242,7 @@ export function disablePcssShadows(): void {
     THREE.ShaderChunk.shadowmap_pars_fragment = originalShadowmapParsFragment
   }
   pcssEnabled = false
-  lastLightSizeUv = -1
+  pcssChunkApplied = false
 }
 
 export function isPcssShadowsEnabled(): boolean {
@@ -216,6 +251,7 @@ export function isPcssShadowsEnabled(): boolean {
 
 /**
  * PCSS-Lichtgröße aus Schattenweichheit und Ortho-Frustum aktualisieren.
+ * Schreibt nur die Uniform — kein Shader-Rebuild (Slider bleibt live).
  * @param frustumWidthCm max(left/right/top/bottom)-Spanne der Shadow-Camera in cm
  */
 export function updatePcssShadowParameters(
@@ -224,10 +260,9 @@ export function updatePcssShadowParameters(
   root?: THREE.Object3D,
 ): void {
   if (!pcssEnabled) return
-  const lightSizeUv = pcssLightSizeUvFromSoftness(softness, frustumWidthCm)
-  if (Math.abs(lightSizeUv - lastLightSizeUv) < 1e-8) return
-  applyShadowmapParsFragment(lightSizeUv)
-  if (root) invalidateShadowMaterials(root)
+  if (!pcssChunkApplied) applyPcssShadowmapChunk()
+  pcssLightSizeUvUniform.value = pcssLightSizeUvFromSoftness(softness, frustumWidthCm)
+  if (root) bindPcssUniformsOn(root)
 }
 
 /** Frustum-Breite (cm) aus einer DirectionalLight-Shadow-Camera. */

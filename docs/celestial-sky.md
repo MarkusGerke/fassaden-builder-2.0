@@ -31,7 +31,7 @@ Physikalischer Himmel in **3D** und **Oben** (Bruneton Precomputed Atmospheric S
 
 ### Lichtquellen
 
-1. **Sonne:** `SunDirectionalLight` (`dirLight`) — Farbe/Transmittance aus Atmosphäre, Intensität × Nutzer-Slider.
+1. **Sonne:** `SunDirectionalLight` (`dirLight`) — **Farbe aus dem Kelvin-Slider** (`#sun-color-temp` / `SunSettings.colorTemperature`); Intensität × Nutzer-Slider. Der Himmel bleibt physikalisch (Takram-Transmittance), das Key-Light nicht.
 2. **Himmels-Fill:** `SkyLightProbe` + reduziertes `HemisphereLight` (Nutzer-Umgebungslicht).
 3. **Bodenreflex:** `bounceDirLight` unverändert.
 4. **Innen:** `dirLightIndoor` unverändert (Layer Interior).

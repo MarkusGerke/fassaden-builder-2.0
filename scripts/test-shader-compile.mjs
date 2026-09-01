@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { applyFacadeShadeShader } from '../src/utils/facadeShade.ts'
 import { applyGroundMoodShader } from '../src/lighting/groundMood.ts'
-import { enablePcssShadows } from '../src/lighting/pcssShadows.ts'
+import { enablePcssShadows, updatePcssShadowParameters } from '../src/lighting/pcssShadows.ts'
 
 const renderer = new THREE.WebGLRenderer({ antialias: false })
 renderer.shadowMap.enabled = true
@@ -30,6 +30,8 @@ const ground = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), groundMat)
 ground.rotation.x = -Math.PI / 2
 ground.receiveShadow = true
 scene.add(ground)
+
+updatePcssShadowParameters(2.5, 4000, scene)
 
 const errors = []
 renderer.debug.checkShaderErrors = true

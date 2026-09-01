@@ -3606,11 +3606,11 @@ function applyWorkModeShadowStyle() {
     disablePcssShadows()
     dirLight.shadow.radius = 0
     dirLight.shadow.normalBias = SHADOW_NORMAL_BIAS_MIN
-    invalidateShadowMaterials(scene)
   } else {
     enablePcssShadows()
     dirLight.shadow.radius = 0
   }
+  invalidateShadowMaterials(scene)
   renderer.shadowMap.needsUpdate = true
 }
 

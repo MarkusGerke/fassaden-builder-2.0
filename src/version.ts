@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.0'
+export const APP_VERSION = '2.0.1'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,15 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.1',
+    date: '2026-09-01',
+    title: 'Sonnen-Slider wieder wirksam',
+    changes: [
+      'Farbtemperatur färbt das Sonnenlicht wieder (warm 2700 K … kühl 8000 K)',
+      'Schatten-Weichheit ändert die Penumbra live im Render-Modus',
+    ],
+  },
   {
     version: '2.0.0',
     date: '2026-09-01',

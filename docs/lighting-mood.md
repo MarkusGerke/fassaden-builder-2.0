@@ -10,7 +10,8 @@ Außenbeleuchtung in **3D** und **Oben** als Schichtenmodell — näher an reale
 - **Slider:**
   - **Umgebungslicht** → Himmel-Fill (Hemisphere + SkyLightProbe)
   - **Schatten-Kontrast** → Licht/Schatten an Fassade und Himmel
-  - **Schatten-Weichheit** → PCSS-Randschärfe (**nur Render**)
+  - **Schatten-Weichheit** → PCSS-Randschärfe live (**nur Render**)
+  - **Farbtemperatur** → Key-Lichtfarbe (Kelvin; Himmel bleibt physikalisch)
   - **Schatten-Dunkelheit** → aus UI entfernt (Legacy in gespeicherten Projekten)
 
 ## Schichten
@@ -60,10 +61,11 @@ sunSettings + Szenenfarben
 
 | Slider | Wirkung |
 |---|---|
-| `#sun-intensity` | Key-Intensität (× Takram-Transmittance) |
+| `#sun-intensity` | Key-Intensität (× Slider-Normierung) |
+| `#sun-color-temp` | Key-Lichtfarbe in Kelvin (2700–8000); Himmel bleibt physikalisch |
 | `#sun-ambient` | Hemisphere + SkyLightProbe |
 | `#sun-shadow-contrast` | Fassaden-Gegenlicht, Himmel-Fill |
-| `#sun-softness` | PCSS-Lichtgröße (nur Render; UI ausgeblendet in Entwurf/Vorschau) |
+| `#sun-softness` | PCSS-Penumbra live über Uniform `pcssLightSizeUv` (nur Render; UI ausgeblendet in Entwurf/Vorschau) |
 
 ## Bekannte Grenzen
 

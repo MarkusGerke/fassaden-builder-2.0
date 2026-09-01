@@ -38,7 +38,7 @@ Bloom und Gobo-Schatten: frühere Laub-Gobo-UI entfernt (v0.7.341). **Unreal Blo
   - Nur Himmelsrichtung: Sonne über `timeWhenSunAzimuth`; Kamera interpoliert Von/Bis auf dem kürzesten Bogen (ebenfalls weich in Grad).
   - Beides: Sonne folgt der Uhrzeit, Kamera der Himmelsrichtung (unabhängig).
 - **Sonnenlicht** Default **2.4** (Slider `#sun-intensity` 0,3…**8**). Zusätzlich **Umgebungslicht** (`#sun-ambient`, Default 0,32), **Schatten-Kontrast** (`#sun-shadow-contrast`, Default 1,4) und **Schatten-Dunkelheit** (`#sun-shadow-density`, Default 0,55). **v0.7.253:** Diese Slider steuern auch Umbra-Tönung, Kontaktschatten und Bodenreflex — siehe [lighting-mood.md](lighting-mood.md).
-- **Sonnen-Slider (v0.7.341):** Azimut/Tageszeit/Intensität: Licht sofort, Shadow-Map gedrosselt (~90 ms). **Weichheit (v0.7.314 / v0.7.345):** `#sun-softness` → PCSS-Lichtgröße 0,8…28 cm (hart am Okkluder, weicher in der Penumbra).
+- **Sonnen-Slider (v0.7.341):** Azimut/Tageszeit/Intensität: Licht sofort, Shadow-Map gedrosselt (~90 ms). **Weichheit (v2.0.1):** `#sun-softness` → PCSS-Lichtgröße 0,8…28 cm als Uniform `pcssLightSizeUv` (live, hart am Okkluder, weicher mit Abstand). **Farbtemperatur (v2.0.1):** `#sun-color-temp` färbt das Key-Light.
 - **Fenster in 2D (v0.7.344):** Rahmen/Konsolen empfangen Werfschatten wenn Paneele empfangen (`syncOpeningReceiveShadows`, ohne Glas).
 
 ## Ein-Pass / Grundriss-Silhouette
@@ -108,7 +108,8 @@ State-Änderung / Sonnen-Slider
 
 | Konstante | Wert | Bedeutung |
 |---|---|---|
-| Softness-Bereich | 0,5 … 8 | Slider → PCSS-Lichtfläche 0,8…28 cm, geteilt durch Ortho-Frustum-Breite (`PCSS_LIGHT_SIZE_UV`) |
+| Softness-Bereich | 0,5 … 8 | Slider → PCSS-Lichtfläche 0,8…28 cm / Frustum-Breite (`pcssLightSizeUv`-Uniform) |
+| `PCSS_PENUMBRA_SCALE` | 8 | Ortho-NDC-Ausgleich; ohne ihn ist `NEAR/z` mit Near 0,002 unsichtbar |
 | `PCSS_NEAR_PLANE` | 0,002 | Normalisierte Near-Plane für Blocker-Suche (Shadow-Tiefenraum) |
 | `MIN_SUN_DISTANCE` | 900 cm | Untergrenze Licht→Ziel |
 | `SHADOW_MAP_SIZE` | 4096 | Shadow-Map (große Sites) |
@@ -135,6 +136,7 @@ Glas: dunkles Klarglas, CubeCamera-EnvMap der Szene von außerhalb. `transmissio
 - **Einheiten cm:** Bias-Werte aus Meter-Tutorials sind hier falsch skaliert.
 - **Sehr flache Sonne:** Schattenlänge über 3200 cm wird im Frustum gekappt (sonst zu grobe Texel). Der Boden in der 3D-Ansicht ist um dieselbe Reichweite vergrößert.
 - **Entwurf / Vorschau:** PCSS aus, harte `BasicShadowMap` (kein Contact-Hardening) — absichtlich.
+- **Weichheit-Slider tot (v2.0.1):** `#define PCSS_LIGHT_SIZE_UV` ändert den Program-Cache von `MeshStandardMaterial` nicht (shaderID `standard`). Dazu Filter `* NEAR_PLANE / zReceiver` mit Near 0,002 auf NDC-z ≈ 0. Fix: Uniform + `PCSS_PENUMBRA_SCALE` 8. Slider nur in **Render** sichtbar.
 - **Weichheit-Slider träge (v0.7.335):** Pro Tick Shader-Neubau — jetzt Uniform `pcssLightSizeUv`, sofortiger Frame-Render. PCSS-Filter in Lit-Bereichen erzeugte zweiten Weichschatten. Jetzt ein Pfad: hart am Kontakt, Weichheit nur via min(hard, soft) in der Penumbra.
 - **Render + schwebender Schatten (v0.7.333):** Umbra am Kontakt hart; NormalBias 0; Cast-Shadow ohne polygonOffset (`customDepthMaterial`).
 - **Render + schwebender Schatten (v0.7.332):** Mindest-Filter und hoher NormalBias wirkten am Kontakt wie Peter-Panning. Contact-Hardening + PCSS-NormalBias ≤ 0,12 cm.

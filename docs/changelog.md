@@ -2,6 +2,10 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Farbtemperatur und Schatten-Weichheit wieder wirksam (2026-09-01) — v2.0.1
+
+`#sun-color-temp` färbte das Key-Light nicht: `applyDisplaySunColor` behielt tagsüber die Takram-Transmittance und ignorierte Kelvin. Jetzt immer `kelvinToColor(celestial.lightColorTemp)`. `#sun-softness` wirkte tot: `PCSS_LIGHT_SIZE_UV` als Shader-`#define` (Three.js cached Standard-Programme ohne Chunk-Inhalt) plus Filter `* NEAR_PLANE / z` mit Near 0,002 auf NDC-Tiefe. Fix: Uniform `pcssLightSizeUv` (live ohne Rebuild) und `PCSS_PENUMBRA_SCALE` 8 für Ortho-Maps. Dateien: `atmosphereSky.ts`, `pcssShadows.ts`, `main.ts`, Docs.
+
 ### Fassaden-Builder 2.0 (2026-09-01) — v2.0.0
 
 Neues Repo `fassaden-builder-2.0`. UI reduziert: Ebenen, Oben, 3D, Entwurf, Einfach/Komplex, Galerie per `hidden` ausgeblendet (IDs/Wiring bleiben). Standard: 2D-Front + Render-Modus. Performance: `selectWall`/`selectOpening` nutzen `applyEditorSelection` (nur Editor/Selektion, debounced Persistenz, kein `svgView.setState`/Geometrie-Rebuild). Dateien: `index.html`, `main.ts`, `FacadeController.ts`, `version.ts`, `docs/ux.md`, `docs/views-and-state.md`.

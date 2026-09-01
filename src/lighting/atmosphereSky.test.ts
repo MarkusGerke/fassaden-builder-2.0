@@ -32,19 +32,33 @@ describe('atmosphereSky helpers', () => {
     expect(Math.abs(east.dot(up))).toBeLessThan(0.05)
   })
 
-  it('applyDisplaySunColor hebt physikalische Radiance auf Anzeige-Intensität', () => {
+  it('applyDisplaySunColor färbt das Key-Light nach Kelvin, nicht nach Atmosphären-Radiance', () => {
     const light = new THREE.DirectionalLight(0xffffff, 1)
-    light.color.setRGB(0.02, 0.016, 0.01)
-    const celestial = resolveCelestialState({
+    light.color.setRGB(0.02, 0.016, 0.12)
+    const warm = resolveCelestialState({
       ...DEFAULT_SUN_SETTINGS,
       month: 6,
       day: 21,
       timeOfDay: 12,
       elevationRad: 1,
+      colorTemperature: 2700,
     })
-    applyDisplaySunColor(light, celestial, 1)
+    applyDisplaySunColor(light, warm, 1)
     expect(light.intensity).toBeGreaterThan(1)
-    expect(Math.max(light.color.r, light.color.g, light.color.b)).toBeGreaterThan(0.8)
+    expect(light.color.r).toBeGreaterThan(light.color.b)
+    const warmHex = light.color.getHex()
+
+    const cool = resolveCelestialState({
+      ...DEFAULT_SUN_SETTINGS,
+      month: 6,
+      day: 21,
+      timeOfDay: 12,
+      elevationRad: 1,
+      colorTemperature: 8000,
+    })
+    applyDisplaySunColor(light, cool, 1)
+    expect(light.color.b).toBeGreaterThan(light.color.r)
+    expect(light.color.getHex()).not.toBe(warmHex)
   })
 
   it('patchSkyFragmentShader klemmt HDR und ersetzt dFdx-Sonnenscheibe', () => {
