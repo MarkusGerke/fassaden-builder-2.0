@@ -518,6 +518,27 @@ export class FacadeController {
     for (const mesh of this.pedimentMeshes) apply(mesh)
   }
 
+  /** Bibliotheks-Punktlichter: Rahmen, Sprossen und Profile werfen Cube-Shadows. */
+  syncPointLightOccluders(enable: boolean): void {
+    if (!enable) return
+    const apply = (root: THREE.Object3D) => {
+      root.traverse((child) => {
+        if (!(child instanceof THREE.Mesh)) return
+        if (child.userData.shadowOccluder || child.userData.role === 'guideRail') return
+        if (!this.openingMeshMayReceiveShadow(child)) return
+        child.castShadow = true
+        child.layers.enable(SHADOW_LAYER_EXTERIOR)
+        child.layers.enable(SHADOW_LAYER_INTERIOR)
+      })
+    }
+    for (const instance of this.windowInstances) apply(instance)
+    for (const instance of this.windowLodLowInstances) apply(instance)
+    for (const instance of this.casingInstances) apply(instance)
+    for (const mesh of this.profileMeshes) apply(mesh)
+    for (const mesh of this.pedimentMeshes) apply(mesh)
+    for (const mesh of this.stairMeshes) apply(mesh)
+  }
+
   /**
    * Paneele/Mörtel empfangen Shadow-Map nur wenn `claddingReceiveShadows`
    * (2D-Front oder Arbeitsmodus). Sockel und Freiraum-Kappen bleiben aus.
@@ -2471,6 +2492,8 @@ export class FacadeController {
       buildingId: wall.buildingId,
       shadowOccluder: true,
     }
+    mesh.layers.enable(SHADOW_LAYER_EXTERIOR)
+    mesh.layers.enable(SHADOW_LAYER_INTERIOR)
     const transform = wallPlacement(wall)
     mesh.position.set(transform.position.x, transform.position.y, transform.position.z)
     mesh.rotation.y = transform.rotationY

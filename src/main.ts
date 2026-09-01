@@ -97,6 +97,7 @@ import type {
   WallGroup,
   WallSide,
   PedimentForm,
+  SceneLight,
 } from './types/facade'
 import {
   addOpening,
@@ -531,6 +532,14 @@ import {
   presentationUsesWorkLikeShading,
   type PresentationMode,
 } from './lighting/editPresentation'
+import { SceneLightRuntime } from './lighting/sceneLightRuntime'
+import {
+  addSceneLight,
+  normalizeSceneLights,
+  removeSceneLight,
+  sceneLightById,
+  updateSceneLight,
+} from './scene/sceneLights'
 import {
   DEFAULT_FOG_SETTINGS,
   normalizeFogSettings,
@@ -547,6 +556,7 @@ import { installFieldInfo } from './ui/fieldInfo'
 import { initReleaseNotesUi } from './ui/releaseNotes'
 import { initCreditsUi } from './ui/creditsDialog'
 import {
+  isPerfOverlayEnabled,
   markPerfFrameEnd,
   markPerfFrameStart,
   setPerfOverlayEnabled,
@@ -578,6 +588,8 @@ const MAX_PIXEL_RATIO = 1.5
 const ORBIT_LITE_HOLD_MS = 320
 
 let viewportDirty = true
+/** Erst true nach Atmosphäre + erstem Mesh-Load — bis dahin kein Dirty-Skip in animate(). */
+let sceneLightingReady = false
 let orbitLite = false
 let orbitLiteTimer: ReturnType<typeof setTimeout> | null = null
 /** true zwischen OrbitControls start und end (Mausrad: beides im selben Tick). */
@@ -614,6 +626,7 @@ scene.add(sitePivot)
 const _frontPanRight = new THREE.Vector3()
 const _frontPanUp = new THREE.Vector3()
 const _frontPanForward = new THREE.Vector3()
+const _sceneLightWorld = new THREE.Vector3()
 const atmosphereSky = new AtmosphereSky()
 scene.add(atmosphereSky.root)
 atmosphereSky.attachLights(scene)
@@ -912,6 +925,9 @@ scene.add(dirLightIndoor)
 dirLightIndoor.target.position.set(192, 224, 0)
 scene.add(dirLightIndoor.target)
 
+const sceneLightRuntime = new SceneLightRuntime()
+siteOffset.add(sceneLightRuntime.root)
+
 /** Canvas-MSAA gilt nicht für EffectComposer-RTs — ohne Samples wirken Bloom-Kanten pixelig. */
 const BLOOM_MSAA_SAMPLES = Math.min(8, renderer.capabilities.maxSamples)
 const composer = new EffectComposer(
@@ -995,7 +1011,7 @@ function activeFloorWorldY(): number {
 
 const UI_MODE_STORAGE_KEY = 'fassaden-builder-ui-mode'
 type UiMode = 'simple' | 'complex'
-type LibraryTab = 'walls' | 'bay' | 'balcony' | 'loggia' | 'windows' | 'doors' | 'niches' | 'panels' | 'profiles' | 'pediment'
+type LibraryTab = 'walls' | 'bay' | 'balcony' | 'loggia' | 'windows' | 'doors' | 'niches' | 'panels' | 'profiles' | 'pediment' | 'lights'
 
 function loadUiMode(): UiMode {
   try {
@@ -1141,6 +1157,109 @@ function pickGroundGridFromClient(clientX: number, clientY: number): { gx: numbe
     gx: Math.round(hit.x / PLAN_GRID),
     gz: Math.round(hit.z / PLAN_GRID),
   }
+}
+
+function setRaycasterFromClient(clientX: number, clientY: number): void {
+  const rect = canvas.getBoundingClientRect()
+  pointerNdc.x = ((clientX - rect.left) / rect.width) * 2 - 1
+  pointerNdc.y = -((clientY - rect.top) / rect.height) * 2 + 1
+  raycaster.setFromCamera(pointerNdc, getActiveCamera())
+}
+
+function pickWorldOnHorizontalPlane(
+  clientX: number,
+  clientY: number,
+  planeY: number,
+): { x: number; y: number; z: number } | null {
+  setRaycasterFromClient(clientX, clientY)
+  const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -planeY)
+  const hit = new THREE.Vector3()
+  if (!raycaster.ray.intersectPlane(plane, hit)) return null
+  return sceneLightPositionFromWorld(hit)
+}
+
+function sceneLightLocalToWorld(
+  light: Pick<SceneLight, 'x' | 'y' | 'z'>,
+  target = _sceneLightWorld,
+): THREE.Vector3 {
+  target.set(light.x, light.y, light.z)
+  siteOffset.localToWorld(target)
+  return target
+}
+
+function viewDepthReferencePoint(out: THREE.Vector3): THREE.Vector3 {
+  if (currentView === 'front') {
+    const base = getFrontViewBase()
+    if (base) return out.set(base.lookX, base.lookY, base.lookZ)
+  }
+  if (currentView === '3d') return out.copy(controls.target)
+  const box = buildingWorldBox(getAllWalls(state))
+  if (box.isEmpty()) return out.set(0, 0, 0)
+  return out.set((box.min.x + box.max.x) * 0.5, 0, (box.min.z + box.max.z) * 0.5)
+}
+
+function sceneLightViewDepthCm(light: Pick<SceneLight, 'x' | 'y' | 'z'>): number {
+  getActiveCamera().getWorldDirection(_frontPanForward)
+  sceneLightLocalToWorld(light, _sceneLightWorld)
+  viewDepthReferencePoint(_frontPanRight)
+  const dx = _sceneLightWorld.x - _frontPanRight.x
+  const dy = _sceneLightWorld.y - _frontPanRight.y
+  const dz = _sceneLightWorld.z - _frontPanRight.z
+  return dx * _frontPanForward.x + dy * _frontPanForward.y + dz * _frontPanForward.z
+}
+
+function pickSceneLightOnViewPlane(
+  clientX: number,
+  clientY: number,
+  planePointWorld: THREE.Vector3,
+): Pick<SceneLight, 'x' | 'y' | 'z'> | null {
+  setRaycasterFromClient(clientX, clientY)
+  getActiveCamera().getWorldDirection(_frontPanForward)
+  const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(_frontPanForward, planePointWorld)
+  const hit = new THREE.Vector3()
+  if (!raycaster.ray.intersectPlane(plane, hit)) return null
+  return sceneLightPositionFromWorld(hit)
+}
+
+/** Weltpunkt (Raycast) → siteOffset-Lokal (wie Wand-Meshes). */
+function sceneLightPositionFromWorld(world: THREE.Vector3): Pick<SceneLight, 'x' | 'y' | 'z'> {
+  _sceneLightWorld.copy(world)
+  siteOffset.worldToLocal(_sceneLightWorld)
+  return { x: _sceneLightWorld.x, y: _sceneLightWorld.y, z: _sceneLightWorld.z }
+}
+
+function pickSceneLightPlacementFromClient(
+  clientX: number,
+  clientY: number,
+): Pick<SceneLight, 'x' | 'y' | 'z'> | null {
+  if (currentView === 'top') {
+    const grid = pickGroundGridFromClient(clientX, clientY)
+    if (!grid) return null
+    const box = buildingWorldBox(getAllWalls(state))
+    const y = box.isEmpty() ? 220 : Math.max(box.min.y + 180, 180)
+    return { x: grid.gx * PLAN_GRID, y, z: grid.gz * PLAN_GRID }
+  }
+
+  setRaycasterFromClient(clientX, clientY)
+  const sceneHits = raycaster.intersectObjects(
+    [
+      facade.claddingGroup,
+      facade.profileGroup,
+      facade.windowGroup,
+      facade.casingGroup,
+      facade.wallGroup,
+      facade.indoorFloorGroup,
+      facade.roofGroup,
+    ],
+    true,
+  )
+  if (sceneHits.length > 0) {
+    return sceneLightPositionFromWorld(sceneHits[0]!.point)
+  }
+
+  const box = buildingWorldBox(getAllWalls(state))
+  const fallbackY = box.isEmpty() ? 220 : Math.max(box.min.y + 180, 180)
+  return pickWorldOnHorizontalPlane(clientX, clientY, fallbackY)
 }
 
 function compassFacadeYaw(): number | undefined {
@@ -3581,8 +3700,12 @@ function schedulePersistApp() {
   }, 350)
 }
 
+function bloomIsActive(): boolean {
+  return bloomSettings.enabled && currentView === '3d' && currentRenderStyle !== 'line'
+}
+
 function applyBloomRenderer() {
-  const enabled = bloomSettings.enabled && currentView === '3d' && !presentationUsesWorkLikeShading(presentationMode)
+  const enabled = bloomIsActive()
   bloomPass.enabled = enabled
   if (smaaPass) smaaPass.enabled = enabled
   outputPass.enabled = enabled
@@ -3738,7 +3861,8 @@ function renderLitSceneFrame(activeCamera: THREE.Camera) {
     bakeSceneReflectionsIfNeeded(renderer, scene, reflectionProbePos, sceneReflectionHideRoots)
     bindMaterialsToGlassEnv(scene)
   }
-  const bloomOn = bloomSettings.enabled && currentView === '3d' && !presentationUsesWorkLikeShading(presentationMode)
+  const bloomOn = bloomIsActive()
+  renderPass.camera = activeCamera
   if (bloomOn) {
     composer.render()
   } else {
@@ -3776,7 +3900,7 @@ async function loadInitialState(): Promise<void> {
   if (persisted) {
     state = persisted.facade
     editor = persisted.editor
-    currentView = 'front'
+    currentView = persisted.view === '3d' ? '3d' : 'front'
     sunSettings = normalizeSunSettings(persisted.sun)
     if (persisted.editScope) editScope = persisted.editScope
     editFacadeYawFilter = normalizeFacadeYawFilter(persisted.editFacadeYawFilter)
@@ -4489,6 +4613,17 @@ const viewShowCeiling = document.querySelector<HTMLInputElement>('#view-show-cei
 const viewShowIntermediateFloors = document.querySelector<HTMLInputElement>('#view-show-intermediate-floors')
 const toolbarRoof = document.querySelector<HTMLDivElement>('#toolbar-roof')!
 const toolbarCeiling = document.querySelector<HTMLDivElement>('#toolbar-ceiling')!
+const toolbarSceneLight = document.querySelector<HTMLDivElement>('#toolbar-scene-light')!
+const sceneLightXInput = document.querySelector<HTMLInputElement>('#scene-light-x')!
+const sceneLightYInput = document.querySelector<HTMLInputElement>('#scene-light-y')!
+const sceneLightZInput = document.querySelector<HTMLInputElement>('#scene-light-z')!
+const sceneLightIntensityInput = document.querySelector<HTMLInputElement>('#scene-light-intensity')!
+const sceneLightEnabledInput = document.querySelector<HTMLInputElement>('#scene-light-enabled')!
+const sceneLightCastShadowInput = document.querySelector<HTMLInputElement>('#scene-light-cast-shadow')!
+const sceneLightDepthSlider = document.querySelector<HTMLInputElement>('#scene-light-depth')!
+const sceneLightDepthNum = document.querySelector<HTMLInputElement>('#scene-light-depth-num')!
+const sceneLightDepthValue = document.querySelector<HTMLOutputElement>('#scene-light-depth-value')!
+const sceneLightDeleteBtn = document.querySelector<HTMLButtonElement>('#scene-light-delete')!
 const ceilingColorSwatches = document.querySelector<HTMLDivElement>('#ceiling-color-swatches')!
 const roofShellOptions = document.querySelector<HTMLDivElement>('#roof-shell-options')!
 const roofTilesOptions = document.querySelector<HTMLDivElement>('#roof-tiles-options')!
@@ -7272,6 +7407,44 @@ function initOpeningLibrary() {
     return
   }
 
+  if (libraryTab === 'lights') {
+    appendLibraryGroupLabel(host, 'Lichtquellen')
+    const card = document.createElement('button')
+    card.type = 'button'
+    card.className = 'opening-library-card'
+    card.title = 'Punktlicht — klicken oder in die Szene ziehen'
+    const thumb = document.createElement('div')
+    thumb.className = 'opening-library-thumb'
+    thumb.innerHTML =
+      '<svg viewBox="0 0 48 48" width="48" height="48" aria-hidden="true"><circle cx="24" cy="24" r="9" fill="#ffcc88"/><circle cx="24" cy="24" r="17" fill="none" stroke="#ffaa44" stroke-width="2" opacity="0.5"/><path d="M24 5 v6 M24 37 v6 M5 24 h6 M37 24 h6" stroke="#ffaa44" stroke-width="2" stroke-linecap="round" opacity="0.45"/></svg>'
+    const label = document.createElement('span')
+    label.textContent = 'Punktlicht'
+    card.append(thumb, label)
+    card.draggable = true
+    card.addEventListener('click', () => {
+      if (card.dataset.didDrag === '1') {
+        delete card.dataset.didDrag
+        return
+      }
+      insertSceneLightFromLibrary()
+    })
+    card.addEventListener('dragstart', (event) => {
+      card.dataset.didDrag = '1'
+      hideNativeDragImage(event)
+      event.dataTransfer?.setData('application/x-scene-light', 'point')
+      event.dataTransfer?.setData('text/plain', 'scene-light')
+      if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy'
+      card.classList.add('is-dragging')
+    })
+    card.addEventListener('dragend', () => {
+      card.classList.remove('is-dragging')
+      viewport.classList.remove('library-drop-target')
+    })
+    host.appendChild(card)
+    syncLibraryAppliedOutline()
+    return
+  }
+
   if (libraryTab === 'niches') {
     appendLibraryIdleNoneCard(host, 'Keines')
     for (const preset of WALL_OPENING_PRESETS.filter(
@@ -7452,6 +7625,16 @@ function openingExists(nextState: FacadeState, ref: OpeningRef): boolean {
 }
 
 function normalizeEditor(nextState: FacadeState, nextEditor: EditorState): EditorState {
+  const sceneLightId = nextEditor.selectedSceneLightId
+  const sceneLightSelected =
+    typeof sceneLightId === 'string' &&
+    sceneLightId.length > 0 &&
+    normalizeSceneLights(nextState.sceneLights).some((item) => item.id === sceneLightId)
+
+  if (sceneLightSelected) {
+    return { ...createDefaultEditorState(), selectedSceneLightId: sceneLightId }
+  }
+
   const selectedWallIds = nextEditor.selectedWallIds.filter((id) =>
     getAllWalls(nextState).some((wall) => wall.id === id),
   )
@@ -7938,6 +8121,7 @@ function bootstrapSceneLighting(): Promise<void> {
     facade.refreshWallLabels({ afterFontLoad: true })
     syncCladdingReceiveShadows()
     applySunLighting({ updateShadowMap: true })
+    sceneLightingReady = true
     markViewportDirty()
   })
 }
@@ -7954,6 +8138,109 @@ function scheduleSunShadowMapUpdate() {
     markSceneReflectionsDirty()
     markViewportDirty()
   }, SUN_SHADOW_MAP_MIN_INTERVAL_MS)
+}
+
+function sceneLightShadowsActive(): boolean {
+  if (presentationMode !== 'render' || orbitLite || orbitLitePointer) return false
+  if (currentView !== '3d' && currentView !== 'front') return false
+  return normalizeSceneLights(state.sceneLights).some((item) => item.enabled && item.castShadow)
+}
+
+function sceneLightShadowFarCm(): number {
+  const box = buildingWorldBox(getAllWalls(state))
+  if (box.isEmpty()) return 2400
+  const span = Math.max(
+    box.max.x - box.min.x,
+    box.max.y - box.min.y,
+    box.max.z - box.min.z,
+    400,
+  )
+  return Math.min(4800, span * 1.8 + 400)
+}
+
+function syncSceneLightRuntime(): void {
+  const castShadow = sceneLightShadowsActive()
+  sceneLightRuntime.sync(normalizeSceneLights(state.sceneLights), {
+    castShadow,
+    selectedId: editor.selectedSceneLightId,
+    shadowFarCm: sceneLightShadowFarCm(),
+  })
+  facade.syncPointLightOccluders(castShadow)
+  if (castShadow) scheduleSunShadowMapUpdate()
+}
+
+function insertSceneLightFromLibrary(position?: Pick<SceneLight, 'x' | 'y' | 'z'>): void {
+  if (currentView !== '3d' && currentView !== 'top' && currentView !== 'front') {
+    setView('3d')
+  }
+  const { state: next, lightId } = addSceneLight(state, position)
+  commitState(next)
+  selectSceneLight(lightId)
+  syncSceneLightRuntime()
+  planStatus.textContent = position
+    ? 'Punktlicht platziert'
+    : 'Punktlicht eingefügt — in 3D ziehen oder Position rechts anpassen'
+}
+
+function placeSceneLightFromLibraryDrop(clientX: number, clientY: number): boolean {
+  if (currentView !== '3d' && currentView !== 'top' && currentView !== 'front') {
+    setView('3d')
+  }
+  const position = pickSceneLightPlacementFromClient(clientX, clientY)
+  if (!position) {
+    planStatus.textContent = 'Punktlicht: in die Szene (3D/Front/Oben) ziehen'
+    return false
+  }
+  insertSceneLightFromLibrary(position)
+  return true
+}
+
+function selectSceneLight(lightId: string | null): void {
+  if (lightId === null) {
+    if (editor.selectedSceneLightId) applyEditorSelection(createDefaultEditorState())
+    return
+  }
+  pendingSelectionToolbarTab = 'sceneLight'
+  applyEditorSelection({ ...createDefaultEditorState(), selectedSceneLightId: lightId })
+}
+
+function syncSceneLightToolbar(): void {
+  const id = editor.selectedSceneLightId
+  if (!id) return
+  const light = sceneLightById(state, id)
+  if (!light) return
+  sceneLightXInput.value = String(Math.round(light.x))
+  sceneLightYInput.value = String(Math.round(light.y))
+  sceneLightZInput.value = String(Math.round(light.z))
+  sceneLightIntensityInput.value = String(Math.round(light.intensity))
+  sceneLightEnabledInput.checked = light.enabled
+  sceneLightCastShadowInput.checked = light.castShadow
+  const depth = Math.round(sceneLightViewDepthCm(light))
+  sceneLightDepthSlider.value = String(depth)
+  sceneLightDepthNum.value = String(depth)
+  sceneLightDepthValue.textContent = String(depth)
+}
+
+function patchSceneLightViewDepth(depthCm: number): void {
+  const id = editor.selectedSceneLightId
+  if (!id) return
+  const light = sceneLightById(state, id)
+  if (!light) return
+  getActiveCamera().getWorldDirection(_frontPanForward)
+  sceneLightLocalToWorld(light, _sceneLightWorld)
+  viewDepthReferencePoint(_frontPanRight)
+  const dx = _sceneLightWorld.x - _frontPanRight.x
+  const dy = _sceneLightWorld.y - _frontPanRight.y
+  const dz = _sceneLightWorld.z - _frontPanRight.z
+  const currentDepth = dx * _frontPanForward.x + dy * _frontPanForward.y + dz * _frontPanForward.z
+  _sceneLightWorld.addScaledVector(_frontPanForward, depthCm - currentDepth)
+  patchSelectedSceneLight(sceneLightPositionFromWorld(_sceneLightWorld))
+}
+
+function patchSelectedSceneLight(patch: Parameters<typeof updateSceneLight>[2]): void {
+  const id = editor.selectedSceneLightId
+  if (!id) return
+  commitState(updateSceneLight(state, id, patch))
 }
 
 function applySunLighting(opts?: { updateShadowMap?: boolean; live?: boolean }) {
@@ -8023,6 +8310,7 @@ function applySunLighting(opts?: { updateShadowMap?: boolean; live?: boolean }) 
   const shadowSize = shadowMapSizeForSiteSpan(siteSpan)
   dirLight.shadow.mapSize.set(shadowSize, shadowSize)
   dirLight.shadow.camera.layers.set(SHADOW_LAYER_EXTERIOR)
+  syncSceneLightRuntime()
   const live = opts?.live === true
   if (opts?.updateShadowMap === true || (!live && opts?.updateShadowMap !== false)) {
     flushSunShadowMap()
@@ -8132,6 +8420,7 @@ function applyState(nextState: FacadeState, nextEditor = editor) {
   renderUi({ skipLayerList: geometryUnchanged && !labelOnly })
   updateHistoryButtons()
   updateWallLibraryGizmos()
+  syncSceneLightRuntime()
   markViewportDirty()
 }
 
@@ -8139,6 +8428,7 @@ function applyState(nextState: FacadeState, nextEditor = editor) {
 function applyEditorSelection(nextEditor: EditorState) {
   editor = normalizeEditor(state, nextEditor)
   facade.setEditor(editor)
+  syncSceneLightRuntime()
   schedulePersistApp()
   renderUi({ skipLayerList: true })
   updateWallLibraryGizmos()
@@ -8298,8 +8588,9 @@ function renderUi(opts?: { skipLayerList?: boolean }) {
   const hasWall = Boolean(wall)
   const hasRoof = Boolean(editor.selectedRoofBuildingId)
   const hasCeiling = Boolean(editor.selectedCeiling)
+  const hasSceneLight = Boolean(editor.selectedSceneLightId)
   const studioWall = selectionIsStudioWall()
-  const showSelectionUi = hasWall || hasOpening || hasRoof || hasCeiling
+  const showSelectionUi = hasWall || hasOpening || hasRoof || hasCeiling || hasSceneLight
   lightingAccordion.hidden = showSelectionUi
   planSidebar.hidden = true
   syncSceneToolbarTabs()
@@ -8308,11 +8599,12 @@ function renderUi(opts?: { skipLayerList?: boolean }) {
   // Auswahl-Optionen liegen unten; rechte Toolbar nur als DOM-Host (CSS blendet aus).
   selectionToolbar.hidden = !showSelectionUi
   appRoot.classList.toggle('has-selection', showSelectionUi)
-    toolbarWall.hidden = !hasWall || hasOpening || studioWall || hasRoof || hasCeiling
-  toolbarStudio.hidden = !hasWall || hasOpening || !studioWall || hasRoof || hasCeiling
+    toolbarWall.hidden = !hasWall || hasOpening || studioWall || hasRoof || hasCeiling || hasSceneLight
+  toolbarStudio.hidden = !hasWall || hasOpening || !studioWall || hasRoof || hasCeiling || hasSceneLight
   toolbarOpening.hidden = !hasOpening
-  toolbarRoof.hidden = !hasRoof || hasOpening || hasCeiling
-  toolbarCeiling.hidden = !hasCeiling || hasOpening || hasRoof
+  toolbarRoof.hidden = !hasRoof || hasOpening || hasCeiling || hasSceneLight
+  toolbarCeiling.hidden = !hasCeiling || hasOpening || hasRoof || hasSceneLight
+  toolbarSceneLight.hidden = !hasSceneLight
   syncWindowDepthControls()
 
   // Dropdown befüllen (nur einmalig) — nur Fenstermodelle, keine Türen
@@ -8363,6 +8655,12 @@ function renderUi(opts?: { skipLayerList?: boolean }) {
     const motionSection = document.querySelector<HTMLElement>('#opening-motion-section')
     if (motionSection) motionSection.hidden = true
     applyWallPartVisibility()
+  }
+
+  if (hasSceneLight) {
+    syncSceneLightToolbar()
+    finishRenderUi()
+    return
   }
 
   if (!wall) {
@@ -9260,6 +9558,18 @@ function ensureOpeningSelected(wallId: string, openingId: string) {
   })
 }
 
+function sceneLightContextItems(lightId: string): MenuItem[] {
+  return [
+    {
+      label: 'Licht entfernen',
+      action: () => {
+        commitState(removeSceneLight(state, lightId), createDefaultEditorState())
+        planStatus.textContent = 'Punktlicht entfernt'
+      },
+    },
+  ]
+}
+
 function showElementContextMenu(
   clientX: number,
   clientY: number,
@@ -9269,8 +9579,14 @@ function showElementContextMenu(
     wallPart?: NonNullable<EditorState['selectedWallPart']>
     bandId?: string
     ceiling?: { buildingId: string; floorIndex: number }
+    sceneLightId?: string
   },
 ) {
+  if (hit.sceneLightId) {
+    selectSceneLight(hit.sceneLightId)
+    showContextMenu(clientX, clientY, sceneLightContextItems(hit.sceneLightId))
+    return
+  }
   if (hit.ceiling) {
     selectCeiling(hit.ceiling.buildingId, hit.ceiling.floorIndex)
     showContextMenu(clientX, clientY, ceilingContextItems(hit.ceiling.buildingId, hit.ceiling.floorIndex))
@@ -12312,6 +12628,7 @@ function openingSupportsPediment(opening: { type: string; basementWindow?: { ena
 }
 
 function activeSelectionToolbar(): HTMLElement | null {
+  if (editor.selectedSceneLightId) return toolbarSceneLight
   if (editor.selectedOpenings.length > 0) return toolbarOpening
   if (editor.selectedCeiling) return document.querySelector<HTMLElement>('#toolbar-ceiling')
   if (editor.selectedRoofBuildingId) return document.querySelector<HTMLElement>('#toolbar-roof')
@@ -12339,6 +12656,7 @@ function settingsSectionVisibleForUi(section: HTMLElement): boolean {
       ancestor.id === 'toolbar-wall' ||
       ancestor.id === 'toolbar-roof' ||
       ancestor.id === 'toolbar-ceiling' ||
+      ancestor.id === 'toolbar-scene-light' ||
       ancestor.id === 'lighting-accordion'
     ) {
       break
@@ -13591,8 +13909,7 @@ function selectOpening(
 }
 
 await loadInitialState()
-// Fassaden-Builder 2.0: fokussierter 2D-Render-Modus (kein 3D/Entwurf/Galerie)
-currentView = 'front'
+// Fassaden-Builder 2.0: Fokus auf 2D-Front + Render-Modus; 3D wieder per Button wählbar
 presentationMode = 'render'
 savePresentationMode('render')
 uiMode = 'complex'
@@ -13621,10 +13938,11 @@ sceneReflectionHideRoots.push(
   facade.lineGroup,
   placementGridGroup,
 )
-void bootstrapSceneLighting()
+const sceneLightingBootstrap = bootstrapSceneLighting()
 buildLabelFontCards()
 facade.setLodSettings(lodSettings)
 applyPresentationMode()
+syncSceneLightRuntime()
 for (const group of [
   facade.wallGroup,
   facade.profileGroup,
@@ -15508,6 +15826,14 @@ let drag3dWallMoved = false
 /** 3D-Drag für Wandbeschriftung (wie Öffnung auf der Fassadenebene). */
 let drag3dLabel: { wallId: string } | null = null
 let drag3dLabelMoved = false
+let drag3dSceneLight: {
+  lightId: string
+  planeY: number
+  /** 2D-Front: Ebene senkrecht zur Blickrichtung (Tiefe bleibt fix). */
+  anchorWorld: THREE.Vector3 | null
+  startState: FacadeState
+} | null = null
+let drag3dSceneLightMoved = false
 let drag3dStartLabelX = 0
 let drag3dStartLabelY = 0
 /** Zierband: nur vertikal (Y) verschieben. */
@@ -15599,11 +15925,17 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
   wallPart?: NonNullable<EditorState['selectedWallPart']>
   bandId?: string
   ceiling?: { buildingId: string; floorIndex: number }
+  sceneLightId?: string
 } | null {
   const rect = canvas.getBoundingClientRect()
   pointerNdc.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
   pointerNdc.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
   raycaster.setFromCamera(pointerNdc, getActiveCamera())
+  const lightHits = raycaster.intersectObject(sceneLightRuntime.root, true)
+  if (lightHits.length > 0) {
+    const sceneLightId = sceneLightRuntime.pickObject(lightHits[0]!.object)
+    if (sceneLightId) return { sceneLightId }
+  }
   const hits = raycaster.intersectObjects(
     [
       facade.indoorFloorGroup,
@@ -15714,7 +16046,7 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
 
 function isSelectablePickHit(hit: ReturnType<typeof pickFromEvent>): boolean {
   if (!hit) return false
-  return Boolean(hit.wallId || hit.openingId || hit.ceiling)
+  return Boolean(hit.wallId || hit.openingId || hit.ceiling || hit.sceneLightId)
 }
 
 
@@ -15816,6 +16148,8 @@ function tryStartBuildingDrag(event: PointerEvent): boolean {
 canvas.addEventListener('pointerdown', (event) => {
   if (currentView === 'front') {
     if (event.button === 2 || event.button === 1) {
+      const lightHit = pickFromEvent(event)
+      if (lightHit?.sceneLightId) return
       event.preventDefault()
       frontPanActive = true
       frontPanLastX = event.clientX
@@ -15863,6 +16197,23 @@ canvas.addEventListener('pointerdown', (event) => {
   if (currentView === '3d') controls.enabled = false
 
   const hit = pickFromEvent(event)
+  if (hit?.sceneLightId) {
+    const light = sceneLightById(state, hit.sceneLightId)
+    selectSceneLight(hit.sceneLightId)
+    if (light && (currentView === '3d' || currentView === 'front')) {
+      drag3dSceneLight = {
+        lightId: hit.sceneLightId,
+        planeY: light.y,
+        anchorWorld:
+          currentView === 'front' ? sceneLightLocalToWorld(light, new THREE.Vector3()) : null,
+        startState: cloneFacadeState(state),
+      }
+      drag3dSceneLightMoved = false
+      if (currentView === '3d') controls.enabled = false
+      canvas.setPointerCapture(event.pointerId)
+    }
+    return
+  }
   if (hit?.ceiling) {
     selectCeiling(hit.ceiling.buildingId, hit.ceiling.floorIndex)
     return
@@ -15985,6 +16336,25 @@ canvas.addEventListener('pointermove', (event) => {
 
   if (currentView === '3d' && moveNav3d(event)) return
   if (currentView === 'top' && moveNav3d(event)) return
+
+  if (isSceneEditView() && drag3dSceneLight) {
+    const pos =
+      currentView === 'front' && drag3dSceneLight.anchorWorld
+        ? pickSceneLightOnViewPlane(
+            event.clientX,
+            event.clientY,
+            drag3dSceneLight.anchorWorld,
+          )
+        : pickWorldOnHorizontalPlane(event.clientX, event.clientY, drag3dSceneLight.planeY)
+    if (!pos) return
+    drag3dSceneLightMoved = true
+    state = updateSceneLight(state, drag3dSceneLight.lightId, { x: pos.x, z: pos.z })
+    syncSceneLightRuntime()
+    syncSceneLightToolbar()
+    markViewportDirty()
+    if (currentView === '3d') render3dFrame()
+    return
+  }
 
   if (isSceneEditView() && drag3dWallMove) {
     const dist2 =
@@ -16200,6 +16570,22 @@ canvas.addEventListener('pointerup', (event) => {
   }
   if (event.button !== 0 || !isSceneEditView()) return
 
+  if (isSceneEditView() && drag3dSceneLight) {
+    if (drag3dSceneLightMoved) {
+      commitState(state, {
+        ...createDefaultEditorState(),
+        selectedSceneLightId: drag3dSceneLight.lightId,
+      })
+      flushSunShadowMap()
+      planStatus.textContent = 'Punktlicht verschoben'
+    }
+    drag3dSceneLight = null
+    drag3dSceneLightMoved = false
+    if (currentView === '3d') controls.enabled = true
+    if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId)
+    return
+  }
+
   if (isSceneEditView() && drag3dWallMove) {
     if (drag3dWallMoved) {
       const movedIds = [...drag3dWallMove.lastWallIds]
@@ -16304,6 +16690,10 @@ canvas.addEventListener('pointerup', (event) => {
   const hit = pickFromEvent(event)
   if (!hit) {
     selectWall(null, additive)
+    return
+  }
+  if (hit.sceneLightId) {
+    selectSceneLight(hit.sceneLightId)
     return
   }
   if (hit.ceiling) {
@@ -17376,6 +17766,37 @@ bloomEnabledInput.addEventListener('change', () => {
   commitBloomPatch({ enabled: bloomEnabledInput.checked })
 })
 
+sceneLightXInput.addEventListener('input', () => {
+  patchSelectedSceneLight({ x: Number.parseFloat(sceneLightXInput.value) })
+})
+sceneLightYInput.addEventListener('input', () => {
+  patchSelectedSceneLight({ y: Number.parseFloat(sceneLightYInput.value) })
+})
+sceneLightZInput.addEventListener('input', () => {
+  patchSelectedSceneLight({ z: Number.parseFloat(sceneLightZInput.value) })
+})
+sceneLightIntensityInput.addEventListener('input', () => {
+  patchSelectedSceneLight({ intensity: Number.parseFloat(sceneLightIntensityInput.value) })
+})
+sceneLightEnabledInput.addEventListener('change', () => {
+  patchSelectedSceneLight({ enabled: sceneLightEnabledInput.checked })
+})
+sceneLightCastShadowInput.addEventListener('change', () => {
+  patchSelectedSceneLight({ castShadow: sceneLightCastShadowInput.checked })
+})
+sceneLightDeleteBtn.addEventListener('click', () => {
+  const id = editor.selectedSceneLightId
+  if (!id) return
+  commitState(removeSceneLight(state, id), createDefaultEditorState())
+})
+bindSceneDualControl(
+  sceneLightDepthSlider,
+  sceneLightDepthNum,
+  sceneLightDepthValue,
+  (value) => patchSceneLightViewDepth(value),
+  (value) => String(Math.round(value)),
+)
+
 bindSceneDualControl(
   bloomThreshold,
   bloomThresholdNum,
@@ -17412,11 +17833,13 @@ fogEnabledInput.addEventListener('change', () => {
 if (localStorage.getItem('perf-overlay') === '1') {
   perfOverlayEnabledInput.checked = true
   setPerfOverlayEnabled(true)
+  markViewportDirty()
 }
 perfOverlayEnabledInput.addEventListener('change', () => {
   const on = perfOverlayEnabledInput.checked
   localStorage.setItem('perf-overlay', on ? '1' : '0')
   setPerfOverlayEnabled(on)
+  if (on) markViewportDirty()
 })
 fogTypeSelect.addEventListener('change', () => {
   commitFogPatch({ type: fogTypeSelect.value === 'exponential' ? 'exponential' : 'linear' })
@@ -17794,39 +18217,75 @@ function animate() {
   requestAnimationFrame(animate)
   if (openingMotionPlayback) tickOpeningMotionPlayback(performance.now())
   if (rollerShutterPlayback) tickRollerShutterPlayback(performance.now())
+  const perfOn = isPerfOverlayEnabled()
+  let perfT0 = 0
+  if (perfOn) perfT0 = markPerfFrameStart()
+  let perfRendered = false
   if (currentView === '3d') {
     if (facade.consumeWallLabelsShadowDirty()) {
       renderer.shadowMap.needsUpdate = true
       viewportDirty = true
     }
-    if (!viewportDirty && !sunPathAnimating && !openingMotionPlayback && !rollerShutterPlayback) return
+    if (
+      sceneLightingReady &&
+      !viewportDirty &&
+      !perfOn &&
+      !sunPathAnimating &&
+      !openingMotionPlayback &&
+      !rollerShutterPlayback
+    ) {
+      return
+    }
     viewportDirty = false
-    const t0 = markPerfFrameStart()
     if (isGalleryModeActive()) syncGalleryNavigationFeel()
     if (lodSettings.enabled && !orbitLite && !openingMotionPlayback && !rollerShutterPlayback) {
       facade.updatePerformanceLod(camera, viewportRenderHeight())
     }
     render3dFrame()
-    markPerfFrameEnd(t0, renderer)
+    perfRendered = true
     updateViewCompass()
     // Auch während Orbit: Gizmos an der Wand halten (nicht mit der Kamera mitschwimmen).
     updateWallLibraryGizmos()
   } else if (currentView === 'front') {
-    if (!viewportDirty && !viewZoomAnim && !sunPathAnimating && !openingMotionPlayback && !rollerShutterPlayback) return
+    if (
+      sceneLightingReady &&
+      !viewportDirty &&
+      !perfOn &&
+      !viewZoomAnim &&
+      !sunPathAnimating &&
+      !openingMotionPlayback &&
+      !rollerShutterPlayback
+    ) {
+      return
+    }
     viewportDirty = false
+    dirLight.visible = true
+    renderer.autoClear = true
     renderer.render(scene, frontCamera)
+    perfRendered = true
     if (!orbitLite) updateWallLibraryGizmos()
   } else if (currentView === 'top') {
-    if (!viewportDirty && !viewZoomAnim && !openingMotionPlayback && !rollerShutterPlayback) return
+    if (
+      sceneLightingReady &&
+      !viewportDirty &&
+      !perfOn &&
+      !viewZoomAnim &&
+      !openingMotionPlayback &&
+      !rollerShutterPlayback
+    ) {
+      return
+    }
     viewportDirty = false
     if (orbitLite) {
       renderer.render(scene, topCamera)
     } else {
       renderLitSceneFrame(topCamera)
     }
+    perfRendered = true
     updateViewCompass()
     if (!orbitLite) updateWallLibraryGizmos()
   }
+  if (perfOn && perfRendered) markPerfFrameEnd(perfT0, renderer)
 }
 
 for (const module of BLENDER_WALL_MODULES) {
@@ -18702,6 +19161,7 @@ viewport.addEventListener('dragover', (event) => {
         t === 'application/x-wall-preset' ||
         t === 'application/x-bay-preset' ||
         t === 'application/x-panel-preset' ||
+        t === 'application/x-scene-light' ||
         t === 'text/plain',
     )
   ) {
@@ -18731,6 +19191,11 @@ viewport.addEventListener('drop', (event) => {
   activeWallDragPresetId = null
   wallDockAxisOverride = null
   lastWallDockClient = null
+  const sceneLightDrag = event.dataTransfer?.getData('application/x-scene-light')
+  if (sceneLightDrag) {
+    placeSceneLightFromLibraryDrop(event.clientX, event.clientY)
+    return
+  }
   let libraryAsset = activeLibraryAssetDrag
   activeLibraryAssetDrag = null
   if (!libraryAsset) {
@@ -19322,6 +19787,10 @@ buildingRotateCw.addEventListener('click', () => commitBuildingRotate(-45))
 try {
   setView(currentView)
   applyState(state, editor)
+  await sceneLightingBootstrap
+  if (currentView === 'front') syncFrontView()
+  else if (currentView === 'top') syncTopView()
+  markViewportDirty()
   animate()
 } finally {
   requestAnimationFrame(() => {
@@ -19334,5 +19803,6 @@ function dismissAppLoading() {
   if (!el) return
   el.classList.add('is-done')
   el.setAttribute('aria-busy', 'false')
+  markViewportDirty()
   window.setTimeout(() => el.remove(), 400)
 }

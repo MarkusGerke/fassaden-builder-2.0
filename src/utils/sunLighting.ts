@@ -166,10 +166,23 @@ const _sunFromTarget = new THREE.Vector3()
 const _sunRay = new THREE.Vector3()
 const _shadowHit = new THREE.Vector3()
 
+/** Tageszeit-Slider: 00:00 … 23:59 (kein 24:00). */
+export const TIME_OF_DAY_MIN = 0
+export const TIME_OF_DAY_MAX = 23 + 59 / 60
+export const TIME_OF_DAY_STEP = 1 / 60
+
+/** Tageszeit und Animations-Von/Bis: volle 24 h, nicht nur Aufgang–Untergang. */
+function clampDayHours(hours: number): number {
+  if (!Number.isFinite(hours)) return 12
+  return THREE.MathUtils.clamp(hours, TIME_OF_DAY_MIN, TIME_OF_DAY_MAX)
+}
+
 export function formatTimeOfDay(hours: number): string {
-  const h = Math.floor(hours)
-  const m = Math.round((hours - h) * 60)
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+  const clamped = clampDayHours(hours)
+  const h = Math.floor(clamped)
+  const m = Math.round((clamped - h) * 60)
+  const mm = h >= 23 ? Math.min(59, m) : m
+  return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
 }
 
 export function kelvinToColor(kelvin: number): THREE.Color {
@@ -215,12 +228,6 @@ export function resolveSunFromDate(settings: SunSettings): {
     colorTemperature: elev > 0 ? colorTempFromElevation(elev) : 4200,
     bounds,
   }
-}
-
-/** Tageszeit und Animations-Von/Bis: volle 24 h, nicht nur Aufgang–Untergang. */
-function clampDayHours(hours: number): number {
-  if (!Number.isFinite(hours)) return 12
-  return THREE.MathUtils.clamp(hours, 0, 24)
 }
 
 function normalizeAnimChannels(settings: SunSettings): Pick<

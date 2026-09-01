@@ -8,6 +8,7 @@
 | [changelog.md](changelog.md) | Änderungsprotokoll (Historie) |
 | [shadows.md](shadows.md) | 3D-Sonnenlicht, Shadow-Camera, Bias, Glas/Decke; Gesims-Cast bei Schrift (v0.7.288); 2D-Front Paneel-Werfschatten |
 | [lighting-mood.md](lighting-mood.md) | Mehrschichtige Lichtstimmung: Umbra, Kontakt, Bounce |
+| [scene-lights.md](scene-lights.md) | Bibliotheks-Punktlichter: einfügen, XYZ, Persistenz |
 | [celestial-sky.md](celestial-sky.md) | Takram-Himmel, Sonne/Mond, Dämmerung, Tageszeit 0–24 h |
 | [panel-geometry.md](panel-geometry.md) | Gehrungsberechnung, `wallLocalX`, Paneelextrusion, 3D-Leibung |
 | [floor-plan.md](floor-plan.md) | Grundriss-System, Ring-Erkennung, Miter, Etagen, Innenkante Decke/Boden |

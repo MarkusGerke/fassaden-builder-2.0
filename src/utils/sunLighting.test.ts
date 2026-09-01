@@ -3,12 +3,14 @@ import * as THREE from 'three'
 import {
   DEFAULT_SUN_SETTINGS,
   expandBoxByGroundShadow,
+  formatTimeOfDay,
   intensityFromElevation,
   shadowRadiusFromSoftness,
   shadowSoftnessFromElevation,
   sunFromTargetDirection,
   sunRayDirectionFromSettings,
   syncSunSettingsFromSolar,
+  TIME_OF_DAY_MAX,
 } from './sunLighting'
 import { facadeOutward } from '../studio/elevation'
 
@@ -107,5 +109,12 @@ describe('syncSunSettingsFromSolar', () => {
     expect(solar.intensity).toBe(intensityFromElevation(solar.elevationRad))
     expect(solar.shadowSoftness).toBe(shadowSoftnessFromElevation(solar.elevationRad))
     expect(solar.elevationRad).toBeGreaterThan(0.2)
+  })
+})
+
+describe('formatTimeOfDay', () => {
+  it('formatiert 23:59 als Maximum', () => {
+    expect(formatTimeOfDay(TIME_OF_DAY_MAX)).toBe('23:59')
+    expect(formatTimeOfDay(25)).toBe('23:59')
   })
 })

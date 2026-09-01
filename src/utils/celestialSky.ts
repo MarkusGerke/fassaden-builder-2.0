@@ -327,7 +327,6 @@ export function applyCelestialDirectionalLight(
   dirLight.castShadow = castShadow
 }
 
-export function fullDayTimeRange(settings: SunSettings): { min: number; max: number } {
-  const bounds = solarDayBounds(dayOfYearFromMonthDay(settings.month, settings.day))
-  return { min: Math.max(0, bounds.sunrise - 2), max: Math.min(24, bounds.sunset + 2) }
+export function fullDayTimeRange(_settings: SunSettings): { min: number; max: number } {
+  return { min: 0, max: 23 + 59 / 60 }
 }

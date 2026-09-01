@@ -166,6 +166,7 @@ export function migrateToBuildings(legacyOrNew: FacadeStateInput | FacadeState):
       customProfiles: legacyOrNew.customProfiles,
       viewOptions: legacyOrNew.viewOptions,
       siteYawDeg: legacyOrNew.siteYawDeg,
+      sceneLights: legacyOrNew.sceneLights,
     }
   }
 
@@ -189,6 +190,7 @@ export function migrateToBuildings(legacyOrNew: FacadeStateInput | FacadeState):
     customProfiles: legacyOrNew.customProfiles,
     viewOptions: legacyOrNew.viewOptions,
     siteYawDeg: legacyOrNew.siteYawDeg,
+    sceneLights: legacyOrNew.sceneLights,
   }
 }
 

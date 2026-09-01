@@ -2,6 +2,46 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Punktlicht-Oklusion (2026-09-01) — v2.0.34
+
+Bibliotheks-Punktlichter: Cube-Shadows in **2D-Front** und **3D** (Render + „Schatten werfen“). Öffnungs-Tunnel, Rahmen/Sprossen und Wandkörper blockieren Licht nach außen; Shadow-Map bei Verschieben. Dateien: `sceneLightRuntime.ts`, `FacadeController.ts`, `main.ts`, Docs.
+
+### Punktlicht in 2D bearbeiten (2026-09-01) — v2.0.33
+
+2D-Front: Drag auf der **Blick-Ebene** (Tiefe bleibt während Ziehens fix); Slider **Tiefe (Blickrichtung)** verschiebt vor/zurück entlang der aktuellen Kamera. Rechtsklick auf die Quelle → **Licht entfernen** (kein Pan). Dateien: `main.ts`, `index.html`, Docs.
+
+### 3D-Ansicht wieder verfügbar (2026-09-01) — v2.0.32
+
+Button **3D** wieder sichtbar; OrbitControls und Scene-Light-Drag wie in 1.x. Start-Default bleibt 2D-Front + Render; gespeicherte `view: '3d'` wird beim Reload wiederhergestellt. Erzwungener `currentView = 'front'`-Override nach `loadInitialState` entfernt. Oben/Entwurf/Galerie/Einfach-Komplex bleiben `hidden`. Dateien: `index.html`, `main.ts`, `version.ts`, Docs.
+
+### Punktlicht aus Bibliothek (2026-09-01) — v2.0.31
+
+**Ursache:** `migrateToBuildings` in `clampFacadeState` hat `sceneLights` nicht übernommen — jedes Einfügen/Drag ging beim nächsten State-Update verloren.
+
+**Fix:** `sceneLights` in beiden Return-Pfaden von `migrateToBuildings`; Drag-Platzierung per `siteOffset.worldToLocal`; größere Marker-Kugel; `selectedSceneLightId` beim Laden persistieren. Dateien: `utils/buildings.ts`, `main.ts`, `lighting/sceneLightRuntime.ts`, `utils/persistence.ts`.
+
+### Grauer Viewport / Haus unsichtbar (2026-09-01) — v2.0.30
+
+**Hauptursache:** In v2.0.29 wurde `isPerfOverlayEnabled()` in `animate()` verwendet, aber der Import aus `perfOverlay.ts` fehlte → `ReferenceError` bei jedem Animationsframe, kein `renderer.render()`, transparenter Canvas (grauer CSS-Hintergrund).
+
+**Zusätzlich:** Startup-Race abgesichert — `await sceneLightingBootstrap` vor Animationsloop; `sceneLightingReady`-Flag verhindert Dirty-Skip bis Bootstrap fertig; `dismissAppLoading` markiert Viewport erneut dirty. Dateien: `main.ts`, `ui/perfOverlay.ts`, `version.ts`, Docs.
+
+### Punktlicht platzieren & verschieben (2026-09-01) — v2.0.28
+
+Drag-and-Drop aus Bibliothek, Klick-Platzierung, 3D-Drag zum Verschieben, größere Pick-Kugel. Dateien: `sceneLightRuntime.ts`, `main.ts`.
+
+### Bibliotheks-Lichter & UI-Fixes (2026-09-01) — v2.0.27
+
+Bibliothek Tab „Licht“: platzierbare Punktlichter (`sceneLights` in `FacadeState`), Runtime in `sceneLightRuntime.ts`, XYZ/Intensität in `#toolbar-scene-light`. Scroll-Fix rechte Sidebar (`#scene-toolbar-panels`, `#selection-toolbar-panels`). Debug-Overlay größer. Bloom in 3D (alle Darstellungsmodi außer Linien). Dateien: `scene/sceneLights.ts`, `lighting/sceneLightRuntime.ts`, `main.ts`, `index.html`, `style.css`.
+
+### Punktlichter sichtbar (2026-09-01) — v2.0.26
+
+Fix: Punktlichter zu schwach / nur Render / falsche Position (jetzt `siteOffset`, Solar-Nacht). Leuchtende Marker-Kugeln, Vorschau+Render in 3D. Dateien: `scenePointLights.ts`, `main.ts`.
+
+### Punktlichter & Tageszeit 23:59 (2026-09-01) — v2.0.25
+
+Render-Modus 3D: warmes Innen- und kühles Außen-Punktlicht (`scenePointLights.ts`, angelehnt an three.js `webgl_shadowmap_pointlight`, MIT) — Intensität/Schatten nachts hoch, tags gedimmt. Tageszeit-Slider 0:00–23:59 in Minutenschritten. Dateien: `main.ts`, `sunLighting.ts`, `celestialSky.ts`, `index.html`, Tests, Docs.
+
 ### Eingangstreppe empfängt Schatten (2026-09-01) — v2.0.24
 
 Eingangstreppe: `receiveShadow = true` in 3D (Selbst-/Werfschatten auf Stufen); Material `shadowSide: FrontSide` gegen Acne bei `DoubleSide`. Sync über `syncLabelShadowReceivers`. Dateien: `FacadeController.ts`, `docs/shadows.md`.

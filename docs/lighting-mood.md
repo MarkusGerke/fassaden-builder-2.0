@@ -22,6 +22,7 @@ Außenbeleuchtung in **3D** und **Oben** als Schichtenmodell — näher an reale
 | Himmel | `SkyLightProbe` + `HemisphereLight` | — |
 | Bodenreflex | `bounceDirLight` (2. Directional, Index 1) | nein |
 | Boden-Umbra | Shader auf Bodenplatte | Albedo×Ambient-Fill; Schatten wie überall (PCSS) |
+| Punktlicht (Bibliothek) | `SceneLightRuntime` / `state.sceneLights` | Cube-Map (512), Render + Schatten optional |
 
 ```mermaid
 flowchart LR
@@ -43,8 +44,9 @@ flowchart LR
 | `src/lighting/groundMood.ts` | Boden-Umbra-Shader (`ground-mood-v5`, Albedo × Sonnen-Ambient) |
 | `src/lighting/pcssShadows.ts` | PCSS-ShaderChunk |
 | `src/lighting/atmosphereSky.ts` | Takram-Himmel + Key-Light |
-| `src/utils/facadeShade.ts` | Bounce auf Schattenseite nicht mitdimmen; mehr Hemisphere |
-| `src/main.ts` | `applySunLighting`, `renderLitSceneFrame` |
+| `src/scene/sceneLights.ts` | Persistente Punktlichter (Bibliothek, v2.0.27) |
+| `src/lighting/sceneLightRuntime.ts` | THREE.PointLight + Marker-Kugel |
+| `src/main.ts` | `applySunLighting`, `renderLitSceneFrame`, Bloom |
 
 ## Datenfluss
 
@@ -73,4 +75,5 @@ sunSettings + Szenenfarben
 - Paneele empfangen weiter keine Shadow-Map (Moiré).
 - Kein Kontakt-RT mehr unter dem Gebäude (nur Shadow-Map-Umbra).
 - **Boden-Shader (v0.7.343):** wieder `ground-mood-v5` — Albedo×Ambient-Fill plus Umbra-Sampling in der Shadow-Map (wie vor den heutigen Schatten-Experimenten).
-- **Boden-Shader (v0.7.264):** `ground-mood-v5`, ersetzt Light-Probe/Hemisphere-Irradiance durch `uGroundAlbedo * uGroundAmbient`. EnvMap-Intensität 0.
+- **Punktlichter (v2.0.27):** Bibliothek → „Licht“ → Punktlicht einfügen; in 3D anklicken; Position X/Y/Z in der rechten Toolbar. Gespeichert in `FacadeState.sceneLights`. Marker-Kugel sichtbar; Schatten nur im Render-Modus.
+- **Bloom (v2.0.27):** Checkbox wirkt in der **3D-Ansicht** (Entwurf/Vorschau/Render), nicht im Linienmodus und nicht in 2D-Ansichten.

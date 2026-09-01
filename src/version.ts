@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.24'
+export const APP_VERSION = '2.0.34'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,102 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.34',
+    date: '2026-09-01',
+    title: 'Punktlicht wird von Wänden verdeckt',
+    changes: [
+      'Bibliotheks-Punktlichter werfen Cube-Shadows in 2D-Front und 3D (Render-Modus, Schatten an)',
+      'Rahmen, Sprossen, Öffnungs-Tunnel und Wandkörper blockieren Innenlicht nach außen',
+      'Shadow-Map aktualisiert sich beim Verschieben der Quelle',
+    ],
+  },
+  {
+    version: '2.0.33',
+    date: '2026-09-01',
+    title: 'Punktlicht in 2D verschieben',
+    changes: [
+      '2D-Front: Drag auf der Blick-Ebene (nicht mehr nur horizontal); Tiefe per Slider entlang der Blickrichtung',
+      'Rechtsklick auf Punktlicht: Kontextmenü „Licht entfernen“; kein Pan bei Rechtsklick auf die Quelle',
+    ],
+  },
+  {
+    version: '2.0.32',
+    date: '2026-09-01',
+    title: '3D-Ansicht wieder verfügbar',
+    changes: [
+      'Button 3D in der Viewport-Chrome wieder sichtbar — OrbitControls, freie Navigation, Scene-Lights verschieben',
+      'Gespeicherte 3D-Ansicht wird beim Reload wiederhergestellt (Persistenz)',
+      'Oben, Entwurf, Galerie und Einfach/Komplex bleiben ausgeblendet',
+    ],
+  },
+  {
+    version: '2.0.31',
+    date: '2026-09-01',
+    title: 'Bibliotheks-Punktlichter funktionieren',
+    changes: [
+      'Fix: `sceneLights` ging bei jedem State-Clamp durch `migrateToBuildings` verloren — eingefügte Lichter verschwanden sofort',
+      'Drag & Drop / Raycast: Platzierung wandelt Weltkoordinaten in siteOffset-Lokal um (korrekte Position an der Fassade)',
+      'Größere sichtbare Marker-Kugel; Auswahl bleibt nach Reload erhalten',
+    ],
+  },
+  {
+    version: '2.0.30',
+    date: '2026-09-01',
+    title: 'Haus wieder sichtbar nach Start',
+    changes: [
+      'Fix: fehlender Import `isPerfOverlayEnabled` — die Animationsloop war bei jedem Frame abgestürzt, nichts wurde gerendert',
+      'Startup: Animationsloop wartet auf Atmosphäre und erstes Mesh-Load; bis dahin kein Dirty-Skip',
+      'Nach dem Lade-Overlay: erneuter Viewport-Refresh',
+    ],
+  },
+  {
+    version: '2.0.29',
+    date: '2026-09-01',
+    title: 'Performance-Debug lesbar',
+    changes: [
+      'Debug-Overlay sitzt über der Ansicht (nicht auf der rechten Sidebar), mit fester Mindestgröße',
+      'Sofort sichtbarer Text; FPS/Drawcalls auch in Front- und Oben-Ansicht',
+    ],
+  },
+  {
+    version: '2.0.28',
+    date: '2026-09-01',
+    title: 'Punktlicht platzieren & verschieben',
+    changes: [
+      'Punktlicht aus Bibliothek in 3D/Front/Oben hineinziehen — Klick oder Drag-and-Drop',
+      'Leuchtende Kugel in 3D anklicken und per Drag verschieben (größere Trefferfläche)',
+    ],
+  },
+  {
+    version: '2.0.27',
+    date: '2026-09-01',
+    title: 'Bibliotheks-Lichter & UI-Fixes',
+    changes: [
+      'Bibliothek → Tab „Licht“: Punktlicht einfügen, in 3D anklicken, Position X/Y/Z rechts einstellen',
+      'Rechte Einstellungen: vertikales Scrollen in Beleuchtung und Auswahl-Panels',
+      'Debug-Overlay (Performance) größer und besser lesbar',
+      'Bloom wirkt wieder in der 3D-Ansicht (nicht nur Render, nicht im Linienmodus)',
+    ],
+  },
+  {
+    version: '2.0.26',
+    date: '2026-09-01',
+    title: 'Punktlichter sichtbar',
+    changes: [
+      'Innen-/Außen-Punktlicht: höhere Intensität, leuchtende Kugeln, an siteOffset gebunden (dreht mit dem Haus)',
+      'Aktiv in 3D-Vorschau und Render — Nacht-Erkennung über Solar-Tageszeit, nicht manuellen Sonnenwinkel',
+    ],
+  },
+  {
+    version: '2.0.25',
+    date: '2026-09-01',
+    title: 'Nachtlicht & volle Tageszeit',
+    changes: [
+      'Punktlicht innen (warm) und außen (kühl) im Render-Modus — für Nachtszenen mit weichen Schatten',
+      'Tageszeit-Slider 0:00–23:59 (Minutenschritte) — volle Nacht testbar',
+    ],
+  },
   {
     version: '2.0.24',
     date: '2026-09-01',

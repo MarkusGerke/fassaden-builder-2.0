@@ -32,6 +32,7 @@ import {
 } from './glassConfig'
 import { defaultOpeningPediment, normalizeOpeningPediment } from '../studio/pediment'
 import { defaultOpeningStairs, syncStairsToDoorWidth } from '../studio/stairs'
+import { normalizeSceneLights } from '../scene/sceneLights'
 import { defaultOpeningRollerShutter, normalizeOpeningRollerShutter } from '../studio/rollerShutter'
 import { gruenderzeitConfigForOpening } from '../windows/gruenderzeit'
 import {
@@ -362,6 +363,7 @@ export function hydrateFacadeState(state: FacadeState): FacadeState {
       walls: building.walls.map(hydrateWall),
       groups: (building.groups ?? []).map((g) => ({ ...g })),
     })),
+    sceneLights: normalizeSceneLights(state.sceneLights),
   }
 }
 

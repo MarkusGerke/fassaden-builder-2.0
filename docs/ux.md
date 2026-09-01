@@ -8,7 +8,7 @@ Dieses Dokument hält Interaktion und die zugehörigen Defaults fest. Code ohne 
 
 ## Fassaden-Builder 2.0 (v2.0.0)
 
-Schlanker Produkt-Fokus auf **2D-Front im Render-Modus**. Aus der Toolbar ausgeblendet (`hidden`, IDs bleiben): **Ebenen**-Panel, **Oben**, **3D**, **Entwurf**, **Einfach/Komplex**, **Galerie**. Vorschau, Render, Export und Zeichnung bleiben.
+Schlanker Produkt-Fokus auf **2D-Front im Render-Modus**; **3D** ist wieder per Button wählbar (OrbitControls, freie Navigation, Scene-Lights verschieben). Aus der Toolbar ausgeblendet (`hidden`, IDs bleiben): **Ebenen**-Panel, **Oben**, **Entwurf**, **Einfach/Komplex**, **Galerie**. Vorschau, Render, Export und Zeichnung bleiben.
 
 **Auswahl-Performance (2D):** `selectWall` / `selectOpening` rufen `applyEditorSelection` statt `applyState` — nur `facade.setEditor` + debounced `persistApp` (350 ms), kein `svgView.setState`, kein Geometrie-Rebuild. Voller `applyState` nur bei Geometrie-/Datenänderungen.
 
@@ -97,7 +97,7 @@ Defaults in `src/constants/colorPalettes.ts`:
 | `DEFAULT_GLASS_COLOR` | `transparent` | Glas (Klarglas; physisch `#ffffff` + EnvMap) |
 | `DEFAULT_PROFILE_COLOR` | `#c4b49a` | Gesims/Profile |
 
-Sonne (`DEFAULT_SUN_SETTINGS`): **heutiges Datum**, **13:15** (13,25 h), Sonnenwinkel **210°**, Sonnenlicht **3,9**, Umgebungslicht **0,53**, Schatten-Kontrast **1,50**, Schatten-Weichheit **5,0**, Farbtemperatur **4500 K**. Beim Start setzt `applyTodaySunDate` nur Monat/Tag auf heute — die Standard-Lichtwerte bleiben erhalten. **Datum + Tageszeit** (0:00–24:00) setzen beim manuellen Anpassen Azimut, Elevation, Intensität, Weichheit und Farbtemperatur aus dem Berlin-Sonnenstand (`applySolarLook: true`). **Sonnenwinkel**, **Sonnenlicht**, **Umgebungslicht**, **Schatten-Kontrast**, **Schatten-Dunkelheit**, **Schatten-Weichheit** und **Farbtemperatur** sind sonst manuell. Slider Intensität 0,3…**8**. Schatten-Dunkelheit (Legacy) Default **0,55**. Persistierte Saves behalten eigene Lichtwerte; das Datum wird beim Laden auf heute gesetzt.
+Sonne (`DEFAULT_SUN_SETTINGS`): **heutiges Datum**, **13:15** (13,25 h), Sonnenwinkel **210°**, Sonnenlicht **3,9**, Umgebungslicht **0,53**, Schatten-Kontrast **1,50**, Schatten-Weichheit **5,0**, Farbtemperatur **4500 K**. Beim Start setzt `applyTodaySunDate` nur Monat/Tag auf heute — die Standard-Lichtwerte bleiben erhalten. **Datum + Tageszeit** (0:00–23:59) setzen beim manuellen Anpassen Azimut, Elevation, Intensität, Weichheit und Farbtemperatur aus dem Berlin-Sonnenstand (`applySolarLook: true`). **Sonnenwinkel**, **Sonnenlicht**, **Umgebungslicht**, **Schatten-Kontrast**, **Schatten-Dunkelheit**, **Schatten-Weichheit** und **Farbtemperatur** sind sonst manuell. Slider Intensität 0,3…**8**. Schatten-Dunkelheit (Legacy) Default **0,55**. Persistierte Saves behalten eigene Lichtwerte; das Datum wird beim Laden auf heute gesetzt.
 
 ### Szene-Farben (`SceneAppearance`, `src/utils/persistence.ts`)
 

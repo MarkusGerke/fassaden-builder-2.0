@@ -31,7 +31,7 @@ Bloom und Gobo-Schatten: frühere Laub-Gobo-UI entfernt (v0.7.341). **Unreal Blo
 - **Kein Licht durch die Trennfläche** zur Etage darunter, solange sie sichtbar ist. Ausblenden = bewusstes Oberlicht.
 - **Außenschatten** folgt L/U/Hof-Polygon + Wänden mit Fensterlöchern + Dach — kein achsenparalleler Kasten aus falsch gefüllten Ringen.
 - **Datum + Tageszeit (Berlin):** realistischer Sonnenstand (`src/utils/solar.ts`, NOAA-Näherung, 52,52°N / 13,405°O). Setzt Azimut, Elevation, Intensität, Weichheit und Farbtemperatur neu (`syncSunSettingsFromSolar` mit `applySolarLook`). **v0.7.251:** Datum immer heute; Tageszeit fest 0–24 h; Sonnenwinkel wieder manuell — siehe [celestial-sky.md](celestial-sky.md).
-- Tageszeit-Slider **0:00–24:00** (auch Nacht und Dämmerung).
+- Tageszeit-Slider **0:00–23:59** (Minutenschritte; auch Nacht und Dämmerung).
 - **Manuelle Overrides:** `#sun-azimuth` (0°=N, 90°=O), Intensität, Weichheit, Farbtemperatur — bleiben, bis Datum/Tageszeit wieder den Solar-Look schreibt. Elevation bleibt beim reinen Azimut-Drehen erhalten.
 - **Tagesverlauf:** Mehrfachauswahl **Himmelsrichtung** und/oder **Uhrzeit** (Checkboxen; mindestens eines). Defaults: nur Himmelsrichtung N/O→S, 20 s.
   - Nur Uhrzeit: Sonne interpoliert Von/Bis; Kamera folgt dem tatsächlichen Sonnenazimut in **Grad** (kein 45°-Raster, keine 2D-Aufriss-Sprünge).
@@ -64,6 +64,7 @@ planFacesWithHoles(plan)
 | Sockel (Platte und Profil) | ja | **nein** (Selbstschatten-Schraffur) |
 | Türfüllung / Fensterrahmen (Gründerzeit + GLTF) | ja | **2D-Front: ja** (v0.7.344, wie Paneele/Gesims-Wurf); **3D/Oben: nein** (v0.7.191 — Schraffur) |
 | Eingangstreppe | ja | **ja** (v2.0.24 — Stufen-Geometrie; `shadowSide: FrontSide` gegen Acne bei `DoubleSide`) |
+| Punktlicht innen/außen (Render) | ja | ja (v2.0.25 — Nacht; Cube-Shadow-Map, siehe [lighting-mood.md](lighting-mood.md)) |
 | Flache Fassaden-Schrift | nein | ja (v0.7.252, Z-Bias) |
 | Extrudierte Fassaden-Schrift | ja | ja (v0.7.252, Z-Bias) |
 | Gesims / Zierband | ja (**v0.7.288** immer, auch bei Schrift) | ja |

@@ -430,6 +430,47 @@ body {
   align-self: stretch;
 }
 
+#ui-right-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#selection-toolbar:not([hidden]) {
+  flex: 0 1 45%;
+  min-height: 0;
+  max-height: min(52vh, 520px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+#ui-right-main > #lighting-accordion {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+#lighting-accordion > .scene-toolbar {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#scene-toolbar-panels {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+#selection-toolbar-panels {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 #ui-right > .sidebar-accordion,
 #ui-right > .ui-section {
   padding-left: 1.2rem;
@@ -572,9 +613,35 @@ body {
   flex: 1;
   min-width: 0;
   min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   padding: 0.75rem 1.2rem 1rem 0.85rem;
   background: #fff;
+}
+
+#perf-overlay {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  z-index: 24;
+  font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: #f4f4f4;
+  background: rgba(6, 8, 12, 0.94);
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  pointer-events: none;
+  white-space: pre;
+  min-width: 15rem;
+  min-height: 6.5rem;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  letter-spacing: 0.01em;
+}
+
+#perf-overlay:not([hidden]) {
+  display: block;
 }
 
 .selection-toolbar-panels .settings-section {

@@ -161,6 +161,10 @@ export function loadPersistedState(): PersistedAppState | null {
         selectedWallIds: [...parsed.editor.selectedWallIds],
         selectedOpenings: parsed.editor.selectedOpenings.map((ref) => ({ ...ref })),
         selectedEdges: [...parsed.editor.selectedEdges],
+        selectedSceneLightId:
+          typeof parsed.editor.selectedSceneLightId === 'string'
+            ? parsed.editor.selectedSceneLightId
+            : undefined,
       },
       view: normalizeView(parsed.view),
       sun: isSunSettings(parsed.sun)

@@ -6,7 +6,7 @@ import {
   directionFromSolar,
   skyPaletteFromCelestial,
 } from './celestialSky'
-import { DEFAULT_SUN_SETTINGS, syncSunSettingsFromSolar } from './sunLighting'
+import { DEFAULT_SUN_SETTINGS, syncSunSettingsFromSolar, TIME_OF_DAY_MAX } from './sunLighting'
 
 describe('celestialSky', () => {
   it('Mond liegt gegenüber der Sonne (≈12 h)', () => {
@@ -84,6 +84,6 @@ describe('24h Tageszeit', () => {
     )
     expect(kept.timeOfDay).toBe(2)
     expect(kept.animFromTime).toBe(0)
-    expect(kept.animToTime).toBe(24)
+    expect(kept.animToTime).toBe(TIME_OF_DAY_MAX)
   })
 })

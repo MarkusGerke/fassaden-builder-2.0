@@ -1004,6 +1004,19 @@ export interface Building {
   windowDepthOffset?: number
 }
 
+export interface SceneLight {
+  id: string
+  label?: string
+  x: number
+  y: number
+  z: number
+  /** Hex-Farbe, z. B. #ffaa66 */
+  color: string
+  intensity: number
+  enabled: boolean
+  castShadow: boolean
+}
+
 export interface FacadeState {
   buildings: Building[]
   activeBuildingId: string
@@ -1016,6 +1029,8 @@ export interface FacadeState {
    * Wände und Grundriss bleiben lokal; nur die Site-Gruppe rotiert.
    */
   siteYawDeg?: number
+  /** Frei platzierbare Punktlichter (Bibliothek → Licht). */
+  sceneLights?: SceneLight[]
 }
 
 export interface EditorState {
@@ -1036,6 +1051,8 @@ export interface EditorState {
   selectedCeiling?: { buildingId: string; floorIndex: number }
   /** Haus-Gruppe für Verschieben im Grundriss. */
   selectedBuildingId?: string
+  /** Gewähltes Bibliotheks-Punktlicht. */
+  selectedSceneLightId?: string
 }
 
 export const DEFAULT_WALL_ID = 'wall-1'
@@ -1191,6 +1208,7 @@ export function cloneFacadeState(state: FacadeState): FacadeState {
     })),
     viewOptions: state.viewOptions ? { ...state.viewOptions } : undefined,
     siteYawDeg: state.siteYawDeg,
+    sceneLights: state.sceneLights?.map((light) => ({ ...light })),
   }
 }
 
