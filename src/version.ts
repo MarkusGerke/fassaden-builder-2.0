@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.55'
+export const APP_VERSION = '2.0.56'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,15 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.56',
+    date: '2026-09-01',
+    title: 'Weiße Decken und Fußböden',
+    changes: [
+      'Decken und Fußböden im 3D-Render sind wieder weiß wie die Innenwände',
+      'Gleiche Innenbeleuchtung: leichte EnvMap-Reflexion, kein Gegenlicht-Dim, keine Punktlicht-Selbstabschattung',
+    ],
+  },
   {
     version: '2.0.55',
     date: '2026-09-01',

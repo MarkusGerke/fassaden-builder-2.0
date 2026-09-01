@@ -2,6 +2,10 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Weiße Decken und Fußböden (2026-09-01) — v2.0.56
+
+**Decke/Boden grau oder dunkel:** Platten nutzten `ceilingColor` ohne Innenwand-Behandlung (kein EnvMap, Punktlicht-Schatten-Acne). **Fix:** `createIndoorRoomSurfaceMaterial()` — immer `#ffffff`, `interiorWallSurface`, `skipFacadeShade`, `bindSkipPointShadows`. Datei: `FacadeController.ts`.
+
 ### Bloom, scharfes Glas, Außenlicht (2026-09-01) — v2.0.55
 
 **Bloom schwarz in 2D:** `syncComposerPixelRatio` setzte nur Pixelratio und Bloom-RT, nicht `composer.setSize` — in der Front-Ansicht blieb der Composer bei 1×1 px. **Glühen weg:** Im Render mit Raum-Okklusion war der Bloom-Kern aus (Billboard-Problem) — jetzt kleine HDR-Kugel mit Tiefentest. **Glas:** Klarglas dünner (`thickness` ≤ 0,25 cm), 2D-Alpha 0,06 statt 0,18. **Außenlicht:** Sonne/Hemisphere unverändert auf Außen-Materialien; `uSkipPointLights` blockiert nur Punktlicht. Dateien: `main.ts`, `sceneLightRuntime.ts`, `selectiveBloom.ts`, `threeColors.ts`.
