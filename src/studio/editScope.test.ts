@@ -111,6 +111,26 @@ describe('editOpeningTargets', () => {
     const ids = refs.map((r) => `${r.wallId}:${r.openingId}`).sort()
     expect(ids).toEqual(['north-1:u1', 'north:n1', 'north:n2', 'north:nd'])
   })
+
+  it('Kellerfenster Fassade: nur Kellerfenster, keine normalen Fenster', () => {
+    const basement = {
+      ...opening('b1', 'window', 32, 64, 0),
+      basementWindow: { enabled: true, grilleHeight: 0.5 },
+    }
+    const normal = opening('n3', 'window', 160, 128, 192)
+    const wallsWithBasement = [
+      wall('north', 0, 0, [basement, normal, northDoor]),
+      wall('east', 90, 0, [eastWin]),
+      wall('north-1', 0, 456, [upperWin]),
+    ]
+    const facadeB = stateOf(wallsWithBasement)
+    const refs = editOpeningTargets(
+      facadeB,
+      editorWith({ wallId: 'north', openingId: 'b1' }),
+      'facade',
+    )
+    expect(refs).toEqual([{ wallId: 'north', openingId: 'b1' }])
+  })
 })
 
 describe('editArchOpeningTargets', () => {
@@ -127,10 +147,9 @@ describe('editArchOpeningTargets', () => {
   ]
   const facade = stateOf(walls)
 
-  it('Auswahl: alle Fenster und Türen derselben Wand', () => {
+  it('Auswahl: nur markierte Öffnungen (Fenster/Türen)', () => {
     const refs = editArchOpeningTargets(facade, editorWith({ wallId: 'north', openingId: 'n1' }), 'element')
-    const ids = refs.map((r) => r.openingId).sort()
-    expect(ids).toEqual(['n1', 'n2', 'nd'])
+    expect(refs).toEqual([{ wallId: 'north', openingId: 'n1' }])
   })
 
   it('Typ: Fenster und Türen im Haus (nicht nur Fenster)', () => {

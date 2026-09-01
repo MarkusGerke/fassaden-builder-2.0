@@ -59,6 +59,22 @@ describe('archForms', () => {
     expect(normalizeArchFormId('unknown', 'rect')).toBe('rect')
   })
 
+  it('Rundbogen-Krone erreicht die Kämpfer bei Form-Standard-Stich', () => {
+    const span = 120
+    const rise = defaultArchRise('round', span)
+    const crown = sampleArchCrown('round', span, rise, 32)
+    expect(crown[0]!.x).toBeCloseTo(0, 4)
+    expect(crown.at(-1)!.x).toBeCloseTo(span, 4)
+  })
+
+  it('Rundbogen mit zu kleinem Stichmaß spannt nicht die volle Breite (Formwechsel-Bug)', () => {
+    const span = 120
+    const smallRise = defaultArchRise('segmental', span)
+    const crown = sampleArchCrown('round', span, smallRise, 32)
+    expect(crown[0]!.x).toBeGreaterThan(0)
+    expect(crown.at(-1)!.x).toBeLessThan(span)
+  })
+
   it('resolveArchRiseForOpening: Form-Standard ohne riseCm', () => {
     const span = 120
     const height = 200

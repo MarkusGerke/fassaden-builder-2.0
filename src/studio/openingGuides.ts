@@ -40,6 +40,21 @@ export type OpeningGuide = {
   source: 'self' | 'align'
 }
 
+export type OpeningDistanceDirection = 'left' | 'right' | 'top' | 'bottom'
+
+/** Abstandslinie zum nächsten Objekt (Kante/Mitte) in cm. */
+export type OpeningDistanceLine = {
+  direction: OpeningDistanceDirection
+  distanceCm: number
+  wallId: string
+  /** Segment-Endpunkte: wand-lokal oder Aufriss-X (siehe `space`). Y immer wand-lokal von unten. */
+  fromX: number
+  fromY: number
+  toX: number
+  toY: number
+  space: 'wallLocal' | 'elevationX'
+}
+
 type EdgeValues = {
   left: number
   right: number
@@ -279,3 +294,170 @@ export function isMidStyleGuide(guide: OpeningGuide): boolean {
 }
 
 export { kindStartsWithSelf as isSelfGuideKind }
+
+function floorPeers(wall: Wall, floorWalls: Wall[]): Wall[] {
+  return floorWalls.filter((w) => Math.abs(w.y - wall.y) <= 1e-6)
+}
+
+function pushDistanceLine(
+  lines: OpeningDistanceLine[],
+  line: OpeningDistanceLine,
+): void {
+  if (line.distanceCm < 1) return
+  lines.push(line)
+}
+
+/**
+ * Abstandslinien zum nächsten Objekt in vier Himmelsrichtungen (wand-lokal bzw. Aufriss-X).
+ * Horizontal über Wandgrenzen auf derselben Etage (SVG); vertikal nur auf derselben Wand.
+ */
+export function computeOpeningDistanceLines(
+  wall: Wall,
+  active: Opening,
+  floorWalls: Wall[] = [wall],
+): OpeningDistanceLine[] {
+  const a = edgesOf(active)
+  const lines: OpeningDistanceLine[] = []
+  const activeLeftGlobal = globalOpeningX(wall, a.left)
+  const activeRightGlobal = globalOpeningX(wall, a.right)
+  const wallLeftGlobal = globalOpeningX(wall, 0)
+  const wallRightGlobal = globalOpeningX(wall, wall.width)
+
+  let nearestLeftGlobal = wallLeftGlobal
+  let nearestRightGlobal = wallRightGlobal
+
+  for (const peerWall of floorPeers(wall, floorWalls)) {
+    if (peerWall.id !== wall.id) {
+      const peerLeft = globalOpeningX(peerWall, 0)
+      const peerRight = globalOpeningX(peerWall, peerWall.width)
+      if (peerRight <= activeLeftGlobal + 1e-6) {
+        nearestLeftGlobal = Math.max(nearestLeftGlobal, peerRight)
+      }
+      if (peerLeft >= activeRightGlobal - 1e-6) {
+        nearestRightGlobal = Math.min(nearestRightGlobal, peerLeft)
+      }
+    }
+    for (const peer of peerWall.openings) {
+      if (peerWall.id === wall.id && peer.id === active.id) continue
+      const p = edgesOf(peer)
+      const peerLeftGlobal = globalOpeningX(peerWall, p.left)
+      const peerRightGlobal = globalOpeningX(peerWall, p.right)
+      if (peerRightGlobal <= activeLeftGlobal + 1e-6) {
+        nearestLeftGlobal = Math.max(nearestLeftGlobal, peerRightGlobal)
+      }
+      if (peerLeftGlobal >= activeRightGlobal - 1e-6) {
+        nearestRightGlobal = Math.min(nearestRightGlobal, peerLeftGlobal)
+      }
+    }
+  }
+
+  const leftDist = activeLeftGlobal - nearestLeftGlobal
+  if (leftDist >= 1) {
+    const localNearest = nearestLeftGlobal - wallLeftGlobal
+    if (localNearest >= 0 && localNearest <= a.left + 1e-6) {
+      pushDistanceLine(lines, {
+        direction: 'left',
+        distanceCm: Math.round(leftDist),
+        wallId: wall.id,
+        fromX: a.left,
+        fromY: a.midY,
+        toX: localNearest,
+        toY: a.midY,
+        space: 'wallLocal',
+      })
+    } else {
+      pushDistanceLine(lines, {
+        direction: 'left',
+        distanceCm: Math.round(leftDist),
+        wallId: wall.id,
+        fromX: activeLeftGlobal,
+        fromY: a.midY,
+        toX: nearestLeftGlobal,
+        toY: a.midY,
+        space: 'elevationX',
+      })
+    }
+  }
+
+  const rightDist = nearestRightGlobal - activeRightGlobal
+  if (rightDist >= 1) {
+    const localNearest = nearestRightGlobal - wallLeftGlobal
+    if (localNearest >= a.right - 1e-6 && localNearest <= wall.width + 1e-6) {
+      pushDistanceLine(lines, {
+        direction: 'right',
+        distanceCm: Math.round(rightDist),
+        wallId: wall.id,
+        fromX: a.right,
+        fromY: a.midY,
+        toX: localNearest,
+        toY: a.midY,
+        space: 'wallLocal',
+      })
+    } else {
+      pushDistanceLine(lines, {
+        direction: 'right',
+        distanceCm: Math.round(rightDist),
+        wallId: wall.id,
+        fromX: activeRightGlobal,
+        fromY: a.midY,
+        toX: nearestRightGlobal,
+        toY: a.midY,
+        space: 'elevationX',
+      })
+    }
+  }
+
+  let nearestBottom = 0
+  let nearestTop = wall.height
+  for (const peer of wall.openings) {
+    if (peer.id === active.id) continue
+    const p = edgesOf(peer)
+    if (p.top <= a.bottom + 1e-6) nearestBottom = Math.max(nearestBottom, p.top)
+    if (p.bottom >= a.top - 1e-6) nearestTop = Math.min(nearestTop, p.bottom)
+  }
+
+  const bottomDist = a.bottom - nearestBottom
+  if (bottomDist >= 1) {
+    pushDistanceLine(lines, {
+      direction: 'bottom',
+      distanceCm: Math.round(bottomDist),
+      wallId: wall.id,
+      fromX: a.midX,
+      fromY: a.bottom,
+      toX: a.midX,
+      toY: nearestBottom,
+      space: 'wallLocal',
+    })
+  }
+
+  const topDist = nearestTop - a.top
+  if (topDist >= 1) {
+    pushDistanceLine(lines, {
+      direction: 'top',
+      distanceCm: Math.round(topDist),
+      wallId: wall.id,
+      fromX: a.midX,
+      fromY: a.top,
+      toX: a.midX,
+      toY: nearestTop,
+      space: 'wallLocal',
+    })
+  }
+
+  return lines
+}
+
+/** Abstandslinien für mehrere gleichzeitig verschobene Öffnungen (je Wand). */
+export function computeOpeningDistanceLinesForRefs(
+  walls: Wall[],
+  refs: { wallId: string; openingId: string }[],
+): Map<string, OpeningDistanceLine[]> {
+  const byWall = new Map<string, OpeningDistanceLine[]>()
+  for (const ref of refs) {
+    const wall = walls.find((w) => w.id === ref.wallId)
+    const opening = wall?.openings.find((o) => o.id === ref.openingId)
+    if (!wall || !opening) continue
+    byWall.set(wall.id, computeOpeningDistanceLines(wall, opening, walls))
+  }
+  return byWall
+}

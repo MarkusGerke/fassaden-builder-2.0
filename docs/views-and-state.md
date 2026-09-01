@@ -16,11 +16,11 @@ type AppView = 'front' | '3d' | 'top' | 'export'
 
 Legacy `'plan'` → `'top'`, `'edit'` / `'2d'` → `'front'`.
 
-Wechsel via `setView(mode)` in `src/main.ts`. **Fassaden-Builder 2.0:** App-Start immer **2D-Front** + **Render**-Modus; Buttons Oben/3D/Entwurf/Galerie/Einfach-Komplex und Ebenen-Panel sind per `hidden` ausgeblendet (Code/Wiring bleibt). Bis `applyState` fertig ist, liegt `#app-loading` über der Seite (HTML+CSS+kleines Inline-Skript im `index.html`-Head, kein Warten auf das Bundle). Loader: SVG „Haus vom Nikolaus“ (Eulerwege / Sackgassen), Strich per `stroke-dashoffset` mit Eckpunkten, Text „Studio wird geladen …“ (v0.7.303 / v0.7.304).
+Wechsel via `setView(mode)` in `src/main.ts`. **Fassaden-Builder 2.0:** App-Start immer **2D-Front** + **Render**-Modus; Buttons Oben/3D/Entwurf/Galerie/Einfach-Komplex und Ebenen-Panel sind per `hidden` ausgeblendet (Code/Wiring bleibt). Bis `applyState` fertig ist, liegt `#app-loading` über der Seite (HTML+CSS+kleines Inline-Skript im `index.html`-Head, kein Warten auf das Bundle). Loader: SVG „Haus vom Nikolaus“ (nur vollständige Eulerwege), Strich per `stroke-dashoffset` in 720 ms, nahtloser Loop ohne Eckpunkte, Text „Studio wird geladen …“ (v2.0.4).
 
 Beim Wechsel zur `'top'`-Ansicht wird die Kamera zentriert (`framePlanCameraToContent`, `planZoom = 1`).
 
-**Bearbeitung:** `isSceneEditView()` (`3d` \| `front` \| `top`) nutzt dieselben Pointer-Handler — Pick auf Meshes, Wand-Greifer, Öffnungs-Drag, Kontextmenü. Oben: wie 3D (⌘/Ctrl-Ziehen dreht Himmelsrichtung, ⌘/Ctrl+⇧ schwenkt), zusätzlich Shift+LMB/Mittelmaus Pan, Mausrad/`+`/`-` Zoom.
+**Bearbeitung:** `isSceneEditView()` (`3d` \| `front` \| `top`) nutzt dieselben Pointer-Handler — Pick auf Meshes, Wand-Greifer, Öffnungs-Drag, Kontextmenü. Oben: wie 3D (⌘/Ctrl-Ziehen dreht Himmelsrichtung, ⌘/Ctrl+⇧ schwenkt), zusätzlich **Shift+LMB auf leerem Bereich** / Mittelmaus Pan; **Shift/Ctrl/Cmd+Klick auf Wand/Öffnung/Decke** = Mehrfachauswahl (v2.0.16). Mausrad/`+`/`-` Zoom.
 
 3D- und Oben-Orbit: Cmd/Ctrl+LMB drehen, Cmd/Ctrl+Shift+LMB schwenken, RMB ohne Modifier = Kontextmenü. **`siteYawDeg`** gilt in 3D und Oben (`siteYawForView()`). Kamera ohne Dämpfung, Dirty-Rendering (v0.7.74), Orbit-Lite auch für Mausrad (v0.7.77). Siehe [ux.md](ux.md).
 
@@ -51,7 +51,7 @@ Toolbar-Buttons (dynamisch aus den vorhandenen `yawDeg`-Werten):
 
 **2D (SVG):** `FacadeSvgView.setElevation(filter)` filtert die dargestellten Wände. Das SVG-Layout nutzt weiterhin `wall.x`/`wall.y` — bei gefilterten Ansichten werden nur die Wände der Sicht gerendert.
 
-**2D (Ortho):** `applyFrontCameraView(bounds)` nutzt `getWallBounds(wallsForElevation())` statt aller Wände. **Zoom/Pan:** Mausrad (zoomt zum Cursor), **Rechtsklick** / Mittelmaus / **⇧**+Ziehen verschiebt (Pan in Bildschirmachsen wie OrbitControls, v0.7.340); **+** / **−** / **0** (Einpassen). State: `frontZoom`, `frontPanScreenX`, `frontPanScreenY`. Export-Capture nutzt `fitOnly: true` (immer Einpassen). Gesims- und Fenster-Werfschatten auf Paneeeln/Rahmen in 2D-Front (v0.7.344).
+**2D (Ortho):** `applyFrontCameraView(bounds)` nutzt `getWallBounds(wallsForElevation())` statt aller Wände. **Zoom/Pan:** Mausrad zoomt zum Cursor (Wheel-Delta pro Frame gebündelt, exponentiell; Orbit-Lite während Navigation), **Doppelklick** zoomt 2× zum Klickpunkt mit weicher Animation (~280 ms, v2.0.21), **Rechtsklick** / Mittelmaus / **⇧**+Ziehen auf **leerem Bereich** verschiebt (Pan in Bildschirmachsen wie OrbitControls, v0.7.340); **⇧/Ctrl/Cmd+Klick auf Objekt** = Mehrfachauswahl (v2.0.16). Front-Kamera-Layout wird gecacht — Zoom/Pan ohne Wand-Neuberechnung pro Frame (v2.0.21). **+** / **−** / **0** (Einpassen). State: `frontZoom`, `frontPanScreenX`, `frontPanScreenY`. Export-Capture nutzt `fitOnly: true` (immer Einpassen). Gesims- und Fenster-Werfschatten auf Paneeeln/Rahmen in 2D-Front (v0.7.344).
 
 ---
 
@@ -76,6 +76,8 @@ interface PersistedAppState {
 ```
 
 Laden: `applyFacadeLoadPipeline` (`migrateFacadeSchema` → `clampFacadeState` inkl. `hydrateFacadeState` → `finalizeStudioGeometry`). Speichern setzt immer `FACADE_SCHEMA_VERSION`. Details: [migration.md](migration.md). Korrekturen an **bestehenden** Wänden: abgeleitete Werte jedes Load; persistierte Fehlstände als Schema-Step (v0.7.222 / Schema 11: invertierte Abzweig-Fugen).
+
+**Teilen-Link (`#f=`):** Zusätzlich zu `facade` optional `scene` (Szene-Farben) und `viewYaw` (Kompass). Siehe [ux.md](ux.md#url-hash-live-srcutilssharets).
 
 `scene` steuert die Szene-Farben (3D-Hintergrund, Untergrund, Glas-Himmelsreflexion). Defaults in `DEFAULT_SCENE_APPEARANCE` (alle drei `#ffffff`), normalisiert über `normalizeSceneAppearance`. UI: einzeln oder `#scene-all-color` für alle drei zugleich.
 

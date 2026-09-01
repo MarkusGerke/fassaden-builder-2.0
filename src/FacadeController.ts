@@ -11,7 +11,7 @@ import {
   DEFAULT_WALL_COLOR,
   defaultOpeningFrameColor,
 } from './constants/colorPalettes'
-import type { EditorState, FacadeState, Opening, Wall, Building } from './types/facade'
+import type { EditorState, FacadeState, Opening, OpeningRef, Wall, Building } from './types/facade'
 import { cloneFacadeState, createDefaultEditorState } from './types/facade'
 import {
   buildingShowsBareWalls,
@@ -24,6 +24,13 @@ import {
 import { resolveProfile } from './profiles/registry'
 import { applyPlinthOpeningFragmentDiscard, buildProfilePaths, clipProfileSectionAboveCm, createPlinthProfileSweepGeometry, createProfileSweepGeometry, createSimpleProfileBarGeometry, disposePlinthOpeningDiscard, scaleProfileSectionAxes, transformProfileSection, transformProfileSectionAnchored } from './utils/profilePaths'
 import { clampFacadeState, edgeIsJoined } from './utils/walls'
+import {
+  labelWorldDeltaFromStates,
+  openingDragFloatLocalZ,
+  openingWorldDeltaFromStates,
+  trimBandWorldDeltaFromStates,
+  wallWorldDeltaFromStates,
+} from './utils/liveDrag'
 import { openingHasProfile, normalizeOpeningSillOuter, outerSillUsesProfile, resolveOuterSillLayout } from './utils/openings'
 import {
   ARCH_MESH_SEGMENTS,
@@ -36,6 +43,7 @@ import {
   openingGlazingArchEnabled,
   openingGlazingArchForm,
   openingShowsGlazing,
+  openingActsAsWindow,
 } from './utils/openingGeometry'
 import { resolveCladding, windowModelKey } from './meshes/catalog'
 import { loadCladdingTemplates, loadWindowProfileTemplates } from './meshes/loadMeshes'
@@ -58,7 +66,7 @@ import {
   disposePanelAtlasTexture,
   studioLightModeWindowOriginZ,
 } from './studio/panelAtlas'
-import { createStudioClearanceCapGeometry, createStudioMortarFlatGeometry, createStudioMortarGeometry, createStudioOpeningRevealGeometry, createStudioOpeningShadowTunnelGeometry, createStudioPanelFlatGeometriesByColorIndex, createStudioPanelGeometriesByColorIndex, createStudioPanelGeometry, createStudioPanelLowGeometry, createStudioPlinthGeometry, createStudioWallGeometry, studioWorkModeTileLocalZ } from './studio/panelGeometry'
+import { createStudioClearanceCapGeometry, createStudioMortarFlatGeometry, createStudioMortarGeometry, createStudioOpeningRevealGeometry, createStudioOpeningShadowTunnelGeometry, createStudioPanelFlatGeometriesByColorIndex, createStudioPanelGeometriesByColorIndex, createStudioPanelGeometry, createStudioPanelLowGeometry, createStudioPlinthGeometry, createStudioWallGeometry, openingDragGhostWallLocalPoints, studioWorkModeTileLocalZ } from './studio/panelGeometry'
 import { buildTileColorPalette, tileColorStageCount } from './studio/tileColors'
 import { DEFAULT_LOD_SETTINGS, type LodSettings } from './lighting/lodSettings'
 import type { LodLevel } from './utils/performanceLod'
@@ -73,7 +81,7 @@ import {
   tileScreenPx,
 } from './utils/performanceLod'
 import { createSimpleWindowMesh } from './studio/windowLod'
-import type { OpeningGuide } from './studio/openingGuides'
+import type { OpeningGuide, OpeningDistanceLine } from './studio/openingGuides'
 import { isMidStyleGuide, isSelfGuide } from './studio/openingGuides'
 import { basementWindowEnabled, createBasementGrilleGeometry } from './studio/basementWindow'
 import { createOpeningStairsGeometry } from './studio/stairs'
@@ -127,6 +135,11 @@ export class FacadeController {
   public readonly casingGroup: THREE.Group = new THREE.Group()
   public readonly claddingGroup: THREE.Group = new THREE.Group()
   public readonly selectionGroup: THREE.Group = new THREE.Group()
+  /** Nur Öffnungs-Umriss beim Fensterziehen (Profile/Bänke aus). */
+  private readonly openingDragGhostGroup: THREE.Group = new THREE.Group()
+  private readonly openingDragGhostFillMaterial: THREE.MeshBasicMaterial
+  private readonly openingDragHiddenVis = new Map<string, boolean>()
+  private readonly openingDragHiddenCast = new Map<string, boolean>()
   public readonly indoorFloorGroup: THREE.Group = new THREE.Group()
   public readonly roofGroup: THREE.Group = new THREE.Group()
   public readonly lineGroup: THREE.Group = new THREE.Group()
@@ -144,6 +157,7 @@ export class FacadeController {
   private readonly guideEdgeMaterial: THREE.LineBasicMaterial
   private readonly guideMidMaterial: THREE.LineBasicMaterial
   private readonly guideSelfMaterial: THREE.LineBasicMaterial
+  private readonly guideDistanceMaterial: THREE.LineBasicMaterial
   private readonly profileMaterial: THREE.MeshStandardMaterial
   private readonly axes: THREE.AxesHelper
   private readonly profileMeshes: THREE.Mesh[] = []
@@ -178,9 +192,13 @@ export class FacadeController {
   /** Unsichtbare Öffnungs-Tunnel nur für Shadow-Map (pro Wand). */
   private readonly openingShadowTunnelMeshes = new Map<string, THREE.Mesh>()
   private readonly guideLines: THREE.Line[] = []
+  private readonly guideDistanceLines: THREE.Line[] = []
   private casingTemplates = new Map<string, THREE.Object3D>()
   private claddingTemplates = new Map<string, THREE.Object3D>()
   private state: FacadeState
+  private readonly liveDragRest = new Map<string, THREE.Vector3>()
+  /** Öffnungen, deren Loch während des Ziehens geschlossen ist (Wandkörper/Paneele). */
+  private readonly openingDragOmitByWall = new Map<string, Set<string>>()
   private editor: EditorState = createDefaultEditorState()
   private renderStyle: 'color' | 'line' = 'color'
   private lineStrokeScale = 1
@@ -206,8 +224,14 @@ export class FacadeController {
     side: THREE.DoubleSide,
   })
   private static readonly LINE_WIDTH_BASE_PX = 1.25
+  private resolveMeshesReady!: () => void
+  /** Nach erstem `loadMeshes()` (Fenster/Verkleidung + `syncLabelShadowReceivers`). */
+  readonly whenMeshesReady: Promise<void>
 
   constructor(scene: THREE.Scene, initialState: FacadeState) {
+    this.whenMeshesReady = new Promise<void>((resolve) => {
+      this.resolveMeshesReady = resolve
+    })
     this.state = clampFacadeState(initialState)
     this.material = new THREE.MeshStandardMaterial({
       color: 0xffffff,
@@ -237,6 +261,15 @@ export class FacadeController {
       depthTest: false,
       depthWrite: false,
     })
+    this.openingDragGhostFillMaterial = new THREE.MeshBasicMaterial({
+      color: 0xff6600,
+      transparent: true,
+      opacity: 0.35,
+      depthTest: false,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      toneMapped: false,
+    })
     this.guideEdgeMaterial = new THREE.LineBasicMaterial({
       color: 0x00e5ff,
       depthTest: false,
@@ -254,6 +287,12 @@ export class FacadeController {
       depthTest: false,
       transparent: true,
       opacity: 0.55,
+    })
+    this.guideDistanceMaterial = new THREE.LineBasicMaterial({
+      color: 0xffd966,
+      depthTest: false,
+      transparent: true,
+      opacity: 0.95,
     })
     this.profileMaterial = new THREE.MeshStandardMaterial({
       color: 0xc4b49a,
@@ -278,6 +317,7 @@ export class FacadeController {
     scene.add(this.casingGroup)
     scene.add(this.claddingGroup)
     scene.add(this.selectionGroup)
+    scene.add(this.openingDragGhostGroup)
     scene.add(this.indoorFloorGroup)
     scene.add(this.roofGroup)
     scene.add(this.lineGroup)
@@ -299,9 +339,14 @@ export class FacadeController {
     return this.buildingIsBare(wall.buildingId ?? findBuildingForWall(this.state, wall.id)?.id)
   }
 
-  /** Geometriequelle: bei `bareWalls` ohne Öffnungslöcher. */
+  /** Geometriequelle: bei `bareWalls` oder Live-Ziehen ohne Loch der gezogenen Öffnung. */
   private wallForBodyMesh(wall: Wall): Wall {
-    return this.wallIsBare(wall) ? wallWithoutOpenings(wall) : wall
+    if (this.wallIsBare(wall)) return wallWithoutOpenings(wall)
+    const omit = this.openingDragOmitByWall.get(wall.id)
+    if (!omit || omit.size === 0) return wall
+    const openings = wall.openings.filter((opening) => !omit.has(opening.id))
+    if (openings.length === wall.openings.length) return wall
+    return { ...wall, openings }
   }
 
   private labelFontReloadScheduled = false
@@ -435,6 +480,10 @@ export class FacadeController {
       if (wallPart !== 'cornice' && wallPart !== 'trimBand') continue
       mesh.castShadow = true
     }
+    // Stufen-Geometrie: immer empfangen (Selbst-/Werfschatten), nicht wie große Paneelflächen.
+    for (const mesh of this.stairMeshes) {
+      mesh.receiveShadow = true
+    }
     this.syncOpeningReceiveShadows()
   }
 
@@ -528,9 +577,11 @@ export class FacadeController {
     }
   }
 
-  setState(state: FacadeState, options?: { rebuildBuildingIds?: string[] }) {
+  setState(state: FacadeState, options?: { rebuildBuildingIds?: string[]; livePreview?: boolean }) {
+    this.endLiveDrag()
     this.state = clampFacadeState(state)
     const partial = options?.rebuildBuildingIds
+    const live = options?.livePreview === true
     if (partial !== undefined) {
       if (partial.length > 0) {
         for (const buildingId of partial) {
@@ -539,8 +590,13 @@ export class FacadeController {
           this.removeBuildingRenderables(buildingId)
           this.rebuildBuilding(buildingId)
         }
-        this.rebuildIndoorFloor()
-        this.rebuildFarHulls()
+        if (!live) {
+          this.rebuildIndoorFloor()
+          this.rebuildFarHulls()
+        }
+        // Wie `finalizeGeometryRebuild`: neue Fenster haben receiveShadow=false
+        // (Gründerzeit-Default). Ohne Sync fehlen Gesims-Schatten auf allen Rahmen.
+        this.syncLabelShadowReceivers()
         this.applyRenderStyle()
         this.applySelection()
       }
@@ -560,12 +616,337 @@ export class FacadeController {
     this.applySelection()
   }
 
+  /** Wände mit aktivem Öffnungs-Zug (vor `endLiveDrag` auslesen). */
+  peekOpeningDragWallIds(): Set<string> {
+    return new Set(this.openingDragOmitByWall.keys())
+  }
+
+  /** Restpositionen des Live-Ziehens verwerfen (Rebuild oder Commit). */
+  endLiveDrag() {
+    this.liveDragRest.clear()
+    this.openingDragOmitByWall.clear()
+    this.restoreOpeningDetailMeshVisibility()
+    this.clearOpeningDragGhosts()
+  }
+
+  /**
+   * Fensterziehen: Loch einmal schließen, nur Öffnungs-Umriss schwebt (~48 cm).
+   * @returns true beim ersten Aufruf (Geometrie/Schatten einmal neu backen).
+   */
+  beginOpeningDragMode(refs: OpeningRef[]): boolean {
+    if (refs.length === 0) return false
+    let changed = false
+    for (const ref of refs) {
+      let omit = this.openingDragOmitByWall.get(ref.wallId)
+      if (!omit) {
+        omit = new Set<string>()
+        this.openingDragOmitByWall.set(ref.wallId, omit)
+      }
+      if (!omit.has(ref.openingId)) {
+        omit.add(ref.openingId)
+        changed = true
+      }
+    }
+    if (!changed) return false
+
+    const wallIds = new Set(refs.map((ref) => ref.wallId))
+    this.patchWallsForOpeningDrag(wallIds)
+    this.hideOpeningDetailMeshes(refs)
+    this.suppressOpeningDragShadowCasters(wallIds)
+    this.clearOpeningDragGhosts()
+    this.createOpeningDragGhosts(refs)
+    this.liveDragRest.clear()
+    return true
+  }
+
+  /** Schatten-Tunnel der betroffenen Wände während des Ziehens nicht werfen. */
+  private suppressOpeningDragShadowCasters(wallIds: Set<string>) {
+    for (const wallId of wallIds) {
+      const tunnel = this.openingShadowTunnelMeshes.get(wallId)
+      if (!tunnel) continue
+      if (!this.openingDragHiddenCast.has(tunnel.uuid)) {
+        this.openingDragHiddenCast.set(tunnel.uuid, tunnel.castShadow)
+      }
+      tunnel.castShadow = false
+    }
+  }
+
+  private hideOpeningDetailMeshes(refs: OpeningRef[]) {
+    const dragged = (wallId: string | undefined, openingId: string | undefined) =>
+      Boolean(
+        wallId &&
+          openingId &&
+          refs.some((ref) => ref.wallId === wallId && ref.openingId === openingId),
+      )
+
+    const hideObject = (obj: THREE.Object3D) => {
+      if (!dragged(obj.userData.wallId as string | undefined, obj.userData.openingId as string | undefined)) {
+        return
+      }
+      obj.traverse((node) => {
+        if (!this.openingDragHiddenVis.has(node.uuid)) {
+          this.openingDragHiddenVis.set(node.uuid, node.visible)
+        }
+        node.visible = false
+        if (node instanceof THREE.Mesh) {
+          if (!this.openingDragHiddenCast.has(node.uuid)) {
+            this.openingDragHiddenCast.set(node.uuid, node.castShadow)
+          }
+          node.castShadow = false
+        }
+      })
+    }
+
+    for (const obj of this.windowInstances) hideObject(obj)
+    for (const obj of this.windowLodLowInstances) hideObject(obj)
+    for (const mesh of this.profileMeshes) hideObject(mesh)
+    for (const mesh of this.innerSillMeshes) hideObject(mesh)
+    for (const mesh of this.outerSillMeshes) hideObject(mesh)
+    for (const mesh of this.pedimentMeshes) hideObject(mesh)
+    for (const mesh of this.revealMeshes) hideObject(mesh)
+    for (const obj of this.rollerShutterGroups) hideObject(obj)
+    for (const mesh of this.stairMeshes) hideObject(mesh)
+    for (const obj of this.casingInstances) hideObject(obj)
+    for (const mesh of [...this.claddingLodLowMeshes, ...this.claddingLodHighMeshes]) hideObject(mesh)
+  }
+
+  private restoreOpeningDetailMeshVisibility() {
+    if (this.openingDragHiddenVis.size === 0 && this.openingDragHiddenCast.size === 0) return
+    const visit = (obj: THREE.Object3D) => {
+      obj.traverse((node) => {
+        const prevVis = this.openingDragHiddenVis.get(node.uuid)
+        if (prevVis !== undefined) node.visible = prevVis
+        if (node instanceof THREE.Mesh) {
+          const prevCast = this.openingDragHiddenCast.get(node.uuid)
+          if (prevCast !== undefined) node.castShadow = prevCast
+        }
+      })
+    }
+    for (const obj of this.windowInstances) visit(obj)
+    for (const obj of this.windowLodLowInstances) visit(obj)
+    for (const mesh of this.profileMeshes) visit(mesh)
+    for (const mesh of this.innerSillMeshes) visit(mesh)
+    for (const mesh of this.outerSillMeshes) visit(mesh)
+    for (const mesh of this.pedimentMeshes) visit(mesh)
+    for (const mesh of this.revealMeshes) visit(mesh)
+    for (const obj of this.rollerShutterGroups) visit(obj)
+    for (const mesh of this.stairMeshes) visit(mesh)
+    for (const obj of this.casingInstances) visit(obj)
+    for (const mesh of [...this.claddingLodLowMeshes, ...this.claddingLodHighMeshes]) visit(mesh)
+    for (const tunnel of this.openingShadowTunnelMeshes.values()) visit(tunnel)
+    this.openingDragHiddenVis.clear()
+    this.openingDragHiddenCast.clear()
+  }
+
+  private clearOpeningDragGhosts() {
+    while (this.openingDragGhostGroup.children.length > 0) {
+      const child = this.openingDragGhostGroup.children[0]
+      this.openingDragGhostGroup.remove(child)
+      child.traverse((node) => {
+        if (node instanceof THREE.LineSegments || node instanceof THREE.Mesh) {
+          node.geometry?.dispose()
+        }
+      })
+    }
+  }
+
+  private createOpeningDragGhosts(refs: OpeningRef[]) {
+    for (const ref of refs) {
+      const wall = findWall(this.state, ref.wallId)
+      const opening = wall?.openings.find((item) => item.id === ref.openingId)
+      if (!wall || !opening) continue
+
+      const localZ = openingDragFloatLocalZ(wall)
+      const group = new THREE.Group()
+      for (const part of createOpeningDragGhostParts(
+        wall,
+        opening,
+        localZ,
+        this.openingDragGhostFillMaterial,
+        this.selectionLineMaterial,
+      )) {
+        group.add(part)
+      }
+      if (group.children.length === 0) continue
+
+      group.userData = {
+        kind: 'openingDragGhost',
+        wallId: wall.id,
+        openingId: opening.id,
+      }
+
+      const transform = wallPlacement(wall)
+      group.position.set(transform.position.x, transform.position.y, transform.position.z)
+      group.rotation.y = transform.rotationY
+
+      this.openingDragGhostGroup.add(group)
+    }
+  }
+
+  private patchWallsForOpeningDrag(wallIds: Set<string>) {
+    const walls = getVisibleWalls(this.state).filter((wall) => wallIds.has(wall.id))
+    if (walls.length === 0) return
+
+    this.rebuildWallBodiesForWallIds(wallIds)
+    this.removeCladdingMeshesForWallIds(wallIds)
+
+    if (this.isPerfPresentation()) {
+      this.rebuildCladdingForWalls(walls, 'high')
+    } else {
+      this.rebuildCladdingForWalls(walls, 'low')
+      const buildingIds = new Set(
+        walls.map((wall) => wall.buildingId).filter((id): id is string => Boolean(id)),
+      )
+      for (const buildingId of buildingIds) {
+        if (!this.highDetailBuilt.has(buildingId)) continue
+        this.rebuildCladdingForWalls(
+          walls.filter((wall) => wall.buildingId === buildingId),
+          'high',
+        )
+      }
+    }
+
+    this.applyLodVisibility()
+  }
+
+  private rebuildWallBodiesForWallIds(wallIds: Set<string>) {
+    for (const wall of getVisibleWalls(this.state)) {
+      if (!wallIds.has(wall.id)) continue
+      const neighborWalls = this.buildingWalls(wall)
+      const bodyWall = this.wallForBodyMesh(wall)
+      const geometry = isStudioWall(bodyWall)
+        ? createStudioWallGeometry(bodyWall, neighborWalls)
+        : createWallGeometry(bodyWall, neighborWalls)
+      const mesh = this.meshes.get(wall.id)
+      if (!mesh) continue
+      mesh.geometry.dispose()
+      mesh.geometry = geometry
+    }
+  }
+
+  private removeCladdingMeshesForWallIds(wallIds: Set<string>) {
+    const removeFrom = (list: THREE.Mesh[]) => {
+      for (let i = list.length - 1; i >= 0; i -= 1) {
+        const mesh = list[i]
+        if (!wallIds.has(mesh.userData.wallId as string)) continue
+        this.claddingGroup.remove(mesh)
+        mesh.geometry.dispose()
+        list.splice(i, 1)
+      }
+    }
+    removeFrom(this.claddingLodLowMeshes)
+    removeFrom(this.claddingLodHighMeshes)
+    removeFrom(this.studioCladdingMeshes)
+  }
+
+  private openingDragOmitVisible(wallId: string, openingId: string | undefined): boolean {
+    if (!openingId) return false
+    return this.openingDragOmitByWall.get(wallId)?.has(openingId) ?? false
+  }
+
+  /**
+   * Öffnungen während pointermove: nur Mesh-Translation, kein Rebuild.
+   * Mauerwerk-Loch folgt erst beim Loslassen (`setState`).
+   */
+  applyLiveOpeningOffsets(base: FacadeState, next: FacadeState, refs: OpeningRef[]) {
+    this.state = next
+    for (const ref of refs) {
+      const world = openingWorldDeltaFromStates(base, next, ref)
+      this.offsetLiveRoots(
+        (obj) =>
+          obj.userData.kind === 'openingDragGhost' &&
+          obj.userData.wallId === ref.wallId &&
+          obj.userData.openingId === ref.openingId,
+        world,
+      )
+    }
+  }
+
+  /** Ganze Wände während pointermove: alle Meshes der Wand-IDs mitziehen. */
+  applyLiveWallOffsets(base: FacadeState, next: FacadeState, wallIds: string[]) {
+    this.state = next
+    for (const wallId of wallIds) {
+      const world = wallWorldDeltaFromStates(base, next, wallId)
+      this.offsetLiveRoots((obj) => obj.userData.wallId === wallId, world)
+    }
+  }
+
+  applyLiveTrimOffset(base: FacadeState, next: FacadeState, wallId: string, bandId: string) {
+    this.state = next
+    const world = trimBandWorldDeltaFromStates(base, next, wallId, bandId)
+    this.offsetLiveRoots(
+      (obj) => obj.userData.wallId === wallId && obj.userData.bandId === bandId,
+      world,
+    )
+  }
+
+  applyLiveLabelOffset(base: FacadeState, next: FacadeState, wallId: string) {
+    this.state = next
+    const world = labelWorldDeltaFromStates(base, next, wallId)
+    this.offsetLiveRoots(
+      (obj) => obj.userData.wallId === wallId && obj.userData.wallPart === 'label',
+      world,
+    )
+  }
+
+  private offsetLiveRoots(
+    match: (obj: THREE.Object3D) => boolean,
+    world: { x: number; y: number; z: number },
+  ) {
+    this.forEachLiveDragRoot((obj) => {
+      if (!match(obj)) return
+      const rest = this.captureLiveRest(obj)
+      obj.position.set(rest.x + world.x, rest.y + world.y, rest.z + world.z)
+    })
+  }
+
+  private captureLiveRest(obj: THREE.Object3D): THREE.Vector3 {
+    let rest = this.liveDragRest.get(obj.uuid)
+    if (!rest) {
+      rest = obj.position.clone()
+      this.liveDragRest.set(obj.uuid, rest)
+    }
+    return rest
+  }
+
+  private forEachLiveDragRoot(fn: (obj: THREE.Object3D) => void) {
+    const seen = new Set<string>()
+    const visit = (obj: THREE.Object3D) => {
+      if (seen.has(obj.uuid)) return
+      seen.add(obj.uuid)
+      fn(obj)
+    }
+    for (const mesh of this.meshes.values()) visit(mesh)
+    for (const mesh of this.openingShadowTunnelMeshes.values()) visit(mesh)
+    for (const obj of this.openingDragGhostGroup.children) visit(obj)
+    for (const obj of this.profileMeshes) visit(obj)
+    for (const obj of this.innerSillMeshes) visit(obj)
+    for (const obj of this.outerSillMeshes) visit(obj)
+    for (const obj of this.pedimentMeshes) visit(obj)
+    for (const obj of this.windowInstances) visit(obj)
+    for (const obj of this.windowLodLowInstances) visit(obj)
+    for (const obj of this.casingInstances) visit(obj)
+    for (const obj of this.claddingInstances) visit(obj)
+    for (const obj of this.studioCladdingMeshes) visit(obj)
+    for (const obj of this.wallLabelMeshes) visit(obj)
+    for (const obj of this.claddingLodLowMeshes) visit(obj)
+    for (const obj of this.claddingLodHighMeshes) visit(obj)
+    for (const obj of this.stairMeshes) visit(obj)
+    for (const obj of this.rollerShutterGroups) visit(obj)
+    for (const obj of this.revealMeshes) visit(obj)
+  }
+
   clearOpeningGuides() {
     for (const line of this.guideLines) {
       this.guideGroup.remove(line)
       line.geometry.dispose()
     }
     this.guideLines.length = 0
+    for (const line of this.guideDistanceLines) {
+      this.guideGroup.remove(line)
+      line.geometry.dispose()
+    }
+    this.guideDistanceLines.length = 0
   }
 
   /** Zeigt Ausrichtungs-Hilfslinien in Wand-Lokalmaßen (vor der Fassade). */
@@ -573,12 +954,13 @@ export class FacadeController {
     this.setOpeningGuidesBatch([{ wall, guides }])
   }
 
-  setOpeningGuidesBatch(entries: { wall: Wall; guides: OpeningGuide[] }[]) {
+  setOpeningGuidesBatch(entries: { wall: Wall; guides: OpeningGuide[]; distanceLines?: OpeningDistanceLine[] }[]) {
     this.clearOpeningGuides()
-    for (const { wall, guides } of entries) {
+    for (const { wall, guides, distanceLines } of entries) {
       const local = guides.filter((g) => g.space === 'wallLocal')
-      if (local.length === 0) continue
-      this.appendWallOpeningGuides(wall, local)
+      if (local.length > 0) this.appendWallOpeningGuides(wall, local)
+      const localDistances = (distanceLines ?? []).filter((l) => l.space === 'wallLocal')
+      if (localDistances.length > 0) this.appendWallOpeningDistanceLines(wall, localDistances)
     }
   }
 
@@ -628,6 +1010,51 @@ export class FacadeController {
     }
   }
 
+  private appendWallOpeningDistanceLines(wall: Wall, lines: OpeningDistanceLine[]) {
+    const yawDeg = wall.yawDeg ?? 0
+    const originX = wall.originX ?? wall.x
+    const originZ = wall.originZ ?? 0
+    const outward = facadeOutward(yawDeg, wall.panelFlip ?? true)
+    const offset = 2.5
+    const ox = outward.x * offset
+    const oz = outward.z * offset
+    const capHalf = 6
+
+    const addSegment = (a: THREE.Vector3, b: THREE.Vector3) => {
+      const geom = new THREE.BufferGeometry().setFromPoints([a, b])
+      const line = new THREE.Line(geom, this.guideDistanceMaterial)
+      line.renderOrder = 11
+      this.guideGroup.add(line)
+      this.guideDistanceLines.push(line)
+    }
+
+    const localToWorld = (localX: number, localY: number): THREE.Vector3 => {
+      const along = wallAlongDelta(yawDeg, localX)
+      return new THREE.Vector3(
+        originX + along.x + ox,
+        wall.y + localY,
+        originZ + along.z + oz,
+      )
+    }
+
+    for (const dist of lines) {
+      const a = localToWorld(dist.fromX, dist.fromY)
+      const b = localToWorld(dist.toX, dist.toY)
+      addSegment(a, b)
+
+      const dx = dist.toX - dist.fromX
+      const dy = dist.toY - dist.fromY
+      const horizontal = Math.abs(dx) >= Math.abs(dy)
+      if (horizontal) {
+        addSegment(localToWorld(dist.fromX, dist.fromY - capHalf), localToWorld(dist.fromX, dist.fromY + capHalf))
+        addSegment(localToWorld(dist.toX, dist.toY - capHalf), localToWorld(dist.toX, dist.toY + capHalf))
+      } else {
+        addSegment(localToWorld(dist.fromX - capHalf, dist.fromY), localToWorld(dist.fromX + capHalf, dist.fromY))
+        addSegment(localToWorld(dist.toX - capHalf, dist.toY), localToWorld(dist.toX + capHalf, dist.toY))
+      }
+    }
+  }
+
   rebuildIndoorFloor() {
     while (this.indoorFloorGroup.children.length > 0) {
       const child = this.indoorFloorGroup.children[0] as THREE.Mesh
@@ -667,8 +1094,8 @@ export class FacadeController {
       const mesh = new THREE.Mesh(geo, material)
       mesh.rotation.x = -Math.PI / 2
       mesh.position.set(0, y, 0)
-      mesh.layers.enable(SHADOW_LAYER_EXTERIOR)
-      mesh.layers.enable(SHADOW_LAYER_INTERIOR)
+      // Nur Innen-Layer: Außen-Sonne (Layer 0) soll keine Etagenstreifen auf der Fassade werfen.
+      mesh.layers.set(SHADOW_LAYER_INTERIOR)
       mesh.receiveShadow = true
       mesh.userData.indoorRole = role
       mesh.userData.kind = role === 'ceiling' ? 'ceiling' : 'floor'
@@ -723,7 +1150,7 @@ export class FacadeController {
             path.closePath()
             shape.holes.push(path)
           }
-          const ceilingY = storeyTopY(building, fi)
+          const ceilingY = storeyTopY(building, fi) - slabThickness
           addFloorMesh(shape.clone(), ceilingY, ceilingMat, building.id, fi, 'ceiling')
           const floorSurfaceY = storeyFloorSurfaceY(building, fi)
           addFloorMesh(shape.clone(), floorSurfaceY - slabThickness, floorMat, building.id, fi, 'floor')
@@ -970,8 +1397,7 @@ export class FacadeController {
       const role = mesh.userData.indoorRole as string | undefined
       mesh.castShadow = role === 'ceiling' && mesh.visible
       mesh.receiveShadow = mesh.visible
-      mesh.layers.enable(SHADOW_LAYER_EXTERIOR)
-      mesh.layers.enable(SHADOW_LAYER_INTERIOR)
+      mesh.layers.set(SHADOW_LAYER_INTERIOR)
     }
   }
 
@@ -1395,6 +1821,11 @@ export class FacadeController {
 
     for (const obj of this.windowLodLowInstances) {
       const wallId = obj.userData.wallId as string
+      const openingId = obj.userData.openingId as string | undefined
+      if (this.openingDragOmitVisible(wallId, openingId)) {
+        obj.visible = false
+        continue
+      }
       if (this.isDraftPresentation()) {
         obj.visible = this.isGalleryWallDrawn(wallId)
         continue
@@ -1409,6 +1840,11 @@ export class FacadeController {
     for (const obj of this.windowInstances) {
       if (obj.userData.lodTier === 'high') {
         const wallId = obj.userData.wallId as string
+        const openingId = obj.userData.openingId as string | undefined
+        if (this.openingDragOmitVisible(wallId, openingId)) {
+          obj.visible = false
+          continue
+        }
         if (this.isDraftPresentation()) {
           obj.visible = this.isGalleryWallDrawn(wallId)
           continue
@@ -1425,6 +1861,11 @@ export class FacadeController {
     for (const mesh of this.profileMeshes) {
       const wallId = mesh.userData.wallId as string | undefined
       if (!wallId) continue
+      const openingId = mesh.userData.openingId as string | undefined
+      if (this.openingDragOmitVisible(wallId, openingId)) {
+        mesh.visible = false
+        continue
+      }
       const level = levelForCategory(wallId, 'profiles')
       mesh.visible =
         effectiveFarHullLevel(level, simplify.farHull, lodOn) !== 'far' &&
@@ -1432,6 +1873,11 @@ export class FacadeController {
     }
     for (const mesh of this.innerSillMeshes) {
       const wallId = mesh.userData.wallId as string
+      const openingId = mesh.userData.openingId as string | undefined
+      if (this.openingDragOmitVisible(wallId, openingId)) {
+        mesh.visible = false
+        continue
+      }
       const level = levelForCategory(wallId, 'profiles')
       mesh.visible =
         effectiveFarHullLevel(level, simplify.farHull, lodOn) !== 'far' &&
@@ -1439,6 +1885,11 @@ export class FacadeController {
     }
     for (const mesh of this.outerSillMeshes) {
       const wallId = mesh.userData.wallId as string
+      const openingId = mesh.userData.openingId as string | undefined
+      if (this.openingDragOmitVisible(wallId, openingId)) {
+        mesh.visible = false
+        continue
+      }
       const level = levelForCategory(wallId, 'profiles')
       mesh.visible =
         effectiveFarHullLevel(level, simplify.farHull, lodOn) !== 'far' &&
@@ -1446,6 +1897,11 @@ export class FacadeController {
     }
     for (const mesh of this.pedimentMeshes) {
       const wallId = mesh.userData.wallId as string
+      const openingId = mesh.userData.openingId as string | undefined
+      if (this.openingDragOmitVisible(wallId, openingId)) {
+        mesh.visible = false
+        continue
+      }
       const level = levelForCategory(wallId, 'profiles')
       mesh.visible =
         effectiveFarHullLevel(level, simplify.farHull, lodOn) !== 'far' &&
@@ -1453,6 +1909,11 @@ export class FacadeController {
     }
     for (const mesh of this.revealMeshes) {
       const wallId = mesh.userData.wallId as string
+      const openingId = mesh.userData.openingId as string | undefined
+      if (this.openingDragOmitVisible(wallId, openingId)) {
+        mesh.visible = false
+        continue
+      }
       const level = levelForCategory(wallId, 'reveals')
       mesh.visible = level === 'high' && this.isGalleryWallDrawn(wallId)
     }
@@ -1767,18 +2228,22 @@ export class FacadeController {
   }
 
   private async loadMeshes() {
-    const [casings, claddings] = await Promise.all([
-      loadWindowProfileTemplates(),
-      loadCladdingTemplates(),
-    ])
-    this.casingTemplates = casings
-    this.claddingTemplates = claddings
-    this.rebuildWindows()
-    this.rebuildCasings()
-    this.rebuildCladding()
-    this.finalizeGeometryRebuild()
-    this.applyRenderStyle()
-    this.applySelection()
+    try {
+      const [casings, claddings] = await Promise.all([
+        loadWindowProfileTemplates(),
+        loadCladdingTemplates(),
+      ])
+      this.casingTemplates = casings
+      this.claddingTemplates = claddings
+      this.rebuildWindows()
+      this.rebuildCasings()
+      this.rebuildCladding()
+      this.finalizeGeometryRebuild()
+      this.applyRenderStyle()
+      this.applySelection()
+    } finally {
+      this.resolveMeshesReady()
+    }
   }
 
   private buildingWalls(wall: Wall): Wall[] {
@@ -1982,7 +2447,8 @@ export class FacadeController {
       this.disposeOpeningShadowTunnel(wall.id)
       return
     }
-    const geometry = createStudioOpeningShadowTunnelGeometry(wall)
+    const surfaceWall = this.wallForBodyMesh(wall)
+    const geometry = createStudioOpeningShadowTunnelGeometry(surfaceWall)
     if (!geometry) {
       this.disposeOpeningShadowTunnel(wall.id)
       return
@@ -2281,6 +2747,7 @@ export class FacadeController {
 
     for (const wall of walls) {
       if (this.wallIsBare(wall)) continue
+      const geomWall = this.wallForBodyMesh(wall)
       const neighborWalls = this.buildingWalls(wall)
       const buildingId = wall.buildingId ?? findBuildingForWall(this.state, wall.id)?.id
 
@@ -2290,7 +2757,7 @@ export class FacadeController {
         if (!(panel.enabled === false || panel.pattern === 'none')) {
           try {
             const claddingColor = wall.claddingColor ?? wall.wallColor ?? DEFAULT_WALL_COLOR
-            const tiles = layoutPanelTiles(wall, panel, neighborWalls)
+            const tiles = layoutPanelTiles(geomWall, panel, neighborWalls)
 
             const stages = tileColorStageCount(panel.tileColorVariety ?? 0)
             const palette = buildTileColorPalette(
@@ -2305,14 +2772,14 @@ export class FacadeController {
               if (this.isDraftPresentation()) {
                 // Lange Wände: mehrere Atlas-Streifen, damit Steine nicht zu „Brei“ verpixelt werden.
                 const strips = createPanelAtlasStrips(
-                  wall,
+                  geomWall,
                   panel,
                   tiles,
                   claddingColor,
                   seedKey,
                 )
                 for (const strip of strips) {
-                  const geometry = createStudioPanelAtlasGeometry(wall, {
+                  const geometry = createStudioPanelAtlasGeometry(geomWall, {
                     startCm: strip.startCm,
                     lengthCm: strip.lengthCm,
                   })
@@ -2342,7 +2809,7 @@ export class FacadeController {
               const geos =
                 this.isPreviewPresentation()
                   ? createStudioPanelFlatGeometriesByColorIndex(
-                      wall,
+                      geomWall,
                       panel,
                       useMultiColor ? stages : 1,
                       seedKey,
@@ -2351,7 +2818,7 @@ export class FacadeController {
                     )
                   : useMultiColor
                     ? createStudioPanelGeometriesByColorIndex(
-                        wall,
+                        geomWall,
                         panel,
                         stages,
                         seedKey,
@@ -2361,7 +2828,7 @@ export class FacadeController {
                     : [
                         {
                           stageIndex: 0,
-                          geometry: createStudioPanelLowGeometry(wall, panel, neighborWalls),
+                          geometry: createStudioPanelLowGeometry(geomWall, panel, neighborWalls),
                         },
                       ]
               for (const { stageIndex, geometry } of geos) {
@@ -2389,8 +2856,8 @@ export class FacadeController {
 
               if (panel.joint > 0) {
                 const mortarGeometry = this.isPreviewPresentation()
-                  ? createStudioMortarFlatGeometry(wall, panel, neighborWalls, tiles)
-                  : createStudioMortarGeometry(wall, panel, neighborWalls, tiles)
+                  ? createStudioMortarFlatGeometry(geomWall, panel, neighborWalls, tiles)
+                  : createStudioMortarGeometry(geomWall, panel, neighborWalls, tiles)
                 if (mortarGeometry) {
                   const mortarColor = panel.jointColor ?? DEFAULT_JOINT_COLOR
                   const mortarMaterial = createTintedMaterial(
@@ -2419,7 +2886,7 @@ export class FacadeController {
                 const profileId = panel.plinthProfileId ?? 'sockelprofil'
                 const decorativePlinth = profileId !== 'sockelStandard' && Boolean(profileId)
                 if (!decorativePlinth) {
-                  const plinthGeometry = createStudioPlinthGeometry(wall, panel, neighborWalls)
+                  const plinthGeometry = createStudioPlinthGeometry(geomWall, panel, neighborWalls)
                   if (plinthGeometry) {
                     const plinthColor = panel.plinthColor ?? wall.wallColor ?? DEFAULT_WALL_COLOR
                     const plinthMaterial = createTintedMaterial(
@@ -2451,7 +2918,7 @@ export class FacadeController {
             } else if (!this.isPerfPresentation()) {
               const geos = useMultiColor
                 ? createStudioPanelGeometriesByColorIndex(
-                    wall,
+                    geomWall,
                     panel,
                     stages,
                     seedKey,
@@ -2461,7 +2928,7 @@ export class FacadeController {
                 : [
                     {
                       stageIndex: 0,
-                      geometry: createStudioPanelGeometry(wall, panel, neighborWalls, tiles),
+                      geometry: createStudioPanelGeometry(geomWall, panel, neighborWalls, tiles),
                     },
                   ]
               for (const { stageIndex, geometry } of geos) {
@@ -2494,8 +2961,8 @@ export class FacadeController {
         // Freiraum-Rahmen: auch ohne Paneele/Mauerwerk (Abstand × Tiefe vor der Wand).
         if (!this.isPerfPresentation()) {
         const wallCapColor = wall.wallColor ?? DEFAULT_WALL_COLOR
-        for (const opening of wall.openings) {
-          const capGeometry = createStudioClearanceCapGeometry(wall, opening, panel)
+        for (const opening of geomWall.openings) {
+          const capGeometry = createStudioClearanceCapGeometry(geomWall, opening, panel)
           if (!capGeometry) continue
           const capMaterial = createTintedMaterial(this.material, wallCapColor, wall.wallFinish)
           const capMesh = new THREE.Mesh(capGeometry, capMaterial)
@@ -2523,7 +2990,7 @@ export class FacadeController {
           const decorativePlinth = profileId !== 'sockelStandard' && Boolean(profileId)
           // Dekoratives Profil ersetzt die Box — nur Sweep in profilePaths.
           if (!decorativePlinth) {
-            const plinthGeometry = createStudioPlinthGeometry(wall, panel, neighborWalls)
+            const plinthGeometry = createStudioPlinthGeometry(geomWall, panel, neighborWalls)
             if (plinthGeometry) {
               const plinthColor = panel.plinthColor ?? wall.wallColor ?? DEFAULT_WALL_COLOR
               const plinthMaterial = createTintedMaterial(
@@ -2553,7 +3020,7 @@ export class FacadeController {
       if (tier !== 'high') continue
       // GLB-Verkleidung hat ein rechteckiges Fensterloch. Bei Fassaden-Rundbogen
       // würde sonst die rechteckige Aussparung (Ecken/Schultern) sichtbar bleiben.
-      const hasFacadeArch = wall.openings.some(
+      const hasFacadeArch = geomWall.openings.some(
         (opening) =>
           openingCutsWall(opening) &&
           (normalizeOpeningArch(opening.arch).enabled || openingHasRoundMask(opening)),
@@ -2604,9 +3071,10 @@ export class FacadeController {
         const finish = opening.stairs.finish ?? wall.wallFinish
         const material = createTintedMaterial(this.material, color, finish)
         material.side = THREE.DoubleSide
+        material.shadowSide = THREE.FrontSide
         const mesh = new THREE.Mesh(geometry, material)
         mesh.castShadow = true
-        mesh.receiveShadow = false
+        mesh.receiveShadow = true
         mesh.userData.originalMaterial = material
         mesh.userData.wallId = wall.id
         mesh.userData.buildingId = wall.buildingId
@@ -2858,7 +3326,7 @@ export class FacadeController {
       for (const opening of wall.openings) {
         if (opening.hidden) continue
         const sill = opening.sillInner
-        if (!sill?.enabled || opening.type !== 'window' || opening.y <= 0) continue
+        if (!sill?.enabled || !openingActsAsWindow(opening) || opening.y <= 0) continue
         if (basementWindowEnabled(opening)) continue
         const depth = Math.max(1, sill.depth ?? 16)
         const thickness = Math.max(0.5, sill.thickness ?? 4)
@@ -2924,7 +3392,7 @@ export class FacadeController {
       for (const opening of wall.openings) {
         if (opening.hidden) continue
         const sill = opening.sillOuter
-        if (!sill?.enabled || opening.type !== 'window' || opening.y <= 0) continue
+        if (!sill?.enabled || !openingActsAsWindow(opening) || opening.y <= 0) continue
         if (basementWindowEnabled(opening)) continue
         const normalized = normalizeOpeningSillOuter(sill)
         if (outerSillUsesProfile(normalized)) continue
@@ -2999,7 +3467,7 @@ export class FacadeController {
       if (this.wallIsBare(wall)) continue
       for (const opening of wall.openings) {
         if (opening.hidden) continue
-        if ((opening.type !== 'window' && opening.type !== 'door') || !opening.pediment?.enabled) continue
+        if ((opening.type !== 'window' && opening.type !== 'door' && opening.type !== 'conch') || !opening.pediment?.enabled) continue
         if (opening.type === 'window' && basementWindowEnabled(opening)) continue
         const pediment = normalizeOpeningPediment(opening.pediment)
         const color = pediment.color ?? wall.profileColor ?? DEFAULT_PROFILE_COLOR
@@ -3201,6 +3669,7 @@ export class FacadeController {
     }
 
     for (const ref of this.editor.selectedOpenings) {
+      if (this.openingDragOmitVisible(ref.wallId, ref.openingId)) continue
       const wall = findWall(this.state, ref.wallId)
       const opening = wall?.openings.find((item) => item.id === ref.openingId)
       if (!wall || !opening) continue
@@ -3276,6 +3745,53 @@ function openingLocalCenter(wall: Wall, opening: Opening) {
     x: opening.x + opening.width / 2 - wall.width / 2,
     y: opening.y + opening.height / 2 - wall.height / 2,
   }
+}
+
+/** Flache Öffnungsmaske in Wand-Lokalraum — kein Schatten, nur Overlay. */
+function createOpeningDragGhostParts(
+  wall: Wall,
+  opening: Opening,
+  localZ: number,
+  fillMat: THREE.MeshBasicMaterial,
+  lineMat: THREE.LineBasicMaterial,
+): THREE.Object3D[] {
+  const pts = isStudioWall(wall)
+    ? openingDragGhostWallLocalPoints(wall, opening, localZ)
+    : openingMaskPolyline(opening, 0, ARCH_MESH_SEGMENTS).map((p) => ({
+        x: p.x - wall.width / 2,
+        y: p.y - wall.height / 2,
+      }))
+  if (pts.length < 3) return []
+
+  const shape = new THREE.Shape()
+  shape.moveTo(pts[0]!.x, pts[0]!.y)
+  for (let i = 1; i < pts.length; i += 1) {
+    shape.lineTo(pts[i]!.x, pts[i]!.y)
+  }
+  shape.closePath()
+
+  const fillGeo = new THREE.ShapeGeometry(shape)
+  const fill = new THREE.Mesh(fillGeo, fillMat)
+  fill.position.z = localZ
+  fill.renderOrder = 11
+  fill.castShadow = false
+  fill.receiveShadow = false
+  fill.frustumCulled = false
+
+  const linePositions: number[] = []
+  for (const pt of pts) {
+    linePositions.push(pt.x, pt.y, localZ)
+  }
+  linePositions.push(pts[0]!.x, pts[0]!.y, localZ)
+  const lineGeo = new THREE.BufferGeometry()
+  lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(linePositions, 3))
+  const lines = new THREE.LineLoop(lineGeo, lineMat)
+  lines.renderOrder = 12
+  lines.castShadow = false
+  lines.receiveShadow = false
+  lines.frustumCulled = false
+
+  return [fill, lines]
 }
 
 function localToWorld(wall: Wall, localX: number, localY: number, localZ: number) {

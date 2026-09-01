@@ -173,6 +173,7 @@ export class AtmosphereSky {
   private loadPromise: Promise<void> | null = null
   private _ready = false
   private _wantVisible = true
+  private readonly sceneGroundAlbedo = EARTH_ALBEDO.clone()
   lastCelestial: CelestialState = resolveCelestialState(DEFAULT_SUN_SETTINGS)
 
   constructor() {
@@ -308,7 +309,7 @@ export class AtmosphereSky {
     this.skyMaterial.moonDirection.copy(this.moonDirection)
     this.skyMaterial.worldToECEFMatrix.copy(this.worldToECEFMatrix)
     this.skyMaterial.lunarRadianceScale = moonIllum
-    this.skyMaterial.groundAlbedo.copy(EARTH_ALBEDO)
+    this.skyMaterial.groundAlbedo.copy(this.sceneGroundAlbedo)
 
     this.starsMaterial.sunDirection.copy(this.sunDirection)
     this.starsMaterial.worldToECEFMatrix.copy(this.worldToECEFMatrix)
@@ -343,6 +344,12 @@ export class AtmosphereSky {
   setVisible(visible: boolean): void {
     this._wantVisible = visible
     this.root.visible = visible && this._ready
+  }
+
+  /** Nutzer-Bodenfarbe für atmosphärischen Horizont (Szene-Einstellung). */
+  setGroundAlbedo(hex: string): void {
+    this.sceneGroundAlbedo.set(hex)
+    this.skyMaterial.groundAlbedo.copy(this.sceneGroundAlbedo)
   }
 
   /** Anzeige-HDR des Himmels — mit Bloom niedrig, ohne Bloom etwas höher. */

@@ -157,6 +157,7 @@ import {
   openingGlazingArchForm,
   openingIsConch,
   openingLacksWindowChrome,
+  openingActsAsWindow,
 } from './utils/openingGeometry'
 import {
   ARCH_FORM_IDS,
@@ -234,6 +235,7 @@ import {
 import { initOpeningMotionEditor } from './ui/openingMotionEditor'
 import { evalMotionCurve, openingMotionFromOpening } from './utils/openingMotion'
 import {
+  buildSharePayload,
   copyFacadeLink,
   decodeFacadeHash,
   downloadFacadeJson,
@@ -393,6 +395,7 @@ import { openingPreviewSvg, openingSizePreviewSvg } from './studio/openingPrevie
 import {
   appendGruenderzeitSvg,
   axisWeights,
+  clampGruenderzeitForBasement,
   detectWindowPreset,
   defaultGruenderzeitConfig,
   gruenderzeitConfigForOpening,
@@ -412,7 +415,7 @@ import {
 } from './windows/openingExtras'
 import { facadeOutward, facadeSunIsGrazing, wallsForYaw, type ElevationFilter } from './studio/elevation'
 import { lerpYawDeg, normalizeYawDeg, snapYawTo10, snapYawTo45, solarAzimuthToWallYaw, viewedFacadeYaw, wallCompassLabel, wallDockAxisFromFacadeYaw, yawFromCompassSvgPoint } from './studio/compass'
-import { computeOpeningGuidesForRefs } from './studio/openingGuides'
+import { computeOpeningGuidesForRefs, computeOpeningDistanceLinesForRefs } from './studio/openingGuides'
 import { panelCourseCount } from './studio/panelLayout'
 import {
   DEFAULT_STUDIO_PANEL,
@@ -480,6 +483,22 @@ import {
   wouldCloseFloorPlan,
 } from './studio/floorPlan'
 import { FloorPlanView, syncPlanCamera, PLAN_VIEW_SIZE } from './studio/floorPlanView'
+import {
+  buildingDepthOffsetFromFacadeDepthCm,
+  buildingFacadeDepthCm,
+  depthOffsetFromFacadeDepthCm,
+  openingFacadeDepthCm,
+  openingUsesCustomDepth,
+} from './utils/openingDepth'
+import {
+  DBLCLICK_ZOOM_DURATION_MS,
+  DBLCLICK_ZOOM_FACTOR,
+  easeOutCubic,
+  lerpNumber,
+  normalizedWheelDeltaY,
+  wheelZoomFactorFromDelta,
+  zoomPanOffsetsAtCursor,
+} from './utils/viewZoom'
 import { facadeShadeParamsFromSun, setFacadeShadeParams } from './utils/facadeShade'
 import { resolveLightingMood } from './utils/lightingMood'
 import {
@@ -613,10 +632,6 @@ dirLight.shadow.normalBias = 0.28
 dirLight.shadow.camera.layers.set(SHADOW_LAYER_EXTERIOR)
 dirLight.target.position.set(192, 224, 0)
 let lastCelestialState = resolveCelestialState({ ...DEFAULT_SUN_SETTINGS })
-void atmosphereSky.load(renderer).then(() => {
-  applySunLighting({ updateShadowMap: true })
-  markViewportDirty()
-})
 
 const camera = new THREE.PerspectiveCamera(50, 1, 1, 5000)
 camera.position.set(400, 250, 500)
@@ -669,6 +684,10 @@ function setOrbitLite(active: boolean) {
   orbitLite = false
   applyRendererPixelRatio()
   markSceneReflectionsDirty()
+  if (currentView === 'top') {
+    updateGroundPlane()
+    floorPlanView.syncGridToCamera(topCamera)
+  }
   markViewportDirty()
 }
 
@@ -928,6 +947,9 @@ const viewCompassLabel = document.querySelector<HTMLSpanElement>('#view-compass-
 
 let state: FacadeState = createDefaultFacadeState()
 let openingDragBase: FacadeState | null = null
+let wallMoveDragBase: FacadeState | null = null
+let trimDragBase: FacadeState | null = null
+let labelDragBase: FacadeState | null = null
 let editor: EditorState = createDefaultEditorState()
 let currentView: AppView = 'front'
 
@@ -3521,6 +3543,18 @@ let planBuildingDrag: {
 } | null = null
 let planBuildingDragMoved = false
 
+function sharePayloadFromApp() {
+  return buildSharePayload(state, {
+    scene: sceneAppearance,
+    viewYaw: currentElevation.kind === 'yaw' ? currentElevation.yaw : undefined,
+  })
+}
+
+function scheduleShareHashWrite() {
+  if (isGalleryModeActive()) return
+  scheduleFacadeHashWrite(sharePayloadFromApp())
+}
+
 function persistApp() {
   if (isGalleryModeActive()) return
   savePersistedState({
@@ -3721,9 +3755,13 @@ async function loadInitialState(): Promise<void> {
   if (hash) {
     const fromHash = await decodeFacadeHash(hash)
     if (fromHash) {
-      state = fromHash
+      state = fromHash.facade
       editor = createDefaultEditorState()
       currentView = 'front'
+      if (fromHash.scene) sceneAppearance = normalizeSceneAppearance(fromHash.scene)
+      if (fromHash.viewYaw !== undefined) {
+        currentElevation = { kind: 'yaw', yaw: fromHash.viewYaw }
+      }
       if (facadeHasNeedsReview(state)) {
         queueMicrotask(() => {
           planStatus.textContent =
@@ -4648,6 +4686,9 @@ const wallCorniceFlipForward = document.querySelector<HTMLButtonElement>('#wall-
 const studioCorniceOffsetForward = document.querySelector<HTMLInputElement>('#studio-cornice-offset-forward')!
 const wallCorniceOffsetForward = document.querySelector<HTMLInputElement>('#wall-cornice-offset-forward')!
 const openingWindowDepthOffset = document.querySelector<HTMLInputElement>('#opening-window-depth-offset')!
+const openingWindowDepthReset = document.querySelector<HTMLButtonElement>('#opening-window-depth-reset')!
+const openingWindowDepthHint = document.querySelector<HTMLParagraphElement>('#opening-window-depth-hint')!
+const openingWindowDepthSection = document.querySelector<HTMLDivElement>('#opening-window-depth-section')!
 const studioStandardDepthRow = document.querySelector<HTMLDivElement>('#studio-standard-depth-row')!
 const studioAlternateLayers = document.querySelector<HTMLDivElement>('#studio-alternate-layers')!
 const studioLayer1ProjectDepth = document.querySelector<HTMLInputElement>('#studio-layer1-project-depth')!
@@ -4703,6 +4744,375 @@ let frontPanScreenY = 0
 let frontPanActive = false
 let frontPanLastX = 0
 let frontPanLastY = 0
+
+/** Mausrad-Zoom: pro Frame bündeln (Trackpad liefert viele Events). */
+let viewWheelRaf = 0
+let viewWheelPending: {
+  view: 'front' | 'top'
+  deltaY: number
+  clientX: number
+  clientY: number
+} | null = null
+
+/** Gecachtes Front-Layout (Wand-Bounds) — Zoom/Pan nutzen nur noch die Cache-Werte. */
+type FrontViewBase = {
+  viewW: number
+  viewH: number
+  lookX: number
+  lookY: number
+  lookZ: number
+  outwardX: number
+  outwardZ: number
+  layoutKey: string
+}
+let frontViewBaseCache: FrontViewBase | null = null
+
+type ViewZoomAnimTarget = {
+  frontZoom?: number
+  frontPanX?: number
+  frontPanY?: number
+  planZoom?: number
+  planOffsetX?: number
+  planOffsetZ?: number
+}
+
+let viewZoomAnim: {
+  view: 'front' | 'top'
+  startTime: number
+  duration: number
+  from: ViewZoomAnimTarget
+  to: ViewZoomAnimTarget
+} | null = null
+let viewZoomAnimRaf = 0
+
+function invalidateFrontViewBase() {
+  frontViewBaseCache = null
+}
+
+function cancelViewZoomAnim() {
+  viewZoomAnim = null
+  if (viewZoomAnimRaf) {
+    cancelAnimationFrame(viewZoomAnimRaf)
+    viewZoomAnimRaf = 0
+  }
+}
+
+function frontViewLayoutKey(walls: Wall[], yaw: number, width: number, height: number): string {
+  const facing = wallsForYaw(walls, yaw)
+  const targetWalls = facing.length > 0 ? facing : walls
+  const elevKey =
+    currentElevation.kind === 'yaw'
+      ? `yaw:${currentElevation.yaw}`
+      : currentElevation.kind === 'wall'
+        ? `wall:${currentElevation.wallId}`
+        : 'auto'
+  const wallKey = targetWalls
+    .map(
+      (wall) =>
+        `${wall.id}:${wall.x}:${wall.y}:${wall.width}:${wall.height}:${wall.originX ?? ''}:${wall.originZ ?? ''}`,
+    )
+    .join('|')
+  return `${elevKey}|${width}x${height}|${wallKey}`
+}
+
+function computeFrontViewBase(
+  walls: Wall[],
+  yaw: number,
+  width: number,
+  height: number,
+): FrontViewBase | null {
+  const pad = 48
+  const aspect = width / height
+  const facing = wallsForYaw(walls, yaw)
+  const targetWalls = facing.length > 0 ? facing : walls
+  if (targetWalls.length === 0) return null
+
+  let minAlong = Infinity
+  let maxAlong = -Infinity
+  let minY = Infinity
+  let maxY = -Infinity
+  let cx = 0
+  let cy = 0
+  let cz = 0
+  const yawRad = (yaw * Math.PI) / 180
+  const alongX = Math.cos(yawRad)
+  const alongZ = -Math.sin(yawRad)
+  for (const wall of targetWalls) {
+    const origin = { x: wall.originX ?? wall.x, z: wall.originZ ?? 0 }
+    const t0 = origin.x * alongX + origin.z * alongZ
+    minAlong = Math.min(minAlong, t0)
+    maxAlong = Math.max(maxAlong, t0 + wall.width)
+    minY = Math.min(minY, wall.y)
+    maxY = Math.max(maxY, wall.y + wall.height)
+    const tr = studioWallTransform(wall)
+    cx += tr.position.x
+    cy += tr.position.y
+    cz += tr.position.z
+  }
+  const n = targetWalls.length
+  cx /= n
+  cy /= n
+  cz /= n
+
+  const elevW = Math.max(80, maxAlong - minAlong)
+  const elevH = Math.max(80, maxY - minY)
+  let viewW = elevW + pad * 2
+  let viewH = elevH + pad * 2
+  if (viewW / viewH > aspect) viewH = viewW / aspect
+  else viewW = viewH * aspect
+
+  const outward = facadeOutward(yaw, targetWalls[0]?.panelFlip ?? true)
+  return {
+    viewW,
+    viewH,
+    lookX: cx,
+    lookY: (minY + maxY) / 2,
+    lookZ: cz,
+    outwardX: outward.x,
+    outwardZ: outward.z,
+    layoutKey: frontViewLayoutKey(walls, yaw, width, height),
+  }
+}
+
+function getFrontViewBase(): FrontViewBase | null {
+  const walls = wallsForElevation().filter(isStudioWall)
+  const width = Math.max(1, viewportRenderWidth())
+  const height = Math.max(1, viewportRenderHeight())
+
+  let yaw = 0
+  if (currentElevation.kind === 'yaw') yaw = currentElevation.yaw
+  else if (currentElevation.kind === 'wall') {
+    yaw = getWall(state, currentElevation.wallId)?.yawDeg ?? 0
+  } else {
+    const yaws = walls.map((wall) => wall.yawDeg ?? 0)
+    yaw = yaws.sort((a, b) =>
+      yaws.filter((v) => v === b).length - yaws.filter((v) => v === a).length,
+    )[0] ?? 0
+  }
+
+  const layoutKey = frontViewLayoutKey(walls, yaw, width, height)
+  if (frontViewBaseCache?.layoutKey === layoutKey) return frontViewBaseCache
+  frontViewBaseCache = computeFrontViewBase(walls, yaw, width, height)
+  return frontViewBaseCache
+}
+
+function frontFrustumHalfExtents(): { halfW: number; halfH: number } {
+  const base = getFrontViewBase()
+  if (!base) return { halfW: 200, halfH: 200 }
+  const zoom = clampFrontZoom(frontZoom)
+  return { halfW: base.viewW / zoom / 2, halfH: base.viewH / zoom / 2 }
+}
+
+function applyFrontCameraFromBase(
+  base: FrontViewBase,
+  opts?: { fitOnly?: boolean; panOnly?: boolean },
+) {
+  const useNav = opts?.fitOnly !== true
+  const applyPan = useNav && opts?.panOnly !== true
+  const zoom = useNav ? clampFrontZoom(frontZoom) : 1
+  if (useNav) frontZoom = zoom
+  const viewW = base.viewW / (useNav ? zoom : 1)
+  const viewH = base.viewH / (useNav ? zoom : 1)
+  const dist = Math.max(viewW, viewH) + 400
+
+  frontCamera.left = -viewW / 2
+  frontCamera.right = viewW / 2
+  frontCamera.top = viewH / 2
+  frontCamera.bottom = -viewH / 2
+  frontCamera.near = 1
+  frontCamera.far = dist * 4
+  frontCamera.position.set(
+    base.lookX + base.outwardX * dist,
+    base.lookY,
+    base.lookZ + base.outwardZ * dist,
+  )
+  frontCamera.up.set(0, 1, 0)
+  frontCamera.lookAt(base.lookX, base.lookY, base.lookZ)
+  frontCamera.updateProjectionMatrix()
+
+  if (applyPan && (frontPanScreenX !== 0 || frontPanScreenY !== 0)) {
+    frontCamera.updateMatrixWorld()
+    frontCamera.matrixWorld.extractBasis(_frontPanRight, _frontPanUp, _frontPanForward)
+    const px =
+      _frontPanRight.x * frontPanScreenX + _frontPanUp.x * frontPanScreenY
+    const py =
+      _frontPanRight.y * frontPanScreenX + _frontPanUp.y * frontPanScreenY
+    const pz =
+      _frontPanRight.z * frontPanScreenX + _frontPanUp.z * frontPanScreenY
+    frontCamera.position.x += px
+    frontCamera.position.y += py
+    frontCamera.position.z += pz
+    frontCamera.lookAt(base.lookX + px, base.lookY + py, base.lookZ + pz)
+    frontCamera.updateMatrixWorld()
+  }
+}
+
+function tickViewZoomAnim() {
+  viewZoomAnimRaf = 0
+  const anim = viewZoomAnim
+  if (!anim) return
+  const t = Math.min(1, (performance.now() - anim.startTime) / anim.duration)
+  const e = easeOutCubic(t)
+  if (anim.view === 'front') {
+    if (anim.from.frontZoom != null && anim.to.frontZoom != null) {
+      frontZoom = lerpNumber(anim.from.frontZoom, anim.to.frontZoom, e)
+    }
+    if (anim.from.frontPanX != null && anim.to.frontPanX != null) {
+      frontPanScreenX = lerpNumber(anim.from.frontPanX, anim.to.frontPanX, e)
+    }
+    if (anim.from.frontPanY != null && anim.to.frontPanY != null) {
+      frontPanScreenY = lerpNumber(anim.from.frontPanY, anim.to.frontPanY, e)
+    }
+    syncFrontCamera()
+  } else {
+    if (anim.from.planZoom != null && anim.to.planZoom != null) {
+      planZoom = lerpNumber(anim.from.planZoom, anim.to.planZoom, e)
+    }
+    if (anim.from.planOffsetX != null && anim.to.planOffsetX != null) {
+      planOffsetX = lerpNumber(anim.from.planOffsetX, anim.to.planOffsetX, e)
+    }
+    if (anim.from.planOffsetZ != null && anim.to.planOffsetZ != null) {
+      planOffsetZ = lerpNumber(anim.from.planOffsetZ, anim.to.planOffsetZ, e)
+    }
+    syncTopCamera2({ deferGrid: true })
+  }
+  markViewportDirty()
+  if (t < 1) {
+    viewZoomAnimRaf = requestAnimationFrame(tickViewZoomAnim)
+  } else {
+    viewZoomAnim = null
+    if (anim.view === 'top') syncTopCamera2()
+    scheduleOrbitLiteEnd()
+  }
+}
+
+function startViewZoomAnim(view: 'front' | 'top', to: ViewZoomAnimTarget) {
+  cancelViewZoomAnim()
+  const from: ViewZoomAnimTarget =
+    view === 'front'
+      ? {
+          frontZoom: frontZoom,
+          frontPanX: frontPanScreenX,
+          frontPanY: frontPanScreenY,
+        }
+      : {
+          planZoom: planZoom,
+          planOffsetX: planOffsetX,
+          planOffsetZ: planOffsetZ,
+        }
+  viewZoomAnim = {
+    view,
+    startTime: performance.now(),
+    duration: DBLCLICK_ZOOM_DURATION_MS,
+    from,
+    to,
+  }
+  beginViewNavLite()
+  tickViewZoomAnim()
+}
+
+function planZoomTargetAtClient(
+  clientX: number,
+  clientY: number,
+  factor: number,
+): ViewZoomAnimTarget {
+  const { nx, ny } = canvasNdcFromClient(clientX, clientY)
+  const width = viewportRenderWidth()
+  const height = viewportRenderHeight()
+  const aspect = width / Math.max(height, 1)
+  const span = (PLAN_VIEW_SIZE + PLAN_GRID) / planZoom
+  const halfW = span / 2
+  const halfH = halfW / (aspect > 0 ? aspect : 1)
+  const cx = PLAN_VIEW_SIZE / 2 + planOffsetX
+  const cz = PLAN_VIEW_SIZE / 2 + planOffsetZ
+  const worldX = cx + nx * halfW
+  const worldZ = cz - ny * halfH
+
+  const nextZoom = clampPlanZoom(planZoom * factor)
+  const spanNew = (PLAN_VIEW_SIZE + PLAN_GRID) / nextZoom
+  const halfWNew = spanNew / 2
+  const halfHNew = halfWNew / (aspect > 0 ? aspect : 1)
+  return {
+    planZoom: nextZoom,
+    planOffsetX: worldX - nx * halfWNew - PLAN_VIEW_SIZE / 2,
+    planOffsetZ: worldZ + ny * halfHNew - PLAN_VIEW_SIZE / 2,
+  }
+}
+
+function beginViewNavLite() {
+  setOrbitLite(true)
+  scheduleOrbitLiteEnd()
+}
+
+function canvasNdcFromClient(clientX: number, clientY: number): { nx: number; ny: number } {
+  const rect = canvas.getBoundingClientRect()
+  const width = Math.max(rect.width, 1)
+  const height = Math.max(rect.height, 1)
+  return {
+    nx: ((clientX - rect.left) / width) * 2 - 1,
+    ny: -((clientY - rect.top) / height) * 2 + 1,
+  }
+}
+
+function zoomFrontAtNdc(nx: number, ny: number, factor: number) {
+  cancelViewZoomAnim()
+  const { halfW, halfH } = frontFrustumHalfExtents()
+  const nextPan = zoomPanOffsetsAtCursor({
+    nx,
+    ny,
+    factor,
+    panX: frontPanScreenX,
+    panY: frontPanScreenY,
+    halfW,
+    halfH,
+  })
+  frontZoom = clampFrontZoom(frontZoom * factor)
+  frontPanScreenX = nextPan.panX
+  frontPanScreenY = nextPan.panY
+  syncFrontCamera()
+}
+
+function zoomPlanAtClient(clientX: number, clientY: number, factor: number) {
+  cancelViewZoomAnim()
+  const target = planZoomTargetAtClient(clientX, clientY, factor)
+  planZoom = target.planZoom ?? planZoom
+  planOffsetX = target.planOffsetX ?? planOffsetX
+  planOffsetZ = target.planOffsetZ ?? planOffsetZ
+  framePlanIfZoomedOut(factor)
+  syncTopCamera2({ deferGrid: orbitLite })
+}
+
+function flushViewWheelZoom() {
+  viewWheelRaf = 0
+  const pending = viewWheelPending
+  viewWheelPending = null
+  if (!pending) return
+  const factor = wheelZoomFactorFromDelta(pending.deltaY)
+  if (Math.abs(factor - 1) < 1e-6) return
+  if (pending.view === 'front') {
+    const { nx, ny } = canvasNdcFromClient(pending.clientX, pending.clientY)
+    zoomFrontAtNdc(nx, ny, factor)
+  } else {
+    zoomPlanAtClient(pending.clientX, pending.clientY, factor)
+  }
+}
+
+function queueViewWheelZoom(event: WheelEvent, view: 'front' | 'top') {
+  event.preventDefault()
+  cancelViewZoomAnim()
+  beginViewNavLite()
+  const dy = normalizedWheelDeltaY(event.deltaY, event.deltaMode, viewportRenderHeight())
+  if (viewWheelPending?.view === view) {
+    viewWheelPending.deltaY += dy
+    viewWheelPending.clientX = event.clientX
+    viewWheelPending.clientY = event.clientY
+  } else {
+    viewWheelPending = { view, deltaY: dy, clientX: event.clientX, clientY: event.clientY }
+  }
+  if (!viewWheelRaf) {
+    viewWheelRaf = requestAnimationFrame(flushViewWheelZoom)
+  }
+}
 let planNavDragOpening: { wallId: string; openingId: string } | null = null
 let planNavDragLast: { x: number; z: number } | null = null
 let planNavDragStart: { x: number; z: number; openingX: number } | null = null
@@ -5117,6 +5527,7 @@ function setCompassYaw(yaw: number) {
     syncTopCamera2()
     markViewportDirty()
   }
+  scheduleShareHashWrite()
 }
 
 /** Kamera weich auf den Sonnen-Azimut drehen (Grad, ohne 45°-Raster / 2D-Ansicht). */
@@ -5857,12 +6268,49 @@ function syncCorniceControls(wall: Wall) {
 
 function syncWindowDepthControls() {
   const sel = selectedWindowOpening()
-  if (sel && sel.opening.depthOffset !== undefined) {
-    openingWindowDepthOffset.value = String(sel.opening.depthOffset)
+  const building = activeBuilding()
+  const buildingOffset = building.windowDepthOffset
+  const refs = scopedOpeningRefs().filter((ref) => {
+    const wall = getWall(state, ref.wallId)
+    const opening = wall?.openings.find((item) => item.id === ref.openingId)
+    return opening?.type === 'window' || opening?.type === 'door'
+  })
+
+  const showDepth =
+    Boolean(sel && (sel.opening.type === 'window' || sel.opening.type === 'door')) ||
+    (editor.selectedOpenings.length === 0 && editor.selectedWallIds.length > 0)
+  if (openingWindowDepthSection) openingWindowDepthSection.hidden = !showDepth
+
+  if (refs.length === 0) {
+    openingWindowDepthOffset.value = String(buildingFacadeDepthCm(buildingOffset))
+    if (openingWindowDepthReset) openingWindowDepthReset.hidden = true
+    if (openingWindowDepthHint) {
+      openingWindowDepthHint.textContent =
+        'Gebäude-Standard für alle Fenster/Türen ohne eigene Frontlage.'
+    }
     return
   }
-  const value = String(activeBuilding().windowDepthOffset ?? DEFAULT_WINDOW_DEPTH_OFFSET)
-  openingWindowDepthOffset.value = value
+
+  const depths = refs.map((ref) => {
+    const wall = getWall(state, ref.wallId)
+    const opening = wall?.openings.find((item) => item.id === ref.openingId)
+    return opening ? openingFacadeDepthCm(opening, buildingOffset) : null
+  })
+  const custom = refs.some((ref) => {
+    const wall = getWall(state, ref.wallId)
+    const opening = wall?.openings.find((item) => item.id === ref.openingId)
+    return opening ? openingUsesCustomDepth(opening) : false
+  })
+  const first = depths[0]
+  const same = depths.length > 0 && depths.every((d) => d === first)
+  openingWindowDepthOffset.value = same && first != null ? String(Math.round(first)) : ''
+  if (openingWindowDepthReset) openingWindowDepthReset.hidden = !custom
+  if (openingWindowDepthHint) {
+    openingWindowDepthHint.textContent = custom
+      ? 'Eigene Frontlage für die gewählte(n) Öffnung(en). Gebäude-Standard: ' +
+        `${Math.round(buildingFacadeDepthCm(buildingOffset))} cm.`
+      : `Gebäude-Standard (${Math.round(buildingFacadeDepthCm(buildingOffset))} cm) — Änderung gilt nur für die Auswahl.`
+  }
 }
 
 function updateValidationHintStudio() {
@@ -5952,6 +6400,9 @@ async function addOpeningPresetToSelection(
         ...opening,
         y: preset.y ?? opening.y,
         basementWindow: { enabled: true, grilleHeight: 0.5 },
+        gruenderzeit: clampGruenderzeitForBasement(
+          defaultGruenderzeitConfig(preset.width, preset.height, 'window'),
+        ),
         sillInner: opening.sillInner
           ? { ...opening.sillInner, enabled: false }
           : {
@@ -7108,6 +7559,7 @@ function resetFrontNav() {
   frontZoom = 1
   frontPanScreenX = 0
   frontPanScreenY = 0
+  cancelViewZoomAnim()
 }
 
 function syncFrontCamera() {
@@ -7116,11 +7568,11 @@ function syncFrontCamera() {
 }
 
 function panFrontByPixels(dx: number, dy: number) {
-  applyFrontCameraView({ panOnly: true })
+  cancelViewZoomAnim()
+  beginViewNavLite()
+  const { halfW, halfH } = frontFrustumHalfExtents()
   const width = viewportRenderWidth()
   const height = viewportRenderHeight()
-  const halfW = (frontCamera.right - frontCamera.left) / 2
-  const halfH = (frontCamera.top - frontCamera.bottom) / 2
   const scaleX = (2 * halfW) / Math.max(width, 1)
   const scaleY = (2 * halfH) / Math.max(height, 1)
   // Wie OrbitControls.pan: Inhalt folgt dem Cursor (nicht spiegelverkehrt zur Fassaden-Yaw).
@@ -7272,11 +7724,13 @@ function applyFrontCameraView(opts?: {
   /** Nur Frustum für Pan-Skalierung (ohne Nutzer-Pan anwenden). */
   panOnly?: boolean
 }) {
+  if (opts?.fitOnly) {
+    invalidateFrontViewBase()
+  }
+
   const walls = (opts?.yaw != null ? getAllWalls(state) : wallsForElevation()).filter(isStudioWall)
-  const pad = 48
   const width = Math.max(1, opts?.width ?? viewportRenderWidth())
   const height = Math.max(1, opts?.height ?? viewportRenderHeight())
-  const aspect = width / height
 
   let yaw = 0
   if (opts?.yaw != null) yaw = opts.yaw
@@ -7290,9 +7744,14 @@ function applyFrontCameraView(opts?: {
     )[0] ?? 0
   }
 
-  const facing = wallsForYaw(walls, yaw)
-  const targetWalls = facing.length > 0 ? facing : walls
-  if (targetWalls.length === 0) {
+  let base: FrontViewBase | null
+  if (opts?.yaw != null || opts?.width != null || opts?.height != null || opts?.fitOnly) {
+    base = computeFrontViewBase(walls, yaw, width, height)
+  } else {
+    base = getFrontViewBase()
+  }
+
+  if (!base) {
     frontCamera.left = -200
     frontCamera.right = 200
     frontCamera.top = 200
@@ -7303,83 +7762,7 @@ function applyFrontCameraView(opts?: {
     return
   }
 
-  let minAlong = Infinity
-  let maxAlong = -Infinity
-  let minY = Infinity
-  let maxY = -Infinity
-  let cx = 0
-  let cy = 0
-  let cz = 0
-  const yawRad = (yaw * Math.PI) / 180
-  const alongX = Math.cos(yawRad)
-  const alongZ = -Math.sin(yawRad)
-  for (const wall of targetWalls) {
-    const origin = { x: wall.originX ?? wall.x, z: wall.originZ ?? 0 }
-    const t0 = origin.x * alongX + origin.z * alongZ
-    minAlong = Math.min(minAlong, t0)
-    maxAlong = Math.max(maxAlong, t0 + wall.width)
-    minY = Math.min(minY, wall.y)
-    maxY = Math.max(maxY, wall.y + wall.height)
-    const tr = studioWallTransform(wall)
-    cx += tr.position.x
-    cy += tr.position.y
-    cz += tr.position.z
-  }
-  const n = targetWalls.length
-  cx /= n
-  cy /= n
-  cz /= n
-
-  const elevW = Math.max(80, maxAlong - minAlong)
-  const elevH = Math.max(80, maxY - minY)
-  let viewW = elevW + pad * 2
-  let viewH = elevH + pad * 2
-  if (viewW / viewH > aspect) viewH = viewW / aspect
-  else viewW = viewH * aspect
-
-  const useNav = opts?.fitOnly !== true
-  const applyPan = useNav && opts?.panOnly !== true
-  const zoom = useNav ? clampFrontZoom(frontZoom) : 1
-  if (useNav) frontZoom = zoom
-  viewW /= zoom
-  viewH /= zoom
-
-  const midY = (minY + maxY) / 2
-  const lookX = cx
-  const lookY = midY
-  const lookZ = cz
-
-  const outward = facadeOutward(yaw, targetWalls[0]?.panelFlip ?? true)
-  const dist = Math.max(viewW, viewH) + 400
-  frontCamera.left = -viewW / 2
-  frontCamera.right = viewW / 2
-  frontCamera.top = viewH / 2
-  frontCamera.bottom = -viewH / 2
-  frontCamera.near = 1
-  frontCamera.far = dist * 4
-  frontCamera.position.set(lookX + outward.x * dist, lookY, lookZ + outward.z * dist)
-  frontCamera.up.set(0, 1, 0)
-  frontCamera.lookAt(lookX, lookY, lookZ)
-  frontCamera.updateProjectionMatrix()
-
-  if (applyPan && (frontPanScreenX !== 0 || frontPanScreenY !== 0)) {
-    frontCamera.updateMatrixWorld()
-    frontCamera.matrixWorld.extractBasis(_frontPanRight, _frontPanUp, _frontPanForward)
-    const px =
-      _frontPanRight.x * frontPanScreenX +
-      _frontPanUp.x * frontPanScreenY
-    const py =
-      _frontPanRight.y * frontPanScreenX +
-      _frontPanUp.y * frontPanScreenY
-    const pz =
-      _frontPanRight.z * frontPanScreenX +
-      _frontPanUp.z * frontPanScreenY
-    frontCamera.position.x += px
-    frontCamera.position.y += py
-    frontCamera.position.z += pz
-    frontCamera.lookAt(lookX + px, lookY + py, lookZ + pz)
-    frontCamera.updateMatrixWorld()
-  }
+  applyFrontCameraFromBase(base, opts)
 }
 
 function syncFrontView() {
@@ -7413,7 +7796,7 @@ function applyTodaySunDate() {
   const today = todayMonthDay()
   sunSettings = syncSunSettingsFromSolar(
     { ...sunSettings, month: today.month, day: today.day },
-    { applySolarLook: true },
+    { applySolarLook: false },
   )
 }
 
@@ -7545,6 +7928,20 @@ function flushSunShadowMap() {
   markViewportDirty()
 }
 
+/** Erstes Shadow-Map-Bake nach Atmosphäre + Fenster-Meshes (nicht schon beim Himmel-Load). */
+function bootstrapSceneLighting(): Promise<void> {
+  return Promise.all([
+    atmosphereSky.load(renderer),
+    facade.whenMeshesReady,
+    preloadWallLabelFlatFont(),
+  ]).then(() => {
+    facade.refreshWallLabels({ afterFontLoad: true })
+    syncCladdingReceiveShadows()
+    applySunLighting({ updateShadowMap: true })
+    markViewportDirty()
+  })
+}
+
 /** Shadow-Map während Slider/Animation gedrosselt — Licht sofort, Bake später. */
 function scheduleSunShadowMapUpdate() {
   sunShadowMapQueued = true
@@ -7657,13 +8054,36 @@ function initCameraTarget() {
   markViewportDirty()
 }
 
+function buildingIdsForWallIds(facadeState: FacadeState, wallIds: ReadonlySet<string>): string[] {
+  const out = new Set<string>()
+  for (const wallId of wallIds) {
+    const wall = getWall(facadeState, wallId)
+    const buildingId = wall?.buildingId ?? findBuildingForWall(facadeState, wallId)?.id
+    if (buildingId) out.add(buildingId)
+  }
+  return [...out]
+}
+
 function applyState(nextState: FacadeState, nextEditor = editor) {
+  discardLiveGeometryPreview()
+  const openingDragWallIds = facade.peekOpeningDragWallIds()
+  facade.endLiveDrag()
   const prevState = state
   state = clampFacadeState(syncFloorPlansFromWalls(nextState))
   editor = normalizeEditor(state, nextEditor)
 
-  const labelOnly = facadeStateDiffersOnlyByWallLabels(prevState, state)
-  const rebuildIds = labelOnly ? [] : buildingIdsNeedingRebuild(prevState, state)
+  const openingDragCommit = openingDragWallIds.size > 0
+  const labelOnly =
+    !openingDragCommit && facadeStateDiffersOnlyByWallLabels(prevState, state)
+  let rebuildIds = labelOnly ? [] : buildingIdsNeedingRebuild(prevState, state)
+  if (openingDragCommit) {
+    const dragBuildingIds = buildingIdsForWallIds(state, openingDragWallIds)
+    if (dragBuildingIds.length === 0) {
+      rebuildIds = null
+    } else if (rebuildIds !== null) {
+      rebuildIds = [...new Set([...rebuildIds, ...dragBuildingIds])]
+    }
+  }
   const geometryUnchanged = rebuildIds !== null && rebuildIds.length === 0
   let geometryChanged = false
 
@@ -7681,7 +8101,7 @@ function applyState(nextState: FacadeState, nextEditor = editor) {
     facade.setState(state)
   }
 
-  if (!labelOnly && !geometryUnchanged) {
+  if (!labelOnly && (!geometryUnchanged || openingDragCommit)) {
     svgView.setState(state, editor)
   }
 
@@ -7692,7 +8112,7 @@ function applyState(nextState: FacadeState, nextEditor = editor) {
   syncSiteTransform()
   updateGroundPlane()
   syncCameraDistanceLimits()
-  if (geometryChanged) {
+  if (geometryChanged || openingDragCommit) {
     applySunLighting({ updateShadowMap: true })
   }
   if (currentView === 'front') {
@@ -7725,14 +8145,110 @@ function applyEditorSelection(nextEditor: EditorState) {
   markViewportDirty()
 }
 
+let liveGeomRaf = 0
+let liveGeomDirty = false
+/** `null` = voller Rebuild beim Flush. */
+let liveRebuildIds: string[] | null = []
+
+function mergeLiveRebuildIds(next: string[] | null): void {
+  if (liveRebuildIds === null || next === null) {
+    liveRebuildIds = null
+    return
+  }
+  if (next.length === 0) return
+  const set = new Set(liveRebuildIds)
+  for (const id of next) set.add(id)
+  liveRebuildIds = [...set]
+}
+
+function discardLiveGeometryPreview() {
+  if (liveGeomRaf) {
+    cancelAnimationFrame(liveGeomRaf)
+    liveGeomRaf = 0
+  }
+  liveGeomDirty = false
+  liveRebuildIds = []
+}
+
+function flushLiveGeometryPreview() {
+  liveGeomRaf = 0
+  if (!liveGeomDirty) return
+  liveGeomDirty = false
+  const ids = liveRebuildIds
+  liveRebuildIds = []
+  if (ids !== null && ids.length === 0) {
+    facade.setEditor(editor)
+    markViewportDirty()
+    return
+  }
+  if (ids === null) {
+    facade.setState(state, { livePreview: true })
+  } else {
+    facade.setState(state, { rebuildBuildingIds: ids, livePreview: true })
+  }
+  facade.setEditor(editor)
+  reapplyOpeningMotionPlayback()
+  reapplyRollerShutterPlayback()
+  updateWallLibraryGizmos()
+  markViewportDirty()
+}
+
+/**
+ * Live-Ziehen mit Geometrie-Änderung (z. B. Wand-Greifer): State sofort,
+ * Rebuild max. 1×/Frame, keine Shadow-Map/SVG/Persistenz.
+ * Verschieben von Objekten nutzt `previewMeshDrag` (nur Translation).
+ */
+function previewLiveState(nextState: FacadeState, nextEditor = editor) {
+  const prevState = state
+  state = clampFacadeState(syncFloorPlansFromWalls(nextState))
+  editor = normalizeEditor(state, nextEditor)
+  if (facadeStateDiffersOnlyByWallLabels(prevState, state)) {
+    facade.setState(state, { rebuildBuildingIds: [] })
+    facade.refreshWallLabels()
+    facade.setEditor(editor)
+    markViewportDirty()
+    return
+  }
+  mergeLiveRebuildIds(buildingIdsNeedingRebuild(prevState, state))
+  liveGeomDirty = true
+  if (!liveGeomRaf) {
+    liveGeomRaf = requestAnimationFrame(flushLiveGeometryPreview)
+  }
+}
+
 function commitState(nextState: FacadeState, nextEditor = editor) {
   editHistory.record(currentSnapshot())
   applyState(nextState, nextEditor)
-  if (!isGalleryModeActive()) scheduleFacadeHashWrite(state)
+  scheduleShareHashWrite()
 }
 
 function previewState(nextState: FacadeState, nextEditor = editor) {
-  applyState(nextState, nextEditor)
+  previewLiveState(nextState, nextEditor)
+}
+
+/**
+ * Verschieben: State sofort, Meshes nur translatieren (kein Ziegel-/CSG-Rebuild).
+ * Beim ersten Zug: Loch schließen, nur Öffnungs-Umriss schwebt (`beginOpeningDragMode`).
+ * `commitState`/`applyState` beim Loslassen schneidet Löcher neu und bäckt Schatten.
+ */
+function previewMeshDrag(nextState: FacadeState, nextEditor: EditorState, applyMeshes: () => void) {
+  state = clampFacadeState(nextState)
+  editor = normalizeEditor(state, nextEditor)
+  applyMeshes()
+  facade.setEditor(editor)
+  markViewportDirty()
+}
+
+function previewOpeningDrag(
+  nextState: FacadeState,
+  refs: OpeningRef[],
+  applyMeshes: () => void,
+) {
+  const dragStarted = facade.beginOpeningDragMode(refs)
+  previewMeshDrag(nextState, editor, applyMeshes)
+  if (dragStarted) {
+    applySunLighting({ updateShadowMap: true })
+  }
 }
 
 
@@ -7870,9 +8386,16 @@ function renderUi(opts?: { skipLayerList?: boolean }) {
       'wall',
       activeWallColor(),
       (color) => {
-        commitState(updateWallColors(state, scopedWallIds(), color, 'wallColor'))
+        const ids = scopedWallIds()
+        let next = updateWallColors(state, ids, color, 'wallColor')
+        next = updateWallColors(next, ids, color, 'claddingColor')
+        commitState(next)
       },
-      previewSelectionColor((color) => updateWallColors(state, scopedWallIds(), color, 'wallColor')),
+      previewSelectionColor((color) => {
+        const ids = scopedWallIds()
+        let next = updateWallColors(state, ids, color, 'wallColor')
+        return updateWallColors(next, ids, color, 'claddingColor')
+      }),
     )
     studioWallFinishSelect.value = wall.wallFinish === 'glossy' || wall.wallFinish === 'metal' ? wall.wallFinish : 'matte'
     renderColorSwatches(
@@ -9461,25 +9984,12 @@ function renderLayerList() {
               openingBtn.addEventListener('click', (e) => {
                 e.stopPropagation()
                 if (!isActive) activateBuilding(building.id)
-                const add = e.shiftKey || e.ctrlKey || e.metaKey
-                const newRefs = add
-                  ? [
-                      ...editor.selectedOpenings.filter(
-                        (r) => !(r.wallId === wall.id && r.openingId === opening.id),
-                      ),
-                      { wallId: wall.id, openingId: opening.id },
-                    ]
-                  : [{ wallId: wall.id, openingId: opening.id }]
-                applyState(state, {
-                  ...editor,
-                  selectedWallIds: [wall.id],
-                  selectedOpenings: newRefs,
-                  selectedOpeningPart: 'group',
-                  selectedRoofBuildingId: undefined,
-                  selectedRoofPart: undefined,
-                  selectedCeiling: undefined,
-                  selectedBuildingId: undefined,
-                })
+                selectOpening(
+                  wall.id,
+                  opening.id,
+                  e.shiftKey || e.ctrlKey || e.metaKey,
+                  'group',
+                )
               })
               const openingMoreBtn = createLayerMoreButton(openingContextItems(wall.id, opening.id))
               const openingRow = document.createElement('div')
@@ -9724,6 +10234,12 @@ function renderColorControl(
   if (!input) {
     input = document.createElement('input')
     input.type = 'color'
+    top.appendChild(input)
+  } else if (input.parentElement !== top) {
+    top.appendChild(input)
+  }
+  if (!input.dataset.colorControlBound) {
+    input.dataset.colorControlBound = '1'
     input.addEventListener('pointerdown', beginPick)
     input.addEventListener('input', () => {
       beginPick()
@@ -9738,9 +10254,6 @@ function renderColorControl(
       endPick()
       host.__colorPreview?.(null)
     })
-    top.appendChild(input)
-  } else if (input.parentElement !== top) {
-    top.appendChild(input)
   }
 
   const ensureRow = (space: string, label: string): HTMLDivElement => {
@@ -11353,7 +11866,7 @@ function selectedWindowOpening() {
 
 function syncWindowSillControls() {
   const sel = selectedWindowOpening()
-  const isWindow = Boolean(sel && sel.opening.type === 'window')
+  const isWindow = Boolean(sel && openingActsAsWindow(sel.opening))
   const isBasement = Boolean(sel && isBasementWindowOpening(sel.opening))
   const showSills = Boolean(isWindow && !isBasement && sel && sel.opening.y > 0)
   windowSillSection.hidden = !isWindow || isBasement
@@ -11793,7 +12306,9 @@ function isBasementWindowOpening(opening: { type: string; basementWindow?: { ena
 }
 
 function openingSupportsPediment(opening: { type: string; basementWindow?: { enabled?: boolean } }): boolean {
-  return (opening.type === 'window' || opening.type === 'door') && !isBasementWindowOpening(opening)
+  if (opening.type === 'cutout') return false
+  if (opening.type === 'window' && opening.basementWindow?.enabled) return false
+  return opening.type === 'window' || opening.type === 'door' || opening.type === 'conch'
 }
 
 function activeSelectionToolbar(): HTMLElement | null {
@@ -12029,12 +12544,14 @@ function syncSceneToolbarTabs() {
 function applyOpeningPartVisibility() {
   const part = editor.selectedOpeningPart ?? 'group'
   const sel = selectedWindowOpening()
-  const isWindow = sel?.opening.type === 'window'
+  const isWindow = sel?.opening.type === 'window' || Boolean(sel && openingActsAsWindow(sel.opening))
   const isDoor = sel?.opening.type === 'door'
   const lacksChrome = Boolean(sel && openingLacksWindowChrome(sel.opening))
+  const isConch = Boolean(sel && openingIsConch(sel.opening))
+  const hideFrameChrome = lacksChrome || isConch
   const isBasement = Boolean(sel && isBasementWindowOpening(sel.opening))
   const focusPart = part !== 'group'
-  const showFrame = !isBasement && !lacksChrome && (part === 'group' || part === 'frame' || part === 'grille')
+  const showFrame = !isBasement && !hideFrameChrome && (part === 'group' || part === 'frame' || part === 'grille')
   const showTrim = !isBasement && !lacksChrome && (part === 'group' || part === 'trim')
   let showSillInner = !isBasement && (part === 'group' || part === 'sillInner')
   let showSillOuter = !isBasement && (part === 'group' || part === 'sillOuter')
@@ -12073,7 +12590,7 @@ function applyOpeningPartVisibility() {
 
   const showSills = isWindow && !isBasement && (showSillInner || showSillOuter)
 
-  if (!showFrame || isBasement) {
+  if (!showFrame || isBasement || hideFrameChrome) {
     windowStyleSection.hidden = true
     const styleAcc = document.querySelector<HTMLElement>('#window-style-accordion')
     if (styleAcc) styleAcc.hidden = true
@@ -12150,7 +12667,7 @@ function applyOpeningPartVisibility() {
   if (archSection) archSection.hidden = Boolean(lacksChrome)
   if (fillSection) fillSection.hidden = false
   openingTypeSection.hidden = focusPart
-  if (lacksChrome) {
+  if (lacksChrome || isConch) {
     windowStyleSection.hidden = true
     const styleAcc = document.querySelector<HTMLElement>('#window-style-accordion')
     if (styleAcc) styleAcc.hidden = true
@@ -12168,7 +12685,7 @@ function applyOpeningPartVisibility() {
   const motionSection = document.querySelector<HTMLElement>('#opening-motion-section')
   if (motionSection) {
     motionSection.hidden =
-      Boolean(lacksChrome) || (!isWindow && !isDoor) || (focusPart && part !== 'frame')
+      lacksChrome || isConch || (!isWindow && !isDoor) || (focusPart && part !== 'frame')
   }
 
   const colorsSection = document.querySelector<HTMLElement>('#opening-colors-section')
@@ -12451,7 +12968,7 @@ function syncOpeningColorsHub() {
   }
 
   const showSillOuter = Boolean(
-    sel && sel.opening.type === 'window' && !isBasementWindowOpening(sel.opening) && sel.opening.y > 0,
+    sel && openingActsAsWindow(sel.opening) && !isBasementWindowOpening(sel.opening) && sel.opening.y > 0,
   )
   sillOuterColorHubSection.hidden = !showSillOuter
   if (showSillOuter && sel) {
@@ -12594,6 +13111,30 @@ function syncWindowOpenControls(
   }
 }
 
+function syncBasementWindowStyleUi(isBasement: boolean) {
+  const casement3 = document.querySelector<HTMLElement>('#window-casement-group [data-casements="3"]')
+  if (casement3) casement3.hidden = isBasement
+  const transomLabel = windowTransomInput.closest('label')
+  if (transomLabel) transomLabel.hidden = isBasement
+  if (isBasement) windowTransomOptions.hidden = true
+  const splitVSection = windowSplitVCountButtons[0]?.closest('.toolbar-group')
+  const splitHSection = windowSplitHCountButtons[0]?.closest('.toolbar-group')
+  if (splitVSection) splitVSection.hidden = isBasement
+  if (splitHSection) splitHSection.hidden = isBasement
+  for (const opt of windowPresetSelect.options) {
+    const preset = WINDOW_STYLE_PRESETS[opt.value as keyof typeof WINDOW_STYLE_PRESETS]
+    opt.hidden =
+      isBasement &&
+      Boolean(preset && (preset.transom || preset.bottomPanel || preset.casements > 2))
+  }
+  for (const button of windowMuntinVButtons) {
+    button.hidden = isBasement && Number(button.dataset.muntinV) > 1
+  }
+  for (const button of windowMuntinHButtons) {
+    button.hidden = isBasement && Number(button.dataset.muntinH) > 1
+  }
+}
+
 function syncWindowStyleSection() {
   const refs = selectedWindowRefsFromEditor()
   const accordion = document.querySelector<HTMLElement>('#window-style-accordion')
@@ -12612,10 +13153,7 @@ function syncWindowStyleSection() {
   // Option nur bei bereits aktivem Kellerfenster (nicht bei jedem EG-Fenster)
   windowBasementRow.hidden = !isBasement
   windowBasementEnabled.checked = isBasement
-  if (isBasement) {
-    windowStyleSection.hidden = true
-    if (accordion) accordion.hidden = true
-  }
+  syncBasementWindowStyleUi(isBasement)
   const config = gruenderzeitConfigForOpening(opening)
   const timber = resolveTimber(config.timber)
   const preset = detectWindowPreset(config)
@@ -13083,10 +13621,7 @@ sceneReflectionHideRoots.push(
   facade.lineGroup,
   placementGridGroup,
 )
-void preloadWallLabelFlatFont().then(() => {
-  facade.refreshWallLabels({ afterFontLoad: true })
-  applySunLighting({ updateShadowMap: true })
-})
+void bootstrapSceneLighting()
 buildLabelFontCards()
 facade.setLodSettings(lodSettings)
 applyPresentationMode()
@@ -13453,7 +13988,7 @@ function setFacadeMeshesVisible(visible: boolean) {
   facade.indoorFloorGroup.visible = visible
 }
 
-function syncTopCamera2() {
+function syncTopCamera2(opts?: { deferGrid?: boolean }) {
   planZoom = clampPlanZoom(planZoom)
   const width = viewportRenderWidth()
   const height = viewportRenderHeight()
@@ -13466,12 +14001,16 @@ function syncTopCamera2() {
     topViewYawDeg,
     sceneContentMaxY(),
   )
-  floorPlanView.syncGridToCamera(topCamera)
-  if (currentView === 'top') updateGroundPlane()
+  if (!opts?.deferGrid && !orbitLite) {
+    floorPlanView.syncGridToCamera(topCamera)
+  }
+  if (currentView === 'top' && !orbitLite) updateGroundPlane()
   if (currentView === 'top') markViewportDirty()
 }
 
 function panPlanByPixels(dx: number, dy: number) {
+  cancelViewZoomAnim()
+  beginViewNavLite()
   const width = viewportRenderWidth()
   const height = viewportRenderHeight()
   const halfW = (topCamera.right - topCamera.left) / 2
@@ -13487,7 +14026,7 @@ function panPlanByPixels(dx: number, dy: number) {
   const upZ = -cos
   planOffsetX -= dx * scaleX * rightX + dy * scaleY * upX
   planOffsetZ -= dx * scaleX * rightZ + dy * scaleY * upZ
-  syncTopCamera2()
+  syncTopCamera2({ deferGrid: orbitLite })
 }
 
 function syncTopView() {
@@ -14238,7 +14777,11 @@ windowBasementEnabled.addEventListener('change', () => {
       )
     }
   }
+  if (windowBasementEnabled.checked) {
+    next = updateOpeningGruenderzeit(next, refs, {})
+  }
   commitState(next)
+  syncWindowStyleSection()
 })
 
 openingNudgeLeft.addEventListener('click', () => nudgeSelectedOpenings(-STUDIO_MASONRY, 0))
@@ -14454,7 +14997,7 @@ function commitOpeningArchPatch(patch?: {
   spandrel?: 'bond' | 'rect'
   jambs?: boolean
 }) {
-  // Bogenform/-höhe: Fenster und Türen gemeinsam (nicht nur gleicher Typ / Einzelauswahl).
+  // Bogenform/-höhe: Gültigkeitsbereich (Auswahl = nur markierte Fenster/Türen).
   const refs = editArchOpeningTargets(state, editor, editScope, editFacadeYawFilter)
   if (refs.length === 0) return
   const voussoirs = patch?.voussoirs ?? openingArchVoussoirs.checked
@@ -14467,6 +15010,7 @@ function commitOpeningArchPatch(patch?: {
     if (patch?.form != null) form = patch.form
     else if (patch?.enabled === true && form === 'rect') form = 'round'
     else if (patch?.enabled === false) form = 'rect'
+    const formChanged = patch?.form != null && form !== (prev.form ?? 'rect')
     const nextArch: Parameters<typeof normalizeOpeningArch>[0] = {
       enabled: form !== 'rect',
       form,
@@ -14483,9 +15027,9 @@ function commitOpeningArchPatch(patch?: {
       // kein Stichmaß
     } else if (patch && 'riseCm' in patch) {
       if (patch.riseCm != null && patch.riseCm > 0) nextArch.riseCm = snapArchRiseCm(patch.riseCm)
-    } else if (prev.riseCm != null) {
+    } else if (!formChanged && prev.riseCm != null) {
       nextArch.riseCm = prev.riseCm
-    } else if (openingArchRise.dataset.manual === '1') {
+    } else if (!formChanged && openingArchRise.dataset.manual === '1') {
       const n = Number(openingArchRise.value)
       if (Number.isFinite(n) && n > 0) nextArch.riseCm = snapArchRiseCm(n)
     }
@@ -14821,11 +15365,20 @@ profileFlipForwardButton.addEventListener('click', () => {
 svgView.setWallsMoveHandler((positions, commit) => {
   if (commit) {
     finishDragUndo()
-    previewState(moveWalls(state, positions, { flush: true }), editor)
+    wallMoveDragBase = null
+    applyState(moveWalls(state, positions, { flush: true }), editor)
     return
   }
   beginDragUndo()
-  previewState(moveWalls(state, positions, { flush: false }), editor)
+  if (!wallMoveDragBase) wallMoveDragBase = cloneFacadeState(state)
+  const next = moveWalls(wallMoveDragBase, positions, { flush: false })
+  previewMeshDrag(next, editor, () => {
+    facade.applyLiveWallOffsets(
+      wallMoveDragBase!,
+      state,
+      positions.map((item) => item.id),
+    )
+  })
 })
 
 svgView.setOpeningSelectHandler((wallId, id, additive, openingPart) => {
@@ -14862,11 +15415,10 @@ svgView.setOpeningsMoveHandler((dx, dy, commit, source) => {
   for (const ref of refs) {
     next = moveOpening(next, ref.wallId, ref.openingId, dx, dy)
   }
-  state = next
-  facade.setState(state)
-  svgView.setState(state, editor)
+  previewOpeningDrag(next, refs, () => {
+    facade.applyLiveOpeningOffsets(openingDragBase!, state, refs)
+  })
   refreshOpeningGuides(source.wallId, source.openingId)
-  markViewportDirty()
 })
 
 function refreshOpeningGuides(wallId: string, openingId: string) {
@@ -14886,18 +15438,21 @@ function refreshOpeningGuides(wallId: string, openingId: string) {
     return o?.type === sourceOpening.type
   })
   const byWall = computeOpeningGuidesForRefs(getAllWalls(state), refs)
-  if (byWall.size === 0) {
+  const distByWall = computeOpeningDistanceLinesForRefs(getAllWalls(state), refs)
+  if (byWall.size === 0 && distByWall.size === 0) {
     facade.clearOpeningGuides()
     svgView.clearOpeningGuides()
     return
   }
-  const batch = [...byWall.entries()].map(([id, guides]) => ({
+  const wallIds = new Set([...byWall.keys(), ...distByWall.keys()])
+  const batch = [...wallIds].map((id) => ({
     wall: getWall(state, id)!,
     wallId: id,
-    guides,
+    guides: byWall.get(id) ?? [],
+    distanceLines: distByWall.get(id) ?? [],
   }))
-  facade.setOpeningGuidesBatch(batch.map(({ wall, guides }) => ({ wall, guides })))
-  svgView.setOpeningGuidesBatch(batch.map(({ wallId, guides }) => ({ wallId, guides })))
+  facade.setOpeningGuidesBatch(batch.map(({ wall, guides, distanceLines }) => ({ wall, guides, distanceLines })))
+  svgView.setOpeningGuidesBatch(batch.map(({ wallId, guides, distanceLines }) => ({ wallId, guides, distanceLines })))
 }
 
 const raycaster = new THREE.Raycaster()
@@ -15157,6 +15712,11 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
   return null
 }
 
+function isSelectablePickHit(hit: ReturnType<typeof pickFromEvent>): boolean {
+  if (!hit) return false
+  return Boolean(hit.wallId || hit.openingId || hit.ceiling)
+}
+
 
 function offsetStudioWallsByGrid(
   facadeState: FacadeState,
@@ -15255,7 +15815,15 @@ function tryStartBuildingDrag(event: PointerEvent): boolean {
 
 canvas.addEventListener('pointerdown', (event) => {
   if (currentView === 'front') {
-    if (event.button === 2 || event.button === 1 || (event.button === 0 && event.shiftKey)) {
+    if (event.button === 2 || event.button === 1) {
+      event.preventDefault()
+      frontPanActive = true
+      frontPanLastX = event.clientX
+      frontPanLastY = event.clientY
+      canvas.setPointerCapture(event.pointerId)
+      return
+    }
+    if (event.button === 0 && event.shiftKey && !isSelectablePickHit(pickFromEvent(event))) {
       event.preventDefault()
       frontPanActive = true
       frontPanLastX = event.clientX
@@ -15271,7 +15839,15 @@ canvas.addEventListener('pointerdown', (event) => {
       beginNav3d(event)
       return
     }
-    if (event.button === 1 || (event.button === 0 && event.shiftKey)) {
+    if (event.button === 1) {
+      event.preventDefault()
+      planPanActive = true
+      planPanLastX = event.clientX
+      planPanLastZ = event.clientY
+      canvas.setPointerCapture(event.pointerId)
+      return
+    }
+    if (event.button === 0 && event.shiftKey && !isSelectablePickHit(pickFromEvent(event))) {
       event.preventDefault()
       planPanActive = true
       planPanLastX = event.clientX
@@ -15442,11 +16018,17 @@ canvas.addEventListener('pointermove', (event) => {
     drag3dWallMove.lastDgx = dgx
     drag3dWallMove.lastDgz = dgz
     drag3dWallMove.lastWallIds = wallIds
-    previewState(next, {
-      ...editor,
-      selectedWallIds: wallIds,
-      selectedOpenings: [],
-    })
+    previewMeshDrag(
+      next,
+      {
+        ...editor,
+        selectedWallIds: wallIds,
+        selectedOpenings: [],
+      },
+      () => {
+        facade.applyLiveWallOffsets(drag3dWallMove!.startState, state, wallIds)
+      },
+    )
     updateWallMoveDockHighlight(wallIds)
     return
   }
@@ -15464,17 +16046,16 @@ canvas.addEventListener('pointermove', (event) => {
         const clampedY = Math.max(0, Math.min(wall.height, newY))
         const label = wallLabel(wall)
         if (clampedX !== label.x || clampedY !== label.y) {
-          const next = updateWallLabel(state, [drag3dLabel.wallId], {
+          if (!labelDragBase) labelDragBase = cloneFacadeState(state)
+          const next = updateWallLabel(labelDragBase, [drag3dLabel.wallId], {
             x: clampedX,
             y: clampedY,
           })
-          state = next
-          facade.setState(state)
-          facade.setEditor(editor)
-          svgView.setState(state, editor)
+          previewMeshDrag(next, editor, () => {
+            facade.applyLiveLabelOffset(labelDragBase!, state, drag3dLabel!.wallId)
+          })
           const updated = getWall(state, drag3dLabel.wallId)
           if (updated) syncLabelControls(updated)
-          markViewportDirty()
         }
       }
     }
@@ -15495,20 +16076,24 @@ canvas.addEventListener('pointermove', (event) => {
         const clampedY = Math.max(0, Math.min(wall.height, newY))
         const band = wallTrimBands(wall).find((item) => item.id === drag3dTrimBand!.bandId)
         if (band && clampedY !== band.yFromBottom) {
+          if (!trimDragBase) trimDragBase = cloneFacadeState(state)
           const next = patchWallTrimBand(
-            state,
+            trimDragBase,
             [drag3dTrimBand.wallId],
             drag3dTrimBand.bandId,
             { yFromBottom: clampedY },
             { anchorWallId: drag3dTrimBand.wallId, scope: 'element' },
           )
-          state = next
-          facade.setState(state)
-          facade.setEditor(editor)
-          svgView.setState(state, editor)
+          previewMeshDrag(next, editor, () => {
+            facade.applyLiveTrimOffset(
+              trimDragBase!,
+              state,
+              drag3dTrimBand!.wallId,
+              drag3dTrimBand!.bandId,
+            )
+          })
           const updated = getWall(state, drag3dTrimBand.wallId)
           if (updated) syncTrimBandsControls(updated)
-          markViewportDirty()
         }
       }
     }
@@ -15523,7 +16108,8 @@ canvas.addEventListener('pointermove', (event) => {
       if (local !== null) {
         const newX = Math.round((drag3dStartOpeningX + local.x - drag3dStartLocalHit.x) / STUDIO_MASONRY) * STUDIO_MASONRY
         const newY = Math.round((drag3dStartOpeningY + local.y - drag3dStartLocalHit.y) / STUDIO_MASONRY) * STUDIO_MASONRY
-        const opening = wall.openings.find(o => o.id === drag3dOpening!.openingId)
+        if (!openingDragBase) openingDragBase = cloneFacadeState(state)
+        const opening = wall.openings.find((item) => item.id === drag3dOpening!.openingId)
         if (opening && (newX !== opening.x || newY !== opening.y)) {
           const dx = newX - opening.x
           const dy = newY - opening.y
@@ -15535,13 +16121,11 @@ canvas.addEventListener('pointermove', (event) => {
           for (const ref of refs) {
             next = moveOpening(next, ref.wallId, ref.openingId, dx, dy)
           }
-          state = next
-          facade.setState(state)
-          facade.setEditor(editor)
-          svgView.setState(state, editor)
+          previewOpeningDrag(next, refs, () => {
+            facade.applyLiveOpeningOffsets(openingDragBase!, state, refs)
+          })
           refreshOpeningGuides(drag3dOpening!.wallId, drag3dOpening!.openingId)
           showWallFacePlacementGrid(placementGridGroup, wall)
-          markViewportDirty()
         }
       }
     }
@@ -15550,6 +16134,32 @@ canvas.addEventListener('pointermove', (event) => {
 })
 
 canvas.addEventListener('dblclick', (event) => {
+  if (currentView === 'front' && event.button === 0) {
+    event.preventDefault()
+    const { nx, ny } = canvasNdcFromClient(event.clientX, event.clientY)
+    const { halfW, halfH } = frontFrustumHalfExtents()
+    const factor = DBLCLICK_ZOOM_FACTOR
+    const nextPan = zoomPanOffsetsAtCursor({
+      nx,
+      ny,
+      factor,
+      panX: frontPanScreenX,
+      panY: frontPanScreenY,
+      halfW,
+      halfH,
+    })
+    startViewZoomAnim('front', {
+      frontZoom: clampFrontZoom(frontZoom * factor),
+      frontPanX: nextPan.panX,
+      frontPanY: nextPan.panY,
+    })
+    return
+  }
+  if (currentView === 'top' && event.button === 0) {
+    event.preventDefault()
+    startViewZoomAnim('top', planZoomTargetAtClient(event.clientX, event.clientY, DBLCLICK_ZOOM_FACTOR))
+    return
+  }
   if (currentView !== '3d' || !isGalleryModeActive() || event.button !== 0) return
   const hit = pickWallAtClient(event.clientX, event.clientY)
   if (!hit) return
@@ -15610,6 +16220,7 @@ canvas.addEventListener('pointerup', (event) => {
     }
     drag3dWallMove = null
     drag3dWallMoved = false
+    wallMoveDragBase = null
     clearWallDockPreview()
     if (currentView === '3d') controls.enabled = true
     if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId)
@@ -15628,6 +16239,7 @@ canvas.addEventListener('pointerup', (event) => {
     }
     drag3dLabel = null
     drag3dLabelMoved = false
+    labelDragBase = null
     drag3dWallPlane = null
     if (currentView === '3d') controls.enabled = true
     if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId)
@@ -15647,6 +16259,7 @@ canvas.addEventListener('pointerup', (event) => {
     }
     drag3dTrimBand = null
     drag3dTrimBandMoved = false
+    trimDragBase = null
     drag3dWallPlane = null
     if (currentView === '3d') controls.enabled = true
     if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId)
@@ -15669,6 +16282,7 @@ canvas.addEventListener('pointerup', (event) => {
     clearPlacementGridOverlay()
     commitState(state)
     drag3dOpening = null
+    openingDragBase = null
     drag3dWallPlane = null
     if (currentView === '3d') controls.enabled = true
     if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId)
@@ -16486,13 +17100,16 @@ bindSunSlider(
 // ─── Szene-Farben (Hintergrund / Untergrund / Himmel für Glas) ───────────────
 
 /** Setzt die Szenenfarben aus dem aktuellen sceneAppearance-Zustand (alle Ansichten). */
-function applySceneAppearance() {
+function applySceneAppearance(override?: Partial<SceneAppearance>) {
+  const appearance = override ? { ...sceneAppearance, ...override } : sceneAppearance
   const line = currentRenderStyle === 'line'
-  const bg = line ? '#ffffff' : sceneAppearance.background
-  const groundColor = line ? '#ffffff' : sceneAppearance.ground
+  const bg = line ? '#ffffff' : appearance.background
+  const groundColor = line ? '#ffffff' : appearance.ground
+  const skyColor = line ? '#ffffff' : appearance.skyReflection
   groundMat.color.set(groundColor)
-  setGlassSkyReflectionColor(line ? '#ffffff' : sceneAppearance.skyReflection)
+  setGlassSkyReflectionColor(skyColor)
   setGlassGroundReflectionColor(groundColor)
+  atmosphereSky.setGroundAlbedo(groundColor)
   applySceneBackground(scene, renderer, bg)
   const wantSky = !presentationUsesWorkLikeShading(presentationMode) && !line && currentView !== 'front'
   atmosphereSky.setVisible(wantSky)
@@ -16505,6 +17122,14 @@ function applySceneAppearance() {
   markViewportDirty()
 }
 
+function previewSceneAppearance(patch: Partial<SceneAppearance> | null) {
+  if (patch === null) {
+    applySceneAppearance()
+    return
+  }
+  applySceneAppearance(patch)
+}
+
 /** Spiegelt sceneAppearance zurück in die Farb-Inputs (RGB/HSL/HEX). */
 function syncSceneColorInputs() {
   if (isColorPickerSessionActive()) return
@@ -16513,27 +17138,49 @@ function syncSceneColorInputs() {
   const bgHost = hostOf(sceneBgColorInput)
   const groundHost = hostOf(sceneGroundColorInput)
   const skyHost = hostOf(sceneSkyColorInput)
-  if (allHost) renderColorControl(allHost, sceneAppearance.background, applyAllSceneColors)
-  if (bgHost) {
-    renderColorControl(bgHost, sceneAppearance.background, (hex) => {
-      sceneAppearance = { ...sceneAppearance, background: hex }
-      applySceneAppearance()
-      persistApp()
+  if (allHost) {
+    renderColorControl(allHost, sceneAppearance.background, applyAllSceneColors, (hex) => {
+      previewSceneAppearance(hex ? { background: hex, ground: hex, skyReflection: hex } : null)
     })
+  }
+  if (bgHost) {
+    renderColorControl(
+      bgHost,
+      sceneAppearance.background,
+      (hex) => {
+        sceneAppearance = { ...sceneAppearance, background: hex }
+        applySceneAppearance()
+        persistApp()
+        scheduleShareHashWrite()
+      },
+      (hex) => previewSceneAppearance(hex ? { background: hex } : null),
+    )
   }
   if (groundHost) {
-    renderColorControl(groundHost, sceneAppearance.ground, (hex) => {
-      sceneAppearance = { ...sceneAppearance, ground: hex }
-      applySceneAppearance()
-      persistApp()
-    })
+    renderColorControl(
+      groundHost,
+      sceneAppearance.ground,
+      (hex) => {
+        sceneAppearance = { ...sceneAppearance, ground: hex }
+        applySceneAppearance()
+        persistApp()
+        scheduleShareHashWrite()
+      },
+      (hex) => previewSceneAppearance(hex ? { ground: hex } : null),
+    )
   }
   if (skyHost) {
-    renderColorControl(skyHost, sceneAppearance.skyReflection, (hex) => {
-      sceneAppearance = { ...sceneAppearance, skyReflection: hex }
-      applySceneAppearance()
-      persistApp()
-    })
+    renderColorControl(
+      skyHost,
+      sceneAppearance.skyReflection,
+      (hex) => {
+        sceneAppearance = { ...sceneAppearance, skyReflection: hex }
+        applySceneAppearance()
+        persistApp()
+        scheduleShareHashWrite()
+      },
+      (hex) => previewSceneAppearance(hex ? { skyReflection: hex } : null),
+    )
   }
 }
 
@@ -16547,6 +17194,7 @@ function applyAllSceneColors(hex: string) {
   syncSceneColorInputs()
   applySceneAppearance()
   persistApp()
+  scheduleShareHashWrite()
   markViewportDirty()
 }
 
@@ -16877,7 +17525,7 @@ loadJsonInput.addEventListener('change', async () => {
 
 copyLinkButton.addEventListener('click', async () => {
   try {
-    const link = await copyFacadeLink(state)
+    const link = await copyFacadeLink(sharePayloadFromApp())
     showShareStatus(navigator.clipboard ? 'Link in Zwischenablage kopiert.' : `Link: ${link}`)
   } catch {
     showShareStatus('Link konnte nicht erstellt werden.')
@@ -16963,12 +17611,14 @@ window.addEventListener('keydown', (event) => {
   if (currentView === 'front') {
     if (event.key === '+' || event.key === '=' || event.key === 'NumpadAdd') {
       event.preventDefault()
+      beginViewNavLite()
       frontZoom = clampFrontZoom(frontZoom * (1 / 0.9))
       syncFrontCamera()
       return
     }
     if (event.key === '-' || event.key === 'NumpadSubtract') {
       event.preventDefault()
+      beginViewNavLite()
       frontZoom = clampFrontZoom(frontZoom * 0.9)
       syncFrontCamera()
       return
@@ -16986,12 +17636,14 @@ window.addEventListener('keydown', (event) => {
   if (currentView === 'top') {
     if (event.key === '+' || event.key === '=' || event.key === 'NumpadAdd') {
       event.preventDefault()
+      beginViewNavLite()
       planZoom = clampPlanZoom(planZoom * (1 / 0.9))
       syncTopCamera2()
       return
     }
     if (event.key === '-' || event.key === 'NumpadSubtract') {
       event.preventDefault()
+      beginViewNavLite()
       planZoom = clampPlanZoom(planZoom * 0.9)
       framePlanIfZoomedOut(0.9)
       syncTopCamera2()
@@ -17065,54 +17717,12 @@ if (typeof ResizeObserver !== 'undefined') {
 
 canvas.addEventListener('wheel', (event) => {
   if (currentView === 'front') {
-    event.preventDefault()
-    const rect = canvas.getBoundingClientRect()
-    const width = rect.width
-    const height = rect.height
-    const nx = ((event.clientX - rect.left) / width) * 2 - 1
-    const ny = -((event.clientY - rect.top) / height) * 2 + 1
-    applyFrontCameraView({ panOnly: true })
-    const halfW = (frontCamera.right - frontCamera.left) / 2
-    const halfH = (frontCamera.top - frontCamera.bottom) / 2
-    const cursorPanX = frontPanScreenX + nx * halfW
-    const cursorPanY = frontPanScreenY + ny * halfH
-    const factor = event.deltaY > 0 ? 0.9 : 1 / 0.9
-    frontZoom = clampFrontZoom(frontZoom * factor)
-    const halfWNew = halfW / factor
-    const halfHNew = halfH / factor
-    frontPanScreenX = cursorPanX - nx * halfWNew
-    frontPanScreenY = cursorPanY - ny * halfHNew
-    syncFrontCamera()
+    queueViewWheelZoom(event, 'front')
     return
   }
-  if (currentView !== 'top') return
-  event.preventDefault()
-
-  const rect = canvas.getBoundingClientRect()
-  const width = rect.width
-  const height = rect.height
-  const aspect = width / Math.max(height, 1)
-  const nx = ((event.clientX - rect.left) / width) * 2 - 1
-  const ny = -((event.clientY - rect.top) / height) * 2 + 1
-  const span = (PLAN_VIEW_SIZE + PLAN_GRID) / planZoom
-  const halfW = span / 2
-  const halfH = halfW / (aspect > 0 ? aspect : 1)
-  const cx = PLAN_VIEW_SIZE / 2 + planOffsetX
-  const cz = PLAN_VIEW_SIZE / 2 + planOffsetZ
-  const worldX = cx + nx * halfW
-  const worldZ = cz - ny * halfH
-
-  const factor = event.deltaY > 0 ? 0.9 : 1 / 0.9
-  planZoom = clampPlanZoom(planZoom * factor)
-  framePlanIfZoomedOut(factor)
-
-  const spanNew = (PLAN_VIEW_SIZE + PLAN_GRID) / planZoom
-  const halfWNew = spanNew / 2
-  const halfHNew = halfWNew / (aspect > 0 ? aspect : 1)
-  planOffsetX = worldX - nx * halfWNew - PLAN_VIEW_SIZE / 2
-  planOffsetZ = worldZ + ny * halfHNew - PLAN_VIEW_SIZE / 2
-
-  syncTopCamera2()
+  if (currentView === 'top') {
+    queueViewWheelZoom(event, 'top')
+  }
 }, { passive: false })
 
 window.addEventListener('blur', () => {
@@ -17202,16 +17812,20 @@ function animate() {
     // Auch während Orbit: Gizmos an der Wand halten (nicht mit der Kamera mitschwimmen).
     updateWallLibraryGizmos()
   } else if (currentView === 'front') {
-    if (!viewportDirty && !sunPathAnimating && !openingMotionPlayback && !rollerShutterPlayback) return
+    if (!viewportDirty && !viewZoomAnim && !sunPathAnimating && !openingMotionPlayback && !rollerShutterPlayback) return
     viewportDirty = false
     renderer.render(scene, frontCamera)
-    updateWallLibraryGizmos()
+    if (!orbitLite) updateWallLibraryGizmos()
   } else if (currentView === 'top') {
-    if (!viewportDirty && !openingMotionPlayback && !rollerShutterPlayback) return
+    if (!viewportDirty && !viewZoomAnim && !openingMotionPlayback && !rollerShutterPlayback) return
     viewportDirty = false
-    renderLitSceneFrame(topCamera)
+    if (orbitLite) {
+      renderer.render(scene, topCamera)
+    } else {
+      renderLitSceneFrame(topCamera)
+    }
     updateViewCompass()
-    updateWallLibraryGizmos()
+    if (!orbitLite) updateWallLibraryGizmos()
   }
 }
 
@@ -18022,22 +18636,48 @@ wallCorniceOffsetForward.addEventListener('change', () => {
 })
 
 function commitWindowDepthOffset(input: HTMLInputElement) {
-  const value = Number(input.value)
-  const depth = Number.isFinite(value) ? value : DEFAULT_WINDOW_DEPTH_OFFSET
-  const refs = scopedOpeningRefs()
+  const raw = Number(input.value)
+  if (!Number.isFinite(raw)) return
+  const facadeDepthCm = raw
+  const refs = scopedOpeningRefs().filter((ref) => {
+    const wall = getWall(state, ref.wallId)
+    const opening = wall?.openings.find((item) => item.id === ref.openingId)
+    return opening?.type === 'window' || opening?.type === 'door'
+  })
   if (refs.length > 0) {
     let next = state
     for (const ref of refs) {
-      next = updateOpening(next, ref.wallId, ref.openingId, { depthOffset: depth })
+      const wall = getWall(state, ref.wallId)
+      const opening = wall?.openings.find((item) => item.id === ref.openingId)
+      if (!opening) continue
+      const depthOffset = depthOffsetFromFacadeDepthCm(facadeDepthCm, opening)
+      next = updateOpening(next, ref.wallId, ref.openingId, { depthOffset })
     }
     commitState(next)
+    syncWindowDepthControls()
     return
   }
   commitState(
     updateActiveBuilding(state, {
-      windowDepthOffset: depth,
+      windowDepthOffset: buildingDepthOffsetFromFacadeDepthCm(facadeDepthCm),
     }),
   )
+  syncWindowDepthControls()
+}
+
+function resetOpeningWindowDepth() {
+  const refs = scopedOpeningRefs().filter((ref) => {
+    const wall = getWall(state, ref.wallId)
+    const opening = wall?.openings.find((item) => item.id === ref.openingId)
+    return opening?.type === 'window' || opening?.type === 'door'
+  })
+  if (refs.length === 0) return
+  let next = state
+  for (const ref of refs) {
+    next = updateOpening(next, ref.wallId, ref.openingId, { depthOffset: undefined })
+  }
+  commitState(next)
+  syncWindowDepthControls()
 }
 
 openingWindowDepthOffset.addEventListener('change', () => {
@@ -18045,6 +18685,9 @@ openingWindowDepthOffset.addEventListener('change', () => {
 })
 openingWindowDepthOffset.addEventListener('input', () => {
   commitWindowDepthOffset(openingWindowDepthOffset)
+})
+openingWindowDepthReset.addEventListener('click', () => {
+  resetOpeningWindowDepth()
 })
 
 viewport.addEventListener('dragover', (event) => {

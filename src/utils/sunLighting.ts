@@ -65,21 +65,27 @@ export function intensityFromElevation(elevationRad: number): number {
   return Math.round((1.0 + 2.5 * t) * 10) / 10
 }
 
-export const DEFAULT_SUN_SHADOW_SOFTNESS = 2.5
-export const DEFAULT_SUN_COLOR_TEMP = 4000
-export const DEFAULT_SUN_AMBIENT = 0.32
-export const DEFAULT_SUN_SHADOW_CONTRAST = 1.4
+export const DEFAULT_SUN_TIME_OF_DAY = 13.25
+export const DEFAULT_SUN_AZIMUTH = 210
+export const DEFAULT_SUN_INTENSITY = 3.9
+export const DEFAULT_SUN_SHADOW_SOFTNESS = 5
+export const DEFAULT_SUN_COLOR_TEMP = 4500
+export const DEFAULT_SUN_AMBIENT = 0.53
+export const DEFAULT_SUN_SHADOW_CONTRAST = 1.5
 export const DEFAULT_SUN_SHADOW_DENSITY = 0.55
-/** Mittagssonne ~ Juni in Berlin (näherungsweise; wird beim ersten Solar-Sync präzisiert). */
-export const DEFAULT_SUN_ELEVATION_RAD = 1.05
 
 const today = todayMonthDay()
+/** Sonnenhöhe für Standard-Tageszeit (Berlin, heutiges Datum). */
+export const DEFAULT_SUN_ELEVATION_RAD = solarPosition(
+  dayOfYearFromMonthDay(today.month, today.day),
+  DEFAULT_SUN_TIME_OF_DAY,
+).elevationRad
 
 export const DEFAULT_SUN_SETTINGS: SunSettings = {
-  azimuth: 180,
+  azimuth: DEFAULT_SUN_AZIMUTH,
   elevationRad: DEFAULT_SUN_ELEVATION_RAD,
-  timeOfDay: 12,
-  intensity: 2.4,
+  timeOfDay: DEFAULT_SUN_TIME_OF_DAY,
+  intensity: DEFAULT_SUN_INTENSITY,
   shadowSoftness: DEFAULT_SUN_SHADOW_SOFTNESS,
   colorTemperature: DEFAULT_SUN_COLOR_TEMP,
   ambient: DEFAULT_SUN_AMBIENT,

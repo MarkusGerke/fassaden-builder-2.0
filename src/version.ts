@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.1'
+export const APP_VERSION = '2.0.24'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,216 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.24',
+    date: '2026-09-01',
+    title: 'Eingangstreppe mit Schatten',
+    changes: [
+      'Eingangstreppe empfängt Werf- und Selbstschatten in der 3D-Ansicht — Stufen wirken nicht mehr flach',
+      'Shadow-Acne auf Stufen vermieden (FrontSide bei DoubleSide-Material)',
+    ],
+  },
+  {
+    version: '2.0.23',
+    date: '2026-09-01',
+    title: 'Fenstertiefe pro Öffnung',
+    changes: [
+      'Frontlage (cm von Außenkante) je Fenster/Tür einstellbar — unter Maße in der Öffnungs-Sidebar',
+      'Gebäude-Standard-Button stellt die gemeinsame Fallback-Tiefe wieder her',
+      'Anzeige als effektive Tiefe (24 cm Laibung + Offset), nicht nur als internes Offset',
+    ],
+  },
+  {
+    version: '2.0.22',
+    date: '2026-09-01',
+    title: 'Konche-Dekor, Keller-Auswahl, Fassadenfarbe',
+    changes: [
+      'Konche: Fensterbank, Profile und Verdachung in der Sidebar und 3D wie bei Fenstern',
+      'Kellerfenster: bei Fassade/Etage/Typ werden nur noch Kellerfenster mitbearbeitet — normale Fenster bleiben unberührt',
+      'Auswahl (Bogen): nur markierte Öffnungen, nicht mehr alle Fenster der Wand',
+      'Wandfarbe setzt Paneel-Farbe mit — einheitliches Weiß auf allen Etagen im Fassaden-Gültigkeitsbereich',
+    ],
+  },
+  {
+    version: '2.0.21',
+    date: '2026-09-01',
+    title: '2D-Navigation schneller & animierter Doppelklick-Zoom',
+    changes: [
+      'Zoom und Pan in 2D-Front und Oben-Ansicht: gecachtes Kamera-Layout statt teurer Wand-Neuberechnung pro Frame — spürbar flüssiger',
+      'Während Navigation: leichtes Rendering (Oben-Ansicht ohne Reflexionen/Himmel), Raster-Update erst nach Stillstand',
+      'Doppelklick-Zoom animiert weich (~280 ms) zum Klickpunkt',
+    ],
+  },
+  {
+    version: '2.0.20',
+    date: '2026-09-01',
+    title: 'Abstandslinien beim Verschieben',
+    changes: [
+      'Beim Verschieben von Fenstern/Türen: gelbe Maßlinien zeigen den Abstand in cm zum nächsten Objekt (links, rechts, oben, unten)',
+      'Abstand zur Wandkante oder zur nächsten Nachbar-Öffnung — in 2D mit cm-Label, in 3D als Maßlinie mit Endstrichen',
+    ],
+  },
+  {
+    version: '2.0.19',
+    date: '2026-09-01',
+    title: '2D-Zoom flüssig & Doppelklick',
+    changes: [
+      'Mausrad-Zoom in der 2D-Front: gebündelt pro Frame, exponentiell statt fester Stufen — flüssiger auf Trackpad und Maus',
+      'Während Zoomen/Pannen: Orbit-Lite (Pixelratio 1) wie in 3D — weniger Ruckler',
+      'Doppelklick in 2D-Front und Oben-Ansicht zoomt zum Klickpunkt (2×)',
+    ],
+  },
+  {
+    version: '2.0.18',
+    date: '2026-09-01',
+    title: 'Einheitliche Fassade ohne Etagenstreifen',
+    changes: [
+      'Zwischendecken werfen keine Schatten mehr auf die Außenfassade (nur Innen-Shadow-Layer)',
+      'Beim Etagen-Kopieren ohne Sockel wird die Sockelhöhe auf 0 gesetzt — gleiches Paneel-Raster auf allen Etagen',
+    ],
+  },
+  {
+    version: '2.0.17',
+    date: '2026-09-01',
+    title: 'Teilen-Link: Farben & Kompass',
+    changes: [
+      'Der Teilen-Link speichert Bodenfarbe, Hintergrund, Himmelsfarbe und die gewählte Kompass-Ausrichtung mit',
+      'Alte Links ohne diese Felder funktionieren weiter — es gelten die Standardwerte',
+    ],
+  },
+  {
+    version: '2.0.16',
+    date: '2026-09-01',
+    title: 'Shift-Mehrfachauswahl im Viewport',
+    changes: [
+      'Front- und Oben-Ansicht: Shift+Klick auf Wand oder Öffnung ergänzt die Mehrfachauswahl statt zu pannen',
+      'Shift+Klick auf leeren Bereich verschiebt die Ansicht wie bisher',
+      'Ebenenbaum: Shift/Ctrl/Cmd+Klick auf Öffnungen toggelt die Auswahl wie im Viewport',
+    ],
+  },
+  {
+    version: '2.0.15',
+    date: '2026-09-01',
+    title: 'Decke bündig mit Wandoberkante',
+    changes: [
+      'Zwischendecke ragte 8 cm über die Wandoberkante — Oberseite liegt jetzt bündig auf der Wandoberkante',
+    ],
+  },
+  {
+    version: '2.0.14',
+    date: '2026-09-01',
+    title: 'Kellerfenster-Teilung & Einstellungen scrollen',
+    changes: [
+      'Kellerfenster: Fensterteilung wieder wählbar — max. 2 Flügel, kein Oberlicht, keine Raster-Teilung, max. 1 Sprosse',
+      'Rechte Einstellungs-Spalte scrollt wieder, wenn der Inhalt höher als der Bildschirm ist',
+    ],
+  },
+  {
+    version: '2.0.13',
+    date: '2026-09-01',
+    title: 'Bogenform: Stichmaß beim Wechsel',
+    changes: [
+      'Wechsel der Bogenform (z. B. Stichbogen → Rundbogen) setzt das Stichmaß auf den Form-Standard — kein verzerrter Mini-Halbkreis mehr',
+    ],
+  },
+  {
+    version: '2.0.12',
+    date: '2026-09-01',
+    title: 'Fensterschatten nach Reload',
+    changes: [
+      'Shadow-Map wird erst nach geladenen Fenster-Meshes berechnet — Schatten auf Rahmen fehlen nach Seiten-Reload nicht mehr',
+      'Sonnenwinkel-Slider war bisher nötig, um die korrekte Weichheit zu erzwingen',
+    ],
+  },
+  {
+    version: '2.0.11',
+    date: '2026-09-01',
+    title: 'Szenenfarben wieder sichtbar',
+    changes: [
+      'Farb-Picker für Hintergrund, Boden und Himmel reagieren wieder (Event-Listener auch bei vorgefertigten Inputs)',
+      'Live-Vorschau beim Ziehen; Bodenfarbe wirkt auch am atmosphärischen Horizont',
+    ],
+  },
+  {
+    version: '2.0.10',
+    date: '2026-09-01',
+    title: 'Neue Licht-Standardwerte',
+    changes: [
+      'Standard-Licht: 13:15, Sonnenwinkel 210°, Sonnenlicht 3,9, Umgebungslicht 0,53, Schatten-Kontrast 1,50, Weichheit 5,0, Farbtemperatur 4500 K',
+      'Beim App-Start wird nur noch das Datum auf heute gesetzt — gespeicherte und Standard-Lichtwerte bleiben erhalten',
+    ],
+  },
+  {
+    version: '2.0.9',
+    date: '2026-09-01',
+    title: 'Fensterschatten nach dem Verschieben',
+    changes: [
+      'Nach dem Platzieren einer Öffnung empfangen die Fensterrahmen wieder Gesims- und Profilschatten',
+    ],
+  },
+  {
+    version: '2.0.8',
+    date: '2026-09-01',
+    title: 'Fensterziehen: Schatten nach Platzieren',
+    changes: [
+      'Nach dem Loslassen werden betroffene Gebäude neu gebaut und die Schatten-Map aktualisiert — Fensterschatten bleiben erhalten',
+    ],
+  },
+  {
+    version: '2.0.7',
+    date: '2026-09-01',
+    title: 'Ziehen: kein stehender Schatten',
+    changes: [
+      'Beim Start des Fensterziehens wird die Schatten-Map einmal neu berechnet — kein „Geisterschatten“ an der alten Position',
+      'Schatten-Tunnel der betroffenen Wand wirft während des Ziehens nicht',
+    ],
+  },
+  {
+    version: '2.0.6',
+    date: '2026-09-01',
+    title: 'Drag-Ghost: Form, Füllung, kein Schatten',
+    changes: [
+      'Orangefarbene Öffnungsmaske sitzt auf der Fassadenfläche (exakte Bogenform), Füllung und Kontur deckungsgleich',
+      'Ausgeblendete Fenster/Profile werfen beim Ziehen keinen Schatten mehr',
+    ],
+  },
+  {
+    version: '2.0.5',
+    date: '2026-09-01',
+    title: 'Ziehen: Öffnungsmaske ohne Schatten',
+    changes: [
+      'Beim Verschieben: orangefarbene Ghost-Form folgt der echten Öffnungskontur (Bogen, Stadion, Rechteck) — kein Werfschatten',
+    ],
+  },
+  {
+    version: '2.0.4',
+    date: '2026-09-01',
+    title: 'Fensterziehen: nur Umriss',
+    changes: [
+      'Beim Verschieben: Profile, Bänke und Fenster-Detail ausgeblendet — nur die orangefarbene Öffnungsform schwebt vor der Wand',
+      'Ladeanimation „Haus vom Nikolaus“: flüssiger Loop ohne Eckpunkte und ohne abgebrochene Pfade',
+    ],
+  },
+  {
+    version: '2.0.3',
+    date: '2026-09-01',
+    title: 'Fenster schwebt beim Verschieben',
+    changes: [
+      'Beim Ziehen schließt die Wandöffnung einmalig; Fenster, Bänke und Verdachung schweben 48 cm vor der Fassade',
+      'Keine Schatten-Neuberechnung während des Ziehens — Loch und Schatten sitzen nach dem Loslassen wieder passgenau',
+      'Flüssige Mesh-Verschiebung bleibt erhalten',
+    ],
+  },
+  {
+    version: '2.0.2',
+    date: '2026-09-01',
+    title: 'Objekte flüssig verschieben',
+    changes: [
+      'Fenster, Wände, Zierband und Schrift folgen der Maus per Mesh-Verschiebung — ohne Ziegel-Rebuild während des Ziehens',
+      'Mauerwerk-Loch und Schatten sitzen nach dem Loslassen wieder passgenau',
+      'Klick-Auswahl bleibt unverändert schnell',
+    ],
+  },
   {
     version: '2.0.1',
     date: '2026-09-01',

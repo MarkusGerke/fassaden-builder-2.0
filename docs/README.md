@@ -28,7 +28,7 @@
 | [credits.md](credits.md) | Quellen, Lizenzen, Danksagung |
 | [fonts.md](fonts.md) | Fassaden-Schriften, Vorschaukarten, Peter-Wiegel-Lizenzen |
 | [migration.md](migration.md) | Fassaden-Schema-Leiter, Hydrate, Migrations-Checkliste |
-| [performance.md](performance.md) | LOD, **Entwurf/Vorschau/Render**-Darstellung, Dirty-Rendering/Navigation, Schatten-Optimierung, Debug-Overlay, inkrementeller Rebuild |
+| [performance.md](performance.md) | LOD, **Entwurf/Vorschau/Render**-Darstellung, Dirty-Rendering/Navigation, Live-Ziehen mit schwebendem Fenster (v2.0.3), Schatten-Optimierung, Debug-Overlay, inkrementeller Rebuild |
 
 ## Schnellreferenz
 

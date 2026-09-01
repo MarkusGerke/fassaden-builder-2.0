@@ -22,7 +22,7 @@ OrbitControls am Canvas. Unmodifizierter Rechtsklick ist **Kontextmenü**, nicht
 
 | Geste | Aktion |
 |---|---|
-| Linksklick / Ziehen | Auswahl, Öffnung verschieben; OrbitControls dreht **nicht** (Capture-Phase fängt unmodifiziertes LMB ab) |
+| Linksklick / Ziehen | Auswahl, Öffnung verschieben (v2.0.4: nur orangefarbener Öffnungs-Umriss schwebt; Profile/Bänke aus); OrbitControls dreht **nicht** (Capture-Phase fängt unmodifiziertes LMB ab) |
 | **Cmd/Ctrl + Linksklick** ziehen | Orbit um `controls.target` (eigene Rotation via `rotateLeft`/`rotateUp`, nicht Three.js ⌘=Pan) |
 | **Cmd/Ctrl + Shift + Linksklick** ziehen | Schwenken (Pan mit `keyPanSpeed`, gleiche Skala wie Pfeiltasten) |
 | **Rechtsklick** | Kontextmenü (kein Pan) |
@@ -69,7 +69,17 @@ Haken: Canvas 3D/2D (`pickFromEvent`), SVG (`FacadeSvgView` `contextmenu`), Laye
 
 ## URL-Hash live (`src/utils/share.ts`)
 
-Nach `commitState` (nicht bei Drag-`previewState`) schreibt `scheduleFacadeHashWrite` den Fassadenstand debounced (~400 ms) nach `#f=`. Generation-Token verhindert, dass ein langsamer Gzip einen neueren Stand überschreibt. localStorage speichert zusätzlich View, Sonne, Auswahl.
+Nach `commitState` (nicht bei Drag-`previewState`) schreibt `scheduleShareHashWrite` den Stand debounced (~1200 ms) nach `#f=`. Generation-Token verhindert, dass ein langsamer Gzip einen neueren Stand überschreibt. localStorage speichert zusätzlich View, Sonne, Auswahl.
+
+**Hash-Inhalt (`SharePayload`):**
+
+| Feld | Typ | Inhalt |
+|---|---|---|
+| `facade` | `FacadeState` | Gebäude, Wände, Öffnungen (wie bisher) |
+| `scene` | `SceneAppearance` | Hintergrund, Bodenfarbe, Himmelsfarbe, Strichstärke (optional) |
+| `viewYaw` | `number` | Kompass-/Seitenansicht in Grad, 45°-Raster (optional) |
+
+Alte Links ohne Wrapper (`{ facade }`) oder nur mit reiner `FacadeState`-JSON werden weiter gelesen; fehlende `scene`/`viewYaw` → Defaults (`DEFAULT_SCENE_APPEARANCE`, Nord/0°).
 
 Reload: Hash `#f=` hat Vorrang vor localStorage.
 
@@ -87,7 +97,7 @@ Defaults in `src/constants/colorPalettes.ts`:
 | `DEFAULT_GLASS_COLOR` | `transparent` | Glas (Klarglas; physisch `#ffffff` + EnvMap) |
 | `DEFAULT_PROFILE_COLOR` | `#c4b49a` | Gesims/Profile |
 
-Sonne (`DEFAULT_SUN_SETTINGS`): **heutiges Datum**, 12:00 (Berlin). Beim Start setzt `applyTodaySunDate` Monat/Tag auf heute und den Solar-Look. **Datum + Tageszeit** (0:00–24:00) setzen Azimut, Elevation, Intensität, Weichheit und Farbtemperatur aus dem Berlin-Sonnenstand (`applySolarLook: true`). **Sonnenwinkel**, **Sonnenlicht**, **Umgebungslicht**, **Schatten-Kontrast**, **Schatten-Dunkelheit**, **Schatten-Weichheit** und **Farbtemperatur** sind manuell. Slider Intensität 0,3…**8**. Umgebungslicht (Hemisphere) Default **0,32**, Kontrast **1,4**, Dunkelheit **0,55**. Persistierte Saves behalten eigene Lichtwerte; das Datum wird beim Laden auf heute gesetzt.
+Sonne (`DEFAULT_SUN_SETTINGS`): **heutiges Datum**, **13:15** (13,25 h), Sonnenwinkel **210°**, Sonnenlicht **3,9**, Umgebungslicht **0,53**, Schatten-Kontrast **1,50**, Schatten-Weichheit **5,0**, Farbtemperatur **4500 K**. Beim Start setzt `applyTodaySunDate` nur Monat/Tag auf heute — die Standard-Lichtwerte bleiben erhalten. **Datum + Tageszeit** (0:00–24:00) setzen beim manuellen Anpassen Azimut, Elevation, Intensität, Weichheit und Farbtemperatur aus dem Berlin-Sonnenstand (`applySolarLook: true`). **Sonnenwinkel**, **Sonnenlicht**, **Umgebungslicht**, **Schatten-Kontrast**, **Schatten-Dunkelheit**, **Schatten-Weichheit** und **Farbtemperatur** sind sonst manuell. Slider Intensität 0,3…**8**. Schatten-Dunkelheit (Legacy) Default **0,55**. Persistierte Saves behalten eigene Lichtwerte; das Datum wird beim Laden auf heute gesetzt.
 
 ### Szene-Farben (`SceneAppearance`, `src/utils/persistence.ts`)
 
@@ -96,12 +106,12 @@ Im Akkordeon **Szene** (rechte Leiste) drei Farb-Inputs, gespeichert unter `Pers
 | Input | Feld | Default | Wirkung |
 |---|---|---|---|
 | `#scene-all-color` | alle drei | `#ffffff` | Setzt Hintergrund, Untergrund und Himmelsfarbe gemeinsam. |
-| `#scene-bg-color` | `background` | `#ffffff` | Hintergrund in **3D** und **Oben** (`scene.background`, Viewport-CSS) und Horizont des Himmelsdoms. 2D-Front: SVG-Hintergrund. |
-| `#scene-ground-color` | `ground` | `#ffffff` | Bodenplatte (Albedo). Lichtfarbe kommt von der Sonne wie beim Mauerwerk — nicht von der Himmelsfarbe. |
-| `#scene-sky-color` | `skyReflection` | `#3A6084` | Hemisphere-Himmel (`hemiLight.color`), Himmelsdom-Zenit, Glas-EnvMap und CubeCamera-Himmelssphäre. Alter Default `#ffffff` wird beim Laden ersetzt, sofern nicht bewusst eine andere Farbe gesetzt wurde. |
+| `#scene-bg-color` | `background` | `#ffffff` | Viewport-Hintergrund (Aufriss, Entwurf/Vorschau). In **Render**/3D liegt der physikalische Himmel davor — dort wirkt die Farbe nur am Rand außerhalb der Zeichenfläche. |
+| `#scene-ground-color` | `ground` | `#ffffff` | Bodenplatte (Albedo) und atmosphärischer Horizont unter dem Himmel. |
+| `#scene-sky-color` | `skyReflection` | `#3A6084` | Hemisphere-Himmel, Glas-EnvMap und Lichtstimmung. Alter Default `#ffffff` wird beim Laden ersetzt, sofern nicht bewusst eine andere Farbe gesetzt wurde. |
 | `#scene-line-stroke` / `#view-line-stroke-row` | `lineStrokeScale` | `1` | Multiplikator für Linienstärke im Stil **Zeichnung** (2D-SVG, 3D-Kanten via `LineSegments2`, Grundriss-Kanten). Steuerung oben links in der Zeichenfläche (`#view-line-stroke-row`), sichtbar nur bei aktivem Stil Zeichnung. |
 
-Anwendung über `applySceneAppearance()` — setzt Hintergrund, Boden, Glas-EnvMap und aktualisiert die Hemisphere-Lichter (`applySunSettings` mit `sceneColors`). EnvMap-Bake läuft in 3D und Oben (`renderLitSceneFrame`). Im Stil **Zeichnung** werden alle drei Farben auf Weiß gezwungen.
+Anwendung über `applySceneAppearance()` — setzt Hintergrund, Boden, Glas-EnvMap und aktualisiert die Hemisphere-Lichter. Farb-Picker (auch vorgefertigte `<input type="color">` in `index.html`) haben Live-Vorschau während des Ziehens (v2.0.11).
 
 Rahmen-/Glas-Farben in der **Öffnungs-Toolbar** (`#frame-color-swatches`) über `<input type="color">` plus **RGB-, HSL- und HEX-Felder untereinander** (kein Format-Dropdown). Gleiches gilt für **Szene** (Alle drei / Hintergrund / Untergrund / Himmel) und **Nebel**. Bei Glas zusätzlich Button **Transparent**. Wand-, Fugen-, Profil-, Gesims- und Dachziegel-Farben ebenfalls. Die Inputs werden bei UI-Sync **wiederverwendet**; während eines aktiven Pickers (`activeColorPickerCount`) wird `renderUi` nicht für Farb-Hosts aufgerufen. Hover-Livevorschau (`previewSelectionColor`) aktualisiert nur 3D/2D, kein vollständiges `renderUi`.
 
@@ -167,7 +177,7 @@ Das Fenster bleibt 24 cm hinter der Wandkörper-Außenkante; die Leibung holt di
 
 | Geschossgrenze | Y-Position |
 |---|---|
-| Decke EG / Boden OG1 | Wandoberkante der Etage (`storeyTopY`, max. `wall.y + wall.height`) — **Unterseite** der 8-cm-Platte |
+| Decke EG / Boden OG1 | Wandoberkante der Etage (`storeyTopY`, max. `wall.y + wall.height`) — **Oberseite** der 8-cm-Platte (`y = storeyTopY − INDOOR_SLAB_THICKNESS`) |
 | Fußboden EG / OG | Wandunterkante der Etage (`storeyBottomY`, min. `wall.y`) — **Unterseite** der 8-cm-Platte |
 
 Meshes sind per `userData.indoorRole` (`ceiling` \| `floor`) und `userData.kind` getaggt sowie `buildingId` / `floorIndex`. Nur Decken werfen Schatten; Böden empfangen.
@@ -278,7 +288,7 @@ Daten: `splitVCount` / `splitVRatio` / `splitHCount` / `splitHRatio` / `paneMunt
 
 ## Kellerfenster
 
-Kurz: Preset `window-basement-48` / `basementWindow.enabled`; Gitter-Checkbox nur bei bestehendem Kellerfenster; kein Profil/Bänke/Verdachung. Details: [opening-features.md](opening-features.md#kellerfenster-basementwindow).
+Kurz: Preset `window-basement-48` / `basementWindow.enabled`; Gitter-Checkbox nur bei bestehendem Kellerfenster; kein Profil/Bänke/Verdachung. **Teilung (v2.0.14):** Reiter sichtbar — max. 2 Flügel, kein Oberlicht, keine Fensterteilung (Raster), Sprosse max. 1 je Richtung (`clampGruenderzeitForBasement`). Details: [opening-features.md](opening-features.md#kellerfenster-basementwindow).
 
 ---
 
@@ -468,7 +478,7 @@ Oben links in der Zeichenfläche: Segmented Controls — **Oben | 2D | 3D** (Ans
 
 **Entwurf / Vorschau / Render (v0.7.316):** `#light-presentation-btn` / `#edit-presentation-btn` / `#render-presentation-btn` — immer genau einer aktiv. **Entwurf (v0.7.325):** Preset **anklicken** → Wand **anklicken** wählt aus (Farben/Mauerwerk); **nochmal klicken** auf die markierte Wand tauscht das Segment; **Greifer** verlängert; **Ziehen** platziert neue Wand. **Vorschau:** Flat-Meshes, detaillierte Fenster. **Render:** volle Geometrie, Himmel, Bloom. Details: [performance.md](performance.md).
 
-**Oben (v0.7.231 / v0.7.249):** Draufsicht auf die 3D-Szene von **über** dem Gebäude — Decken und Dächer sichtbar. Navigation wie 3D: **⌘/Ctrl+LMB** dreht die Himmelsrichtung (`topViewYawDeg`, Kompass), **⌘/Ctrl+⇧+LMB** schwenkt, **Shift+LMB** / Mittelmaus = Pan, Mausrad/`+`/`-` = Zoom, Pfeiltasten = Schwenk/Drehung. Wände, Öffnungen und Greifer wie in 3D.
+**Oben (v0.7.231 / v0.7.249):** Draufsicht auf die 3D-Szene von **über** dem Gebäude — Decken und Dächer sichtbar. Navigation wie 3D: **⌘/Ctrl+LMB** dreht die Himmelsrichtung (`topViewYawDeg`, Kompass), **⌘/Ctrl+⇧+LMB** schwenkt, **Shift+LMB auf leerem Bereich** / Mittelmaus = Pan, **Shift/Ctrl/Cmd+Klick auf Objekt** = Mehrfachauswahl (v2.0.16), Mausrad/`+`/`-` = Zoom, Pfeiltasten = Schwenk/Drehung. Wände, Öffnungen und Greifer wie in 3D.
 
 **2D und 3D:** dieselbe Bearbeitung wie Oben (Wand ziehen, Öffnungen verschieben, Kontextmenü, Greifer). **2D (v0.7.336 / v0.7.340):** Mausrad/`+`/`-` = Zoom (zum Cursor); Pan wie 3D (**Rechtsklick**, Mittelmaus, **⇧**+Ziehen, Pfeiltasten), **0** = Einpassen. SVG-Aufriss bleibt für interne Logik; die Zeichenfläche nutzt die Ortho-Front-Kamera.
 
@@ -509,6 +519,7 @@ Während Drag von Öffnungen:
 - **Wand-Referenzen** bei Annäherung: **1/4, 1/3, 1/2, 2/3, 3/4** der Wandbreite bzw. -höhe (orange).
 - Linien spannen weit über die Fassade (Boden–Himmel / volle Aufrissbreite).
 - Mehrfachauswahl: Hilfslinien aller verschobenen Öffnungen (je Wand).
+- **Abstandslinien** (v2.0.20): gelbe Maßlinien mit Endstrichen und cm-Label zum nächsten Objekt in vier Richtungen (links, rechts, oben, unten) — Wandkante oder Nachbar-Öffnung; horizontal ggf. über Wandgrenzen im Aufriss (`elevationX`, nur SVG).
 - 3D: `depthTest: false`; SVG: gestrichelte Linien im Aufriss. Nach Drop entfernt.
 
 ### Wände (`src/studio/wallGuides.ts`, v0.7.156)

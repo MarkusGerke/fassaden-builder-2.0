@@ -19,7 +19,7 @@ Toolbar **Maße** (Auszug):
 | Steuerung | Verhalten |
 |---|---|
 | Breite / Höhe / Position | 8-cm-Raster (`STUDIO_MASONRY`); Abstand zwischen Öffnungen 32 cm; kein Pflicht-Randabstand zur Wandkante |
-| Fenstertiefe | `Opening.depthOffset`; fehlt → `Building.windowDepthOffset` |
+| Fenstertiefe | UI **Frontlage (cm von Außenkante)** unter Maße; speichert `Opening.depthOffset` pro Öffnung (Gültigkeitsbereich). Fehlt → `Building.windowDepthOffset`. Standard 24 cm Laibung + Offset |
 | Öffnungsart | Fenster/Tür: durchgehend · Wandfläche (bündig) · Nische. Cutout: Durchbruch oder Nische (+ Tiefe). Konche: immer Kalotte, Tiefe steuerbar |
 | In Wand eingebettet | `revealFrame.enabled` → kein Wandloch, kein Rahmen/Glas; Bänke/Profile/Bogen/Verdachung bleiben. Nicht bei Cutouts |
 | Freiraum | `panelClearance`: Abstand in ganzen cm, Tiefe +/−/0; optional `finish: 'taper'` nur mit Paneelen |

@@ -943,14 +943,16 @@ function applyStoreyCopyStyle(cloned: Wall, copy: StoreyCopyOptions): Wall {
         enabled: false,
         pattern: 'none',
         plinthEnabled: copy.plinth ? (cloned.panel?.plinthEnabled ?? false) : false,
-        plinthHeight: cloned.panel?.plinthHeight ?? DEFAULT_STUDIO_PANEL.plinthHeight,
+        plinthHeight: copy.plinth
+          ? (cloned.panel?.plinthHeight ?? DEFAULT_STUDIO_PANEL.plinthHeight)
+          : 0,
         plinthDepth: cloned.panel?.plinthDepth ?? DEFAULT_STUDIO_PANEL.plinthDepth,
         plinthOffsetForward: cloned.panel?.plinthOffsetForward ?? DEFAULT_STUDIO_PANEL.plinthOffsetForward,
         plinthProfileId: cloned.panel?.plinthProfileId ?? DEFAULT_STUDIO_PANEL.plinthProfileId,
       },
     }
   } else if (!copy.plinth && next.panel) {
-    next = { ...next, panel: { ...next.panel, plinthEnabled: false } }
+    next = { ...next, panel: { ...next.panel, plinthEnabled: false, plinthHeight: 0 } }
   }
   if (!copy.wallColor) next = { ...next, wallColor: DEFAULT_WALL_COLOR, interiorColor: DEFAULT_INTERIOR_COLOR }
   if (!copy.claddingColor) next = { ...next, claddingColor: DEFAULT_CLADDING_COLOR_V2 }

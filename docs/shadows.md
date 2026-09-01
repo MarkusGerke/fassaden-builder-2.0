@@ -37,16 +37,16 @@ Bloom und Gobo-Schatten: frühere Laub-Gobo-UI entfernt (v0.7.341). **Unreal Blo
   - Nur Uhrzeit: Sonne interpoliert Von/Bis; Kamera folgt dem tatsächlichen Sonnenazimut in **Grad** (kein 45°-Raster, keine 2D-Aufriss-Sprünge).
   - Nur Himmelsrichtung: Sonne über `timeWhenSunAzimuth`; Kamera interpoliert Von/Bis auf dem kürzesten Bogen (ebenfalls weich in Grad).
   - Beides: Sonne folgt der Uhrzeit, Kamera der Himmelsrichtung (unabhängig).
-- **Sonnenlicht** Default **2.4** (Slider `#sun-intensity` 0,3…**8**). Zusätzlich **Umgebungslicht** (`#sun-ambient`, Default 0,32), **Schatten-Kontrast** (`#sun-shadow-contrast`, Default 1,4) und **Schatten-Dunkelheit** (`#sun-shadow-density`, Default 0,55). **v0.7.253:** Diese Slider steuern auch Umbra-Tönung, Kontaktschatten und Bodenreflex — siehe [lighting-mood.md](lighting-mood.md).
+- **Sonnenlicht** Default **3,9** (Slider `#sun-intensity` 0,3…**8**). Zusätzlich **Umgebungslicht** (`#sun-ambient`, Default **0,53**), **Schatten-Kontrast** (`#sun-shadow-contrast`, Default **1,50**), **Schatten-Weichheit** (`#sun-softness`, Default **5,0**), **Farbtemperatur** (`#sun-color-temp`, Default **4500 K**), Tageszeit **13:15**, Sonnenwinkel **210°** und Schatten-Dunkelheit (`#sun-shadow-density`, Default 0,55). **v0.7.253:** Diese Slider steuern auch Umbra-Tönung, Kontaktschatten und Bodenreflex — siehe [lighting-mood.md](lighting-mood.md).
 - **Sonnen-Slider (v0.7.341):** Azimut/Tageszeit/Intensität: Licht sofort, Shadow-Map gedrosselt (~90 ms). **Weichheit (v2.0.1):** `#sun-softness` → PCSS-Lichtgröße 0,8…28 cm als Uniform `pcssLightSizeUv` (live, hart am Okkluder, weicher mit Abstand). **Farbtemperatur (v2.0.1):** `#sun-color-temp` färbt das Key-Light.
-- **Fenster in 2D (v0.7.344):** Rahmen/Konsolen empfangen Werfschatten wenn Paneele empfangen (`syncOpeningReceiveShadows`, ohne Glas).
+- **Fenster in 2D (v0.7.344):** Rahmen/Konsolen empfangen Werfschatten wenn Paneele empfangen (`syncOpeningReceiveShadows`, ohne Glas). **v2.0.9:** Teil-Rebuild muss `syncLabelShadowReceivers` rufen — sonst bleiben neue Rahmen ohne Empfang. **v2.0.12:** Erstes Shadow-Map-Bake nach `loadMeshes` (`bootstrapSceneLighting`) — ohne Reload-Workaround über Sonnenwinkel-Slider.
 
 ## Ein-Pass / Grundriss-Silhouette
 
 ```
 planFacesWithHoles(plan)
   → Outer + holes (Hof = kleinerer Ring im größeren)
-  → Decken-Extrude (INDOOR_SLAB_THICKNESS) castShadow
+  → Decken-Extrude (INDOOR_SLAB_THICKNESS) castShadow — **nur Layer 1** (v2.0.18: nicht auf Außenfassade)
   + Studio-Wände mit Öffnungslöchern castShadow
   + Dach (Outer+Holes an Firstkappe) castShadow
   → eine DirectionalLight-Shadow-Map
@@ -54,7 +54,7 @@ planFacesWithHoles(plan)
 
 | Rolle | castShadow | receiveShadow |
 |---|---|---|
-| `ceiling` (sichtbar) | ja | ja |
+| `ceiling` (sichtbar) | ja (Layer 1) | ja |
 | `floor` (sichtbar) | nein | ja |
 | Wandkörper (Studio) | ja | ja (**v0.7.237** / **v0.7.285**; immer, nicht nur bei Schrift) |
 | Öffnungs-Tunnel (unsichtbar) | ja | nein (nur Shadow-Map; bis Fassadenfront inkl. Paneeltiefe, v0.7.192) |
@@ -63,7 +63,7 @@ planFacesWithHoles(plan)
 | Dach | ja | ja |
 | Sockel (Platte und Profil) | ja | **nein** (Selbstschatten-Schraffur) |
 | Türfüllung / Fensterrahmen (Gründerzeit + GLTF) | ja | **2D-Front: ja** (v0.7.344, wie Paneele/Gesims-Wurf); **3D/Oben: nein** (v0.7.191 — Schraffur) |
-| Eingangstreppe | ja | **nein** (v0.7.191) |
+| Eingangstreppe | ja | **ja** (v2.0.24 — Stufen-Geometrie; `shadowSide: FrontSide` gegen Acne bei `DoubleSide`) |
 | Flache Fassaden-Schrift | nein | ja (v0.7.252, Z-Bias) |
 | Extrudierte Fassaden-Schrift | ja | ja (v0.7.252, Z-Bias) |
 | Gesims / Zierband | ja (**v0.7.288** immer, auch bei Schrift) | ja |
@@ -145,6 +145,7 @@ Glas: dunkles Klarglas, CubeCamera-EnvMap der Szene von außerhalb. `transmissio
 - **Custom-Shader:** `facadeShade` und Standard-Materialien nutzen PCSS über `getShadow`. Boden (`groundMood`) nur Fill-Override — **kein** zweites Schatten-Sampling (v0.7.330).
 - Wandkörper empfängt wieder Schatten (**v0.7.237** / **v0.7.285**, auch ohne Schrift); Paneele in 3D weiterhin nicht — bei Moiré an nackten Wänden ggf. prüfen. **2D-Front (v0.7.285):** Paneele empfangen Werfschatten (`setCladdingReceiveShadows`).
 - **Nord-Aufriss dunkel/statisch:** Physik — N·L der Nordfront bleibt bei Azimut O→S→W ≤ 0; West wechselt Gegenlicht↔Frontlicht. Ohne Paneel-`receiveShadow` fehlen zusätzlich wandernde Gesims-/Vorstandschatten. `facadeOutward(0)` und Front-Kamera sind korrekt (−Z).
+- **Teil-Rebuild ohne Empfang (v2.0.9):** `setState({ rebuildBuildingIds })` muss `syncLabelShadowReceivers` aufrufen. Gründerzeit-Meshes starten mit `receiveShadow=false`; ohne Sync fehlen Gesims-Schatten auf allen neu gebauten Fenstern.
 - **Öffnungs-Tunnel (v0.7.138 / v0.7.140 / v0.7.192):** Wandloch ohne Tiefenflächen → Sonne durch die Wandstärke. Tunnel-Quads bleiben für die Shadow-Map, aber als **unsichtbare** Meshes (`colorWrite: false`). **v0.7.192:** Tunnel reicht bis zur Fassadenaußenfläche (Paneel-Vorstand), nicht nur bis zur Wandkörper-Kante — sonst helle Lichtlecks am Sturz über Türen/Fenstern. Kontur +1 cm gegen Bias.
 - **Sichtbare Leibung muss bis Innenwand (v0.7.193):** Der Tunnel schließt nur Schatten; der weiße Streifen am Sturz war oft der Himmel durch die offene Wandstärke. `studioOpeningRevealInnerZ` = `studioWallInnerLocalZ` (nicht `wall.depth` bei ungedrehtem Paneel).
 - **Front-Lip + Sturz:** ab v0.7.239 entfernt — Leibung ist nur der Tunnel (keine Extra-Kanten in der Zeichnung). Glas ohne `castShadow`.

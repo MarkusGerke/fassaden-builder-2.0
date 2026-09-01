@@ -2402,6 +2402,18 @@ function localY(wallY: number, wall: Wall): number {
   return wallY - wall.height / 2
 }
 
+/** Öffnungsmaske im wandzentrierten Lokalraum (für Drag-Ghost auf der Fassadenfläche). */
+export function openingDragGhostWallLocalPoints(
+  wall: Wall,
+  opening: Opening,
+  localZ: number,
+): { x: number; y: number }[] {
+  return openingWallFaceMaskPolyline(opening, 0, ARCH_MESH_SEGMENTS).map((p) => ({
+    x: wallLocalX(wall, p.x, localZ),
+    y: localY(p.y, wall),
+  }))
+}
+
 function appendShapeFace(
   shape: THREE.Shape,
   z: number,

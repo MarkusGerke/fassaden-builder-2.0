@@ -71,10 +71,15 @@ Persistiert in `fassaden-builder-state-v6` unter `lod`.
 
 ## Inkrementeller Rebuild
 
-`applyState` vergleicht alte und neue `FacadeState.buildings` (`buildingIdsNeedingRebuild`). Bei Änderung an wenigen Häusern: Rebuild nur diese (`facade.setState(state, { rebuildBuildingIds })`), nicht die ganze Site.
+`applyState` vergleicht alte und neue `FacadeState.buildings` (`buildingIdsNeedingRebuild`). Bei Änderung an wenigen Häusern: Rebuild nur diese (`facade.setState(state, { rebuildBuildingIds })`), nicht die ganze Site. **v2.0.2:** Auch bei nur einem Haus liefert die Funktion die ID (nicht `null`) — sonst wurde jedes Fensterziehen zum vollen Site-Rebuild.
+
+**Live-Ziehen (v2.0.4):** `previewMeshDrag` / `previewOpeningDrag` während pointermove: State sofort, Ghost-Meshes nur translatieren (`FacadeController.applyLiveOpeningOffsets`). **Kein** voller `rebuildBuilding` pro Frame, kein `svgView`, keine Persistenz. **Fensterziehen:** Beim ersten Zug schließt `beginOpeningDragMode` einmalig Loch + Paneele; sichtbar ist nur der orangefarbene Öffnungs-Umriss (`openingDragGhostGroup`, 48 cm vor der Außenseite). Fenster, Profile, Bänke, Verdachung und Laibung sind während des Ziehens ausgeblendet; Schatten-Map wird **einmal** beim Drag-Start neu gebaut (v2.0.7), Schatten-Tunnel castet nicht. Nach `pointerup`/`commitState`: betroffene Gebäude werden **immer** neu gebaut (`peekOpeningDragWallIds`, v2.0.8); danach `syncLabelShadowReceivers` (v2.0.9), sonst bleiben neue Fensterrahmen ohne `receiveShadow`. Wand-Greifer nutzen weiter `previewLiveState` (Rebuild max. 1×/Frame).
+
+`buildingIdsNeedingRebuild` liefert auch bei nur einem Haus die ID (nicht `null`) — relevant für Resize-Vorschau und Commit.
 
 ## Bekannte Fallstricke
 
+- **Live-Ziehen von Öffnungen:** Beim ersten Zug schließt die Wand einmalig; sichtbar ist nur die orangefarbene Öffnungsmaske (exakte Kontur: Bogen/Stadion/Rechteck, 48 cm vor der Fassade, ohne Werfschatten). Profile, Bänke und Fenster-Detail sind ausgeblendet. Nach `pointerup` sitzt alles wieder passgenau inkl. Schatten.
 - Nach async Mesh-Load (`loadMeshes`) werden Fenster/Verkleidung neu aufgebaut; bei LOD **aus** muss danach `finalizeGeometryRebuild()` laufen (High-Cache wird invalidiert).
 - Erster Frame nach Load mit LOD **aus**: sofort volle Details (`forceAllHighDetail` via `setLodSettings` bzw. `finalizeGeometryRebuild`).
 - Mit LOD **an**: Standard-Stufe **medium** bis Kamera evaluiert — danach High für nahe Häuser.

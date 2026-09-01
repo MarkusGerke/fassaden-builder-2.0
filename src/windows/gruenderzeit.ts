@@ -694,8 +694,45 @@ export function normalizeGruenderzeitConfig(
   }
 }
 
+/** Kellerfenster: max. 2 Flügel, kein OL, keine Teilung, max. 1 Sprosse je Richtung. */
+export function clampGruenderzeitForBasement(config: GruenderzeitWindowConfig): GruenderzeitWindowConfig {
+  const casements: 1 | 2 = config.casements >= 2 ? 2 : 1
+  const clampMuntin = (n: number): 0 | 1 | 2 => {
+    if (n <= 0) return 0
+    return 1
+  }
+  const paneMuntins = (config.paneMuntins.length > 0 ? config.paneMuntins : [{ v: 0, h: 0 }])
+    .slice(0, 1)
+    .map((m) => ({ v: clampMuntin(m?.v ?? 0), h: clampMuntin(m?.h ?? 0) }))
+  return {
+    ...config,
+    casements,
+    transom: false,
+    transomBars: 'none',
+    bottomPanel: false,
+    splitVCount: 1,
+    splitVRatio: '1/1',
+    splitHCount: 1,
+    splitHRatio: '1/1',
+    paneMuntins,
+    leafOpenDeg: padOpen(config.leafOpenDeg, casements),
+    transomOpenDeg: padOpen(undefined, casements),
+    leafHinges: padHinges(config.leafHinges, casements),
+    leafOpenModes: padOpenModes(config.leafOpenModes, casements),
+  }
+}
+
 export function gruenderzeitConfigForOpening(opening: Opening): GruenderzeitWindowConfig {
-  return normalizeGruenderzeitConfig(opening.gruenderzeit, opening.width, opening.height, opening.type)
+  const config = normalizeGruenderzeitConfig(
+    opening.gruenderzeit,
+    opening.width,
+    opening.height,
+    opening.type,
+  )
+  if (opening.type === 'window' && opening.basementWindow?.enabled) {
+    return clampGruenderzeitForBasement(config)
+  }
+  return config
 }
 
 export function windowAssemblyDepth(config: GruenderzeitWindowConfig): number {

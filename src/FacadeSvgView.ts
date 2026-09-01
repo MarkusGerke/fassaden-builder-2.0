@@ -14,7 +14,7 @@ import {
 import { resolveCladding } from './meshes/catalog'
 import { resolveProfile } from './profiles/registry'
 import type { EditorState, FacadeState, Opening, OpeningEdge, Wall } from './types/facade'
-import { openingCutsWall, openingGlazingArchForm, openingShowsGlazing, openingMaskSvgPath, openingMaskPolyline, openingPanelClearance, openingClearanceBandSvgPath, normalizeOpeningArch } from './utils/openingGeometry'
+import { openingCutsWall, openingGlazingArchForm, openingShowsGlazing, openingActsAsWindow, openingMaskSvgPath, openingMaskPolyline, openingPanelClearance, openingClearanceBandSvgPath, normalizeOpeningArch } from './utils/openingGeometry'
 import { cloneFacadeState } from './types/facade'
 import { appendGruenderzeitSvg, gruenderzeitConfigForOpening, layoutGruenderzeitWindow } from './windows/gruenderzeit'
 import { studioPlinthActive } from './studio/constants'
@@ -33,7 +33,7 @@ import {
   wallsForYaw,
   type ElevationFilter,
 } from './studio/elevation'
-import type { OpeningGuide } from './studio/openingGuides'
+import type { OpeningGuide, OpeningDistanceLine } from './studio/openingGuides'
 import { isMidStyleGuide, isSelfGuide } from './studio/openingGuides'
 
 export type OpeningSelectHandler = (
@@ -88,7 +88,7 @@ export class FacadeSvgView {
   } | null = null
   private renderStyle: 'color' | 'line' = 'color'
   private lineStrokeScale = 1
-  private guideOverlay: { wallId: string; guides: OpeningGuide[] }[] | null = null
+  private guideOverlay: { wallId: string; guides: OpeningGuide[]; distanceLines?: OpeningDistanceLine[] }[] | null = null
 
   private wallDragging: {
     wallIds: string[]
@@ -166,8 +166,8 @@ export class FacadeSvgView {
     this.setOpeningGuidesBatch([{ wallId, guides }])
   }
 
-  setOpeningGuidesBatch(entries: { wallId: string; guides: OpeningGuide[] }[]) {
-    const filtered = entries.filter((e) => e.guides.length > 0)
+  setOpeningGuidesBatch(entries: { wallId: string; guides: OpeningGuide[]; distanceLines?: OpeningDistanceLine[] }[]) {
+    const filtered = entries.filter((e) => e.guides.length > 0 || (e.distanceLines?.length ?? 0) > 0)
     this.guideOverlay = filtered.length > 0 ? filtered : null
     this.drawOpeningGuides()
   }
@@ -423,6 +423,66 @@ export class FacadeSvgView {
           line.setAttribute('y2', String(y))
         }
         group.appendChild(line)
+      }
+
+      for (const dist of entry.distanceLines ?? []) {
+        const cap = 5
+        const stroke = '#ffd966'
+        const localYToSvg = (localY: number) => originY + extraTop + (wall.height - localY)
+        const x1 =
+          dist.space === 'elevationX' ? dist.fromX : pos.x + dist.fromX
+        const x2 = dist.space === 'elevationX' ? dist.toX : pos.x + dist.toX
+        const y1 = localYToSvg(dist.fromY)
+        const y2 = localYToSvg(dist.toY)
+
+        const main = createEl('line')
+        main.setAttribute('x1', String(x1))
+        main.setAttribute('x2', String(x2))
+        main.setAttribute('y1', String(y1))
+        main.setAttribute('y2', String(y2))
+        main.setAttribute('stroke', stroke)
+        main.setAttribute('stroke-width', '1.25')
+        group.appendChild(main)
+
+        const horizontal = Math.abs(x2 - x1) >= Math.abs(y2 - y1)
+        const capA = createEl('line')
+        const capB = createEl('line')
+        capA.setAttribute('stroke', stroke)
+        capB.setAttribute('stroke', stroke)
+        capA.setAttribute('stroke-width', '1.25')
+        capB.setAttribute('stroke-width', '1.25')
+        if (horizontal) {
+          capA.setAttribute('x1', String(x1))
+          capA.setAttribute('x2', String(x1))
+          capA.setAttribute('y1', String(y1 - cap))
+          capA.setAttribute('y2', String(y1 + cap))
+          capB.setAttribute('x1', String(x2))
+          capB.setAttribute('x2', String(x2))
+          capB.setAttribute('y1', String(y2 - cap))
+          capB.setAttribute('y2', String(y2 + cap))
+        } else {
+          capA.setAttribute('x1', String(x1 - cap))
+          capA.setAttribute('x2', String(x1 + cap))
+          capA.setAttribute('y1', String(y1))
+          capA.setAttribute('y2', String(y1))
+          capB.setAttribute('x1', String(x2 - cap))
+          capB.setAttribute('x2', String(x2 + cap))
+          capB.setAttribute('y1', String(y2))
+          capB.setAttribute('y2', String(y2))
+        }
+        group.appendChild(capA)
+        group.appendChild(capB)
+
+        const label = createEl('text')
+        label.setAttribute('x', String((x1 + x2) / 2))
+        label.setAttribute('y', String((y1 + y2) / 2 + (horizontal ? -6 : 0)))
+        label.setAttribute('text-anchor', 'middle')
+        label.setAttribute('fill', stroke)
+        label.setAttribute('font-size', '11')
+        label.setAttribute('font-weight', '600')
+        if (!horizontal) label.setAttribute('transform', `rotate(-90 ${(x1 + x2) / 2} ${(y1 + y2) / 2})`)
+        label.textContent = `${dist.distanceCm} cm`
+        group.appendChild(label)
       }
     }
     this.svg.appendChild(group)
@@ -782,7 +842,7 @@ export class FacadeSvgView {
       }
 
       const inner = opening.sillInner
-      if (inner?.enabled && opening.type === 'window' && opening.y > 0) {
+      if (inner?.enabled && openingActsAsWindow(opening) && opening.y > 0) {
         const overhang = 8
         const band = createEl('rect')
         band.setAttribute('x', String(opening.x - overhang))
@@ -802,7 +862,7 @@ export class FacadeSvgView {
       const pediment = opening.pediment
       if (
         pediment?.enabled &&
-        (opening.type === 'window' || opening.type === 'door') &&
+        (opening.type === 'window' || opening.type === 'door' || opening.type === 'conch') &&
         !(opening.type === 'window' && opening.basementWindow?.enabled)
       ) {
         const cfg = normalizeOpeningPediment(pediment)

@@ -169,6 +169,27 @@ describe('insertStoreyAbove', () => {
     expect(clone?.panel?.pattern).toBe('none')
     expect(clone?.panel?.enabled).toBe(false)
   })
+
+  it('deaktiviert Sockel inkl. Höhe, wenn copy.plinth false ist', () => {
+    const base = twoFloorState()
+    base.buildings[0]!.walls[0]!.panel = {
+      ...DEFAULT_STUDIO_PANEL,
+      pattern: 'strip',
+      enabled: true,
+      plinthEnabled: true,
+      plinthHeight: 64,
+    }
+    base.buildings[0]!.walls[0]!.cornice = { enabled: true, edge: 'top', scale: 1, profileId: 'traufgesims70x150' }
+    const next = insertStoreyAbove(base, 0, {
+      wallIds: ['eg'],
+      copyOpenings: false,
+      copy: { plinth: false, cornice: false },
+    })
+    const clone = next.buildings[0]!.walls.find((item) => item.id !== 'eg' && item.id !== 'og')
+    expect(clone?.panel?.plinthEnabled).toBe(false)
+    expect(clone?.panel?.plinthHeight).toBe(0)
+    expect(clone?.cornice?.enabled).toBe(false)
+  })
 })
 
 describe('duplicateStorey', () => {

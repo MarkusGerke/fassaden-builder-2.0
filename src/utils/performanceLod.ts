@@ -114,7 +114,6 @@ export function buildingIdsNeedingRebuild(prev: FacadeState, next: FacadeState):
     if (JSON.stringify(ob) !== JSON.stringify(nb)) changed.push(nb.id)
   }
   if (changed.length === 0) return []
-  if (changed.length === next.buildings.length) return null
   return changed
 }
 

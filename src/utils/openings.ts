@@ -32,7 +32,12 @@ import { defaultOpeningStairs, normalizeOpeningStairs, stairTopY } from '../stud
 import { normalizeOpeningPediment } from '../studio/pediment'
 import { normalizeOpeningRollerShutter } from '../studio/rollerShutter'
 import { blenderWindowName } from '../blender/windowModels'
-import { defaultGruenderzeitConfig, normalizeGruenderzeitConfig } from '../windows/gruenderzeit'
+import {
+  clampGruenderzeitForBasement,
+  defaultGruenderzeitConfig,
+  normalizeGruenderzeitConfig,
+} from '../windows/gruenderzeit'
+import { basementWindowEnabled } from '../studio/basementWindow'
 import { isSillOuterProfile, isWindowTrimProfile } from '../profiles/windowTrim'
 import { findBuildingForWall, findWall, getAllWalls, mapAllWalls, updateBuilding } from './buildings'
 import { snapToGrid } from './grid'
@@ -1213,14 +1218,18 @@ export function updateOpeningGruenderzeit(
         if (!openingIds.includes(opening.id) || (opening.type !== 'window' && opening.type !== 'door')) {
           return opening
         }
+        let gruenderzeit = normalizeGruenderzeitConfig(
+          { ...opening.gruenderzeit, ...patch },
+          opening.width,
+          opening.height,
+          opening.type,
+        )
+        if (basementWindowEnabled(opening)) {
+          gruenderzeit = clampGruenderzeitForBasement(gruenderzeit)
+        }
         return {
           ...opening,
-          gruenderzeit: normalizeGruenderzeitConfig(
-            { ...opening.gruenderzeit, ...patch },
-            opening.width,
-            opening.height,
-            opening.type,
-          ),
+          gruenderzeit,
         }
       }),
     }

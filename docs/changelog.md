@@ -2,6 +2,98 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Eingangstreppe empfängt Schatten (2026-09-01) — v2.0.24
+
+Eingangstreppe: `receiveShadow = true` in 3D (Selbst-/Werfschatten auf Stufen); Material `shadowSide: FrontSide` gegen Acne bei `DoubleSide`. Sync über `syncLabelShadowReceivers`. Dateien: `FacadeController.ts`, `docs/shadows.md`.
+
+### Fenstertiefe pro Öffnung (2026-09-01) — v2.0.23
+
+UI „Frontlage (cm von Außenkante)“ unter Öffnung → Maße: speichert `Opening.depthOffset` pro Fenster/Tür (Gültigkeitsbereich beachten). Anzeige als effektive Tiefe (`openingDepth.ts`); Button „Gebäude-Standard“ löscht Override. Dateien: `openingDepth.ts`, `main.ts`, `index.html`, Tests, Docs.
+
+### Konche-Dekor, Keller-Auswahl, Fassadenfarbe (2026-09-01) — v2.0.22
+
+Konche: Fensterbank, Profile, Verdachung in UI und Render (3D/SVG) wie bei Fenstern — `openingLacksWindowChrome` nur noch für `cutout`. Kellerfenster: `filterOpeningRefsByBasementParity` in `editOpeningTargets`/`editArchOpeningTargets`; Auswahl-Scope nur markierte Öffnungen. Wandfarbe-Swatch setzt `wallColor` und `claddingColor` gemeinsam. Dateien: `openingGeometry.ts`, `editScope.ts`, `main.ts`, `FacadeController.ts`, `FacadeSvgView.ts`, `profilePaths.ts`, Tests, Docs.
+
+### 2D-Navigation schneller & animierter Doppelklick-Zoom (2026-09-01) — v2.0.21
+
+Zoom/Pan in 2D-Front und Oben-Ansicht: gecachtes Front-Kamera-Layout (`FrontViewBase`) statt vollständiger Wand-Bounds-Neuberechnung pro Wheel-/Pan-Frame. Oben-Ansicht rendert während Navigation nur noch `renderer.render` (Orbit-Lite), Raster/Bodenplatte erst nach Stillstand. Doppelklick-Zoom animiert weich (~280 ms, ease-out) zum Klickpunkt. Dateien: `main.ts`, `viewZoom.ts`, Tests, Docs.
+
+### Abstandslinien beim Öffnungs-Verschieben (2026-09-01) — v2.0.20
+
+Ergänzung zu den Ausrichtungs-Hilfslinien: gelbe Maßlinien (Endstriche + cm-Text in 2D) zeigen den Abstand zum nächsten Objekt in links/rechts/oben/unten — Wandkante oder Nachbar-Öffnung. Berechnung in `computeOpeningDistanceLines`; Anzeige in `FacadeController` (3D, wand-lokal) und `FacadeSvgView` (2D, inkl. Aufriss-X über Wandgrenzen). Dateien: `openingGuides.ts`, `FacadeController.ts`, `FacadeSvgView.ts`, `main.ts`, Tests, Docs.
+
+### 2D-Zoom flüssig & Doppelklick (2026-09-01) — v2.0.19
+
+Mausrad-Zoom in 2D-Front/Oben: Wheel-Events pro Frame gebündelt, exponentieller Zoom-Faktor (statt fester 0,9-Stufen), `deltaMode`-Normalisierung. Während Zoomen/Pannen Orbit-Lite (Pixelratio 1); Grundriss-Bodenplatte wird erst nach Navigation neu berechnet. Doppelklick zoomt 2× zum Klickpunkt. Hilfsfunktionen in `viewZoom.ts`. Dateien: `main.ts`, `viewZoom.ts`, Tests, Docs.
+
+### Teilen-Link: Szenenfarben & Kompass (2026-09-01) — v2.0.17
+
+Der URL-Hash `#f=` enthält neben `facade` optional `scene` (`SceneAppearance`: Hintergrund, Bodenfarbe, Himmel, Strichstärke) und `viewYaw` (Kompass-/Seitenansicht, 45°-Raster). Alte Links ohne diese Felder behalten Defaults. Encode/Decode in `share.ts`; Laden in `loadInitialState`. Dateien: `share.ts`, `share.test.ts`, `main.ts`, Docs.
+
+### Etagen ohne Sockel/Gesims: einheitliche Fassade (2026-09-01) — v2.0.18
+
+Zwischendecken lagen fälschlich auf Shadow-Layer 0 (Außen-Sonne) und warfen horizontale Schattenstreifen auf die Fassade — wirkte wie Gesims/Sockel, obwohl deaktiviert. Fix: Decken/Böden nur noch auf Layer 1 (`SHADOW_LAYER_INTERIOR`). Beim Etagen-Kopieren ohne Sockel: `plinthHeight` auf 0 (nicht nur `plinthEnabled: false`). Dateien: `FacadeController.ts`, `walls.ts`, Tests, Docs.
+
+### Shift-Mehrfachauswahl im Viewport (2026-09-01) — v2.0.16
+
+In Front- und Oben-Ansicht hat `Shift+LMB` sofort Pan gestartet und die additive Auswahl blockiert. Pan startet jetzt nur noch auf leerem Hintergrund; Treffer auf Wand/Öffnung/Decke laufen in die normale Auswahl (`pointerDown.additive`). Ebenenbaum-Öffnungen nutzen `selectOpening(..., additive)` statt eigener Toggle-Logik. Dateien: `main.ts`.
+
+### Decke bündig mit Wandoberkante (2026-09-01) — v2.0.15
+
+Die Zwischendecke ragte 8 cm über die Wandoberkante (`ExtrudeGeometry` extrudiert nach oben; Mesh-Y lag auf `storeyTopY`). Fix: Decke bei `storeyTopY − INDOOR_SLAB_THICKNESS`, Oberseite bündig mit `wall.y + wall.height` — analog zum Fußboden (`storeyFloorSurfaceY − Dicke`). Dateien: `FacadeController.ts`, Docs.
+
+### Kellerfenster-Teilung & Einstellungen scrollen (2026-09-01) — v2.0.14
+
+Kellerfenster: Reiter **Teilung** war komplett ausgeblendet — jetzt sichtbar mit Grenzen (`clampGruenderzeitForBasement`: max. 2 Flügel, kein OL/Teilung, Sprosse max. 1). Scroll-Fix: `#selection-toolbar` + `.selection-toolbar-panels` mit `min-height: 0` / `overflow-y: auto`. Dateien: `gruenderzeit.ts`, `main.ts`, `openings.ts`, `style.css`.
+
+### Bogenform: Stichmaß beim Wechsel (2026-09-01) — v2.0.13
+
+Beim Formwechsel (z. B. Stichbogen → Rundbogen) wurde `riseCm` der alten Form übernommen. Am Rundbogen ergab das einen zu kleinen Halbkreis in der Mitte statt voller Spannweite. Fix: `commitOpeningArchPatch` setzt Stichmaß bei Formwechsel auf Auto (`defaultArchRise`). Dateien: `main.ts`, `archForms.test.ts`.
+
+### Fensterschatten nach Reload (2026-09-01) — v2.0.12
+
+Startup-Race: `atmosphereSky.load` rief `applySunLighting({ updateShadowMap: true })` auf, bevor `FacadeController.loadMeshes` Fensterrahmen mit `receiveShadow` gesetzt hatte. Nach Reload fehlten Werfschatten im 2D-Aufriss; Sonnenwinkel-Slider hat die Map neu gebacken. Fix: `whenMeshesReady` + `bootstrapSceneLighting()` wartet auf Atmosphäre, Meshes und Schrift-Font, dann ein Shadow-Map-Bake. Dateien: `FacadeController.ts`, `main.ts`.
+
+### Szenenfarben wieder sichtbar (2026-09-01) — v2.0.11
+
+`renderColorControl` band Events nur an neu erzeugte `<input type="color">` — vorgefertigte Szene-Picker in `index.html` blieben stumm. Jetzt `data-color-control-bound`; Live-Vorschau für Szene-Farben; `atmosphereSky.setGroundAlbedo` nutzt Nutzer-Boden statt festem Erdboden-Albedo. Dateien: `main.ts`, `atmosphereSky.ts`.
+
+### Licht-Standardwerte (2026-09-01) — v2.0.10
+
+Neue Defaults in `DEFAULT_SUN_SETTINGS`: Tageszeit 13:15, Sonnenwinkel 210°, Sonnenlicht 3,9, Umgebungslicht 0,53, Schatten-Kontrast 1,50, Weichheit 5,0, Farbtemperatur 4500 K. `applyTodaySunDate` aktualisiert beim Start nur das Datum, nicht mehr den Solar-Look. Dateien: `sunLighting.ts`, `main.ts`, `index.html`, Docs.
+
+### Fensterschatten nach dem Verschieben (2026-09-01) — v2.0.9
+
+Teil-Rebuild (`setState` mit `rebuildBuildingIds`) hat `syncLabelShadowReceivers` / `syncOpeningReceiveShadows` übersprungen. Neue Gründerzeit-Fenster kommen mit `receiveShadow=false` — im 2D-Aufriss fehlten danach Gesims-Schatten auf **allen** Rahmen des Hauses. Dateien: `FacadeController.ts`, `main.ts`.
+
+### Fensterziehen: Schatten nach Platzieren (2026-09-01) — v2.0.8
+
+Beim Commit nach Öffnungs-Zug erzwingt `applyState` Rebuild der betroffenen Gebäude (State war während Drag schon aktualisiert → sonst kein Diff). Schatten-Tunnel und Shadow-Map werden wieder korrekt. Dateien: `main.ts`, `FacadeController.ts`.
+
+### Ziehen: kein stehender Schatten (2026-09-01) — v2.0.7
+
+Beim ersten Zug: Shadow-Map-Refresh (`applySunLighting({ updateShadowMap: true })`), Schatten-Tunnel der Wand ohne `castShadow`. Ursache: `shadowMap.autoUpdate=false` — alte Textur blieb sichtbar. Dateien: `FacadeController.ts`, `main.ts`.
+
+### Drag-Ghost: Form, Füllung, kein Schatten (2026-09-01) — v2.0.6
+
+Ghost-Geometrie über `openingDragGhostWallLocalPoints` (wandzentrierter Lokalraum, gleiche Z wie Fassadenaußenfläche + 48 cm). Füllung `DoubleSide`, Kontur auf derselben Ebene. Versteckte Öffnungs-Meshes: `castShadow` aus. Dateien: `FacadeController.ts`, `panelGeometry.ts`, `liveDrag.ts`.
+
+### Ziehen: Öffnungsmaske ohne Schatten (2026-09-01) — v2.0.5
+
+Drag-Ghost nutzt `openingMaskPolyline` (flache ShapeGeometry) statt 3D-Box — echte Öffnungsform, `castShadow`/`receiveShadow` aus. Datei: `FacadeController.ts`.
+
+### Fensterziehen: nur Umriss (2026-09-01) — v2.0.4
+
+Beim Verschieben werden Fenster-Detail, Profile, Bänke, Verdachung und Laibung ausgeblendet; nur ein orangefarbener Öffnungs-Umriss (`openingDragGhostGroup`) schwebt 48 cm vor der Wand. Loader: nur vollständige Nikolaus-Pfade, fester 720-ms-Takt, nahtloser Loop ohne Eckpunkte. Dateien: `FacadeController.ts`, `index.html`, Docs.
+
+### Fenster schwebt beim Verschieben (2026-09-01) — v2.0.3
+
+Variante „schwebendes Fenster“ ohne Schatten während des Ziehens: `beginOpeningDragMode` schließt beim ersten Zug einmalig Loch + Paneele (`openingDragOmitByWall` / `wallForBodyMesh`), Fenster schwebt 48 cm vor der Außenseite (`OPENING_DRAG_FLOAT_CM`). pointermove weiter nur Mesh-Translation; Schatten erst beim Loslassen. Dateien: `FacadeController.ts`, `main.ts`, `liveDrag.ts`, `constants/presets.ts`, Docs.
+
+### Objekte flüssig verschieben (2026-09-01) — v2.0.2
+
+Ziehen war langsam, weil selbst die 1×/Frame-Live-Vorschau jedes Mal `rebuildBuilding` (Ziegel, CSG-Löcher, Fenster, Profile) ausgeführt hat. Jetzt: während pointermove nur Mesh-Translation (`applyLiveOpeningOffsets` / `applyLiveWallOffsets` / Trim / Label), State ohne Geometrie-Rebuild. Beim Loslassen volles `applyState` (Löcher + Shadow-Map). Klick-Auswahl weiter `applyEditorSelection`. Dateien: `main.ts`, `FacadeController.ts`, `liveDrag.ts`, Docs.
+
 ### Farbtemperatur und Schatten-Weichheit wieder wirksam (2026-09-01) — v2.0.1
 
 `#sun-color-temp` färbte das Key-Light nicht: `applyDisplaySunColor` behielt tagsüber die Takram-Transmittance und ignorierte Kelvin. Jetzt immer `kelvinToColor(celestial.lightColorTemp)`. `#sun-softness` wirkte tot: `PCSS_LIGHT_SIZE_UV` als Shader-`#define` (Three.js cached Standard-Programme ohne Chunk-Inhalt) plus Filter `* NEAR_PLANE / z` mit Near 0,002 auf NDC-Tiefe. Fix: Uniform `pcssLightSizeUv` (live ohne Rebuild) und `PCSS_PENUMBRA_SCALE` 8 für Ortho-Maps. Dateien: `atmosphereSky.ts`, `pcssShadows.ts`, `main.ts`, Docs.

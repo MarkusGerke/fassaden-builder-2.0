@@ -1,7 +1,28 @@
 import type { FacadeState } from '../types/facade'
+import { snapYawTo45 } from '../studio/compass'
 import { applyFacadeLoadPipeline } from './facadeLoad'
+import {
+  DEFAULT_SCENE_APPEARANCE,
+  normalizeSceneAppearance,
+  type SceneAppearance,
+} from './persistence'
 
 const HASH_PREFIX = '#f='
+
+/** Inhalt eines Teilen-Links (Hash `#f=`). */
+export interface SharePayload {
+  facade: FacadeState
+  /** Szene-Farben (Hintergrund, Boden, Himmel, Strichstärke). */
+  scene?: SceneAppearance
+  /** Kompass-/Seitenansicht in Grad (45°-Raster), nur bei `kind: 'yaw'`. */
+  viewYaw?: number
+}
+
+export interface DecodedSharePayload {
+  facade: FacadeState
+  scene?: SceneAppearance
+  viewYaw?: number
+}
 
 function bytesToBase64Url(bytes: Uint8Array): string {
   let binary = ''
@@ -31,28 +52,78 @@ async function gunzipBytes(bytes: Uint8Array): Promise<string | null> {
   return new Response(stream).text()
 }
 
-export async function encodeFacadeHash(facade: FacadeState): Promise<string> {
-  const json = JSON.stringify(facade)
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function isFacadeState(value: unknown): value is FacadeState {
+  if (!isRecord(value)) return false
+  if (Array.isArray(value.buildings) && value.buildings.length > 0) return true
+  return Array.isArray(value.walls) && typeof value.wallHeight === 'number'
+}
+
+function normalizeViewYaw(value: unknown): number | undefined {
+  const n = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(n)) return undefined
+  return snapYawTo45(n)
+}
+
+function normalizeSharePayload(raw: unknown): DecodedSharePayload | null {
+  if (isFacadeState(raw)) {
+    return { facade: applyFacadeLoadPipeline(raw).facade }
+  }
+  if (!isRecord(raw) || !isFacadeState(raw.facade)) return null
+  const migrated = applyFacadeLoadPipeline(raw.facade as FacadeState)
+  const scene = raw.scene != null ? normalizeSceneAppearance(raw.scene) : undefined
+  const viewYaw = normalizeViewYaw(raw.viewYaw)
+  return {
+    facade: migrated.facade,
+    scene,
+    viewYaw,
+  }
+}
+
+export function buildSharePayload(
+  facade: FacadeState,
+  extras?: { scene?: SceneAppearance; viewYaw?: number },
+): SharePayload {
+  const payload: SharePayload = { facade }
+  if (extras?.scene) payload.scene = extras.scene
+  if (extras?.viewYaw !== undefined) payload.viewYaw = snapYawTo45(extras.viewYaw)
+  return payload
+}
+
+export async function encodeFacadeHash(payload: SharePayload | FacadeState): Promise<string> {
+  const share: SharePayload = isFacadeState(payload) ? { facade: payload } : payload
+  const json = JSON.stringify(share)
   const compressed = await gzipBytes(json)
   if (compressed) return `${HASH_PREFIX}${bytesToBase64Url(compressed)}`
   return `${HASH_PREFIX}${encodeURIComponent(json)}`
 }
 
-export async function decodeFacadeHash(hash: string): Promise<FacadeState | null> {
+export async function decodeFacadeHash(hash: string): Promise<DecodedSharePayload | null> {
   if (!hash.startsWith(HASH_PREFIX)) return null
   const payload = hash.slice(HASH_PREFIX.length)
   try {
-    let raw: FacadeState
+    let raw: unknown
     if (payload.startsWith('%7B') || payload.startsWith('{')) {
-      raw = JSON.parse(decodeURIComponent(payload)) as FacadeState
+      raw = JSON.parse(decodeURIComponent(payload))
     } else {
       const text = await gunzipBytes(base64UrlToBytes(payload))
       if (!text) return null
-      raw = JSON.parse(text) as FacadeState
+      raw = JSON.parse(text)
     }
-    return applyFacadeLoadPipeline(raw).facade
+    return normalizeSharePayload(raw)
   } catch {
     return null
+  }
+}
+
+/** Defaults für alte Links ohne `scene` / `viewYaw`. */
+export function sharePayloadDefaults(): Pick<DecodedSharePayload, 'scene' | 'viewYaw'> {
+  return {
+    scene: { ...DEFAULT_SCENE_APPEARANCE },
+    viewYaw: 0,
   }
 }
 
@@ -73,11 +144,11 @@ export function writeFacadeHash(hash: string): void {
 let facadeHashGeneration = 0
 let facadeHashTimer = 0
 
-export function scheduleFacadeHashWrite(facade: FacadeState, delayMs = 1200): void {
+export function scheduleFacadeHashWrite(payload: SharePayload | FacadeState, delayMs = 1200): void {
   const generation = ++facadeHashGeneration
   window.clearTimeout(facadeHashTimer)
   facadeHashTimer = window.setTimeout(() => {
-    void encodeFacadeHash(facade).then((hash) => {
+    void encodeFacadeHash(payload).then((hash) => {
       if (generation !== facadeHashGeneration) return
       writeFacadeHash(hash)
     })
@@ -111,9 +182,9 @@ export async function loadFacadeFromFile(file: File): Promise<FacadeState> {
   return applyFacadeLoadPipeline(JSON.parse(text) as FacadeState).facade
 }
 
-export async function copyFacadeLink(facade: FacadeState): Promise<string> {
+export async function copyFacadeLink(payload: SharePayload | FacadeState): Promise<string> {
   facadeHashGeneration += 1
-  const hash = await encodeFacadeHash(facade)
+  const hash = await encodeFacadeHash(payload)
   writeFacadeHash(hash)
   const url = new URL(window.location.href)
   url.hash = hash

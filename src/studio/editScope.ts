@@ -185,7 +185,7 @@ export function editOpeningTargets(
         refs.push({ wallId: wall.id, openingId: opening.id })
       }
     }
-    return refs
+    return filterOpeningRefsByBasementParity(state, refs, editor)
   }
   if (scope === 'floor') {
     const floors = selectedFloorIndices(state, editor)
@@ -198,7 +198,7 @@ export function editOpeningTargets(
         refs.push({ wallId: wall.id, openingId: opening.id })
       }
     }
-    return refs
+    return filterOpeningRefsByBasementParity(state, refs, editor)
   }
   if (scope === 'type') {
     const anchors: Opening[] = []
@@ -216,9 +216,9 @@ export function editOpeningTargets(
         }
       }
     }
-    return refs
+    return filterOpeningRefsByBasementParity(state, refs, editor)
   }
-  return [...editor.selectedOpenings]
+  return filterOpeningRefsByBasementParity(state, [...editor.selectedOpenings], editor)
 }
 
 function isDoorOrWindow(opening: Opening): boolean {
@@ -250,12 +250,12 @@ export function editArchOpeningTargets(
 
   const refs: OpeningRef[] = []
   if (scope === 'element') {
-    const wallIds = new Set(editor.selectedOpenings.map((r) => r.wallId))
-    for (const wallId of wallIds) {
-      const wall = getWall(state, wallId)
-      if (wall) pushDoorWindow(wall, refs)
+    for (const ref of editor.selectedOpenings) {
+      const wall = getWall(state, ref.wallId)
+      const opening = wall?.openings.find((item) => item.id === ref.openingId)
+      if (opening && isDoorOrWindow(opening)) refs.push(ref)
     }
-    return refs
+    return filterOpeningRefsByBasementParity(state, refs, editor)
   }
   if (scope === 'facade' || scope === 'type') {
     const walls =
@@ -265,7 +265,7 @@ export function editArchOpeningTargets(
     for (const wall of walls) {
       pushDoorWindow(wall, refs)
     }
-    return refs
+    return filterOpeningRefsByBasementParity(state, refs, editor)
   }
   if (scope === 'floor') {
     const floors = selectedFloorIndices(state, editor)
@@ -278,7 +278,7 @@ export function editArchOpeningTargets(
       if (!floorSet.has(floorIndex(wall, wallHeightForWall(state, wall.id)))) continue
       pushDoorWindow(wall, refs)
     }
-    return refs
+    return filterOpeningRefsByBasementParity(state, refs, editor)
   }
-  return refs
+  return filterOpeningRefsByBasementParity(state, refs, editor)
 }

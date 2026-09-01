@@ -48,9 +48,7 @@
         stroke-width: 1.35;
         stroke-linecap: square;
         stroke-linejoin: miter;
-      }
-      .app-loading-house .dot {
-        fill: #333;
+        will-change: stroke-dashoffset;
       }
       .app-loading-inner p { margin: 0; font-size: 0.92rem; }
     </style>
@@ -60,7 +58,6 @@
       <div class="app-loading-inner">
         <svg class="app-loading-house" viewBox="0 0 24 24" aria-hidden="true">
           <path id="app-loading-house-path" d="" />
-          <g id="app-loading-house-dots"></g>
         </svg>
         <p>Studio wird geladen …</p>
       </div>
@@ -69,8 +66,7 @@
       (function () {
         var root = document.getElementById('app-loading')
         var pathEl = document.getElementById('app-loading-house-path')
-        var dotsEl = document.getElementById('app-loading-house-dots')
-        if (!root || !pathEl || !dotsEl) return
+        if (!root || !pathEl) return
 
         // Knoten: 0/1 unten, 2/3 Traufe, 4 First
         var P = [
@@ -87,16 +83,15 @@
           [0, 1, 2, 4],
           [2, 3],
         ]
-        var EDGE_MS = 85
-        var DOT_R = 1.05
+        var DRAW_MS = 720
+        var PAUSE_MS = 280
 
         function edgeKey(a, b) {
           return a < b ? a + '-' + b : b + '-' + a
         }
 
-        function collectAttempts() {
+        function collectCompletePaths() {
           var complete = []
-          var failed = []
           function dfs(node, used, path) {
             if (used.size === 8) {
               complete.push(path.slice())
@@ -107,10 +102,7 @@
               var n = ADJ[node][i]
               if (!used.has(edgeKey(node, n))) nexts.push(n)
             }
-            if (nexts.length === 0) {
-              failed.push(path.slice())
-              return
-            }
+            if (nexts.length === 0) return
             for (var j = 0; j < nexts.length; j++) {
               var nn = nexts[j]
               var k = edgeKey(node, nn)
@@ -123,11 +115,8 @@
           }
           dfs(0, new Set(), [0])
           dfs(1, new Set(), [1])
-          return { complete: complete, failed: failed }
+          return complete
         }
-
-        var attempts = collectAttempts()
-        var pool = attempts.complete.concat(attempts.complete).concat(attempts.failed)
 
         function pathD(nodes) {
           var d = ''
@@ -138,25 +127,15 @@
           return d
         }
 
-        function edgeLengths(nodes) {
-          var lens = []
-          for (var i = 1; i < nodes.length; i++) {
-            var a = P[nodes[i - 1]]
-            var b = P[nodes[i]]
-            var dx = b[0] - a[0]
-            var dy = b[1] - a[1]
-            lens.push(Math.sqrt(dx * dx + dy * dy))
-          }
-          return lens
-        }
-
-        function pick() {
-          return pool[(Math.random() * pool.length) | 0]
+        var completePaths = collectCompletePaths()
+        if (completePaths.length === 0) {
+          completePaths = [[0, 2, 4, 3, 1, 0, 2, 4, 3]]
         }
 
         var raf = 0
         var timer = 0
         var cancelled = false
+        var pathIndex = 0
 
         function clearAnim() {
           if (raf) {
@@ -173,32 +152,18 @@
           return !cancelled && root.isConnected && !root.classList.contains('is-done')
         }
 
-        function resetVisual() {
-          pathEl.setAttribute('d', '')
-          pathEl.style.strokeDasharray = ''
-          pathEl.style.strokeDashoffset = ''
-          dotsEl.textContent = ''
-        }
-
-        function addDot(nodeIndex) {
-          var p = P[nodeIndex]
-          var c = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
-          c.setAttribute('class', 'dot')
-          c.setAttribute('cx', String(p[0]))
-          c.setAttribute('cy', String(p[1]))
-          c.setAttribute('r', String(DOT_R))
-          dotsEl.appendChild(c)
+        function pickPath() {
+          var nodes = completePaths[pathIndex % completePaths.length]
+          pathIndex += 1
+          return nodes
         }
 
         function run() {
           if (!stillActive()) return
           clearAnim()
-          resetVisual()
 
-          var nodes = pick()
-          var ok = nodes.length - 1 === 8
-          var d = pathD(nodes)
-          pathEl.setAttribute('d', d)
+          var nodes = pickPath()
+          pathEl.setAttribute('d', pathD(nodes))
 
           var total = pathEl.getTotalLength()
           if (!(total > 0)) {
@@ -206,31 +171,15 @@
             return
           }
 
-          var lens = edgeLengths(nodes)
-          var cum = [0]
-          for (var i = 0; i < lens.length; i++) cum.push(cum[i] + lens[i])
-          // getTotalLength kann leicht von der Summe abweichen — auf SVG-Länge normalisieren
-          var scale = total / cum[cum.length - 1]
-          for (var s = 0; s < cum.length; s++) cum[s] *= scale
-
           pathEl.style.strokeDasharray = String(total)
           pathEl.style.strokeDashoffset = String(total)
 
-          addDot(nodes[0])
-          var shown = 1
-          var duration = lens.length * EDGE_MS
           var t0 = performance.now()
 
           function frame(now) {
             if (!stillActive()) return
-            var t = Math.min(1, (now - t0) / duration)
-            var drawn = total * t
-            pathEl.style.strokeDashoffset = String(total - drawn)
-
-            while (shown < nodes.length && drawn + 0.15 >= cum[shown]) {
-              addDot(nodes[shown])
-              shown += 1
-            }
+            var t = Math.min(1, (now - t0) / DRAW_MS)
+            pathEl.style.strokeDashoffset = String(total * (1 - t))
 
             if (t < 1) {
               raf = requestAnimationFrame(frame)
@@ -238,16 +187,12 @@
             }
 
             pathEl.style.strokeDashoffset = '0'
-            while (shown < nodes.length) {
-              addDot(nodes[shown])
-              shown += 1
-            }
-
             timer = setTimeout(function () {
               if (!stillActive()) return
-              resetVisual()
-              timer = setTimeout(run, ok ? 140 : 70)
-            }, ok ? 320 : 160)
+              pathEl.style.strokeDashoffset = String(total)
+              t0 = performance.now()
+              raf = requestAnimationFrame(frame)
+            }, PAUSE_MS)
           }
 
           raf = requestAnimationFrame(frame)
@@ -1237,9 +1182,10 @@
                 <input id="opening-height" type="number" step="8" value="192" />
               </div>
               <div id="opening-window-depth-section" class="toolbar-group">
-                <span class="toolbar-label">Fenster- / Türtiefe (cm)</span>
-                <input id="opening-window-depth-offset" type="number" step="1" value="0" title="Zusätzlich zur 24-cm-Laibung (+ nach außen, − nach innen). Pro Öffnung; sonst Gebäude-Default." />
-                <p class="toolbar-hint compact-hint">Pro Öffnung (Fallback: Gebäude).</p>
+                <span class="toolbar-label">Frontlage (cm von Außenkante)</span>
+                <input id="opening-window-depth-offset" type="number" step="1" min="0" max="120" value="24" title="Tiefe der Fensterfront ab Wand-Außenkante. Pro Öffnung einstellbar; ohne eigenen Wert gilt der Gebäude-Standard (24 cm + Gebäude-Offset)." />
+                <button id="opening-window-depth-reset" class="preset-btn" type="button" title="Eigene Tiefe löschen — Gebäude-Standard verwenden">Gebäude-Standard</button>
+                <p id="opening-window-depth-hint" class="toolbar-hint compact-hint">Pro Öffnung. Standard-Laibung 24 cm; hier die effektive Frontlage.</p>
               </div>
               <div id="opening-position-section" class="toolbar-group">
                 <div class="preset-group">
@@ -2033,38 +1979,38 @@
 
                 <label class="slider-label">
                   <span>Tageszeit</span>
-                  <output id="sun-time-value">12:00</output>
+                  <output id="sun-time-value">13:15</output>
                 </label>
-                <input id="sun-time" type="range" min="0" max="24" step="0.05" value="12" />
+                <input id="sun-time" type="range" min="0" max="24" step="0.05" value="13.25" />
                 <p class="toolbar-hint compact-hint">0:00–24:00 — auch Nacht/Dämmerung; realistischer Sonnen- und Mondstand.</p>
                 <p class="toolbar-hint compact-hint">Realistischer Sonnenstand für das gewählte Datum (Berlin) — überschreibt Winkel, Weichheit, Intensität und Farbtemperatur.</p>
 
                 <label class="slider-label">
                   <span>Sonnenwinkel</span>
-                  <output id="sun-azimuth-value">180°</output>
+                  <output id="sun-azimuth-value">210°</output>
                 </label>
-                <input id="sun-azimuth" type="range" min="0" max="360" step="1" value="180" />
+                <input id="sun-azimuth" type="range" min="0" max="360" step="1" value="210" />
                 <p class="toolbar-hint compact-hint" id="sun-azimuth-hint">0°=N, 90°=O. Manuell verstellbar; Datum/Tageszeit setzt den realistischen Stand wieder.</p>
 
                 <label class="slider-label">
                   <span>Sonnenlicht</span>
-                  <output id="sun-intensity-value">2.4</output>
+                  <output id="sun-intensity-value">3.9</output>
                 </label>
-                <input id="sun-intensity" type="range" min="0.3" max="8" step="0.1" value="2.4" />
+                <input id="sun-intensity" type="range" min="0.3" max="8" step="0.1" value="3.9" />
                 <p class="toolbar-hint compact-hint">Manuell verstellbar; wird bei Datum/Tageszeit wieder aus dem Sonnenstand gesetzt.</p>
 
                 <label class="slider-label">
                   <span>Umgebungslicht</span>
-                  <output id="sun-ambient-value">0.32</output>
+                  <output id="sun-ambient-value">0.53</output>
                 </label>
-                <input id="sun-ambient" type="range" min="0.05" max="1.2" step="0.01" value="0.32" />
+                <input id="sun-ambient" type="range" min="0.05" max="1.2" step="0.01" value="0.53" />
                 <p class="toolbar-hint compact-hint">Himmel-Fill — hellt Schatten und Rückseiten auf (nicht die Schattenkante).</p>
 
                 <label class="slider-label">
                   <span>Schatten-Kontrast</span>
-                  <output id="sun-shadow-contrast-value">1.4</output>
+                  <output id="sun-shadow-contrast-value">1.50</output>
                 </label>
-                <input id="sun-shadow-contrast" type="range" min="0.5" max="2.5" step="0.05" value="1.4" />
+                <input id="sun-shadow-contrast" type="range" min="0.5" max="2.5" step="0.05" value="1.5" />
                 <p class="toolbar-hint compact-hint">Wie stark Sonne und Schatten an Fassade und Himmel auseinanderliegen.</p>
 
                 <div id="sun-shadow-density-block" hidden>
@@ -2079,17 +2025,17 @@
                 <div id="sun-softness-block">
                 <label class="slider-label">
                   <span>Schatten-Weichheit</span>
-                  <output id="sun-softness-value">2.5</output>
+                  <output id="sun-softness-value">5.0</output>
                 </label>
-                <input id="sun-softness" type="range" min="0.5" max="8" step="0.5" value="2.5" />
+                <input id="sun-softness" type="range" min="0.5" max="8" step="0.5" value="5" />
                 <p class="toolbar-hint compact-hint">Nur Darstellung Render — sichtbar an Boden, Wandkörper und Dach (nicht an Ziegel-Paneele).</p>
                 </div>
 
                 <label class="slider-label">
                   <span>Farbtemperatur</span>
-                  <output id="sun-color-temp-value">4000 K</output>
+                  <output id="sun-color-temp-value">4500 K</output>
                 </label>
-                <input id="sun-color-temp" type="range" min="2700" max="8000" step="100" value="4000" />
+                <input id="sun-color-temp" type="range" min="2700" max="8000" step="100" value="4500" />
                 <p class="toolbar-hint compact-hint">Manuell verstellbar; wird bei Datum/Tageszeit wieder aus dem Sonnenstand gesetzt.</p>
               </div>
 

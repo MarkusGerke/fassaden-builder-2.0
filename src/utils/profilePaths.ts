@@ -26,6 +26,7 @@ import {
   openingArchPolyline,
   openingCutsWall,
   openingShowsGlazing,
+  openingActsAsWindow,
   normalizeRevealFrame,
   openingMaskXRangesAtY,
   openingMaskYRangesAtX,
@@ -257,7 +258,7 @@ function collectSegments(state: FacadeState): RawSegmentExt[] {
       if (basementWindowEnabled(opening)) continue
       if (
         assignment.edge === 'bottom' &&
-        opening.type === 'window' &&
+        openingActsAsWindow(opening) &&
         opening.y > 0 &&
         opening.sillOuter?.enabled !== false
       ) {

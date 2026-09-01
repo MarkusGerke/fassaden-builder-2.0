@@ -353,9 +353,21 @@ export function openingIsConch(opening: Pick<Opening, 'type'>): boolean {
   return opening.type === 'conch'
 }
 
-/** Kein Fenster-/Tür-Chrome (Rahmen, Glas, Bänke, Verdachung). */
+/** Kein Fenster-/Tür-Chrome (Rahmen, Glas) — reine Nischen/Durchbrüche. Konche hat Bänke/Profile/Verdachung. */
 export function openingLacksWindowChrome(opening: Pick<Opening, 'type'>): boolean {
-  return opening.type === 'cutout' || opening.type === 'conch'
+  return opening.type === 'cutout'
+}
+
+/** Fensterbank, Verdachung u. ä. wie bei Fenstern (inkl. Konche). */
+export function openingActsAsWindow(opening: Pick<Opening, 'type'>): boolean {
+  return opening.type === 'window' || opening.type === 'conch'
+}
+
+/** Fensterbank, Profile, Verdachung — Fenster, Tür, Konche. */
+export function openingSupportsOpeningDecor(opening: Pick<Opening, 'type' | 'basementWindow'>): boolean {
+  if (opening.type === 'cutout') return false
+  if (opening.type === 'window' && opening.basementWindow?.enabled) return false
+  return opening.type === 'window' || opening.type === 'door' || opening.type === 'conch'
 }
 
 export function openingHasWindowChrome(opening: Pick<Opening, 'type'>): boolean {

@@ -84,6 +84,9 @@ export const WINDOW_WIDTH_PRESETS = [48, 96, 144, 192, 288, 396] as const
 export const WINDOW_HEIGHT = 192
 export const WINDOW_SILL_Y = 128
 export const WINDOW_RECESS = 24
+
+/** Fenster schwebt beim Verschieben so weit vor der Außenfläche (cm), ohne Schatten-Neuberechnung. */
+export const OPENING_DRAG_FLOAT_CM = 48
 /** Standard-Vorstand aller Fensterprofile (cm, − = nach innen). */
 export const WINDOW_TRIM_DEFAULT_OFFSET_FORWARD = -4
 /** Zusatz-Versatz zur 24-cm-Laibung (cm, + = nach außen, 0 = Front in der Laibung). */
