@@ -1,0 +1,13 @@
+---
+description: Bestehende UI und Features niemals stillschweigend entfernen
+alwaysApply: true
+---
+
+# Bestehende Funktionen schützen
+
+Bestehende Nutzerfunktionen, UI-Elemente (Checkboxen, Selects, Buttons, Toolbar-Gruppen) und deren Wiring in `index.html` / `src/main.ts` dürfen **niemals** entfernt, auskommentiert oder „vorübergehend“ weggelassen werden, nur weil ein anderes Feature bearbeitet wird.
+
+- HTML und zugehöriges TypeScript immer gemeinsam erhalten.
+- Beim Editieren von `index.html` benachbarte Toolbar-Blöcke nicht löschen oder überschreiben.
+- Wenn etwas wirklich weg soll: **explizite Nutzeranweisung** nötig; dann Docs + Version aktualisieren.
+- Vor Commit/Push: Diff auf entfernte `id=`-Attribute und `querySelector`-Bindings prüfen.

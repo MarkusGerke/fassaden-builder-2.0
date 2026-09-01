@@ -1,0 +1,111 @@
+/**
+ * Boden-Umbra-Shader: Shadow-Map auf der Platte, Fill wie Mauerwerk
+ * (Nutzer-Albedo × Sonnenfarbe) — ohne Himmelsblau aus Light-Probe/Hemisphere.
+ */
+import * as THREE from 'three'
+
+export interface GroundMoodUniforms {
+  uGroundAlbedo: { value: THREE.Color }
+  uGroundAmbient: { value: THREE.Color }
+  uShadowUmbra: { value: number }
+  uGroundSoftness: { value: number }
+}
+
+const GROUND_MOOD_SHADER_VERSION = 'v5'
+
+const groundMoodUniforms: GroundMoodUniforms = {
+  uGroundAlbedo: { value: new THREE.Color('#ffffff') },
+  uGroundAmbient: { value: new THREE.Color('#cccccc') },
+  uShadowUmbra: { value: 0.65 },
+  uGroundSoftness: { value: 0.5 },
+}
+
+export function applyGroundMoodShader(material: THREE.MeshStandardMaterial): void {
+  if (material.userData.groundMoodVersion !== GROUND_MOOD_SHADER_VERSION) {
+    material.userData.groundMoodApplied = false
+    material.userData.groundMoodVersion = GROUND_MOOD_SHADER_VERSION
+  }
+  if (material.userData.groundMoodApplied) return
+  material.userData.groundMoodApplied = true
+  material.name = 'studioGround'
+  material.envMap = null
+  material.envMapIntensity = 0
+  material.roughness = 1
+  material.metalness = 0
+  const prevKey = material.customProgramCacheKey?.bind(material)
+  material.customProgramCacheKey = () => `${prevKey ? prevKey() : ''}|ground-mood-v5`
+  const prevCompile = material.onBeforeCompile
+  material.onBeforeCompile = (shader, renderer) => {
+    prevCompile?.(shader, renderer)
+    if (
+      !shader.fragmentShader.includes('#include <shadowmap_pars_fragment>') ||
+      !shader.fragmentShader.includes('#include <lights_fragment_begin>') ||
+      !shader.fragmentShader.includes('#include <lights_fragment_end>') ||
+      !shader.vertexShader.includes('#include <worldpos_vertex>')
+    ) {
+      return
+    }
+    shader.uniforms.uGroundAlbedo = groundMoodUniforms.uGroundAlbedo
+    shader.uniforms.uGroundAmbient = groundMoodUniforms.uGroundAmbient
+    shader.uniforms.uShadowUmbra = groundMoodUniforms.uShadowUmbra
+    shader.uniforms.uGroundSoftness = groundMoodUniforms.uGroundSoftness
+
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+uniform vec3 uGroundAlbedo;
+uniform vec3 uGroundAmbient;
+uniform float uShadowUmbra;
+uniform float uGroundSoftness;`,
+      )
+      .replace(
+        '#include <lights_fragment_begin>',
+        `#include <lights_fragment_begin>
+        irradiance = uGroundAlbedo * uGroundAmbient;`,
+      )
+      .replace(
+        '#include <lights_fragment_end>',
+        `#include <lights_fragment_end>
+        {
+          float shadowVis = 1.0;
+          #if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS > 0
+            shadowVis = receiveShadow ? getShadow(
+              directionalShadowMap[ 0 ],
+              directionalLightShadows[ 0 ].shadowMapSize,
+              directionalLightShadows[ 0 ].shadowIntensity,
+              directionalLightShadows[ 0 ].shadowBias,
+              directionalLightShadows[ 0 ].shadowRadius,
+              vDirectionalShadowCoord[ 0 ]
+            ) : 1.0;
+          #endif
+          float shadowAmt = pow(1.0 - clamp(shadowVis, 0.0, 1.0), mix(1.0, 0.55, uGroundSoftness));
+          float umbraScale = mix(1.0, 1.0 - uShadowUmbra, shadowAmt);
+          reflectedLight.directDiffuse *= umbraScale;
+          reflectedLight.indirectDiffuse *= mix(1.0, mix(1.0, 0.55, uShadowUmbra), shadowAmt);
+        }`,
+      )
+  }
+  material.needsUpdate = true
+}
+
+export function updateGroundMoodUniformValues(
+  mood: {
+    shadowUmbraStrength: number
+    groundShadowSoftness: number
+    groundAmbientColor: THREE.Color
+  },
+  groundAlbedo: THREE.Color,
+): void {
+  groundMoodUniforms.uGroundAlbedo.value.copy(groundAlbedo)
+  groundMoodUniforms.uGroundAmbient.value.copy(mood.groundAmbientColor)
+  groundMoodUniforms.uShadowUmbra.value = mood.shadowUmbraStrength
+  groundMoodUniforms.uGroundSoftness.value = mood.groundShadowSoftness
+}
+
+/** Arbeitsmodus: harte Boden-Umbra, keine weiche Penumbra. */
+export function setGroundShadowHard(hard: boolean): void {
+  if (!hard) return
+  groundMoodUniforms.uGroundSoftness.value = 0
+  groundMoodUniforms.uShadowUmbra.value = 1
+}

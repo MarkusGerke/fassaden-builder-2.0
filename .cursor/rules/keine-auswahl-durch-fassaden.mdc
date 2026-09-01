@@ -1,0 +1,13 @@
+---
+description: Keine Objektauswahl durch Fassaden hindurch
+alwaysApply: true
+---
+
+# Keine Auswahl durch Fassaden
+
+In der 3D-Ansicht darf ein Klick **nicht** durch eine Fassade (Wandfläche oder Fensterloch) hindurch ein Objekt einer weiter hinten liegenden Fassade, Decke oder eines anderen Hauses treffen.
+
+- Die nächste Wandebene gewinnt (`pickNearestFacadeHit` / `pickFromEvent` in `src/main.ts`).
+- Eine Öffnung nur auf **dieser** Wand; nichts dahinter.
+- Treppen und Vorsprünge **vor** der Ebene bleiben anwählbar.
+- Nicht umgehen, auch nicht „nur für Picking-Debug“.

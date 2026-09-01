@@ -1,0 +1,28 @@
+{
+  "name": "fassaden-builder-2.0",
+  "private": true,
+  "version": "2.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/three": "^0.185.4",
+    "opentype.js": "^1.3.4",
+    "playwright": "^1.55.0",
+    "pngjs": "^7.0.0",
+    "typescript": "~5.9.3",
+    "vite": "^8.0.0",
+    "vitest": "^4.1.11"
+  },
+  "dependencies": {
+    "@takram/three-atmosphere": "^0.19.1",
+    "postprocessing": "^6.39.4",
+    "three": "^0.183.2",
+    "three-bvh-csg": "^0.0.18",
+    "three-mesh-bvh": "^0.9.14"
+  }
+}

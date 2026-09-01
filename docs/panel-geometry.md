@@ -1,0 +1,265 @@
+# Paneel-Geometrie – Technische Dokumentation
+
+## Übersicht
+
+`src/studio/panelGeometry.ts` erzeugt die 3D-Geometrie der Studio-Wände und ihrer Paneelverkleidungen. Jede Wand besteht aus:
+
+1. **Wandkörper** — einfacher Quader mit Gehrungsschnitt an den Enden
+2. **Paneele** — trapezförmige Platten, die auf der Wand montiert sind und an Ecken ebenfalls mit Gehrung versehen werden
+
+---
+
+## Öffnungen und Reststeine
+
+`cornerJoin: 'none'` ist stumpf nur an **freien** Wandenden. Wo eine andere Wand andockt — auch ohne eigenes Mauerwerk — bleibt die Gehrung. **v0.7.281:** Forced-Ends nur an **45°-Knicken** (komplementär 0,5/1). Front-Layout (`mapFrontCutsToPlan`) nur wenn die sichtbare Front **länger** ist als der Plan (Innen-Origin); an der Außenkante bleibt das Raster auf `wall.width` — auch wenn `projectDepth` die Paneelfront an der Gehrung leicht verkürzt. **v0.7.280:** Load-Fit wie 73dbdc9 — Origin auf der Außenecke, Außenlinie in Planrichtung (kein 40-cm-Stummel). **v0.7.279:** Verknüpfte Wände mit Origin innen (`panelFlip: false`) werden beim Laden auf die Außenkante gelegt. **v0.7.278:** Raster auf der sichtbaren Außenfront; Steine dürfen `wallX < 0` (Keil vor der Plan-Kante). Feld und Öffnungen ungehrt. Der Clip an der Laibung bleibt am Öffnungsmaß.
+
+Aktueller Ablauf:
+
+1. `layoutPanelTiles()` erzeugt das Grundraster (`panelWidth` × `panelHeight`, Fuge).
+2. **`strip`:** eine durchgehende Bahn über die volle Wandbreite je Reihe.
+3. **`hideRowsBottom` / `hideRowsTop`:** ganzzahlige Anzahl Schichten ohne Steine/Mörtel von unten bzw. oben — nur Paneele/Mörtel ausgeblendet, der Wandkörper (Außenfläche) bleibt in der 3D-Ansicht sichtbar. In der **Zeichnung** werden Kanten des Wandkörpers bei aktiven Paneelen weggelassen, damit Streifen nicht doppelt konturiert sind. **v0.7.294:** dieselbe Logik für Laibung (`skipLineEdges`) — Öffnungskontur besitzen Steine, kein Bogen-Reißverschluss am Kellerfenster. **v0.7.297:** SVG-Sockel als Sweep minus Öffnungsvolumen (gleiche Kontur wie die Wand, keine Sturz-Treppe).
+4. `splitTilesAtOpenings()` ist Pass-Through.
+4. `snapHoleToTileGrid()`: getroffene **Zeilen ganz** (Y), außer bei aktivem Freiraum. **X bleibt am Öffnungsmaß** (geschnittene Köpfe/Läufer an der Laibung). Zusätzlich wird immer das echte Öffnungsrechteck abgezogen. `sealTilesToOpeningJambs` zieht Steine, die vor der Laibung enden, bis an die Kante (Bounding-Box inkl. Bogenkappe).
+5. `clipTileAgainstHoles()` stanzt dieses Rechteck. Keine Merge-/Drop-Hacks.
+6. `extrudeFrustum()` wenn `taperDepth > 0` (**Bossensteine** / Bossenprofil in der UI). **Isotroper** Kantenrücksprung: `min(panelWidth, panelHeight) / 2 × (1 − taper)`, auf Kachelgröße geclampt — gleiche Maße an allen vier Seiten (v0.5.0). Zugeschnittene Steine / Zwickel: Boss = **paralleler Einzug der Restkontur** (`remnantBossOuter` + `extrudeInsetRingFrustum`, v0.7.89) — nie Source-Diamant aus dem Originalfeld. Keilsteine: konzentrischer Polar-Boss (`extrudePolarFrustum`).
+7. Wandkörper und Leibung bleiben am **exakten** Öffnungsmaß (kein Raster-Snap).
+8. `cornerJoin === 'none'`: stumpf nur an **freien** Enden. `panelMiterEnds` gehrt, sobald eine Wand andockt (auch ohne Mauerwerk). Sockel: Nachbar muss selbst einen Sockel haben. **Sockelprofil-/Gesims-/Zierband-Sweep** (v0.7.220): `x += z × (−tan)` wie `wallLocalX`, vorzeichenbehafteter Knick. **Zierband-Löcher (v0.7.241):** `openingMaskXRangesAtY` — dieselbe Maske wie Paneele/Mauerwerk (inkl. Rundbogen), plus Aufweitung um Rahmenprofil.
+
+**Läuferverband** (`runningBond`): Gerade Reihen `1/1/1…` mit symmetrischen Enden; versetzte Reihen `0,5/1/…/0,5` (Restbreite gleichmäßig auf beide Enden). Das Muster gilt **pro Wand**, auch wenn die Steinbreite die Wand- oder Nachbarlänge nicht teilt (v0.7.174). `⅓`/`¼`-Läufer nutzen die echte Endstückbreite, nicht nur ein ½-Raster. An **45°-Ecken** erzwingen `diagonalBondEndWidth` + `buildRunningBondWithForcedEnds` komplementäre Endsteine 0,5/1; das Feld dazwischen nur volle Läufer (kein zweiter Halbstein nach dem Forced-Start). **v0.7.296:** welche Wand den 0,5-Stein in geraden Lagen bekommt, hängt von **Yaw/Origin** ab — nicht von `wall.id`. Sonst kippt der Verband nach Etage duplizieren oder Stil kopieren (neue UUIDs), und die obere Etage wirkt wie ein anderes Raster.
+
+**Dock-Fuge (kollinear, v0.7.175):** `dockRowTileOpts` in `panelLayout.ts`. Zwei Binder-Köpfe (0,5+0,5): Kacheln bleiben in `[0, wall.width]`; `flattenDockStart`/`End` setzen den Bossen-Chamfer der Innenseiten auf 0 — visuell ein Stein, ohne Überstand in die Nachbarwand oder über Öffnungen. Zwei volle 1er: normale Fuge (`jointStart`/`jointEnd`) plus `keepBossChamfer*` — jedes Trapez bleibt vollständig. `extrudeFrustum` skaliert die Gehrung mit `projectDepth + taperDepth`.
+
+### Muster (v0.4.0+)
+
+Paneele: `strip`, `runningBond`. Mauerwerk: `headerBond`, `englishBond`, `englishCrossBond`, `wildBond`, `gothicBond`, `markishBond`, `dutchBond`, `silesianBond`, `flemishBond`, `runningBondThird`, `runningBondQuarter`, `runningBondDiagonal`. Gemischte Lagen über `buildMixedCourseCuts()` (Abbruch wenn kein Fortschritt am Wandende; Iterations-Cap). `buildCuts` bricht bei Schritt ≤ 0 / NaN ab. SVG-Vorschau: `patternPreview.ts` (gecacht via `clonePatternPreviewSvg`; Toolbar baut Karten nur bei Muster-/Maßwechsel neu).
+
+#### Versatzregeln (v0.4.3, nach Wikipedia/BauNetz)
+
+| Verband | Versatz zwischen Schichten |
+| --- | --- |
+| Läuferverband (mittler) | ½ Steinlänge |
+| Läuferverband schleppend (⅓, ¼) | ⅓ bzw. ¼ Steinlänge |
+| Kopfverband | ½ Binderbreite (Kopf) |
+| Blockverband | Läufer-Stoßfugen senkrecht übereinander |
+| Kreuzverband | jede 2. Läuferschicht um 1 Kopf (Verschiebekopf) |
+| Gotischer / Märkischer / Schlesischer | jede 2. Schicht: ½ Binderbreite; Märkisch: 2 Läufer + 1 Kopf; Schlesisch: 3 Läufer + 1 Kopf |
+| Flämischer | (½ Stein + ½ Kopf) = (S+H)/2 pro Schicht |
+| Holländischer | 3 reine Kopflagen (mittige versetzt), dann Läufer-Kopf-Schicht |
+
+Implementierung: `courseSpec()` / `resolveOffset()` / `courseEndWidth()` in `panelLayout.ts` (`halfStretcher`, `halfHeader`, `halfUnit`, `shiftHeader`, `third`, `quarter`).
+
+---
+
+## Koordinaten
+
+```
+         Außenseite (z = 0 bei panelFlip: true)
+              |
+              |←── projectDepth ──→|
+              |                    |
+   z = 0 ────┤────────────────────┤──── z = -projectDepth (Vorstand nach außen)
+   (backZ)   |                    |     (frontZ)
+              Wand-Tiefe (depth)
+              |
+   z = depth ┘  (Innenseite)
+```
+
+**Lokales Koordinatensystem der Wand:**
+- X: entlang der Wand (0 = linkes Ende, `width` = rechtes Ende), zentriert bei der Gehrungsberechnung
+- Y: Höhe (0 = Unterkante)
+- Z: Tiefe — bei `panelFlip: true` (Grundriss-Wände): 0 = Außenseite, negativ = Vorstand; bei `panelFlip: false` (manuelle Wände): `depth` = Außenseite, größer = Vorstand
+
+---
+
+## Gehrung (Miter)
+
+### Konzept
+
+An jedem Wandende, das an eine andere Wand stößt, wird ein diagonaler Schnitt ausgeführt. Die Schnittebene hat 45° (bei rechtem Winkel). Der Versatz `miterStart`/`miterEnd` gibt an, wie weit das Wandende eingerückt wird (in cm entlang der Wand).
+
+```
+Draufsicht Außenecke (90°):
+
+    Wand B
+    │
+    │◄── miterEnd (B)
+    │
+────┘◄── miterStart (A)
+Wand A
+```
+
+Bei einer 90°-Ecke mit `depth = 32 cm`:
+```
+miter = 32 × tan(90° / 2) = 32 × tan(45°) = 32 cm
+```
+
+### `wallLocalX(wall, wallX, z, panelDepth?, panelBackZ?)`
+
+Kernfunktion für die Gehrungsberechnung. Gibt den horizontal verschobenen X-Wert für einen Vertex zurück.
+
+```ts
+function wallLocalX(
+  wall: Wall,
+  wallX: number,    // Position auf der Wand (0…width)
+  z: number,        // Tiefe (cm)
+  panelDepth?: number,   // Paneeltiefe; wenn gesetzt: Miter auf Paneelmaß skaliert
+  panelBackZ?: number,   // Rückseite der Paneelplatte; Nullpunkt für tOut
+): number
+```
+
+**Paneel/Sockel und Wandkörper (v0.7.278):** Ungehrt `x = wallX − halfW`, Clamp auf die Gehrungsebenen:
+
+```
+tanStart = miterStart / wallDepth
+x_start(z) = −halfW − z × tanStart
+x = clamp(wallX − halfW, x_start, x_end)
+```
+
+90°-Außenecke: Front länger als der Plan. `panelLayout` legt 0,5/1 auf dieser Front; die Keilsteine liegen bei wallX < 0 (bzw. > width). Öffnungen im Feld auf Plan-X.
+
+**Profile (Sockelprofil, Gesims, Zierband, v0.7.220):** `createProfileSweepGeometry`: `x += z × planMiter` mit `planMiter = −tan`. Load berechnet die Gehrung neu (`finalizeStudioGeometry` in der Load-Pipeline).
+
+**v0.7.219:** `|z| × |tan|` (immer kürzer) schloss 90°, ließ 45°-Außenecken klaffen.
+
+---
+
+## Paneel-Extrusion
+
+### `extrudeTrapezoidTile(rect, wall, panel, positions, normals, indices)`
+
+Erzeugt ein einzelnes Paneel als 6-seitiges Mesh (5 sichtbare Seiten + Rückseite).
+
+```
+backZ ──────── frontZ
+  ┌──────────────┐   ← top
+  │     rect     │
+  └──────────────┘   ← bottom
+
+backZ: z-Position der Paneelrückseite (Wandaußenfläche)
+       flip=true  → backZ = 0
+       flip=false → backZ = wall.depth
+       Kein separater „Luftspalt“ mehr — Tiefe pro Reihe über `rect.depth` / `projectDepth` bzw. `recessedProjectDepth`.
+
+frontZ: z-Position der Steinfront (`bodyFrontZ`)
+       flip=true  → frontZ = −projectDepth (bzw. −rect.depth)
+       flip=false → frontZ = wall.depth + projectDepth
+```
+
+Die vier Eckpunkte in Z-Richtung:
+
+| Punkt | wallX | z | tOut |
+|---|---|---|---|
+| `leftBack` | `rect.x` | `backZ` | 0 |
+| `rightBack` | `rect.x + rect.width` | `backZ` | 0 |
+| `leftFront` | `rect.x` | `frontZ` | 1 (Vorstand, Front kürzer) |
+| `rightFront` | `rect.x + rect.width` | `frontZ` | 1 |
+
+An Wandenden (`wallX ≈ 0` oder `≈ width`) gilt `offset = |z| × |miter| / depth` (Plan-Kante z = 0).
+
+---
+
+## Verband-Ecken (Mauerwerk)
+
+Bei `cornerJoin === 'bond'` greift ein Stein in Läuferlagen um die Ecke (90°). An **45°-Ecken** sind die Endkacheln komplementär **0,5 und 1** auf der Front (`planWidthForFrontTarget`). Raster ab x=0 bis zur Ecke. Das **Feld** bleibt Läuferverband und ungeshert.
+
+```
+Draufsicht (Mauerverband-Ecke):
+
+Wand B:
+──────────────╔════════╗
+              ║  Stein ║ ← Breite = bondCornerW = ceil(projectDepth / 8) × 8
+              ║        ║
+Wand A:       ╚════════╝ → greift in Wand-B-Richtung um projectDepth
+──────────────
+```
+
+---
+
+## Wandkörper-Geometrie
+
+`createStudioWallGeometry(wall)` erzeugt den Wandkörper (ohne Paneele). Dieser nutzt `wallLocalX` **ohne** `panelDepth`/`panelBackZ` — `t` von der Außenkante zur Innenkante, Innenkante gekürzt. Zwei Material-Gruppen: **0** Außenfläche, Stirnseiten, Ober-/Unterkante (`wallColor`); **1** Innenwandfläche (`interiorColor`, Default Weiß).
+
+Öffnungen werden durch `subtractRect` aus den Außen-/Innenflächen herausgeschnitten. Die **Leibung** liegt in `createStudioOpeningRevealGeometry` (pro Öffnung; **v0.7.247:** Außenhälfte `wall.wallColor`, Innenhälfte `wall.interiorColor`, zwei Material-Gruppen in `FacadeController.rebuildReveals`) und spannt von `studioOpeningRevealInnerZ` (= `studioWallInnerLocalZ`, v0.7.193) bis `studioOpeningRevealOuterZ` — je Maskenkante zwei Quads (Außen-/Innenhälfte, v0.7.239 ohne Lippe/Soffit). Mit Freiraum endet sie an der Vertiefungskante (`studioClearanceRecessZ`: Vorstand vor der Wandaußenkante, 0 = Wand). **v0.7.292:** Mit Paneelen sitzt `revealOuterZ` `REVEAL_OUTER_INSET_CM` (0,6 cm) hinter der Paneelfront — Steine besitzen die Lochkante. Studio-Fenster/Türen werden 1,5 cm je Seite größer gebaut als das Loch.
+
+**Mörtel/Fugenfarbe (v0.7.247 / v0.7.248):** `panel.jointColor` (Default `#c8c0b8`), unabhängig von `wallColor`. UI Reiter **Fugen**; Mörtel wird im Low-Tier gebaut und ist ab Medium-LOD sichtbar. Stein-Kontrast nutzt im Medium-LOD mehrfarbige Low-Meshes (`createStudioPanelGeometriesByColorIndex`).
+
+| `panelFlip` | Innenende (`zB` / `zA`) | Außenende |
+|---|---|---|
+| `true` (Grundriss) | `zB = depth` | `zA = revealOuterZ` (typisch negativ, durch die Paneele) |
+| `false` | `zA = 0` | `zB = revealOuterZ` (typisch `depth + Vorstand`) |
+
+Ohne Paneele und ohne vorstehendes Profil ist `revealOuterZ` die Wandkörper-Außenkante — gleiches Mesh wie zuvor.
+
+### Paneele an Öffnungen
+
+`clipTileAgainstOpenings` schneidet Steine und Mörtel gegen die **Öffnungsmaske** — dieselbe Kontur wie das Wandloch (`openingMaskPolyline` in `openingGeometry.ts`): Rechteck, Bogenkrone (`openingArchOutline` / `sampleArchCrown` für alle `ArchFormId`s außer `rect`) oder Stadion/Kreis. Mit Keilstein-Ring dockt das Raster an `voussoirExtradosPolyline` (meshgleiche Außenkanten), nicht an einen 128-Punkt-Kreis. `PANEL_OPENING_CLEARANCE` ist **0**, damit kein Wandstreifen (Phantom-Kasten) um den Bogen frei bleibt; optionaler Nutzer-Freiraum (`Opening.panelClearance`) bleibt ein konzentrischer Offset derselben Form. Kurve: keine Rechtecklöcher, nur Band-Clip (`clipPolysMinusArches` / `clipRectMinusStadium`). Eckige Öffnungen: `clipRectMinusBox` hält L-Steine als ein Polygon (kein `subtractRect`-Split an Sohlbank/Kämpfer). Reste oberhalb des Bogens als `bottomArc`, unterhalb runder Nischen als `topArc`. **v0.7.106:** Nach mehreren Bogen-Clips verdichtet `clipPolyMinusColumnHole` die X-Abtastung in Flachbereichen; `interpolatePolyArc` nutzt Laibungs-ε (nicht 0,05 cm), sonst fehlen Flat-Samples zwischen Fenstern. `splitMultiNotchArcPolys` zerlegt wandbreite Streifen nur bei **zwei oder mehr** Kerben (flach | Kerbe | flach | …), damit zwischen Fenstern keine Sehne entsteht. **Ein** Rundbogen bleibt ein Polygon mit `bottomArc`/`topArc` — sonst vertikale Stirnkanten je Reihe (Treppenstufen) und Lücken am Scheitel (v0.7.120). **v0.7.123:** Spalten dünner als `ARCH_REMNANT_CRUMB_CM` (3,2 cm) über/unter dem Loch entfallen, damit wandbreite Streifen keinen Dreiecks-Krümel am Scheitel behalten (die AABB-Höhe der ganzen Reihe ist die Schichthöhe). Nach dem Clip werden `bottomArc`/`topArc` auf die Maskenkurve verdichtet und nach außen geschnappt — Sehnen aus dem X-Raster liegen nicht mehr im Loch. 3D-Körper aus Segment-Quads entlang der Bogenkante (kein Outline-Fächer, der konvexe Sehnen-Reste füllt). Bossen: paralleler Band-Einzug derselben Kurve (`extrudeMonotoneArcBoss`). Konkave Bogen-Reste: kein Outline-Fächer / kein Schwerpunkt-Bossen (Diagonalen in der Zeichnung); Front aus Segment-Quads entlang `topArc`/`bottomArc`. Ein Stein links/rechts der Laibung bleibt **ein** Polygon (nicht an Kämpfer/Sohlbank zerlegt). Shape-Löcher mit **entgegengesetzter Windung**. Bossen-Vorstand (`taperDepth`): volle Rechtecke mit Chamfer-Frustum; zugeschnittene Steine / Zwickel: paralleler Einzug der Restkontur (v0.7.89), kein Source-Diamant. Optional **`openingJoin: 'miter'`** (Checkbox „Gehrung an Öffnungen“): 45°-Abschrägung an rechteckigen Lochkanten analog `wallLocalX` (`applyOpeningMiterX/Y` in `panelGeometry.ts`) — nicht an Bogenkanten.
+
+### Sockel
+
+`createStudioPlinthGeometry` nur wenn `plinthEnabled !== false`, `plinthHeight > 0` und Profil **`sockelStandard`** (Legacy). Default ist **`sockelprofil`** (`19x196-1.svg`): dekoratives Profil **ersetzt** die Box. Sweep vom Boden, Höhe = `plinthHeight` (`sectionScale`), **Tiefe = `plinthDepth`** relativ zur nativen SVG-Breite (`sectionScaleForward = plinthDepth / nativeDepth`), **Versatz = `plinthOffsetForward`** von `studioPanelFaceLocalZ`. Maße: Höhe in **8-cm-Schritten**, Tiefe/Versatz in **1-cm-Schritten**. **v0.7.297:** voller SVG-Sweep wie Gesims, danach boolesches Abziehen des Öffnungsvolumens (`createPlinthProfileSweepGeometry` / `three-bvh-csg`, Kontur `openingMaskPolyline`) — gleicher Schnitt wie Mauerwerk, nicht Y-Löcher im Querschnitt und nicht `plinthVisibleXSpans` plus Sturz-Treppe. Fallback: Fragment-Discard in der Maske. Box-Sockel: Outline/`bottomArc` wie Mauerwerk. Paneel-/Ziegel-Layout: Raster startet am **Wandfuß** (`masonryOriginY = 0`); der Sockel **überlagert** — `clipTilesAbovePlinth` entfernt Steine unter der Sockelhöhe, ohne das Y-Raster zu verschieben (Sockelhöhe ändert Paneel-Y nicht).
+
+**Bossen an Fugen (v0.7.58):** `extrudeFrustum` unterdrückt den Chamfer an Wandenden nur bei 90°-Ecken oder **0,5er**-Köpfen; **volle Steine** an kollinear fortgeführten Nachbarwänden behalten die Zylinderform (`isCollinearWallContinuation`).
+
+**Bossen an Wandenden (v0.7.59):** Optional an freien Enden (`endBossStart` / `endBossEnd`: `off` | `full` | `half` | `alternate`). `layoutPanelTiles` passt Spalten-Schnitte an (volle/halbe Steine, abwechselnd pro Reihe). Mit Nachbar: `endBossStartJoin` / `endBossEndJoin` (`flush` | `miter`) steuert Chamfer über `shouldSuppressBossChamferAtEnd`.
+
+### Schmale Paneel-Reste
+
+Zwischen zwei Öffnungen (oder Öffnung und Wandende) darf kein sichtbarer Rest **schmaler als die Steinbreite der Lage** stehen.
+
+- `mergeNarrowPanelGaps` in `panelLayout.ts`: verschmilzt benachbarte **Kacheln** in schmalen Zwischenräumen zu einem Stein (zwischen Fenstern, zur Wandkante). **Paneele:** Schwelle = halbe Steinbreite (`headerSize`, mind. Raster). **Mauerwerk:** Schwelle = kleinste Kachelbreite der Reihe (z. B. 16 cm bei Köpfen).
+- Öffnungslöcher bleiben **pro Fenster getrennt** — kein Zusammenlegen der Löcher (das würde den Zwischenstreifen komplett entfernen).
+- `snapHoleToTileGrid`: Y volle Zeile (bei Rundbogen nur bis zur Kämpferlinie; bei Freiraum kein Y-Snap). X am Öffnungsmaß. Zusätzlich Clip gegen das echte Öffnungsrechteck. Geschnittene Reste an der Laibung bleiben stehen; fehlende Stücke bis zur Kante werden per `sealTilesToOpeningJambs` geschlossen.
+- Optional **`Opening.panelClearance`**: extra Ausschnitt in Paneelen/Mörtel (Default Abstand 8 cm). **Tiefe positiv** = Rahmen vor der Wand, **0** = Wandfläche, **negativ** = Vertiefung in die Wand (Außenfläche im Band ausgeschnitten, Rückwand an `studioClearanceRecessZ`). `finish`: `empty` oder `taper` (nur mit Paneelen). Wandloch am Öffnungsmaß, außer der Außenfläche bei Vertiefung.
+
+
+## Öffnungslöcher (Clip)
+
+`studioWallFaceShape` (`panelGeometry.ts`): Bodentüren (`y === 0`, eckig) als **Boden-Notch** in der Außenkontur; berührt die Laibung die Wandkante (≤ 0,05 cm), wird die Öffnung stattdessen als **Shape-Loch** behandelt — sonst trianguliert Earcut eine Diagonale durchs Türloch. Kein doppeltes Schließen der Kontur, Y ≥ 0 ohne 2-cm-Hairline.
+
+`openingClipRects` in `src/utils/openingGeometry.ts` liefert rechteckige CSG-Löcher nur für **eckige** Masken (beim Rundbogen den Körper unter der Kämpferlinie). Runde Nischen haben kein Rechteckloch. Die Bogenkappe bzw. das Stadion wird mit `clipRectMinusArch` / `clipRectMinusStadium` als Kreislinie geschnitten. Die Kurve wird **gleichmäßig im Winkel** abgetastet (`archPolyline` / `stadiumPolyline`, `ARCH_CURVE_SEGMENTS = 128` für Clip/SVG) — nicht im X-Raster, sonst entstehen lange Sehnen an den Kämpfern. 3D-Extrude/Shape nutzen `ARCH_MESH_SEGMENTS = 32` (v0.7.77). Wandflächen nutzen `THREE.Shape` + Polylinie mit Loch-Windung entgegen der Außenkontur (nicht `absarc` mit gleicher Windung — das füllt die Bounding-Box und erzeugt den Phantom-Kasten um den Bogen). `snapHoleToTileGrid` darf die Bogenkappe nicht als volle Ziegelzeile auffressen (Y-Snap endet an der Kämpferlinie; Stadion-Siegel nur im geraden Mittelstück).
+
+**Zeichnung / Phantom-Kasten (v0.7.67):** `THREE.EdgesGeometry` macht jede 90°-Seitenfläche sichtbar. Deshalb darf ein Stein oder die Mörtelplatte in der **Bogenkappe** nicht an `boxX0`/`boxX1` (Bounding-Box der Öffnung) gespalten werden — das wäre eine lotrechte Kante durch die Zwickel und die Lagerfugen über dem Bogen. Unter der Kämpferlinie bleibt die echte Laibung. In der Kappe: Kurvenschnitt über die **volle Kachelbreite**, Rest als `bottomArc`. Mehrere Bögen nacheinander: vorhandene `bottomArc`/`topArc` mit der neuen Maske per `max`/`min` zusammensetzen; sonst füllt der zweite Clip das Bounding-Rechteck des ersten Rests und das erste Bogenloch läuft wieder zu.
+
+**Bossen-Vorstand (v0.7.69 / v0.7.73):** Ein Stein, der Laibung und Bogenkappe zugleich trifft, bleibt ein Polygon (`clipPolyMinusColumnHole`: L/[ als `outline`, C/O weiter getrennt). Der Vorstand ist **ein** Diamant: originale Front bleibt im Raster, wenn sie noch im Reststein liegt (`sourceX/Y/Width/Height` über `copyPolyProps`); sonst ein Diamant im größten eingeschriebenen Balken — nicht zwei Erhebungen in Laibung und Kappe, nicht AABB-Shrink ins Loch.
+
+### Freiraum-Modi am Rundbogen (v0.7.34–v0.7.36)
+
+`Opening.panelClearance.finish`: `empty` (Default) oder `taper`. Kein automatischer Bogenring; `Opening.arch.panelFan` entfernt (Migration: `panelFan === true` → Freiraum an + `finish: 'taper'`).
+
+1. **Freiraum aus:** Kartesisches Raster dockt an der Innenkurve. Clip-Mindestrest 1 cm (`MIN_ARCH_CLIP_REMNANT`).
+2. **Freiraum leer:** Clip am Band-Außenrand; Frontkappe vom Wandaußen bis `studioClearanceRecessZ` (Vorstand) bzw. Rückwand in der Wand plus Maske in der Außenfläche (Vertiefung, Tiefe < 0). Ohne Paneele: Rahmen vor der Wand. Leibung bündig dort.
+3. **Freiraum zulaufen:** Polar-Tiles nur im Clearance-Band (`archVoussoirPolys` / `archFanPolys`); Raster dockt am Extrados des Bands.
+4. **Clip / Maske (v0.7.38, Clip-Pfad v0.7.42):** Jede Kachel (Streifen **und** Mauerwerk) wird einzeln gegen die **Öffnungsmaske** geschnitten — dieselbe Kontur wie das Wandloch. Links/rechts der Maske bleiben Rechtecke; nur die Überlappung folgt der Bogenkurve und wird als `bottomArc` extrudiert (wie origin/main v0.7.33). Nicht als `outline` triangulieren: die v0.7.41-Frontkappen drehten die Windung und cullten `FrontSide`.
+5. **Extrusion:** Rechtecksteine und Bogen-Reste: `addQuad(blf, brf, trf, tlf)` (feste −Z-Windung wie v0.7.33). Keilsteine/`outline` nur für konvexe Polar-Tiles (Fächer um den ersten Punkt). Bossen-Vorstand (`taperDepth`): volle Rechtecke mit Chamfer-Frustum; zugeschnittene Steine / Zwickel: paralleler Einzug der Restkontur (`remnantBossOuter`, v0.7.89). Polar-Keile: `extrudePolarFrustum` (konzentrischer Einsatz).
+
+### Keilstein-Ring / römischer Halbkreisbogen (v0.7.75–0.7.76)
+
+`Opening.arch.voussoirs` legt einen echten Voussoir-Ring um das Bogenloch:
+
+- **Intrados** = Öffnungshalbkreis (`openingArchGeom`); **Extrados** = Intrados + `ringThicknessCm` (fehlt → `archRingThickness(panelHeight)`), **gleicher Mittelpunkt**.
+- Anzahl: `keystoneCount` oder Auto `archVoussoirCount` aus Bogenlänge / `panelWidth` (ungerade 5–21).
+- Fugen: Winkellücke aus `panel.joint`; Keile als Polar-Polygone (`archVoussoirPolysFromSpec`, Feld `polar`).
+- Kartesisches Raster clippt gegen den **Extrados** (Außenlinie des Rings). Die Zwickel sind dieselben Rastersteine, an der Kurve maskiert (`bottomArc`) — keine Rechteck-Kappe, keine Extra-Polygone. Mörtel clippt am **Intrados**, damit die Fugen zwischen den Keilen Mörtel zeigen.
+- Freiraum `taper` startet **außerhalb** des Rings (`archFanPolys(..., ringT, ...)`).
+- Bossen (v0.7.76 / v0.7.89): konzentrischer Keil (`extrudePolarFrustum`) — radiale Seiten bleiben radial, Bögen konzentrisch. Am Bogen-Rest (Zwickel): paralleler Einzug der Clip-Kontur, kein Source-Diamant.
+- `spandrel: 'rect'`: Rechteckband über dem Extrados-Scheitel; Raster dort entfernt. Default `bond` = Wandraster bis an den Extrados.
+- Spec/SVG: `buildSemicircularArchSpec`, `archVoussoirSvg` (Kreisbogen-Pfade + radiale Fugen, optional Schenkel) in `openingGeometry.ts`.
+- 3D-Tessellation (v0.7.77 / v0.7.96): `voussoirMeshSegments` 6–8 je Keil; Paneel-Clip nutzt dieselbe Extrados-Polyline (`voussoirExtradosPolyline`), nicht den 128-Punkt-Kreis.
+- **Schenkel (v0.7.78 / v0.7.97):** `Opening.arch.jambs` — Steine gleicher Höhe von Sohlbank bis Kämpfer (`archJambPolysFromSpec`); Anzahl `jambCount` (1–21, Auto aus lichter Höhe / Paneelhöhe). Raster wird aus den Schenkelstreifen ausgeschnitten.
+- **Zwickel (v0.7.80–0.7.96):** Raster läuft bis an den **Extrados** (Außenkante der Keilsteine, meshgleiche Facetten). Körper und Boss teilen die Clip-Kontur mit paralleler Fase. Krümel unter 3,2 cm Höhe entfallen. Mit Voussoirs + Freiraum „leer“: Dock am Extrados ohne Clearance-Kappe.
+- **Keil-Bossen (v0.7.83):** `extrudePolarFrustum` mit begrenztem Chamfer (~22 % Ringstärke / 18 % Winkel), Radial-Quads statt Fächer; Körper-Front entfällt wenn Polar-Boss die Front übernimmt (kein „Paneel im Keil“).
+- **3D-Flackern (v0.7.87):** Selektion ruft `applyRenderStyle` nicht mehr auf (Linien blieben sonst neu gebaut). Orbit-Lite ändert Pixelratio/Linien/Bloom nicht mehr.
+
+### Modul-GLB-Verkleidung vs. Fassadenbogen (v0.7.37)
+
+Studio-Paneele clippen den Bogen prozedural. **Modul-Verkleidung** (`resolveCladding` / GLB unter `src/assets/cladding/`) hat ein **rechteckiges** Fensterloch. Sobald eine öffnende Wandöffnung `arch.enabled` hat, wird die GLB-Instanz in `rebuildCladding` übersprungen — sonst bleiben Schultern/Ecken neben dem Bogenfenster sichtbar. Die Wandgeometrie mit Bogenloch bleibt.
+
+**Fallstrick:** Testlinks mit Modulwand + Fassadenbogen zeigen ohne diesen Skip oft „eckige“ Aussparungen — das ist die GLB, nicht die Paneel-Triangulation.
+
+- **flush** (`Opening.fill.mode`): kein Loch
+- **revealFrame.enabled**: Loch = Öffnung + `embedCm` je Seite (Default 8)
+- **arch.enabled**: Rechteckkörper bis Kämpferlinie + glatter Halbkreis, keine Spaltenapproximation
+
+Blendrahmen/Flügel/Glas (`createFrameGeometry` in `gruenderzeit.ts`, v0.7.50): Innenbogen **konzentrisch** zur Außenkante (gleiche Mitte, Radius − Holzstärke). Ein Extra-Offset um die Rahmenstärke verschiebt die Bogenmitte und verzerrt den Halbkreis.
+
+Leibung: `createStudioOpeningRevealGeometry` (Nische mit Rückwand bei `fill.mode === 'niche'`). **Konche** (`type: 'conch'`): `createStudioConchRevealGeometry` — Halbzylinder unter der Kämpferlinie + Viertelkugel-Kalotte; Wandloch über erzwungene Rundbogen-Maske (`openingArchForm` → `round`).

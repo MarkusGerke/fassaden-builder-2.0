@@ -1,0 +1,13 @@
+---
+description: Zugehörige Einstellungen ausblenden, wenn eine Checkbox oder Aktion inaktiv ist
+alwaysApply: true
+---
+
+# Inaktive Einstellungen ausblenden
+
+Wenn eine Checkbox, ein Schalter oder eine Aktion **aus** ist, die dazugehörigen Felder, Hinweise und Vorschauen **ausblenden** — nicht nur deaktivieren und stehen lassen.
+
+- Beispiel: Keilstein-Ring aus → Anzahl, Bogenstärke, Schenkel **und** die SVG-Vorschau weg.
+- Beispiel: Verdachung aus → Form, Profil, Maße, Farbe weg.
+- Das steuernde Element (Checkbox selbst) bleibt sichtbar.
+- IDs nicht löschen; `hidden` setzen.

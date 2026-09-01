@@ -1,0 +1,16 @@
+---
+description: Alle Änderungen als Markdown dokumentieren
+alwaysApply: true
+---
+
+# Dokumentation
+
+Jedes Feature, jeder Fix und jede Konvention wird in `docs/` als Markdown festgehalten. Keine nur mündlichen oder Chat-only Entscheidungen.
+
+- Nach einer Änderung die passende Datei unter `docs/` aktualisieren (oder neu anlegen) und in `docs/README.md` verlinken.
+- Im Dokument stehen: Verhalten für den Nutzer, betroffene Dateien, Datenfluss, Defaults/Konstanten, bekannte Fallstricke.
+- Architektur-relevante Änderungen zusätzlich kurz ins Änderungsprotokoll in `docs/changelog.md` (Verweis bleibt in `docs/architecture.md`).
+- **Versionierung:** Bei nutzerrelevanten Änderungen `src/version.ts` aktualisieren (`APP_VERSION` anheben, neuen Eintrag oben in `RELEASES`, `package.json`-Version synchron halten). Siehe `docs/versioning.md`.
+- **Persistenz-Felder:** Bei neuem Feld an Wall/Opening zusätzlich Hydrate-Default (`src/utils/hydrate.ts`), ggf. Schema-Migration (`FACADE_SCHEMA_VERSION`, `docs/migration.md`). Alt-Elemente müssen nach Load denselben Feldkatalog haben wie Bibliothek-Elemente.
+- **Release Notes sind Pflicht:** Nach jeder nutzerrelevanten Änderung sofort `APP_VERSION`, `RELEASES` und `package.json` aktualisieren — nicht optional, nicht vergessen, nicht auf später verschieben.
+- Keine Secrets, keine Plan-Dateien unter `.cursor/plans/` als Ersatz für Projektdocs.
