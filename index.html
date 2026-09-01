@@ -548,8 +548,42 @@
                 <input id="scene-light-depth-num" type="number" min="-1200" max="1200" step="8" value="0" />
               </div>
               <div class="toolbar-group">
-                <span class="toolbar-label">Intensität</span>
-                <input id="scene-light-intensity" type="number" min="0" max="12000" step="100" />
+                <span class="toolbar-label">Lichtfarbe</span>
+                <label class="slider-label">
+                  <span>Farbtemperatur (Wärme)</span>
+                  <output id="scene-light-color-temp-value">3000 K</output>
+                </label>
+                <input id="scene-light-color-temp" type="range" min="2000" max="6500" step="50" value="3000" />
+                <span id="scene-light-color-swatch" class="scene-light-color-swatch" title="Aktuelle Lichtfarbe" aria-hidden="true"></span>
+              </div>
+              <div class="toolbar-group">
+                <span class="toolbar-label">Leistung (Watt LED)</span>
+                <input id="scene-light-intensity" type="number" min="1" max="150" step="1" />
+                <span class="toolbar-hint">10 W ≈ 800 lm · Übernahme bei Enter oder Fokus-Verlust</span>
+              </div>
+              <div class="toolbar-group">
+                <label class="toolbar-check">
+                  <input id="scene-light-show-marker" type="checkbox" checked />
+                  Marker anzeigen
+                </label>
+              </div>
+              <div id="scene-light-marker-size-row" class="toolbar-group">
+                <span class="toolbar-label">Marker-Größe (cm)</span>
+                <label class="slider-label">
+                  <span>Durchmesser</span>
+                  <output id="scene-light-marker-size-value">40</output>
+                </label>
+                <input id="scene-light-marker-size" type="range" min="8" max="200" step="4" value="40" />
+                <input id="scene-light-marker-size-num" type="number" min="8" max="200" step="4" value="40" />
+              </div>
+              <div class="toolbar-group">
+                <span class="toolbar-label">Reichweite (cm)</span>
+                <input id="scene-light-distance" type="number" min="0" max="8000" step="50" />
+                <span class="toolbar-hint">0 = unbegrenzt</span>
+              </div>
+              <div class="toolbar-group">
+                <span class="toolbar-label">Abfall</span>
+                <input id="scene-light-decay" type="number" min="0" max="3" step="0.1" />
               </div>
               <div class="toolbar-group">
                 <label class="toolbar-check">
@@ -2077,6 +2111,12 @@
                 </label>
                 <input id="sun-color-temp" type="range" min="2700" max="8000" step="100" value="4500" />
                 <p class="toolbar-hint compact-hint">Manuell verstellbar; wird bei Datum/Tageszeit wieder aus dem Sonnenstand gesetzt.</p>
+
+                <label class="toolbar-check" id="view-show-light-markers-row">
+                  <input id="view-show-light-markers" type="checkbox" checked />
+                  Lichtpunkte anzeigen
+                </label>
+                <p class="toolbar-hint compact-hint">Glühen der platzierten Punktlichter — nur Anzeige, die Lichtwirkung bleibt.</p>
               </div>
 
               <div class="settings-section" data-settings-section="anim" data-settings-label="Animation" data-settings-order="20">

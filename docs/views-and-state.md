@@ -16,7 +16,7 @@ type AppView = 'front' | '3d' | 'top' | 'export'
 
 Legacy `'plan'` → `'top'`, `'edit'` / `'2d'` → `'front'`.
 
-Wechsel via `setView(mode)` in `src/main.ts`. **Fassaden-Builder 2.0:** App-Start standardmäßig **2D-Front** + **Render**-Modus; **3D** wieder per `#view-btn-3d` wählbar. Gespeicherte `view: '3d'` aus `localStorage` wird beim Reload wiederhergestellt (Hash-Load bleibt `'front'`). Buttons Oben/Entwurf/Galerie/Einfach-Komplex und Ebenen-Panel sind weiter per `hidden` ausgeblendet (Code/Wiring bleibt). Bis `applyState` fertig ist, liegt `#app-loading` über der Seite (HTML+CSS+kleines Inline-Skript im `index.html`-Head, kein Warten auf das Bundle). Loader: SVG „Haus vom Nikolaus“ (nur vollständige Eulerwege), Strich per `stroke-dashoffset` in 720 ms, nahtloser Loop ohne Eckpunkte, Text „Studio wird geladen …“ (v2.0.4).
+Wechsel via `setView(mode)` in `src/main.ts`. **Fassaden-Builder 2.0:** App-Start standardmäßig **2D-Front** + **Render**-Modus; **3D** wieder per `#view-btn-3d` wählbar. Gespeicherte `view: '3d'` aus `localStorage` wird beim Reload wiederhergestellt (Hash-Load bleibt `'front'`). Buttons Oben/Entwurf/Galerie/Einfach-Komplex und Ebenen-Panel sind weiter per `hidden` ausgeblendet (Code/Wiring bleibt). **v2.0.38:** Ladeoverlay `#app-loading` wird in `finally` nach Startup entfernt; Atmosphäre, Fenster-GLTF und Schatten-Map laden in `bootstrapSceneLighting()` im Hintergrund nach. Loader: SVG „Haus vom Nikolaus“ (nur vollständige Eulerwege), Strich per `stroke-dashoffset` in 720 ms, nahtloser Loop ohne Eckpunkte, Text „Studio wird geladen …“ (v2.0.4).
 
 Beim Wechsel zur `'top'`-Ansicht wird die Kamera zentriert (`framePlanCameraToContent`, `planZoom = 1`).
 

@@ -2,6 +2,42 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Punktlicht: Geschoss-Schatten, Okkluder & Bloom (2026-09-01) — v2.0.43
+
+Horizontale **Vollplatten** pro Geschoss (Gebäude-BBox) für Cube-Shadows — Licht aus dem EG erreicht Kellerfenster nicht mehr diagonal. Okkluder: Wände, Verkleidung, Laibungen, Öffnungs-Tunnel, Rahmen. **Bloom-HDR-Kern** an jeder Lichtquelle. Front-Ansicht in Bloom-Pipeline. Dateien: `FacadeController.ts`, `sceneLightRuntime.ts`, `lightGlowMarker.ts`, `main.ts`.
+
+### Punktlicht: Geschoss-Okklusion & Klarglas (2026-09-01) — v2.0.42
+
+Punktlicht-Cube-Shadows: **Böden und Decken** (`indoorFloorGroup`) plus **Wandkörper** okkludieren — Licht aus oberen Etagen dringt nicht durch Geschossplatten zum Kellerfenster. **Klarglas:** Transmission ohne Farbfilter (`attenuationDistance ∞`, kein dunkler Opacity-Tint). Dateien: `FacadeController.ts`, `threeColors.ts`, Docs.
+
+### Punktlicht: Watt & farbiges Glühen (2026-09-01) — v2.0.41
+
+Leistung in **Watt (LED)** statt roher Three.js-Intensität (1–150 W, Default 12 W); Umrechnung mit cm-Maßstab in `sceneLightUnits.ts`. Alte Saves (>150) werden automatisch migriert. Licht-Glühen übernimmt die **Lichtfarbe** (Textur weiß + Alpha, keine Übersteuerung). Dateien: `sceneLightUnits.ts`, `lightGlowMarker.ts`, `sceneLightRuntime.ts`, `scenePointLights.ts`, `main.ts`, `index.html`, Docs.
+
+### Licht durch Glas (2026-09-01) — v2.0.40
+
+Punktlicht-Glühen: sichtbar durch **Glas** und **offene Öffnungen**; Wände, Rahmen, Sprossen okkludieren per depthTest. Glas-Material (`applyGlassLook`) mit `depthWrite: false`. Dateien: `threeColors.ts`, `lightGlowMarker.ts`, Docs.
+
+### Lichtpunkte: Glühen & Ausblenden (2026-09-01) — v2.0.39
+
+Szene → **Licht** → **Lichtpunkte anzeigen** (persistiert in `viewOptions.showLightMarkers`; parallel in Bibliothek → Tab Licht). Marker: weiches additive Glühen (`lightGlowMarker.ts`) mit **depthTest** — Wände, Fensterrahmen und Sprossen verdecken den Schein. Dateien: `main.ts`, `index.html`, `sceneLightRuntime.ts`, `scenePointLights.ts`, Docs.
+
+### Schnellerer Studio-Start (2026-09-01) — v2.0.38
+
+Viewport-Loop startet nach vollständigem UI-Wiring; Ladeoverlay in `finally` (`dismissAppLoading`). Schatten-Map erst nach Atmosphäre + `whenMeshesReady` (`startupShadowReady`). **Fix:** `syncSceneLightRuntime` nutzt `facade` erst nach `facadeReady` — sonst brach `applySceneAppearance()` vor `new FacadeController` den Modul-Load. Dateien: `main.ts`, Docs.
+
+### Lichtkreise global (2026-09-01) — v2.0.37
+
+Bibliothek → **Licht** → **Lichtkreise anzeigen** schaltet alle Editor-Kugeln (`viewOptions.showLightMarkers`). Pro Licht bleibt **Marker anzeigen** in der Toolbar. Dateien: `main.ts`, `sceneLightRuntime.ts`, `scenePointLights.ts`, `facade.ts`, Docs.
+
+### Punktlicht-Farbtemperatur (2026-09-01) — v2.0.36
+
+Slider **Farbtemperatur (Wärme)** 2000–6500 K in `#toolbar-scene-light`; `colorTemperature` persistiert, Farbe via `kelvinToColor`. Dateien: `sceneLights.ts`, `main.ts`, `index.html`, `style.css`.
+
+### Punktlicht-Toolbar erweitert (2026-09-01) — v2.0.35
+
+Intensität/Reichweite/Abfall: Commit bei Enter oder Blur. Rechtsklick **Duplizieren**. UI: Farbe, Marker an/aus, Marker-Größe, Reichweite, Abfall. Dateien: `sceneLights.ts`, `sceneLightRuntime.ts`, `main.ts`, `index.html`, Docs.
+
 ### Punktlicht-Oklusion (2026-09-01) — v2.0.34
 
 Bibliotheks-Punktlichter: Cube-Shadows in **2D-Front** und **3D** (Render + „Schatten werfen“). Öffnungs-Tunnel, Rahmen/Sprossen und Wandkörper blockieren Licht nach außen; Shadow-Map bei Verschieben. Dateien: `sceneLightRuntime.ts`, `FacadeController.ts`, `main.ts`, Docs.

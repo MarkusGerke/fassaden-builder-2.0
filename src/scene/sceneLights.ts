@@ -2,16 +2,32 @@ import * as THREE from 'three'
 import type { FacadeState, SceneLight } from '../types/facade'
 import { createId } from '../utils/id'
 import { getAllWalls } from '../utils/buildings'
-import { buildingWorldBox } from '../utils/sunLighting'
+import { buildingWorldBox, kelvinToColor } from '../utils/sunLighting'
+import { DEFAULT_POWER_WATTS, normalizePowerWatts } from '../lighting/sceneLightUnits'
 
 export type { SceneLight }
+
+const MARKER_SIZE_MIN_CM = 8
+const MARKER_SIZE_MAX_CM = 200
+const COLOR_TEMP_MIN_K = 2000
+const COLOR_TEMP_MAX_K = 6500
+const DEFAULT_COLOR_TEMP_K = 3000
 
 export const DEFAULT_SCENE_LIGHT: Omit<SceneLight, 'id' | 'x' | 'y' | 'z'> = {
   label: 'Punktlicht',
   color: '#ffaa66',
-  intensity: 2800,
+  colorTemperature: DEFAULT_COLOR_TEMP_K,
+  intensity: DEFAULT_POWER_WATTS,
   enabled: true,
   castShadow: true,
+  showMarker: true,
+  markerSizeCm: 40,
+  distance: 0,
+  decay: 2,
+}
+
+export function kelvinToHex(kelvin: number): string {
+  return `#${kelvinToColor(kelvin).getHexString()}`
 }
 
 export function normalizeSceneLight(raw: Partial<SceneLight> & { id: string }): SceneLight {
@@ -20,18 +36,44 @@ export function normalizeSceneLight(raw: Partial<SceneLight> & { id: string }): 
   const z = typeof raw.z === 'number' && Number.isFinite(raw.z) ? raw.z : 0
   const intensity =
     typeof raw.intensity === 'number' && Number.isFinite(raw.intensity)
-      ? Math.max(0, raw.intensity)
+      ? normalizePowerWatts(raw.intensity)
       : DEFAULT_SCENE_LIGHT.intensity
+  const colorTemperature =
+    typeof raw.colorTemperature === 'number' && Number.isFinite(raw.colorTemperature)
+      ? Math.min(COLOR_TEMP_MAX_K, Math.max(COLOR_TEMP_MIN_K, raw.colorTemperature))
+      : DEFAULT_COLOR_TEMP_K
+  const colorFromKelvin = kelvinToHex(colorTemperature)
+  const hasLegacyHexOnly =
+    typeof raw.color === 'string' && raw.color.startsWith('#') && raw.colorTemperature === undefined
+  const color =
+    hasLegacyHexOnly ||
+    (typeof raw.color === 'string' && raw.color.startsWith('#') && raw.color !== colorFromKelvin)
+      ? raw.color
+      : colorFromKelvin
   return {
     id: raw.id,
     label: typeof raw.label === 'string' ? raw.label : DEFAULT_SCENE_LIGHT.label,
     x,
     y,
     z,
-    color: typeof raw.color === 'string' && raw.color.startsWith('#') ? raw.color : DEFAULT_SCENE_LIGHT.color,
+    color,
+    colorTemperature,
     intensity,
     enabled: raw.enabled !== false,
     castShadow: raw.castShadow !== false,
+    showMarker: raw.showMarker !== false,
+    markerSizeCm:
+      typeof raw.markerSizeCm === 'number' && Number.isFinite(raw.markerSizeCm)
+        ? Math.min(MARKER_SIZE_MAX_CM, Math.max(MARKER_SIZE_MIN_CM, raw.markerSizeCm))
+        : DEFAULT_SCENE_LIGHT.markerSizeCm!,
+    distance:
+      typeof raw.distance === 'number' && Number.isFinite(raw.distance)
+        ? Math.max(0, raw.distance)
+        : DEFAULT_SCENE_LIGHT.distance!,
+    decay:
+      typeof raw.decay === 'number' && Number.isFinite(raw.decay)
+        ? Math.min(3, Math.max(0, raw.decay))
+        : DEFAULT_SCENE_LIGHT.decay!,
   }
 }
 
@@ -99,4 +141,32 @@ export function removeSceneLight(state: FacadeState, lightId: string): FacadeSta
 
 export function sceneLightById(state: FacadeState, lightId: string): SceneLight | undefined {
   return normalizeSceneLights(state.sceneLights).find((item) => item.id === lightId)
+}
+
+const DUPLICATE_OFFSET_CM = 48
+
+export function duplicateSceneLight(
+  state: FacadeState,
+  lightId: string,
+): { state: FacadeState; lightId: string } {
+  const source = sceneLightById(state, lightId)
+  if (!source) return { state, lightId: '' }
+  const { state: withNew, lightId: newId } = addSceneLight(state, {
+    x: source.x + DUPLICATE_OFFSET_CM,
+    y: source.y,
+    z: source.z,
+  })
+  const next = updateSceneLight(withNew, newId, {
+    label: source.label,
+    color: source.color,
+    colorTemperature: source.colorTemperature,
+    intensity: source.intensity,
+    enabled: source.enabled,
+    castShadow: source.castShadow,
+    showMarker: source.showMarker,
+    markerSizeCm: source.markerSizeCm,
+    distance: source.distance,
+    decay: source.decay,
+  })
+  return { state: next, lightId: newId }
 }

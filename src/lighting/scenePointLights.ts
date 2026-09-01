@@ -6,34 +6,39 @@ import * as THREE from 'three'
 import { dayOfYearFromMonthDay, solarPosition } from '../utils/solar'
 import type { SunSettings } from '../utils/sunLighting'
 import { SHADOW_LAYER_EXTERIOR, SHADOW_LAYER_INTERIOR } from '../utils/sunLighting'
+import {
+  createLightGlowSprite,
+  updateLightGlowSprite,
+} from './lightGlowMarker'
+import { markerGlowBrightness, wattsToThreeIntensity } from './sceneLightUnits'
 
 const INDOOR_COLOR = 0xffaa66
 const OUTDOOR_COLOR = 0x88ccff
 const POINT_SHADOW_MAP = 512
 const MARKER_RADIUS_CM = 22
+const INDOOR_WATTS = 8
+const OUTDOOR_WATTS = 12
 
 export interface ScenePointLightBundle {
   indoor: THREE.PointLight
   outdoor: THREE.PointLight
-  indoorMarker: THREE.Mesh
-  outdoorMarker: THREE.Mesh
+  indoorMarker: THREE.Sprite
+  outdoorMarker: THREE.Sprite
   root: THREE.Group
 }
 
-function createLightMarker(color: number): THREE.Mesh {
-  const material = new THREE.MeshBasicMaterial({
-    color,
-    toneMapped: false,
-  })
-  return new THREE.Mesh(new THREE.SphereGeometry(MARKER_RADIUS_CM, 14, 10), material)
+function createLightMarker(color: number): THREE.Sprite {
+  const marker = createLightGlowSprite(MARKER_RADIUS_CM * 2)
+  const mat = marker.material as THREE.SpriteMaterial
+  mat.color.set(color)
+  return marker
 }
 
-function createPointLightWithMarker(color: number, intensity: number): {
+function createPointLightWithMarker(color: number, watts: number): {
   light: THREE.PointLight
-  marker: THREE.Mesh
+  marker: THREE.Sprite
 } {
-  // distance 0 = kein harter Cutoff; Intensität für cm-Maßstab (wie Sun ~3–8)
-  const light = new THREE.PointLight(color, intensity, 0, 2)
+  const light = new THREE.PointLight(color, wattsToThreeIntensity(watts), 0, 2)
   light.castShadow = true
   light.shadow.bias = -0.005
   light.shadow.mapSize.setScalar(POINT_SHADOW_MAP)
@@ -43,16 +48,16 @@ function createPointLightWithMarker(color: number, intensity: number): {
   return { light, marker }
 }
 
-function syncMarkerGlow(marker: THREE.Mesh, color: number, intensity: number): void {
-  const mat = marker.material as THREE.MeshBasicMaterial
-  mat.color.set(color).multiplyScalar(Math.max(1.2, intensity * 0.0012))
+function syncMarkerGlow(marker: THREE.Sprite, color: number, watts: number): void {
+  const hex = `#${color.toString(16).padStart(6, '0')}`
+  updateLightGlowSprite(marker, hex, MARKER_RADIUS_CM * 2, markerGlowBrightness(watts))
 }
 
 export function createScenePointLights(): ScenePointLightBundle {
   const root = new THREE.Group()
   root.name = 'scenePointLights'
 
-  const indoorPair = createPointLightWithMarker(INDOOR_COLOR, 2400)
+  const indoorPair = createPointLightWithMarker(INDOOR_COLOR, INDOOR_WATTS)
   const indoor = indoorPair.light
   indoor.name = 'indoorPointLight'
   indoor.layers.enable(SHADOW_LAYER_INTERIOR)
@@ -60,7 +65,7 @@ export function createScenePointLights(): ScenePointLightBundle {
   indoor.shadow.camera.layers.enable(SHADOW_LAYER_INTERIOR)
   indoor.shadow.camera.layers.enable(SHADOW_LAYER_EXTERIOR)
 
-  const outdoorPair = createPointLightWithMarker(OUTDOOR_COLOR, 3200)
+  const outdoorPair = createPointLightWithMarker(OUTDOOR_COLOR, OUTDOOR_WATTS)
   const outdoor = outdoorPair.light
   outdoor.name = 'outdoorPointLight'
   outdoor.layers.enable(SHADOW_LAYER_EXTERIOR)
@@ -81,6 +86,8 @@ export interface ScenePointLightUpdateOptions {
   enabled: boolean
   /** Orbit-Lite: Schatten der Punktlichter aus. */
   castShadow: boolean
+  /** Editor-Kugeln (Bibliothek → Licht → Anzeige). */
+  showMarkers?: boolean
 }
 
 const _center = new THREE.Vector3()
@@ -119,12 +126,13 @@ export function updateScenePointLights(
   const night = scenePointLightNightFactor(sunSettings)
   const nightBoost = THREE.MathUtils.lerp(0.35, 1, night)
 
-  bundle.indoor.intensity = 2400 * nightBoost
-  bundle.outdoor.intensity = 3200 * nightBoost
-  syncMarkerGlow(bundle.indoorMarker, INDOOR_COLOR, bundle.indoor.intensity)
-  syncMarkerGlow(bundle.outdoorMarker, OUTDOOR_COLOR, bundle.outdoor.intensity)
-  bundle.indoorMarker.visible = true
-  bundle.outdoorMarker.visible = true
+  bundle.indoor.intensity = wattsToThreeIntensity(INDOOR_WATTS * nightBoost)
+  bundle.outdoor.intensity = wattsToThreeIntensity(OUTDOOR_WATTS * nightBoost)
+  syncMarkerGlow(bundle.indoorMarker, INDOOR_COLOR, INDOOR_WATTS * nightBoost)
+  syncMarkerGlow(bundle.outdoorMarker, OUTDOOR_COLOR, OUTDOOR_WATTS * nightBoost)
+  const showMarkers = options.showMarkers !== false
+  bundle.indoorMarker.visible = showMarkers
+  bundle.outdoorMarker.visible = showMarkers
 
   const floorY = Math.max(buildingBox.min.y + 18, 120)
   const indoorY = floorY + Math.min(_size.y * 0.42, 220)

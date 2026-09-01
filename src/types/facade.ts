@@ -572,6 +572,8 @@ export interface ViewOptions {
   showCeiling?: boolean
   /** Zwischendecken zwischen Etagen. */
   showIntermediateFloors?: boolean
+  /** Editor-Kugeln aller Punktlichter (Bibliothek; Default an). */
+  showLightMarkers?: boolean
 }
 
 /** Sprossen im Oberlicht: eine Scheibe, wie die Flügel geteilt, oder Kreuz. */
@@ -1012,9 +1014,20 @@ export interface SceneLight {
   z: number
   /** Hex-Farbe, z. B. #ffaa66 */
   color: string
+  /** Leistung in Watt (LED, 1–150). Three.js-Intensität wird zur Laufzeit berechnet. */
   intensity: number
   enabled: boolean
   castShadow: boolean
+  /** Farbtemperatur in Kelvin (2000–6500). Steuert `color` über kelvinToColor. */
+  colorTemperature?: number
+  /** Sichtbare Editor-Kugel (nur Darstellung, Licht bleibt aktiv). */
+  showMarker?: boolean
+  /** Radius der Editor-Kugel in cm (Default 40). */
+  markerSizeCm?: number
+  /** Three.js Reichweite in cm (0 = unbegrenzt). */
+  distance?: number
+  /** Three.js Abfall (Default 2). */
+  decay?: number
 }
 
 export interface FacadeState {

@@ -171,6 +171,10 @@ export class FacadeController {
   private readonly wallLabelMeshes: THREE.Mesh[] = []
   /** 2D-Front: Paneele/Mörtel empfangen Werfschatten; 3D aus (Moiré). */
   private claddingReceiveShadows = false
+  /** Punktlicht-Cube-Shadows: Decken/Böden/Wände als Okkluder. */
+  private pointLightOccludersEnabled = false
+  private readonly pointLightOccluderGroup = new THREE.Group()
+  private readonly pointLightFloorCapMeshes: THREE.Mesh[] = []
   private readonly claddingLodLowMeshes: THREE.Mesh[] = []
   private readonly claddingLodHighMeshes: THREE.Mesh[] = []
   private readonly windowLodLowInstances: THREE.Object3D[] = []
@@ -319,6 +323,8 @@ export class FacadeController {
     scene.add(this.selectionGroup)
     scene.add(this.openingDragGhostGroup)
     scene.add(this.indoorFloorGroup)
+    scene.add(this.pointLightOccluderGroup)
+    this.pointLightOccluderGroup.name = 'pointLightOccluders'
     scene.add(this.roofGroup)
     scene.add(this.lineGroup)
     scene.add(this.guideGroup)
@@ -518,25 +524,106 @@ export class FacadeController {
     for (const mesh of this.pedimentMeshes) apply(mesh)
   }
 
-  /** Bibliotheks-Punktlichter: Rahmen, Sprossen und Profile werfen Cube-Shadows. */
+  /** Glas/transparent — kein Cube-Shadow-Cast (Licht scheint durch). */
+  private openingMeshCastsPointShadow(mesh: THREE.Mesh): boolean {
+    return this.openingMeshMayReceiveShadow(mesh)
+  }
+
+  private enablePointLightShadowCast(mesh: THREE.Mesh): void {
+    mesh.castShadow = true
+    mesh.layers.enable(SHADOW_LAYER_EXTERIOR)
+    mesh.layers.enable(SHADOW_LAYER_INTERIOR)
+  }
+
+  private clearPointLightFloorCaps(): void {
+    for (const mesh of this.pointLightFloorCapMeshes) {
+      this.pointLightOccluderGroup.remove(mesh)
+      mesh.geometry.dispose()
+    }
+    this.pointLightFloorCapMeshes.length = 0
+  }
+
+  /**
+   * Horizontale Vollfläche pro Geschoss (Gebäude-BBox) — blockiert diagonales
+   * Licht von oben zum Kellerfenster, wenn der Grundriss-Boden nicht bis zur Außenwand reicht.
+   */
+  private rebuildPointLightFloorCaps(): void {
+    this.clearPointLightFloorCaps()
+    if (!this.pointLightOccludersEnabled) return
+    const slab = INDOOR_SLAB_THICKNESS
+    for (const building of this.state.buildings) {
+      if (building.hidden || buildingShowsBareWalls(building)) continue
+      const floors = building.floors
+      if (!floors?.length) continue
+      const box = buildingWorldBoxForBuilding(building)
+      if (box.isEmpty()) continue
+      const size = box.getSize(new THREE.Vector3())
+      const center = box.getCenter(new THREE.Vector3())
+      const pad = 24
+      for (let fi = 0; fi < floors.length; fi++) {
+        if (floors[fi]?.hidden) continue
+        const y = storeyFloorSurfaceY(building, fi) - slab / 2
+        const geo = new THREE.BoxGeometry(size.x + pad, slab, size.z + pad)
+        const mesh = new THREE.Mesh(geo, this.shadowOccluderMaterial)
+        mesh.position.set(center.x, y, center.z)
+        mesh.userData.kind = 'pointLightFloorCap'
+        mesh.userData.buildingId = building.id
+        mesh.userData.floorIndex = fi
+        this.enablePointLightShadowCast(mesh)
+        this.pointLightOccluderGroup.add(mesh)
+        this.pointLightFloorCapMeshes.push(mesh)
+      }
+    }
+  }
+
+  /** Bibliotheks-Punktlichter: Wände, Geschossplatten, Rahmen, Sprossen werfen Cube-Shadows. */
   syncPointLightOccluders(enable: boolean): void {
-    if (!enable) return
-    const apply = (root: THREE.Object3D) => {
-      root.traverse((child) => {
-        if (!(child instanceof THREE.Mesh)) return
-        if (child.userData.shadowOccluder || child.userData.role === 'guideRail') return
-        if (!this.openingMeshMayReceiveShadow(child)) return
-        child.castShadow = true
+    this.pointLightOccludersEnabled = enable
+    this.applyPointLightOccluders()
+  }
+
+  private applyPointLightOccluders(): void {
+    const enable = this.pointLightOccludersEnabled
+    for (const child of this.indoorFloorGroup.children) {
+      if (!(child instanceof THREE.Mesh)) continue
+      if (enable) {
+        child.castShadow = child.visible
         child.layers.enable(SHADOW_LAYER_EXTERIOR)
         child.layers.enable(SHADOW_LAYER_INTERIOR)
+      }
+    }
+    this.rebuildPointLightFloorCaps()
+    if (!enable) {
+      this.applyIndoorShadowCasting()
+      return
+    }
+    for (const mesh of this.meshes.values()) this.enablePointLightShadowCast(mesh)
+    for (const tunnel of this.openingShadowTunnelMeshes.values()) this.enablePointLightShadowCast(tunnel)
+    const meshLists = [
+      this.studioCladdingMeshes,
+      this.claddingLodHighMeshes,
+      this.claddingLodLowMeshes,
+      this.profileMeshes,
+      this.pedimentMeshes,
+      this.stairMeshes,
+      this.revealMeshes,
+      this.innerSillMeshes,
+      this.outerSillMeshes,
+    ]
+    for (const list of meshLists) {
+      for (const mesh of list) this.enablePointLightShadowCast(mesh)
+    }
+    const applyOpeningTree = (root: THREE.Object3D) => {
+      root.traverse((child) => {
+        if (!(child instanceof THREE.Mesh)) return
+        if (child.userData.role === 'guideRail') return
+        if (!this.openingMeshCastsPointShadow(child)) return
+        this.enablePointLightShadowCast(child)
       })
     }
-    for (const instance of this.windowInstances) apply(instance)
-    for (const instance of this.windowLodLowInstances) apply(instance)
-    for (const instance of this.casingInstances) apply(instance)
-    for (const mesh of this.profileMeshes) apply(mesh)
-    for (const mesh of this.pedimentMeshes) apply(mesh)
-    for (const mesh of this.stairMeshes) apply(mesh)
+    for (const instance of this.windowInstances) applyOpeningTree(instance)
+    for (const instance of this.windowLodLowInstances) applyOpeningTree(instance)
+    for (const instance of this.casingInstances) applyOpeningTree(instance)
   }
 
   /**
@@ -1179,7 +1266,7 @@ export class FacadeController {
       }
     }
     this.applyIndoorVisibility()
-    this.applyIndoorShadowCasting()
+    this.applyPointLightOccluders()
   }
 
   rebuildRoof(buildingId?: string) {
@@ -1406,7 +1493,7 @@ export class FacadeController {
       const floor = building && floorIndex !== undefined ? building.floors[floorIndex] : undefined
       child.visible = floor ? floor.showCeiling !== false && !floor.hidden : true
     }
-    this.applyIndoorShadowCasting()
+    this.applyPointLightOccluders()
   }
 
   /**
@@ -1616,6 +1703,7 @@ export class FacadeController {
   /** Nach Fenster-/Verkleidungs-Rebuild: High-Cache invalidieren und LOD-Sichtbarkeit anwenden. */
   private finalizeGeometryRebuild() {
     this.syncLabelShadowReceivers()
+    this.applyPointLightOccluders()
     this.applyFacadeBacklitShade()
     if (!this.lodSettings.enabled) {
       this.forceAllHighDetail()

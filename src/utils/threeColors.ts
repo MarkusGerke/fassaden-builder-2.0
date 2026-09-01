@@ -78,7 +78,7 @@ export function setGlassGroundReflectionColor(hex: string) {
 
 /**
  * Fenster: echte Szene hinter der Scheibe (Transparenz) plus Spiegelung der
- * Außen-EnvMap (Fresnel/Clearcoat). Transmission > 0,08 bleibt physisches Glas.
+ * Außen-EnvMap (Fresnel/Clearcoat). Klarglas filtert Licht dahinter nicht.
  */
 export function applyGlassLook(material: THREE.MeshPhysicalMaterial, config: OpeningGlassConfig) {
   const clear = isTransparentGlass(config.color)
@@ -93,7 +93,6 @@ export function applyGlassLook(material: THREE.MeshPhysicalMaterial, config: Ope
   if (glassEnvMap) material.envMap = glassEnvMap
   else material.envMap = null
 
-  material.color.set(tint)
   material.roughness = config.roughness
   material.ior = config.ior
   if (glassEnvMap) {
@@ -104,24 +103,35 @@ export function applyGlassLook(material: THREE.MeshPhysicalMaterial, config: Ope
     material.clearcoatRoughness = 1
   }
   material.specularIntensity = 1
+  material.depthWrite = false
 
-  if (seeThrough) {
+  if (clear) {
+    // Klarglas: Transmission ohne Farbfilter — kein Sonnenbrillen-Effekt auf Licht/Glühen
+    material.color.set('#ffffff')
+    material.transparent = false
+    material.opacity = 1
+    material.transmission = config.transmission > 0.08 ? config.transmission : 0.96
+    material.thickness = config.thickness
+    material.attenuationColor.set('#ffffff')
+    material.attenuationDistance = Infinity
+    material.envMapIntensity = glassEnvMap ? 2.6 : 0
+  } else if (seeThrough) {
+    material.color.set(tint)
     material.transparent = true
-    material.opacity = clear ? 0.36 : 0.5
-    material.depthWrite = true
+    material.opacity = 0.5
     material.transmission = 0
     material.thickness = config.thickness
     material.attenuationDistance = Infinity
-    material.envMapIntensity = glassEnvMap ? (clear ? 3.4 : 2.4) : 0
+    material.envMapIntensity = glassEnvMap ? 2.4 : 0
   } else {
+    material.color.set(tint)
     material.transparent = false
     material.opacity = 1
-    material.depthWrite = true
     material.transmission = config.transmission
     material.thickness = config.thickness
-    material.attenuationColor = new THREE.Color(tint)
-    material.attenuationDistance = 3.2
-    material.envMapIntensity = glassEnvMap ? (clear ? 2.6 : 1.8) : 0
+    material.attenuationColor.set('#ffffff')
+    material.attenuationDistance = Math.max(24, config.thickness * 12)
+    material.envMapIntensity = glassEnvMap ? 1.8 : 0
   }
   material.needsUpdate = true
 }

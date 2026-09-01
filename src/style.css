@@ -2500,6 +2500,25 @@ button.os-menu-item:disabled {
   background-position: 0 0, 0 4px, 4px -4px, -4px 0;
 }
 
+.scene-light-color-swatch {
+  display: inline-block;
+  width: 2rem;
+  height: 2rem;
+  margin-top: 0.35rem;
+  border: 1px solid #bbb;
+  border-radius: 4px;
+  vertical-align: middle;
+}
+
+.library-lights-option {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.5rem 0.5rem;
+  font-size: 0.92rem;
+  cursor: pointer;
+}
+
 .action-row {
   display: flex;
   flex-wrap: wrap;

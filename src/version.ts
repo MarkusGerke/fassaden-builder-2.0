@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.34'
+export const APP_VERSION = '2.0.43'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,94 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.43',
+    date: '2026-09-01',
+    title: 'Punktlicht: Schatten & Bloom',
+    changes: [
+      'Geschoss-Vollplatten (BBox) blockieren Licht diagonal zum Kellerfenster — auch wenn der Grundriss-Boden nicht bis zur Außenwand reicht',
+      'Wände, Rahmen, Verkleidung, Laibung und Öffnungs-Tunnel werfen Cube-Shadows für Punktlichter',
+      'Lichtquellen erzeugen Bloom (HDR-Kern) — wirken wie Glühbirne, nicht nur Reflexionen',
+      'Front-Ansicht nutzt Bloom-Pipeline; Punktlicht-Schatten werden pro Frame aktualisiert',
+    ],
+  },
+  {
+    version: '2.0.42',
+    date: '2026-09-01',
+    title: 'Licht: Klarglas & Geschoss-Schatten',
+    changes: [
+      'Klarglas filtert Licht und Glühen nicht mehr wie eine Sonnenbrille (Transmission ohne Farbabsorption)',
+      'Punktlicht wird von Decken und Böden zwischen Etagen abgeschattet — Kellerfenster ohne Licht von oben',
+      'Wandkörper werfen ebenfalls Cube-Shadows für Bibliotheks-Punktlichter',
+    ],
+  },
+  {
+    version: '2.0.41',
+    date: '2026-09-01',
+    title: 'Punktlicht: Watt & Farbe',
+    changes: [
+      'Leistung in Watt (LED, 1–150 W) statt undurchsichtiger Three.js-Zahlen — 10 W ≈ 800 lm',
+      'Licht-Glühen übernimmt die gewählte Lichtfarbe (warm/kalt), nicht mehr nur weiß',
+      'Alte Intensitätswerte werden beim Laden automatisch in Watt umgerechnet',
+    ],
+  },
+  {
+    version: '2.0.40',
+    date: '2026-09-01',
+    title: 'Licht durch Glas',
+    changes: [
+      'Punktlicht-Glühen scheint durch Fensterglas und offene Öffnungen — Wände, Rahmen und Sprossen verdecken weiterhin',
+      'Glas: depthWrite aus, damit der Licht-Schein nicht an der Scheibe hängen bleibt',
+    ],
+  },
+  {
+    version: '2.0.39',
+    date: '2026-09-01',
+    title: 'Lichtpunkte: Glühen & Ausblenden',
+    changes: [
+      'Szene → Licht: Checkbox „Lichtpunkte anzeigen“ (auch Bibliothek → Tab Licht)',
+      'Marker sind weiches Glühen statt fester Kugeln — werden von Wänden, Rahmen und Sprossen verdeckt (depthTest)',
+    ],
+  },
+  {
+    version: '2.0.38',
+    date: '2026-09-01',
+    title: 'Schnellerer Studio-Start',
+    changes: [
+      'Ladeoverlay verschwindet zuverlässig nach dem Start — kein Hängenbleiben mehr',
+      'Fix: Licht-Runtime vor Fassaden-Controller blockierte den App-Start nicht mehr',
+      'Atmosphäre, Fenster-Meshes und Schatten-Map werden im Hintergrund nachgeladen (kein Doppel-Bake beim Start)',
+      'Beschriftungs-Schrift lädt parallel, ohne den ersten sichtbaren Frame zu blockieren',
+    ],
+  },
+  {
+    version: '2.0.37',
+    date: '2026-09-01',
+    title: 'Lichtkreise global ein/aus',
+    changes: [
+      'Bibliothek → Tab Licht: Checkbox „Lichtkreise anzeigen“ für alle Punktlicht-Marker',
+      'Persistenz in `viewOptions.showLightMarkers`; pro Licht weiterhin „Marker anzeigen“ in der Toolbar',
+    ],
+  },
+  {
+    version: '2.0.36',
+    date: '2026-09-01',
+    title: 'Punktlicht-Farbtemperatur',
+    changes: [
+      'Toolbar: Slider Farbtemperatur (2000–6500 K) für warmes/kühles Licht — Live-Vorschau mit Farbfeld',
+      'Persistenz: `colorTemperature` in `SceneLight`; Farbe wird aus Kelvin berechnet (`kelvinToColor`)',
+    ],
+  },
+  {
+    version: '2.0.35',
+    date: '2026-09-01',
+    title: 'Punktlicht-Einstellungen erweitert',
+    changes: [
+      'Intensität, Reichweite und Abfall: Übernahme erst bei Enter oder Klick außerhalb des Feldes',
+      'Rechtsklick auf Punktlicht: Duplizieren (+48 cm Versatz)',
+      'Neu: Farbe, Marker ein/aus, Marker-Größe, Reichweite (cm), Abfall (decay)',
+    ],
+  },
   {
     version: '2.0.34',
     date: '2026-09-01',

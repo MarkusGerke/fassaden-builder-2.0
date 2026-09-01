@@ -533,8 +533,11 @@ import {
   type PresentationMode,
 } from './lighting/editPresentation'
 import { SceneLightRuntime } from './lighting/sceneLightRuntime'
+import { normalizePowerWatts } from './lighting/sceneLightUnits'
 import {
   addSceneLight,
+  duplicateSceneLight,
+  kelvinToHex,
   normalizeSceneLights,
   removeSceneLight,
   sceneLightById,
@@ -590,6 +593,8 @@ const ORBIT_LITE_HOLD_MS = 320
 let viewportDirty = true
 /** Erst true nach Atmosphäre + erstem Mesh-Load — bis dahin kein Dirty-Skip in animate(). */
 let sceneLightingReady = false
+/** Erstes Shadow-Map-Bake nach Atmosphäre + Fenster-Meshes — bis dahin nur Licht ohne Bake. */
+let startupShadowReady = false
 let orbitLite = false
 let orbitLiteTimer: ReturnType<typeof setTimeout> | null = null
 /** true zwischen OrbitControls start und end (Mausrad: beides im selben Tick). */
@@ -3701,7 +3706,11 @@ function schedulePersistApp() {
 }
 
 function bloomIsActive(): boolean {
-  return bloomSettings.enabled && currentView === '3d' && currentRenderStyle !== 'line'
+  return (
+    bloomSettings.enabled &&
+    (currentView === '3d' || currentView === 'front') &&
+    currentRenderStyle !== 'line'
+  )
 }
 
 function applyBloomRenderer() {
@@ -3843,6 +3852,9 @@ function renderLitSceneFrame(activeCamera: THREE.Camera) {
   dirLight.visible = true
   dirLightIndoor.visible = false
   renderer.autoClear = true
+  if (sceneLightShadowsActive()) {
+    renderer.shadowMap.needsUpdate = true
+  }
   reflectionSiteBox.setFromObject(sitePivot)
   activeCamera.getWorldPosition(reflectionCamPos)
   if (reflectionSiteBox.isEmpty()) reflectionFocus.set(0, 180, 0)
@@ -4611,6 +4623,7 @@ const editScopeFacade = document.querySelector<HTMLButtonElement>('#edit-scope-f
 const editScopeFacadeYaws = document.querySelector<HTMLDivElement>('#edit-scope-facade-yaws')!
 const viewShowCeiling = document.querySelector<HTMLInputElement>('#view-show-ceiling')
 const viewShowIntermediateFloors = document.querySelector<HTMLInputElement>('#view-show-intermediate-floors')
+const viewShowLightMarkers = document.querySelector<HTMLInputElement>('#view-show-light-markers')
 const toolbarRoof = document.querySelector<HTMLDivElement>('#toolbar-roof')!
 const toolbarCeiling = document.querySelector<HTMLDivElement>('#toolbar-ceiling')!
 const toolbarSceneLight = document.querySelector<HTMLDivElement>('#toolbar-scene-light')!
@@ -4618,6 +4631,16 @@ const sceneLightXInput = document.querySelector<HTMLInputElement>('#scene-light-
 const sceneLightYInput = document.querySelector<HTMLInputElement>('#scene-light-y')!
 const sceneLightZInput = document.querySelector<HTMLInputElement>('#scene-light-z')!
 const sceneLightIntensityInput = document.querySelector<HTMLInputElement>('#scene-light-intensity')!
+const sceneLightColorTempInput = document.querySelector<HTMLInputElement>('#scene-light-color-temp')!
+const sceneLightColorTempValue = document.querySelector<HTMLOutputElement>('#scene-light-color-temp-value')!
+const sceneLightColorSwatch = document.querySelector<HTMLSpanElement>('#scene-light-color-swatch')!
+const sceneLightShowMarkerInput = document.querySelector<HTMLInputElement>('#scene-light-show-marker')!
+const sceneLightMarkerSizeRow = document.querySelector<HTMLDivElement>('#scene-light-marker-size-row')!
+const sceneLightMarkerSizeSlider = document.querySelector<HTMLInputElement>('#scene-light-marker-size')!
+const sceneLightMarkerSizeNum = document.querySelector<HTMLInputElement>('#scene-light-marker-size-num')!
+const sceneLightMarkerSizeValue = document.querySelector<HTMLOutputElement>('#scene-light-marker-size-value')!
+const sceneLightDistanceInput = document.querySelector<HTMLInputElement>('#scene-light-distance')!
+const sceneLightDecayInput = document.querySelector<HTMLInputElement>('#scene-light-decay')!
 const sceneLightEnabledInput = document.querySelector<HTMLInputElement>('#scene-light-enabled')!
 const sceneLightCastShadowInput = document.querySelector<HTMLInputElement>('#scene-light-cast-shadow')!
 const sceneLightDepthSlider = document.querySelector<HTMLInputElement>('#scene-light-depth')!
@@ -5741,7 +5764,9 @@ function setEditScope(scope: EditScope) {
 }
 
 function syncViewOptionsControls() {
-  /* Decke/Zwischendecken: Steuerung pro Geschoss in der Ebenen-Liste */
+  if (viewShowLightMarkers) {
+    viewShowLightMarkers.checked = state.viewOptions?.showLightMarkers !== false
+  }
 }
 
 function syncRoofUI() {
@@ -5843,16 +5868,23 @@ function commitBuildingRotate(delta: 45 | -45) {
   commitState(rotateStudioBuilding(state, delta))
 }
 
-function commitViewOptions(patch: { showCeiling?: boolean; showIntermediateFloors?: boolean }) {
+function commitViewOptions(patch: {
+  showCeiling?: boolean
+  showIntermediateFloors?: boolean
+  showLightMarkers?: boolean
+}) {
   state = {
     ...state,
     viewOptions: {
       showCeiling: patch.showCeiling ?? state.viewOptions?.showCeiling ?? true,
       showIntermediateFloors:
         patch.showIntermediateFloors ?? state.viewOptions?.showIntermediateFloors ?? true,
+      showLightMarkers: patch.showLightMarkers ?? state.viewOptions?.showLightMarkers ?? true,
     },
   }
   facade.setState(state)
+  syncSceneLightRuntime()
+  syncViewOptionsControls()
   persistApp()
   markViewportDirty()
 }
@@ -7441,6 +7473,18 @@ function initOpeningLibrary() {
       viewport.classList.remove('library-drop-target')
     })
     host.appendChild(card)
+    appendLibraryGroupLabel(host, 'Anzeige')
+    const markerToggle = document.createElement('label')
+    markerToggle.className = 'library-lights-option toolbar-check'
+    const markerCheckbox = document.createElement('input')
+    markerCheckbox.type = 'checkbox'
+    markerCheckbox.checked = state.viewOptions?.showLightMarkers !== false
+    markerCheckbox.addEventListener('change', () => {
+      commitViewOptions({ showLightMarkers: markerCheckbox.checked })
+      syncSceneLightRuntime()
+    })
+    markerToggle.append(markerCheckbox, document.createTextNode(' Lichtpunkte anzeigen'))
+    host.appendChild(markerToggle)
     syncLibraryAppliedOutline()
     return
   }
@@ -8111,18 +8155,29 @@ function flushSunShadowMap() {
   markViewportDirty()
 }
 
-/** Erstes Shadow-Map-Bake nach Atmosphäre + Fenster-Meshes (nicht schon beim Himmel-Load). */
+function dismissAppLoading() {
+  const el = document.querySelector('#app-loading')
+  if (!el) return
+  el.classList.add('is-done')
+  el.setAttribute('aria-busy', 'false')
+  markViewportDirty()
+  window.setTimeout(() => el.remove(), 400)
+}
+
+/** Atmosphäre + Fenster-Meshes im Hintergrund; Schatten-Map erst wenn beides da ist. */
 function bootstrapSceneLighting(): Promise<void> {
-  return Promise.all([
-    atmosphereSky.load(renderer),
-    facade.whenMeshesReady,
-    preloadWallLabelFlatFont(),
-  ]).then(() => {
+  void preloadWallLabelFlatFont().then(() => {
     facade.refreshWallLabels({ afterFontLoad: true })
+    markViewportDirty()
+  })
+  return Promise.all([atmosphereSky.load(renderer), facade.whenMeshesReady]).then(() => {
     syncCladdingReceiveShadows()
+    startupShadowReady = true
     applySunLighting({ updateShadowMap: true })
     sceneLightingReady = true
     markViewportDirty()
+    if (currentView === 'front') syncFrontView()
+    else if (currentView === 'top') syncTopView()
   })
 }
 
@@ -8164,7 +8219,10 @@ function syncSceneLightRuntime(): void {
     castShadow,
     selectedId: editor.selectedSceneLightId,
     shadowFarCm: sceneLightShadowFarCm(),
+    showMarkers: state.viewOptions?.showLightMarkers !== false,
+    bloomActive: bloomIsActive(),
   })
+  if (!facadeReady) return
   facade.syncPointLightOccluders(castShadow)
   if (castShadow) scheduleSunShadowMapUpdate()
 }
@@ -8212,7 +8270,25 @@ function syncSceneLightToolbar(): void {
   sceneLightXInput.value = String(Math.round(light.x))
   sceneLightYInput.value = String(Math.round(light.y))
   sceneLightZInput.value = String(Math.round(light.z))
-  sceneLightIntensityInput.value = String(Math.round(light.intensity))
+  if (document.activeElement !== sceneLightIntensityInput) {
+    sceneLightIntensityInput.value = String(Math.round(light.intensity))
+  }
+  const colorTemp = light.colorTemperature ?? 3000
+  sceneLightColorTempInput.value = String(colorTemp)
+  sceneLightColorTempValue.textContent = `${Math.round(colorTemp)} K`
+  sceneLightColorSwatch.style.backgroundColor = light.color
+  sceneLightShowMarkerInput.checked = light.showMarker !== false
+  sceneLightMarkerSizeRow.hidden = light.showMarker === false
+  const markerSize = light.markerSizeCm ?? 40
+  sceneLightMarkerSizeSlider.value = String(markerSize)
+  sceneLightMarkerSizeNum.value = String(markerSize)
+  sceneLightMarkerSizeValue.textContent = String(markerSize)
+  if (document.activeElement !== sceneLightDistanceInput) {
+    sceneLightDistanceInput.value = String(Math.round(light.distance ?? 0))
+  }
+  if (document.activeElement !== sceneLightDecayInput) {
+    sceneLightDecayInput.value = String(light.decay ?? 2)
+  }
   sceneLightEnabledInput.checked = light.enabled
   sceneLightCastShadowInput.checked = light.castShadow
   const depth = Math.round(sceneLightViewDepthCm(light))
@@ -8312,10 +8388,12 @@ function applySunLighting(opts?: { updateShadowMap?: boolean; live?: boolean }) 
   dirLight.shadow.camera.layers.set(SHADOW_LAYER_EXTERIOR)
   syncSceneLightRuntime()
   const live = opts?.live === true
-  if (opts?.updateShadowMap === true || (!live && opts?.updateShadowMap !== false)) {
+  if (opts?.updateShadowMap === true) {
     flushSunShadowMap()
   } else if (live) {
     scheduleSunShadowMapUpdate()
+  } else if (opts?.updateShadowMap !== false && startupShadowReady) {
+    flushSunShadowMap()
   }
   markViewportDirty()
 }
@@ -9560,6 +9638,15 @@ function ensureOpeningSelected(wallId: string, openingId: string) {
 
 function sceneLightContextItems(lightId: string): MenuItem[] {
   return [
+    {
+      label: 'Duplizieren',
+      action: () => {
+        const { state: next, lightId: newId } = duplicateSceneLight(state, lightId)
+        if (!newId) return
+        commitState(next, { ...createDefaultEditorState(), selectedSceneLightId: newId })
+        planStatus.textContent = 'Punktlicht dupliziert'
+      },
+    },
     {
       label: 'Licht entfernen',
       action: () => {
@@ -13938,7 +14025,6 @@ sceneReflectionHideRoots.push(
   facade.lineGroup,
   placementGridGroup,
 )
-const sceneLightingBootstrap = bootstrapSceneLighting()
 buildLabelFontCards()
 facade.setLodSettings(lodSettings)
 applyPresentationMode()
@@ -17729,8 +17815,10 @@ function commitBloomPatch(patch: Partial<BloomSettings>) {
     bloomExposureValue.textContent = bloomSettings.exposure.toFixed(3)
   }
   persistApp()
+  syncSceneLightRuntime()
   markViewportDirty()
   if (currentView === '3d') render3dFrame()
+  else if (currentView === 'front') renderLitSceneFrame(frontCamera)
 }
 
 function commitFogPatch(patch: Partial<FogSettings>) {
@@ -17775,9 +17863,52 @@ sceneLightYInput.addEventListener('input', () => {
 sceneLightZInput.addEventListener('input', () => {
   patchSelectedSceneLight({ z: Number.parseFloat(sceneLightZInput.value) })
 })
-sceneLightIntensityInput.addEventListener('input', () => {
-  patchSelectedSceneLight({ intensity: Number.parseFloat(sceneLightIntensityInput.value) })
+function bindSceneLightDeferredNumber(
+  input: HTMLInputElement,
+  apply: (value: number) => void,
+): void {
+  const commit = () => {
+    const value = Number.parseFloat(input.value)
+    if (!Number.isFinite(value)) return
+    apply(value)
+  }
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      commit()
+      input.blur()
+    }
+  })
+  input.addEventListener('change', commit)
+}
+bindSceneLightDeferredNumber(sceneLightIntensityInput, (value) => {
+  patchSelectedSceneLight({ intensity: normalizePowerWatts(value) })
 })
+bindSceneLightDeferredNumber(sceneLightDistanceInput, (value) => {
+  patchSelectedSceneLight({ distance: Math.max(0, value) })
+})
+bindSceneLightDeferredNumber(sceneLightDecayInput, (value) => {
+  patchSelectedSceneLight({ decay: Math.min(3, Math.max(0, value)) })
+})
+sceneLightColorTempInput.addEventListener('input', () => {
+  const kelvin = Number.parseFloat(sceneLightColorTempInput.value)
+  if (!Number.isFinite(kelvin)) return
+  const color = kelvinToHex(kelvin)
+  sceneLightColorTempValue.textContent = `${Math.round(kelvin)} K`
+  sceneLightColorSwatch.style.backgroundColor = color
+  patchSelectedSceneLight({ colorTemperature: kelvin, color })
+})
+sceneLightShowMarkerInput.addEventListener('change', () => {
+  patchSelectedSceneLight({ showMarker: sceneLightShowMarkerInput.checked })
+  sceneLightMarkerSizeRow.hidden = !sceneLightShowMarkerInput.checked
+})
+bindSceneDualControl(
+  sceneLightMarkerSizeSlider,
+  sceneLightMarkerSizeNum,
+  sceneLightMarkerSizeValue,
+  (value) => patchSelectedSceneLight({ markerSizeCm: value }),
+  (value) => String(Math.round(value)),
+)
 sceneLightEnabledInput.addEventListener('change', () => {
   patchSelectedSceneLight({ enabled: sceneLightEnabledInput.checked })
 })
@@ -18259,9 +18390,7 @@ function animate() {
       return
     }
     viewportDirty = false
-    dirLight.visible = true
-    renderer.autoClear = true
-    renderer.render(scene, frontCamera)
+    renderLitSceneFrame(frontCamera)
     perfRendered = true
     if (!orbitLite) updateWallLibraryGizmos()
   } else if (currentView === 'top') {
@@ -19737,6 +19866,9 @@ viewShowCeiling?.addEventListener('change', () => {
 viewShowIntermediateFloors?.addEventListener('change', () => {
   commitViewOptions({ showIntermediateFloors: viewShowIntermediateFloors!.checked })
 })
+viewShowLightMarkers?.addEventListener('change', () => {
+  commitViewOptions({ showLightMarkers: viewShowLightMarkers!.checked })
+})
 
 roofEnabled.addEventListener('change', () => {
   commitRoofPatch({ enabled: roofEnabled.checked })
@@ -19787,22 +19919,12 @@ buildingRotateCw.addEventListener('click', () => commitBuildingRotate(-45))
 try {
   setView(currentView)
   applyState(state, editor)
-  await sceneLightingBootstrap
-  if (currentView === 'front') syncFrontView()
-  else if (currentView === 'top') syncTopView()
+  sceneLightingReady = true
   markViewportDirty()
   animate()
+  void bootstrapSceneLighting()
+} catch (err) {
+  console.error('Startup failed', err)
 } finally {
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => dismissAppLoading())
-  })
-}
-
-function dismissAppLoading() {
-  const el = document.querySelector('#app-loading')
-  if (!el) return
-  el.classList.add('is-done')
-  el.setAttribute('aria-busy', 'false')
-  markViewportDirty()
-  window.setTimeout(() => el.remove(), 400)
+  dismissAppLoading()
 }

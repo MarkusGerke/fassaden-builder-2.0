@@ -41,7 +41,7 @@ Umschalten mit **Hysterese** (80 %/120 %) und Bewertung alle **6 Frames** �
 ## Navigation (v0.7.74 / v0.7.77)
 
 - **Kein Damping:** OrbitControls `enableDamping = false` — sonst hängt die Kamera um viele Frames hinter der Maus, bei niedriger FPS noch stärker.
-- **Dirty-Rendering:** 3D/2D/Grundriss nur bei Kamera-, State- oder Resize-Änderung. `controls.update()` nicht im Loop. **Startup (v2.0.30):** Animationsloop startet erst nach `bootstrapSceneLighting()`; bis `sceneLightingReady` kein Dirty-Skip. **Wichtig:** Alle in `animate()` genutzten Perf-Overlay-Funktionen müssen aus `perfOverlay.ts` importiert sein — fehlender Import brach v2.0.29 die komplette Render-Schleife.
+- **Dirty-Rendering:** 3D/2D/Grundriss nur bei Kamera-, State- oder Resize-Änderung. `controls.update()` nicht im Loop. **Startup (v2.0.38):** Animationsloop startet nach UI-Wiring; Ladeoverlay in `finally`. Atmosphäre, Fenster-Meshes und erstes Shadow-Map-Bake in `bootstrapSceneLighting()` (`startupShadowReady`). Bis `sceneLightingReady` kein Dirty-Skip.
 - **Orbit-Lite:** Bei **jeder** Kamerageste (⌘-Drehen/Schwenken, OrbitControls inkl. Mausrad/Trackpad, Pfeiltasten): Shadow-Map-Sampling und Zeichnungskanten (`LineSegments2`) aus, Pixelratio 1 (Renderer **und** EffectComposer via `setPixelRatio`); **Bloom bleibt an**, wenn in der Szene aktiviert. Bloom-Composer mit bis zu 8× MSAA (v0.7.187). Mausrad: Three.js `start`+`end` im selben Tick — Lite bleibt 180 ms nach dem letzten Event (`ORBIT_LITE_HOLD_MS`). Nach Ende wieder volles Shadow-Sampling und volle Pixelratio (bestehende Shadow-Map, kein Rebuild). `setLineResolution` nur bei Resize/Stil, nicht jedes Frame.
 - **3D-Bögen:** Clip/SVG bleiben bei `ARCH_CURVE_SEGMENTS = 128`; Extrude/Shape und Keilsteine nutzen `ARCH_MESH_SEGMENTS = 32` bzw. 6–8 Segmente je Voussoir.
 
@@ -85,5 +85,5 @@ Persistiert in `fassaden-builder-state-v6` unter `lod`.
 - Mit LOD **an**: Standard-Stufe **medium** bis Kamera evaluiert — danach High für nahe Häuser.
 - `JSON.stringify`-Vergleich pro Gebäude ist grob; Site-weite Änderungen (`siteYawDeg`, neue/ gelöschte Häuser) erzwingen Voll-Rebuild.
 - Modul-Wände (GLB-Cladding) haben nur High-Stufe.
-- **Dirty-Rendering:** Jede sichtbare 3D-/Grundriss-Änderung muss `markViewportDirty()` aufrufen (oder `applyState` / OrbitControls `change`). Sonst bleibt das Bild stehen. Beim App-Start: `animate()` erst nach `bootstrapSceneLighting()` — sonst kann der erste leere Frame das Rendering dauerhaft stoppen (v2.0.30).
+- **Dirty-Rendering:** Jede sichtbare 3D-/Grundriss-Änderung muss `markViewportDirty()` aufrufen (oder `applyState` / OrbitControls `change`). Sonst bleibt das Bild stehen. Beim App-Start (v2.0.38): `animate()` direkt nach Fassaden-Setup; Schatten-Map-Bake erst wenn Atmosphäre und Fenster-Meshes bereit sind.
 - **Vorschau an:** Keilsteine/Fächer und volle Profilquerschnitte fehlen — Rechteck-Steine/Fugen 2 cm vor der vollen Wand, Profile als Balken; Himmel = BG-Farbe; harte Schatten.

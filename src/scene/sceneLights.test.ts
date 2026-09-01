@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createDefaultFacadeState } from '../types/facade'
 import { clampFacadeState } from '../utils/walls'
-import { addSceneLight, normalizeSceneLights, updateSceneLight } from './sceneLights'
+import { addSceneLight, duplicateSceneLight, normalizeSceneLights, updateSceneLight } from './sceneLights'
 
 describe('sceneLights', () => {
   it('fügt Punktlicht mit Default-Position ein', () => {
@@ -26,5 +26,33 @@ describe('sceneLights', () => {
     expect(light?.x).toBe(10)
     expect(light?.y).toBe(200)
     expect(light?.z).toBe(-30)
+  })
+
+  it('setzt Farbe aus Farbtemperatur', () => {
+    const { state, lightId } = addSceneLight(createDefaultFacadeState())
+    const next = updateSceneLight(state, lightId, { colorTemperature: 4500 })
+    const light = normalizeSceneLights(next.sceneLights)[0]
+    expect(light?.colorTemperature).toBe(4500)
+    expect(light?.color.startsWith('#')).toBe(true)
+  })
+
+  it('dupliziert mit gleichen Einstellungen und Versatz', () => {
+    const { state, lightId } = addSceneLight(createDefaultFacadeState())
+    const patched = updateSceneLight(state, lightId, {
+      intensity: 25,
+      showMarker: false,
+      markerSizeCm: 24,
+      color: '#aabbcc',
+    })
+    const { state: next, lightId: copyId } = duplicateSceneLight(patched, lightId)
+    expect(copyId).not.toBe(lightId)
+    const lights = normalizeSceneLights(next.sceneLights)
+    expect(lights).toHaveLength(2)
+    const copy = lights.find((item) => item.id === copyId)
+    expect(copy?.intensity).toBe(25)
+    expect(copy?.showMarker).toBe(false)
+    expect(copy?.markerSizeCm).toBe(24)
+    expect(copy?.color).toBe('#aabbcc')
+    expect(copy!.x - lights.find((item) => item.id === lightId)!.x).toBe(48)
   })
 })
