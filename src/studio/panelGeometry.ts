@@ -27,6 +27,7 @@ import {
   type OpeningPoly,
 } from '../utils/openingGeometry'
 import { STUDIO_MASONRY, panelKindForPattern, studioPlinthActive } from './constants'
+import { basementWindowEnabled } from './basementWindow'
 import { studioMiterLocalX } from './wallMiterX'
 import { WINDOW_RECESS, WALL_DEPTH } from '../constants/presets'
 import { layoutPanelTiles, visiblePanelRowRect, isCollinearDock, type PanelTile } from './panelLayout'
@@ -1776,6 +1777,7 @@ function extrudeFrustum(
 }
 
 function computeVertexNormals(positions: number[], indices: number[], normals: number[]) {
+  for (let i = 0; i < normals.length; i += 1) normals[i] = 0
   for (let i = 0; i < indices.length; i += 3) {
     const ia = indices[i] * 3
     const ib = indices[i + 1] * 3
@@ -2414,6 +2416,22 @@ export function openingDragGhostWallLocalPoints(
   }))
 }
 
+/**
+ * ShapeGeometry liegt in XY und blickt standardmäßig nach +Z.
+ * `reverse` dreht die Windung, damit die Normale nach außen bzw. in den Raum zeigt.
+ */
+function wallFaceNormalReverse(wall: Wall, z: number, innerZ: number): boolean {
+  const outwardSign = wall.panelFlip ?? true ? -1 : 1
+  const isInner = Math.abs(z - innerZ) < 1e-6
+  if (isInner) return outwardSign > 0
+  return outwardSign < 0
+}
+
+/** Test-Hook: korrekte Normalen-Richtung für Außen-/Innenfläche. */
+export function studioWallFaceNormalReverse(wall: Wall, z: number): boolean {
+  return wallFaceNormalReverse(wall, z, studioWallInnerLocalZ(wall))
+}
+
 function appendShapeFace(
   shape: THREE.Shape,
   z: number,
@@ -2729,6 +2747,27 @@ function wallBodyGeometryWithGroups(
   return geometry
 }
 
+/** Teilmenge eines gruppierten Wandkörpers — für Layer-Trennung Außen (0) / Innen (1). */
+export function cloneWallGeometryGroup(
+  geometry: THREE.BufferGeometry,
+  groupIndex: number,
+): THREE.BufferGeometry | null {
+  const g = geometry.groups[groupIndex]
+  if (!g || g.count === 0) return null
+  const index = geometry.getIndex()
+  if (!index) return null
+  const out: number[] = []
+  for (let i = g.start; i < g.start + g.count; i += 1) {
+    out.push(index.getX(i)!)
+  }
+  const cloned = new THREE.BufferGeometry()
+  cloned.setAttribute('position', geometry.getAttribute('position').clone())
+  cloned.setAttribute('normal', geometry.getAttribute('normal').clone())
+  cloned.setIndex(out)
+  cloned.addGroup(0, out.length, 0)
+  return cloned
+}
+
 function createArcBayWallGeometry(wall: Wall): THREE.BufferGeometry {
   const positions: number[] = []
   const normals: number[] = []
@@ -2837,7 +2876,6 @@ export function createStudioWallGeometry(wall: Wall, allWalls: Wall[] = []): THR
   const positions: number[] = []
   const normals: number[] = []
   const indices: number[] = []
-  const depth = wall.depth
   const halfH = wall.height / 2
   const outerZ = studioWallOuterLocalZ(wall)
   const innerZ = studioWallInnerLocalZ(wall)
@@ -2845,10 +2883,12 @@ export function createStudioWallGeometry(wall: Wall, allWalls: Wall[] = []): THR
 
   // Außenfläche immer — auch bei Paneelen (z. B. ausgeblendete Reihen). Leicht nach innen versetzt, damit
   // keine Z-Fights mit Mörtel/Steinrücken entstehen (Moiré). Im oberen Freistreifen volle Tiefe — sonst kein Bodenschatten.
-  const bareTop = topBareBandForWall(wall)
-  const outerFaceZ =
-    panelsOn && !bareTop ? outerZ - studioWindowDepthForwardSign(wall) * 0.15 : outerZ
-  const faceReverse = (z: number) => Math.abs(z - depth) < 1e-6
+  const bareTop = panelsOn ? topBareBandForWall(wall) : null
+  const sign = studioWindowDepthForwardSign(wall)
+  const insetFaceZ = outerZ - sign * 0.15
+  const faceReverse = (z: number) => wallFaceNormalReverse(wall, z, innerZ)
+  // Freistreifen oben: volle Tiefe, damit die nackte Wandfläche sichtbar bleibt und Schatten wirft.
+  const outerFaceZ = panelsOn && !bareTop ? insetFaceZ : outerZ
   appendShapeFace(studioWallFaceShape(wall, outerFaceZ), outerFaceZ, faceReverse(outerFaceZ), positions, normals, indices)
 
   const yBottom = -halfH
@@ -2921,7 +2961,7 @@ export function createStudioWallGeometry(wall: Wall, allWalls: Wall[] = []): THR
  * Nicht in den sichtbaren Wandkörper: sonst Z-Fight mit Laibung/Paneelen.
  */
 /** Leichte Aufweitung gegen Shadow-Bias / Peter-Panning an der Kontur (cm). */
-const OPENING_SHADOW_TUNNEL_INFLATE_CM = 1
+const OPENING_SHADOW_TUNNEL_INFLATE_CM = 2.5
 
 export function createStudioOpeningShadowTunnelGeometry(wall: Wall): THREE.BufferGeometry | null {
   const positions: number[] = []
@@ -2934,17 +2974,14 @@ export function createStudioOpeningShadowTunnelGeometry(wall: Wall): THREE.Buffe
   for (const opening of wall.openings) {
     if (opening.hidden || !openingCutsWall(opening)) continue
     const revealZ = studioOpeningRevealOuterZ(wall, opening)
-    // Äußeres Tunnelende = weiter außen von Fassade und Laibung.
     const outerZ = forward >= 0 ? Math.max(facadeZ, revealZ) : Math.min(facadeZ, revealZ)
     if (Math.abs(outerZ - innerZ) < 0.35) continue
     const poly = openingMaskPolyline(opening, OPENING_SHADOW_TUNNEL_INFLATE_CM)
     if (poly.length < 3) continue
     const n = poly.length
-    const skipSill = opening.y <= 0.5
     for (let i = 0; i < n; i += 1) {
-      const a = poly[i]
-      const b = poly[(i + 1) % n]
-      if (skipSill && a.y <= 0.5 && b.y <= 0.5) continue
+      const a = poly[i]!
+      const b = poly[(i + 1) % n]!
       addQuad(
         positions,
         normals,
@@ -2956,6 +2993,34 @@ export function createStudioOpeningShadowTunnelGeometry(wall: Wall): THREE.Buffe
       )
       quads += 1
     }
+    if (openingIsConch(opening)) {
+      const fill = normalizeOpeningFill(opening.fill)
+      const depth = Math.max(1, fill.nicheDepthCm ?? 10)
+      const zOuter = studioOpeningRevealOuterZ(wall, opening)
+      const outward = studioWindowDepthForwardSign(wall)
+      const backZ = zOuter - outward * depth
+      appendOpeningMaskCap(wall, poly, innerZ, positions, normals, indices)
+      appendOpeningMaskCap(wall, poly, outerZ, positions, normals, indices)
+      if (Math.abs(backZ - innerZ) > 0.35) {
+        appendOpeningMaskCap(wall, poly, backZ, positions, normals, indices)
+      }
+      quads += 3
+    } else if (basementWindowEnabled(opening)) {
+      appendOpeningMaskCap(wall, poly, innerZ, positions, normals, indices)
+      const yCap = opening.y + opening.height + OPENING_SHADOW_TUNNEL_INFLATE_CM
+      const x0 = opening.x - OPENING_SHADOW_TUNNEL_INFLATE_CM
+      const x1 = opening.x + opening.width + OPENING_SHADOW_TUNNEL_INFLATE_CM
+      addQuad(
+        positions,
+        normals,
+        indices,
+        new THREE.Vector3(wallLocalX(wall, x0, outerZ), localY(yCap, wall), outerZ),
+        new THREE.Vector3(wallLocalX(wall, x1, outerZ), localY(yCap, wall), outerZ),
+        new THREE.Vector3(wallLocalX(wall, x1, innerZ), localY(yCap, wall), innerZ),
+        new THREE.Vector3(wallLocalX(wall, x0, innerZ), localY(yCap, wall), innerZ),
+      )
+      quads += 1
+    }
   }
   if (quads === 0) return null
   computeVertexNormals(positions, indices, normals)
@@ -2964,6 +3029,39 @@ export function createStudioOpeningShadowTunnelGeometry(wall: Wall): THREE.Buffe
   geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3))
   geometry.setIndex(indices)
   return geometry
+}
+
+function appendOpeningMaskCap(
+  wall: Wall,
+  poly: OpeningPoly[],
+  z: number,
+  positions: number[],
+  normals: number[],
+  indices: number[],
+): void {
+  if (poly.length < 3) return
+  const shape = new THREE.Shape()
+  const first = poly[0]!
+  shape.moveTo(wallLocalX(wall, first.x, z), localY(first.y, wall))
+  for (let i = 1; i < poly.length; i += 1) {
+    const p = poly[i]!
+    shape.lineTo(wallLocalX(wall, p.x, z), localY(p.y, wall))
+  }
+  shape.closePath()
+  const cap = new THREE.ShapeGeometry(shape, ARCH_MESH_SEGMENTS)
+  const pos = cap.getAttribute('position')
+  const idx = cap.getIndex()
+  const base = positions.length / 3
+  for (let i = 0; i < pos.count; i += 1) {
+    positions.push(pos.getX(i), pos.getY(i), z)
+    normals.push(0, 0, 0)
+  }
+  if (idx) {
+    for (let i = 0; i < idx.count; i += 3) {
+      indices.push(base + idx.getX(i)!, base + idx.getX(i + 1)!, base + idx.getX(i + 2)!)
+    }
+  }
+  cap.dispose()
 }
 
 /** Leibungsflächen einer Öffnung — Tunnel entlang der Maske, ohne Extra-Lippe/Soffit. */

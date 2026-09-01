@@ -3,7 +3,7 @@ import type { FacadeState, Wall } from '../types/facade'
 import { emptyNeighbors } from '../types/facade'
 import { WALL_DEPTH } from '../constants/presets'
 import { DEFAULT_STUDIO_PANEL } from '../studio/constants'
-import { floorIndex, storeyFloorSurfaceY, storeyTopY } from './layers'
+import { floorIndex, effectiveStoreyFloorCapY, storeyFloorSurfaceY, storeyTopY } from './layers'
 import {
   insertStoreyAbove,
   duplicateStorey,
@@ -460,6 +460,33 @@ describe('storeyFloorSurfaceY', () => {
     expect(storeyFloorSurfaceY(building, 0)).toBe(0)
     w.openings[0]!.y = 8
     expect(storeyFloorSurfaceY(building, 0)).toBe(8)
+  })
+})
+
+describe('effectiveStoreyFloorCapY', () => {
+  it('liegt mindestens über Kellerfenstern', () => {
+    const w = wall('eg', 0)
+    w.height = 448
+    w.openings = [
+      {
+        id: 'bw1',
+        type: 'window',
+        x: 80,
+        y: 40,
+        width: 48,
+        height: 64,
+        basementWindow: { enabled: true, grilleHeight: 0.5 },
+      },
+    ]
+    const building = {
+      id: 'b1',
+      name: 'Haus',
+      wallHeight: 448,
+      wallDepth: WALL_DEPTH,
+      walls: [w],
+      floors: [{ nodes: [], edges: [] }],
+    }
+    expect(effectiveStoreyFloorCapY(building, 0)).toBe(40 + 64 + 4)
   })
 })
 

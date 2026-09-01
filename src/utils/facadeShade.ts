@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import type { SunSettings } from './sunLighting'
+import { SKIP_POINT_LIGHTS_MARKER } from '../lighting/skipPointLights'
 
 /**
  * Gegenlicht: die große Fassadenfront wird dunkel (N·L), Seiten und Oberseiten
@@ -79,6 +80,7 @@ export function applyFacadeShadeShader(
   outwardLocalZ: number,
   options?: FacadeShadeOptions,
 ): void {
+  if (material.userData.skipFacadeShade === true) return
   if (!(material instanceof THREE.MeshStandardMaterial)) return
   const isLabel = options?.label === true
   // Flache Schrift: transparent + opacity 1 + alphaTest — Shader trotzdem anwenden.
@@ -101,9 +103,11 @@ export function applyFacadeShadeShader(
   const prevCompile = material.onBeforeCompile
   material.onBeforeCompile = (shader, renderer) => {
     prevCompile?.(shader, renderer)
+    const hasLightsInclude = shader.fragmentShader.includes('#include <lights_fragment_begin>')
+    const hasLightsMarker = shader.fragmentShader.includes(SKIP_POINT_LIGHTS_MARKER)
     if (
       !shader.vertexShader.includes('#include <beginnormal_vertex>') ||
-      !shader.fragmentShader.includes('#include <lights_fragment_begin>')
+      (!hasLightsInclude && !hasLightsMarker)
     ) {
       return
     }
@@ -160,6 +164,28 @@ uniform float uLabelHemiDim;`,
       .replace(
         '#include <lights_fragment_begin>',
         `#include <lights_fragment_begin>
+        {
+          vec3 objN = normalize(vFacadeObjectNormal);
+          float frontness = abs(objN.z);
+          float sideOrTop = 1.0 - smoothstep(0.35, 0.85, frontness);
+          float sunOnFront = 0.0;
+          #if ( NUM_DIR_LIGHTS > 0 )
+            sunOnFront = dot(normalize(vFacadeView), directionalLights[0].direction);
+          #endif
+          float backlit = 1.0 - smoothstep(-0.28, -0.04, sunOnFront);
+          float dimMask = mix(sideOrTop, 1.0, uLabelShade);
+          float dim = clamp(backlit * dimMask, 0.0, 1.0);
+          float directAmt = mix(uDirectDim, uLabelDirectDim, uLabelShade);
+          float hemiAmt = mix(uHemiDim, uLabelHemiDim, uLabelShade);
+          reflectedLight.directDiffuse *= mix(1.0, directAmt, dim);
+          reflectedLight.directSpecular *= mix(1.0, directAmt, dim);
+          reflectedLight.indirectDiffuse *= mix(1.0, hemiAmt, dim);
+          reflectedLight.indirectSpecular *= mix(1.0, mix(1.0, hemiAmt, uLabelShade), dim);
+        }`,
+      )
+      .replace(
+        SKIP_POINT_LIGHTS_MARKER,
+        `${SKIP_POINT_LIGHTS_MARKER}
         {
           vec3 objN = normalize(vFacadeObjectNormal);
           float frontness = abs(objN.z);

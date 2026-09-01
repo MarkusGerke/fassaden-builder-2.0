@@ -3,8 +3,9 @@ import * as THREE from 'three'
 import type { FacadeState, Wall } from '../types/facade'
 import { WALL_DEPTH } from '../constants/presets'
 import { DEFAULT_STUDIO_PANEL } from './constants'
-import { createStudioOpeningRevealGeometry, createStudioPanelGeometry, createStudioWallGeometry, innerFaceRingFromWalls } from './panelGeometry'
+import { createStudioOpeningRevealGeometry, createStudioPanelGeometry, createStudioWallGeometry, innerFaceRingFromWalls, studioWallFaceNormalReverse } from './panelGeometry'
 import { layoutPanelTiles } from './panelLayout'
+import { topBareBandForWall } from '../utils/wallLabel'
 import { buildingNeedsOuterSpineFit, finalizeStudioGeometry } from './planGeometry'
 import { applyFacadeLoadPipeline } from '../utils/facadeLoad'
 import {
@@ -21,6 +22,7 @@ import {
   panelMiterEnds,
   plinthMiterEnds,
   studioPanelFaceLocalZ,
+  studioWallOuterLocalZ,
   studioWallTransform,
 } from './walls'
 
@@ -56,6 +58,55 @@ describe('createStudioWallGeometry', () => {
     expect(geo.groups[0]?.materialIndex).toBe(0)
     expect(geo.groups[1]?.materialIndex).toBe(1)
     expect(geo.groups[1]!.count).toBeGreaterThan(0)
+  })
+
+  it('Außenfläche zeigt nach außen, Innenfläche in den Raum', () => {
+    for (const panelFlip of [true, false]) {
+      const wall = studioWall()
+      Object.assign(wall, { panelFlip })
+      const geo = createStudioWallGeometry(wall)
+      const nrm = geo.getAttribute('normal') as THREE.BufferAttribute
+      const idx = geo.getIndex()!
+      const outward = panelFlip ? -1 : 1
+      const meanNz = (groupIndex: number) => {
+        const g = geo.groups[groupIndex]!
+        let sum = 0
+        let n = 0
+        for (let i = g.start; i < g.start + g.count; i += 1) {
+          const vi = idx.getX(i)
+          const nz = nrm.getZ(vi)
+          if (Math.abs(nz) < 0.7) continue
+          sum += nz
+          n += 1
+        }
+        return n === 0 ? 0 : sum / n
+      }
+      const outerNz = meanNz(0)
+      const innerNz = meanNz(1)
+      expect(outerNz * outward).toBeGreaterThan(0.6)
+      expect(innerNz * -outward).toBeGreaterThan(0.6)
+    }
+  })
+
+  it('Freistreifen oben: Außen-Normale zeigt nach außen', () => {
+    const wall = studioWall({
+      ...DEFAULT_STUDIO_PANEL,
+      enabled: true,
+      pattern: 'strip',
+      hideRowsTop: 2,
+    })
+    Object.assign(wall, { panelFlip: true, height: 128 })
+    expect(topBareBandForWall(wall)).not.toBeNull()
+    expect(studioWallFaceNormalReverse(wall, studioWallOuterLocalZ(wall))).toBe(true)
+    const geo = createStudioWallGeometry(wall)
+    const nrm = geo.getAttribute('normal') as THREE.BufferAttribute
+    const idx = geo.getIndex()!
+    const g = geo.groups[0]!
+    let outward = 0
+    for (let i = g.start; i < g.start + g.count; i += 1) {
+      if (nrm.getZ(idx.getX(i)) < -0.6) outward += 1
+    }
+    expect(outward).toBeGreaterThan(0)
   })
 })
 
@@ -672,6 +723,7 @@ describe('createStudioOpeningRevealGeometry — Konche', () => {
       minZ = Math.min(minZ, pos.getZ(i))
     }
     expect(minZ).toBeLessThan(0)
+    expect(geo!.groups.length).toBeGreaterThanOrEqual(2)
     geo!.dispose()
   })
 })

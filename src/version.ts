@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.43'
+export const APP_VERSION = '2.0.54'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,116 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.54',
+    date: '2026-09-01',
+    title: 'Wandflächen, Innenlicht, 2D-Glas',
+    changes: [
+      'Wand-Außenflächen zeigen wieder nach außen — der Streifen über ausgeblendeten Paneelreihen ist geschlossen',
+      'Innenwände empfangen Punktlicht ohne Selbstabschattung, bleiben hell und spiegeln leicht',
+      '2D-Aufriss: Glas ist durchsichtig (Physical-Transmission funktioniert in der Ortho-Ansicht nicht)',
+    ],
+  },
+  {
+    version: '2.0.53',
+    date: '2026-09-01',
+    title: 'Innenwände, 2D-Licht, Freistreifen',
+    changes: [
+      'Wand-Normalen korrigiert — Innenflächen und Freistreifen oben wieder sichtbar (panelFlip false)',
+      'Innenwände und Laibungs-Innenseite ohne Gegenlicht-Abdunklung; schwaches Innen-Fill bei Punktlicht',
+      'Licht durch Fenster in 2D/Front wieder sichtbar, wenn Innen-Punktlicht aktiv ist',
+    ],
+  },
+  {
+    version: '2.0.52',
+    date: '2026-09-01',
+    title: 'Start-Fix',
+    changes: [
+      'Studio startet wieder — falscher Import `getGlassEnvMap` behoben (`getGlassEnvironment`)',
+    ],
+  },
+  {
+    version: '2.0.51',
+    date: '2026-09-01',
+    title: 'Konche, Freistreifen, Innenlicht',
+    changes: [
+      'Konche wieder rund — flache Okklusions-Kappen nur noch unsichtbar in der Shadow-Map, nicht in der sichtbaren Laibung',
+      '„Reihen oben ausblenden“: Paneele im unteren Bereich bleiben sichtbar; nur der Freistreifen nutzt die volle Wandtiefe für Schatten',
+      'Innenwände ohne Gegenlicht-Abdunklung, mit leichten Reflexionen — Licht scheint in 2D wieder durch Fenster',
+      'Shadow-Tunnel an Öffnungen etwas breiter (2,5 cm) — weniger Licht-Leck an Rahmenrändern',
+    ],
+  },
+  {
+    version: '2.0.50',
+    date: '2026-09-01',
+    title: 'Punktlicht: Konche und Fassade dicht',
+    changes: [
+      'Konche und Nischen bekommen kein Innenlicht mehr — die Kalotte ist lichtdicht, nicht mehr ein leuchtender Hohlraum',
+      'Editor-Glühen (additive Lichtkreise) scheint im Render nicht mehr durch Wände; im Raum bleibt eine kleine opake Kugel',
+      'Fensterrahmen und unsichtbare Raumplatten schließen die Shadow-Map zuverlässig',
+    ],
+  },
+  {
+    version: '2.0.49',
+    date: '2026-09-01',
+    title: 'Punktlicht: Raum wirklich lichtdicht',
+    changes: [
+      'Wände wieder ein Stück — der Geometrie-Split hatte Flächen zerstört und extra Böden erzeugt',
+      'Innenlicht trifft Paneele, Sockel, Gesimse und äußere Fensterbänke nicht mehr (Shader-Maske; Layer allein reichen in Three.js nicht)',
+      'Unsichtbare Boden-/Deckenplatten auf der Wandaußenkante schließen die Fuge zur Wand — kein Licht mehr durch Kellerfenster von oben, ohne sichtbare Extra-Flächen',
+    ],
+  },
+  {
+    version: '2.0.48',
+    date: '2026-09-01',
+    title: 'Punktlicht: lichtdichter Raum ohne Extra-Meshes',
+    changes: [
+      'Duplikat-Boden/Decken-Schalen entfernt — keine sichtbaren Extra-Flächen und kein Z-Fighting mehr an Wänden',
+      'Studio-Wände in Außen- (Layer 0) und Innenschale (Layer 1) getrennt — Paneele, Sockel und Gesimse erhalten kein Punktlicht',
+      'Okklusion nur über bestehende Böden, Decken, Laibungen und Öffnungs-Tunnel (Konche, Keller)',
+    ],
+  },
+  {
+    version: '2.0.47',
+    date: '2026-09-01',
+    title: 'Punktlicht: kein Bloom auf der Fassade',
+    changes: [
+      'Selective Bloom — nur Licht-Marker blühen, nicht helle Fenster-Innenräume; keine orange Halo-Linien mehr auf Paneele/Sockel/Gesimse',
+      'EnvMap-Reflexionen nur Außen-Layer — glänzende Steine spiegeln kein Innenlicht',
+      'Härtere Punktlicht-Schatten; Wand-Außenmaterial FrontSide bei Raumhülle',
+    ],
+  },
+  {
+    version: '2.0.46',
+    date: '2026-09-01',
+    title: 'Punktlicht: nur Innenraum',
+    changes: [
+      'Bibliotheks-Punktlicht nur auf Innen-Layer — Gesimse, Sockel, Paneele und äußere Fensterbänke werden nicht mehr direkt beleuchtet',
+      'Raumhülle schreibt Tiefe (depthWrite) — Glühen/Bloom scheint nicht mehr durch Wände, Konchen und Kellerfenster',
+      'Konche/Kellerfenster: zusätzliche Außen-/Innen-Kappen in der Öffnungs-Dichtung',
+    ],
+  },
+  {
+    version: '2.0.45',
+    date: '2026-09-01',
+    title: 'Punktlicht: Konche, Keller & Fundament',
+    changes: [
+      'Konche: Öffnung lichtdicht verschlossen (Innen- und Nischen-Rückwand) — kein Leck mehr durch die Kalotte',
+      'Kellerfenster: Boden-Vollplatte liegt mindestens über der Kellerfenster-Oberkante — kein Licht von oben',
+      'Unterste Fundament-Platte schließt Licht nach unten ab',
+      'Zusätzliche Öffnungs-Dichtungen mit vollem Tunnel-Umfang (inkl. Schwelle)',
+    ],
+  },
+  {
+    version: '2.0.44',
+    date: '2026-09-01',
+    title: 'Punktlicht: lichtdichte Räume',
+    changes: [
+      'Raumhülle: Grundriss-Boden/Decke plus Geschoss-Vollplatten — Licht bleibt im Raum, außer durch Öffnungen, Glas oder offene Fenster/Türen',
+      'Okklusion automatisch bei jedem aktiven Punktlicht im Render-Modus (3D/Front), unabhängig von Orbit',
+      'Wände, Verkleidung, Rollläden, Laibungen und Öffnungs-Tunnel werfen Schatten; Glas nicht',
+    ],
+  },
   {
     version: '2.0.43',
     date: '2026-09-01',

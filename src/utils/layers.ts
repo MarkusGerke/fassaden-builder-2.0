@@ -1,5 +1,6 @@
 import { WALL_HEIGHT } from '../constants/presets'
 import type { Building, FacadeState, Wall } from '../types/facade'
+import { basementWindowEnabled } from '../studio/basementWindow'
 import { findBuildingForWall, getActiveBuilding, getAllWalls } from './buildings'
 import { groupWallsByFloorForBuilding, sortedFloorIndicesForBuilding } from '../ui/layerListHelpers'
 
@@ -52,6 +53,26 @@ export function storeyFloorSurfaceY(building: Building, floorIdx: number): numbe
     }
   }
   return Number.isFinite(sill) ? sill : storeyBottomY(building, floorIdx)
+}
+
+/**
+ * Y-Oberkante der lichtdichten Boden-Vollplatte: Fußboden, mindestens über allen Kellerfenstern.
+ * Verhindert diagonales Punktlicht von oben in Kellerfenster.
+ */
+export function effectiveStoreyFloorCapY(building: Building, floorIdx: number, padCm = 4): number {
+  const base = storeyFloorSurfaceY(building, floorIdx)
+  const wh = building.wallHeight
+  let basementTop = -Infinity
+  for (const wall of building.walls) {
+    if (wall.hidden) continue
+    if (floorIndex(wall, wh) !== floorIdx) continue
+    for (const opening of wall.openings) {
+      if (opening.hidden || !basementWindowEnabled(opening)) continue
+      basementTop = Math.max(basementTop, wall.y + opening.y + opening.height)
+    }
+  }
+  if (!Number.isFinite(basementTop)) return base
+  return Math.max(base, basementTop + padCm)
 }
 
 export function floorLabel(index: number): string {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createGlassMaterial } from './threeColors'
+import { applyOrthographicGlassSeeThrough, createGlassMaterial } from './threeColors'
 
 describe('Glas für Licht-Glühen', () => {
   it('schreibt keine Tiefe — Scheiben okkludieren Punktlicht-Marker nicht', () => {
@@ -21,5 +21,17 @@ describe('Glas für Licht-Glühen', () => {
     expect(clear.transmission).toBeGreaterThan(0.9)
     expect(clear.attenuationDistance).toBe(Infinity)
     expect(clear.attenuationColor.getHexString()).toBe('ffffff')
+  })
+
+  it('2D-Ortho: Klarglas wird alpha-durchsichtig und wiederherstellbar', () => {
+    const clear = createGlassMaterial('transparent')
+    expect(clear.transmission).toBeGreaterThan(0.9)
+    applyOrthographicGlassSeeThrough(clear, true)
+    expect(clear.transmission).toBe(0)
+    expect(clear.transparent).toBe(true)
+    expect(clear.opacity).toBeLessThan(0.3)
+    applyOrthographicGlassSeeThrough(clear, false)
+    expect(clear.transmission).toBeGreaterThan(0.9)
+    expect(clear.transparent).toBe(false)
   })
 })

@@ -3,7 +3,6 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js'
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
 import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js'
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 import {
@@ -333,6 +332,7 @@ import {
   SHADOW_GROUND_MAX_LENGTH,
   SHADOW_LAYER_EXTERIOR,
   SHADOW_LAYER_INTERIOR,
+  BLOOM_LAYER,
   SHADOW_MAP_SIZE,
   SHADOW_MAP_SIZE_INDOOR,
   shadowMapSizeForSiteSpan,
@@ -532,6 +532,7 @@ import {
   presentationUsesWorkLikeShading,
   type PresentationMode,
 } from './lighting/editPresentation'
+import { SelectiveBloomPipeline } from './lighting/selectiveBloom'
 import { SceneLightRuntime } from './lighting/sceneLightRuntime'
 import { normalizePowerWatts } from './lighting/sceneLightUnits'
 import {
@@ -655,13 +656,16 @@ const camera = new THREE.PerspectiveCamera(50, 1, 1, 5000)
 camera.position.set(400, 250, 500)
 camera.layers.enable(SHADOW_LAYER_EXTERIOR)
 camera.layers.enable(SHADOW_LAYER_INTERIOR)
+camera.layers.enable(BLOOM_LAYER)
 
 const frontCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 3000)
 frontCamera.layers.enable(SHADOW_LAYER_EXTERIOR)
 frontCamera.layers.enable(SHADOW_LAYER_INTERIOR)
+frontCamera.layers.enable(BLOOM_LAYER)
 const topCamera = new THREE.OrthographicCamera(0, 1, 1, 0, 1, 200)
 topCamera.layers.enable(SHADOW_LAYER_EXTERIOR)
 topCamera.layers.enable(SHADOW_LAYER_INTERIOR)
+topCamera.layers.enable(BLOOM_LAYER)
 
 const controls = new OrbitControls(camera, renderer.domElement)
 controls.enableDamping = false
@@ -944,13 +948,17 @@ const composer = new EffectComposer(
 )
 const renderPass = new RenderPass(scene, camera)
 composer.addPass(renderPass)
-const bloomPass = new UnrealBloomPass(
+const selectiveBloom = new SelectiveBloomPipeline(
+  renderer,
+  scene,
+  camera,
   new THREE.Vector2(1, 1),
   DEFAULT_BLOOM_SETTINGS.strength,
   DEFAULT_BLOOM_SETTINGS.radius,
   DEFAULT_BLOOM_SETTINGS.threshold,
+  BLOOM_MSAA_SAMPLES,
 )
-composer.addPass(bloomPass)
+composer.addPass(selectiveBloom.mixPass)
 /** SMAA nur falls kein MSAA (WebGL1) — sonst weicher als der Pfad ohne Bloom. */
 const smaaPass = BLOOM_MSAA_SAMPLES === 0 ? new SMAAPass() : null
 if (smaaPass) composer.addPass(smaaPass)
@@ -959,6 +967,9 @@ composer.addPass(outputPass)
 
 syncComposerPixelRatio = () => {
   composer.setPixelRatio(renderer.getPixelRatio())
+  const w = viewportRenderWidth()
+  const h = viewportRenderHeight()
+  selectiveBloom.setSize(w, h, renderer.getPixelRatio())
 }
 syncComposerPixelRatio()
 
@@ -3715,14 +3726,15 @@ function bloomIsActive(): boolean {
 
 function applyBloomRenderer() {
   const enabled = bloomIsActive()
-  bloomPass.enabled = enabled
+  selectiveBloom.mixPass.enabled = enabled
   if (smaaPass) smaaPass.enabled = enabled
   outputPass.enabled = enabled
   atmosphereSky.setDisplayExposure(enabled ? SKY_DISPLAY_EXPOSURE_BLOOM : SKY_DISPLAY_EXPOSURE_PLAIN)
-  // Pass-Parameter immer setzen — auch wenn gerade aus (nächstes Einschalten korrekt).
-  bloomPass.threshold = bloomSettings.threshold
-  bloomPass.strength = bloomSettings.strength
-  bloomPass.radius = bloomSettings.radius
+  selectiveBloom.setBloomParams(
+    bloomSettings.strength,
+    bloomSettings.radius,
+    bloomSettings.threshold,
+  )
   if (enabled) {
     renderer.toneMapping = THREE.ACESFilmicToneMapping
     renderer.toneMappingExposure = bloomToneMappingExposure(bloomSettings.exposure)
@@ -3852,7 +3864,7 @@ function renderLitSceneFrame(activeCamera: THREE.Camera) {
   dirLight.visible = true
   dirLightIndoor.visible = false
   renderer.autoClear = true
-  if (sceneLightShadowsActive()) {
+  if (sceneLightRoomOcclusionActive()) {
     renderer.shadowMap.needsUpdate = true
   }
   reflectionSiteBox.setFromObject(sitePivot)
@@ -3875,7 +3887,9 @@ function renderLitSceneFrame(activeCamera: THREE.Camera) {
   }
   const bloomOn = bloomIsActive()
   renderPass.camera = activeCamera
+  selectiveBloom.setCamera(activeCamera)
   if (bloomOn) {
+    selectiveBloom.prepareMix()
     composer.render()
   } else {
     renderer.render(scene, activeCamera)
@@ -8195,10 +8209,10 @@ function scheduleSunShadowMapUpdate() {
   }, SUN_SHADOW_MAP_MIN_INTERVAL_MS)
 }
 
-function sceneLightShadowsActive(): boolean {
-  if (presentationMode !== 'render' || orbitLite || orbitLitePointer) return false
+function sceneLightRoomOcclusionActive(): boolean {
+  if (presentationMode !== 'render') return false
   if (currentView !== '3d' && currentView !== 'front') return false
-  return normalizeSceneLights(state.sceneLights).some((item) => item.enabled && item.castShadow)
+  return normalizeSceneLights(state.sceneLights).some((item) => item.enabled)
 }
 
 function sceneLightShadowFarCm(): number {
@@ -8214,17 +8228,17 @@ function sceneLightShadowFarCm(): number {
 }
 
 function syncSceneLightRuntime(): void {
-  const castShadow = sceneLightShadowsActive()
+  const roomOcclusion = sceneLightRoomOcclusionActive()
   sceneLightRuntime.sync(normalizeSceneLights(state.sceneLights), {
-    castShadow,
+    roomOcclusion,
     selectedId: editor.selectedSceneLightId,
     shadowFarCm: sceneLightShadowFarCm(),
     showMarkers: state.viewOptions?.showLightMarkers !== false,
     bloomActive: bloomIsActive(),
   })
   if (!facadeReady) return
-  facade.syncPointLightOccluders(castShadow)
-  if (castShadow) scheduleSunShadowMapUpdate()
+  facade.syncPointLightOccluders(roomOcclusion)
+  if (roomOcclusion) scheduleSunShadowMapUpdate()
 }
 
 function insertSceneLightFromLibrary(position?: Pick<SceneLight, 'x' | 'y' | 'z'>): void {
@@ -8370,8 +8384,14 @@ function applySunLighting(opts?: { updateShadowMap?: boolean; live?: boolean }) 
   applyDirectionalSun(sunSettings, dirLightIndoor, target, distance)
   dirLightIndoor.target.position.copy(dirLight.target.position)
   dirLightIndoor.target.updateMatrixWorld()
-  // Zwei-Pass absichtlich aus (Viewport-Bugs). Eine Sonne; Decken casten die Grundrissform.
-  dirLightIndoor.visible = false
+  // Schwaches Innen-Fill wenn Bibliotheks-Punktlicht aktiv — Innenwände/Laibung nicht schwarz.
+  if (sceneLightRoomOcclusionActive()) {
+    dirLightIndoor.visible = true
+    dirLightIndoor.intensity = Math.max(0.28, hemiLight.intensity * 0.9)
+    dirLightIndoor.color.copy(dirLight.color)
+  } else {
+    dirLightIndoor.visible = false
+  }
   dirLightIndoor.castShadow = false
   fitDirectionalShadowCamera(dirLight, shadowBox)
   if (!presentationUsesWorkLikeShading(presentationMode)) {
@@ -14024,6 +14044,7 @@ sceneReflectionHideRoots.push(
   facade.guideGroup,
   facade.lineGroup,
   placementGridGroup,
+  sceneLightRuntime.root,
 )
 buildLabelFontCards()
 facade.setLodSettings(lodSettings)
@@ -14037,6 +14058,7 @@ for (const group of [
   facade.claddingGroup,
   facade.selectionGroup,
   facade.indoorFloorGroup,
+  facade.pointLightOccluderGroup,
   facade.roofGroup,
   facade.lineGroup,
   facade.guideGroup,
@@ -16915,6 +16937,9 @@ function setView(mode: AppView) {
   // 2D-Aufriss Farbe: Paneele empfangen Werfschatten (Nord). Zeichnung und
   // Streiflicht (Ost/West bei Südsonne) aus — sonst Mauerwerk-Schraffur.
   syncCladdingReceiveShadows()
+  if (facadeReady) {
+    facade.setOrthographicGlassSeeThrough(mode === 'front')
+  }
 
   persistApp()
   syncSiteTransform()

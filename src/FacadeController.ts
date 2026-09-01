@@ -37,6 +37,7 @@ import {
   effectiveOpeningDepthOffset,
   normalizeOpeningArch,
   openingCutsWall,
+  openingFillMode,
   openingHasRoundMask,
   openingMaskPolyline,
   openingMasonryRect,
@@ -55,7 +56,7 @@ import {
   normalizeOpeningGuard,
   normalizeOpeningInteriorShade,
 } from './windows/openingExtras'
-import { applyMeshColor, applySurfaceFinish, applyWorkModeSurfaceLook, createTintedMaterial } from './utils/threeColors'
+import { applyMeshColor, applyOrthographicGlassSeeThrough, applySurfaceFinish, applyWorkModeSurfaceLook, createTintedMaterial, getGlassEnvironment, materialIsGlassLike } from './utils/threeColors'
 import { applyFacadeShadeShader, facadeOutwardLocalZ } from './utils/facadeShade'
 import { openingGlassConfig } from './utils/glassConfig'
 import { DEFAULT_STUDIO_PANEL } from './studio/constants'
@@ -127,6 +128,8 @@ import {
   SHADOW_LAYER_EXTERIOR,
   SHADOW_LAYER_INTERIOR,
 } from './utils/sunLighting'
+import { bindSkipPointLights, bindSkipPointShadows, setSkipPointLights } from './lighting/skipPointLights'
+import { buildPointLightRoomOccluders } from './lighting/pointLightRoomOccluders'
 
 export class FacadeController {
   public readonly wallGroup: THREE.Group = new THREE.Group()
@@ -141,6 +144,8 @@ export class FacadeController {
   private readonly openingDragHiddenVis = new Map<string, boolean>()
   private readonly openingDragHiddenCast = new Map<string, boolean>()
   public readonly indoorFloorGroup: THREE.Group = new THREE.Group()
+  /** Nur Punktlicht-Cube-Shadows: unsichtbare Außenring-Platten (Layer 3). */
+  public readonly pointLightOccluderGroup: THREE.Group = new THREE.Group()
   public readonly roofGroup: THREE.Group = new THREE.Group()
   public readonly lineGroup: THREE.Group = new THREE.Group()
   public readonly guideGroup: THREE.Group = new THREE.Group()
@@ -171,10 +176,10 @@ export class FacadeController {
   private readonly wallLabelMeshes: THREE.Mesh[] = []
   /** 2D-Front: Paneele/Mörtel empfangen Werfschatten; 3D aus (Moiré). */
   private claddingReceiveShadows = false
-  /** Punktlicht-Cube-Shadows: Decken/Böden/Wände als Okkluder. */
+  /** 2D-Front: Glas als Alpha statt Physical-Transmission. */
+  private orthoGlassSeeThrough = false
+  /** Punktlicht-Raumhülle: Shader-Maske außen + unsichtbare Shadow-Platten. */
   private pointLightOccludersEnabled = false
-  private readonly pointLightOccluderGroup = new THREE.Group()
-  private readonly pointLightFloorCapMeshes: THREE.Mesh[] = []
   private readonly claddingLodLowMeshes: THREE.Mesh[] = []
   private readonly claddingLodHighMeshes: THREE.Mesh[] = []
   private readonly windowLodLowInstances: THREE.Object3D[] = []
@@ -225,6 +230,10 @@ export class FacadeController {
   private readonly shadowOccluderMaterial = new THREE.MeshBasicMaterial({
     colorWrite: false,
     depthWrite: false,
+    side: THREE.DoubleSide,
+  })
+  /** Punktlicht-Cube-Map: BasicMaterial mit colorWrite:false wird sonst übersprungen. */
+  private readonly shadowDistanceMaterial = new THREE.MeshDistanceMaterial({
     side: THREE.DoubleSide,
   })
   private static readonly LINE_WIDTH_BASE_PX = 1.25
@@ -323,8 +332,8 @@ export class FacadeController {
     scene.add(this.selectionGroup)
     scene.add(this.openingDragGhostGroup)
     scene.add(this.indoorFloorGroup)
-    scene.add(this.pointLightOccluderGroup)
     this.pointLightOccluderGroup.name = 'pointLightOccluders'
+    scene.add(this.pointLightOccluderGroup)
     scene.add(this.roofGroup)
     scene.add(this.lineGroup)
     scene.add(this.guideGroup)
@@ -471,7 +480,6 @@ export class FacadeController {
     for (const [wallId, mesh] of this.meshes) {
       const wall = findWall(this.state, wallId)
       if (!wall || !isStudioWall(wall)) continue
-      // Innenflächen + nackte Freistreifen: immer Shadow-Map (Docs v0.7.237).
       mesh.receiveShadow = true
       mesh.castShadow = true
     }
@@ -529,101 +537,129 @@ export class FacadeController {
     return this.openingMeshMayReceiveShadow(mesh)
   }
 
-  private enablePointLightShadowCast(mesh: THREE.Mesh): void {
-    mesh.castShadow = true
-    mesh.layers.enable(SHADOW_LAYER_EXTERIOR)
-    mesh.layers.enable(SHADOW_LAYER_INTERIOR)
-  }
-
-  private clearPointLightFloorCaps(): void {
-    for (const mesh of this.pointLightFloorCapMeshes) {
-      this.pointLightOccluderGroup.remove(mesh)
-      mesh.geometry.dispose()
-    }
-    this.pointLightFloorCapMeshes.length = 0
-  }
-
-  /**
-   * Horizontale Vollfläche pro Geschoss (Gebäude-BBox) — blockiert diagonales
-   * Licht von oben zum Kellerfenster, wenn der Grundriss-Boden nicht bis zur Außenwand reicht.
-   */
-  private rebuildPointLightFloorCaps(): void {
-    this.clearPointLightFloorCaps()
-    if (!this.pointLightOccludersEnabled) return
-    const slab = INDOOR_SLAB_THICKNESS
-    for (const building of this.state.buildings) {
-      if (building.hidden || buildingShowsBareWalls(building)) continue
-      const floors = building.floors
-      if (!floors?.length) continue
-      const box = buildingWorldBoxForBuilding(building)
-      if (box.isEmpty()) continue
-      const size = box.getSize(new THREE.Vector3())
-      const center = box.getCenter(new THREE.Vector3())
-      const pad = 24
-      for (let fi = 0; fi < floors.length; fi++) {
-        if (floors[fi]?.hidden) continue
-        const y = storeyFloorSurfaceY(building, fi) - slab / 2
-        const geo = new THREE.BoxGeometry(size.x + pad, slab, size.z + pad)
-        const mesh = new THREE.Mesh(geo, this.shadowOccluderMaterial)
-        mesh.position.set(center.x, y, center.z)
-        mesh.userData.kind = 'pointLightFloorCap'
-        mesh.userData.buildingId = building.id
-        mesh.userData.floorIndex = fi
-        this.enablePointLightShadowCast(mesh)
-        this.pointLightOccluderGroup.add(mesh)
-        this.pointLightFloorCapMeshes.push(mesh)
-      }
-    }
-  }
-
-  /** Bibliotheks-Punktlichter: Wände, Geschossplatten, Rahmen, Sprossen werfen Cube-Shadows. */
+  /** Bibliotheks-Punktlicht: Shader-Maske außen + unsichtbare Shadow-Platten. */
   syncPointLightOccluders(enable: boolean): void {
     this.pointLightOccludersEnabled = enable
     this.applyPointLightOccluders()
   }
 
-  private applyPointLightOccluders(): void {
-    const enable = this.pointLightOccludersEnabled
-    for (const child of this.indoorFloorGroup.children) {
-      if (!(child instanceof THREE.Mesh)) continue
-      if (enable) {
-        child.castShadow = child.visible
-        child.layers.enable(SHADOW_LAYER_EXTERIOR)
-        child.layers.enable(SHADOW_LAYER_INTERIOR)
+  private bindSkipPointLightsOn(
+    material: THREE.Material | THREE.Material[] | undefined,
+    allLayers = false,
+  ): void {
+    if (!material) return
+    if (Array.isArray(material)) {
+      if (allLayers) {
+        for (const item of material) bindSkipPointLights(item)
+        return
       }
-    }
-    this.rebuildPointLightFloorCaps()
-    if (!enable) {
-      this.applyIndoorShadowCasting()
+      bindSkipPointLights(material[0]!)
       return
     }
-    for (const mesh of this.meshes.values()) this.enablePointLightShadowCast(mesh)
-    for (const tunnel of this.openingShadowTunnelMeshes.values()) this.enablePointLightShadowCast(tunnel)
-    const meshLists = [
+    bindSkipPointLights(material)
+  }
+
+  private tagPointLightShadowOccluder(mesh: THREE.Mesh): void {
+    mesh.customDistanceMaterial = this.shadowDistanceMaterial
+    mesh.castShadow = true
+    mesh.receiveShadow = false
+  }
+
+  private clearPointLightRoomOccluders(): void {
+    while (this.pointLightOccluderGroup.children.length > 0) {
+      const child = this.pointLightOccluderGroup.children[0] as THREE.Mesh
+      this.pointLightOccluderGroup.remove(child)
+      child.geometry.dispose()
+    }
+  }
+
+  private rebuildPointLightRoomOccluders(): void {
+    this.clearPointLightRoomOccluders()
+    if (!this.pointLightOccludersEnabled) return
+    const meshes = buildPointLightRoomOccluders(this.state.buildings, this.shadowOccluderMaterial)
+    for (const mesh of meshes) {
+      this.tagPointLightShadowOccluder(mesh)
+      this.pointLightOccluderGroup.add(mesh)
+    }
+  }
+
+  private applyPointLightOccluders(): void {
+    const enable = this.pointLightOccludersEnabled
+    setSkipPointLights(enable)
+    this.rebuildPointLightRoomOccluders()
+
+    for (const child of this.indoorFloorGroup.children) {
+      if (!(child instanceof THREE.Mesh)) continue
+      child.castShadow = enable ? child.visible : (child.userData.indoorRole === 'ceiling' && child.visible)
+      child.receiveShadow = child.visible
+      child.layers.set(SHADOW_LAYER_INTERIOR)
+    }
+
+    const wallShadowSide = enable ? THREE.DoubleSide : THREE.FrontSide
+    for (const mat of this.wallMaterials.values()) {
+      mat.shadowSide = wallShadowSide
+      this.bindSkipPointLightsOn(mat)
+    }
+    for (const mat of this.wallInteriorMaterials.values()) {
+      mat.shadowSide = THREE.FrontSide
+      bindSkipPointShadows(mat)
+    }
+
+    for (const mesh of this.meshes.values()) {
+      mesh.castShadow = true
+    }
+    for (const tunnel of this.openingShadowTunnelMeshes.values()) {
+      this.tagPointLightShadowOccluder(tunnel)
+    }
+    for (const mesh of this.revealMeshes) {
+      mesh.castShadow = true
+      const sealed = mesh.userData.sealedNiche === true
+      this.bindSkipPointLightsOn(mesh.material, sealed)
+      this.bindSkipPointLightsOn(
+        mesh.userData.originalMaterial as THREE.Material | THREE.Material[] | undefined,
+        sealed,
+      )
+    }
+    for (const mesh of this.innerSillMeshes) {
+      mesh.castShadow = true
+    }
+    const exteriorLists = [
       this.studioCladdingMeshes,
       this.claddingLodHighMeshes,
       this.claddingLodLowMeshes,
       this.profileMeshes,
       this.pedimentMeshes,
       this.stairMeshes,
-      this.revealMeshes,
-      this.innerSillMeshes,
       this.outerSillMeshes,
     ]
-    for (const list of meshLists) {
-      for (const mesh of list) this.enablePointLightShadowCast(mesh)
+    for (const list of exteriorLists) {
+      for (const mesh of list) {
+        mesh.castShadow = true
+        this.bindSkipPointLightsOn(mesh.material)
+        const original = mesh.userData.originalMaterial as THREE.Material | THREE.Material[] | undefined
+        this.bindSkipPointLightsOn(original)
+      }
     }
     const applyOpeningTree = (root: THREE.Object3D) => {
       root.traverse((child) => {
         if (!(child instanceof THREE.Mesh)) return
         if (child.userData.role === 'guideRail') return
         if (!this.openingMeshCastsPointShadow(child)) return
-        this.enablePointLightShadowCast(child)
+        child.castShadow = true
+        this.bindSkipPointLightsOn(child.material)
       })
     }
     for (const instance of this.windowInstances) applyOpeningTree(instance)
     for (const instance of this.windowLodLowInstances) applyOpeningTree(instance)
     for (const instance of this.casingInstances) applyOpeningTree(instance)
+    for (const group of this.rollerShutterGroups) {
+      applyOpeningTree(group)
+      group.traverse((child) => {
+        if (child instanceof THREE.Mesh) this.bindSkipPointLightsOn(child.material)
+      })
+    }
+
+    if (!enable) this.applyIndoorShadowCasting()
   }
 
   /**
@@ -668,6 +704,29 @@ export class FacadeController {
     this.claddingReceiveShadows = enabled
     this.syncLabelShadowReceivers()
     this.wallLabelsNeedShadowUpdate = true
+  }
+
+  /** 2D-Aufriss: Glas durchsichtig (kein Physical-Transmission, das in Ortho schwarz wird). */
+  setOrthographicGlassSeeThrough(enable: boolean) {
+    this.orthoGlassSeeThrough = enable
+    this.applyOrthographicGlassSeeThrough()
+  }
+
+  private applyOrthographicGlassSeeThrough() {
+    const enable = this.orthoGlassSeeThrough
+    const apply = (root: THREE.Object3D) => {
+      root.traverse((child) => {
+        if (!(child instanceof THREE.Mesh)) return
+        const mats = Array.isArray(child.material) ? child.material : [child.material]
+        for (const mat of mats) {
+          if (mat instanceof THREE.MeshPhysicalMaterial && materialIsGlassLike(mat)) {
+            applyOrthographicGlassSeeThrough(mat, enable)
+          }
+        }
+      })
+    }
+    for (const instance of this.windowInstances) apply(instance)
+    for (const instance of this.windowLodLowInstances) apply(instance)
   }
 
   private disposeLabelMaterial(mesh: THREE.Mesh) {
@@ -1729,6 +1788,8 @@ export class FacadeController {
           if (mat === this.whiteMaterial || mat === this.selectedMaterial || mat === this.lineMaterial) {
             continue
           }
+          if (mat.userData.skipFacadeShade === true) continue
+          if (id && this.wallInteriorMaterials.get(id) === mat) continue
           applyFacadeShadeShader(mat, sign, { label: isLabel })
         }
       })
@@ -2178,21 +2239,7 @@ export class FacadeController {
     const walls = getVisibleWalls(this.state).filter((w) => w.buildingId === buildingId)
     const bare = this.buildingIsBare(buildingId)
     for (const wall of walls) {
-      const neighborWalls = this.buildingWalls(wall)
-      const bodyWall = this.wallForBodyMesh(wall)
-      const geometry = isStudioWall(bodyWall)
-        ? createStudioWallGeometry(bodyWall, neighborWalls)
-        : createWallGeometry(bodyWall, neighborWalls)
-      const wallMaterial = this.syncWallBodyMaterials(wall, THREE.DoubleSide)
-      const mesh = new THREE.Mesh(geometry, wallMaterial)
-      mesh.castShadow = true
-      mesh.receiveShadow = true
-      mesh.userData = { kind: 'wall', wallId: wall.id, buildingId }
-      const transform = wallPlacement(wall)
-      mesh.position.set(transform.position.x, transform.position.y, transform.position.z)
-      mesh.rotation.y = transform.rotationY
-      this.wallGroup.add(mesh)
-      this.meshes.set(wall.id, mesh)
+      this.syncWallBodyMeshes(wall)
       this.syncOpeningShadowTunnel(wall)
     }
 
@@ -2396,7 +2443,7 @@ export class FacadeController {
       exterior.color.set(wallColor)
       applySurfaceFinish(exterior, finish)
     }
-    exterior.side = THREE.DoubleSide
+    exterior.side = THREE.FrontSide
     exterior.shadowSide = shadowSide
 
     let interior = this.wallInteriorMaterials.get(wall.id)
@@ -2407,10 +2454,48 @@ export class FacadeController {
       interior.color.set(interiorColor)
       applySurfaceFinish(interior, finish)
     }
-    interior.side = THREE.DoubleSide
-    interior.shadowSide = shadowSide
+    interior.side = THREE.FrontSide
+    interior.shadowSide = THREE.FrontSide
+    interior.userData.interiorWallSurface = true
+    interior.userData.skipFacadeShade = true
+    bindSkipPointShadows(interior)
+    const glassEnv = getGlassEnvironment()
+    if (glassEnv) {
+      interior.envMap = glassEnv
+      interior.envMapIntensity = Math.max(interior.envMapIntensity, 0.42)
+    }
 
     return isStudioWall(wall) ? [exterior, interior] : exterior
+  }
+
+  /** Studio-Wand: ein Mesh, zwei Materialien (außen/innen) — kein Geometrie-Split. */
+  private syncWallBodyMeshes(wall: Wall): void {
+    const neighborWalls = this.buildingWalls(wall)
+    const bodyWall = this.wallForBodyMesh(wall)
+    const transform = wallPlacement(wall)
+    const geometry = isStudioWall(bodyWall)
+      ? createStudioWallGeometry(bodyWall, neighborWalls)
+      : createWallGeometry(bodyWall, neighborWalls)
+    const wallMaterial = this.syncWallBodyMaterials(
+      wall,
+      this.pointLightOccludersEnabled ? THREE.DoubleSide : THREE.FrontSide,
+    )
+    let mesh = this.meshes.get(wall.id)
+    if (!mesh) {
+      mesh = new THREE.Mesh(geometry, wallMaterial)
+      mesh.castShadow = true
+      mesh.receiveShadow = true
+      this.wallGroup.add(mesh)
+      this.meshes.set(wall.id, mesh)
+    } else {
+      mesh.geometry.dispose()
+      mesh.geometry = geometry
+      mesh.material = wallMaterial
+      mesh.receiveShadow = true
+    }
+    mesh.userData = { kind: 'wall', wallId: wall.id, buildingId: wall.buildingId }
+    mesh.position.set(transform.position.x, transform.position.y, transform.position.z)
+    mesh.rotation.y = transform.rotationY
   }
 
   private rebuild() {
@@ -2427,34 +2512,10 @@ export class FacadeController {
     }
 
     for (const wall of visibleWalls) {
-      const neighborWalls = this.buildingWalls(wall)
-      const bodyWall = this.wallForBodyMesh(wall)
-      const geometry = isStudioWall(bodyWall)
-        ? createStudioWallGeometry(bodyWall, neighborWalls)
-        : createWallGeometry(bodyWall, neighborWalls)
-      let mesh = this.meshes.get(wall.id)
-      const wallMaterial = this.syncWallBodyMaterials(wall, THREE.FrontSide)
-
-      if (!mesh) {
-        mesh = new THREE.Mesh(geometry, wallMaterial)
-        mesh.castShadow = true
-        // Empfang: syncLabelShadowReceivers (finalize) setzt true; hier vorab für Innenraum.
-        mesh.receiveShadow = true
-        this.wallGroup.add(mesh)
-        this.meshes.set(wall.id, mesh)
-      } else {
-        mesh.geometry.dispose()
-        mesh.geometry = geometry
-        mesh.material = wallMaterial
-        mesh.receiveShadow = true
-      }
-
-      mesh.userData = { kind: 'wall', wallId: wall.id, buildingId: wall.buildingId }
-      const transform = wallPlacement(wall)
-      mesh.position.set(transform.position.x, transform.position.y, transform.position.z)
-      mesh.rotation.y = transform.rotationY
+      this.syncWallBodyMeshes(wall)
       this.syncOpeningShadowTunnel(wall)
     }
+    this.disposeLeftoverInteriorWallShells()
 
     this.rebuildProfiles()
     this.rebuildInnerSills()
@@ -2507,14 +2568,16 @@ export class FacadeController {
         )
         exteriorMaterial.shadowSide = THREE.FrontSide
         interiorMaterial.shadowSide = THREE.FrontSide
+        interiorMaterial.userData.skipFacadeShade = true
+        bindSkipPointShadows(interiorMaterial)
         const materials =
           geometry.groups.length >= 2
             ? [exteriorMaterial, interiorMaterial]
             : exteriorMaterial
         const mesh = new THREE.Mesh(geometry, materials)
         mesh.castShadow = true
-        // Kein Empfang — sonst Moiré/Schraffur auf der Laibung wie früher auf nackten Wänden.
-        mesh.receiveShadow = false
+        // Nische/Konche empfängt Cube-Schatten der Kappen — sonst leuchtet der Hohlraum.
+        mesh.receiveShadow = opening.type === 'conch' || openingFillMode(opening) === 'niche'
         mesh.renderOrder = 2
         exteriorMaterial.polygonOffset = true
         exteriorMaterial.polygonOffsetFactor = -2
@@ -2524,6 +2587,8 @@ export class FacadeController {
         interiorMaterial.polygonOffsetUnits = -2
         mesh.userData.originalMaterial = materials
         mesh.userData.wallId = wall.id
+        mesh.userData.sealedNiche =
+          opening.type === 'conch' || openingFillMode(opening) === 'niche'
         // Zeichnung: Kanten wie Wandkörper bei Paneelen weglassen — Extrados besitzen
         // Steine/Sockel; sonst 64–128 Laibungs-Segmente als Reißverschluss.
         mesh.userData.skipLineEdges = true
@@ -2550,7 +2615,19 @@ export class FacadeController {
     this.openingShadowTunnelMeshes.delete(wallId)
   }
 
-  /** Unsichtbarer Tunnel: Sonne blockiert durch die Wandstärke, ohne sichtbare Geometrie. */
+  /** Reste der fehlgeschlagenen Wand-Split-Meshes (v2.0.48) entfernen. */
+  private disposeLeftoverInteriorWallShells(): void {
+    const extra: THREE.Mesh[] = []
+    for (const child of this.wallGroup.children) {
+      if (child instanceof THREE.Mesh && child.userData.wallShell === 'interior') extra.push(child)
+    }
+    for (const mesh of extra) {
+      this.wallGroup.remove(mesh)
+      mesh.geometry.dispose()
+    }
+  }
+
+  /** Unsichtbarer Tunnel: blockiert Licht durch die Wandstärke (Öffnungen, Konchen, Keller). */
   private syncOpeningShadowTunnel(wall: Wall) {
     if (!isStudioWall(wall) || this.wallIsBare(wall)) {
       this.disposeOpeningShadowTunnel(wall.id)
@@ -2565,8 +2642,6 @@ export class FacadeController {
     let mesh = this.openingShadowTunnelMeshes.get(wall.id)
     if (!mesh) {
       mesh = new THREE.Mesh(geometry, this.shadowOccluderMaterial)
-      mesh.castShadow = true
-      mesh.receiveShadow = false
       mesh.frustumCulled = false
       this.wallGroup.add(mesh)
       this.openingShadowTunnelMeshes.set(wall.id, mesh)
@@ -2574,6 +2649,7 @@ export class FacadeController {
       mesh.geometry.dispose()
       mesh.geometry = geometry
     }
+    this.tagPointLightShadowOccluder(mesh)
     mesh.userData = {
       kind: 'openingShadowTunnel',
       wallId: wall.id,
@@ -2601,6 +2677,7 @@ export class FacadeController {
     this.windowLodLowInstances.length = 0
     this.rebuildWindowsForWalls(getVisibleWalls(this.state), this.windowTierForPresentation())
     this.applyLodVisibility()
+    this.applyOrthographicGlassSeeThrough()
   }
 
   private windowTierForPresentation(): 'low' | 'high' {
@@ -2769,6 +2846,7 @@ export class FacadeController {
         }
       }
     }
+    this.applyOrthographicGlassSeeThrough()
   }
 
   private rebuildCasings(buildingId?: string) {

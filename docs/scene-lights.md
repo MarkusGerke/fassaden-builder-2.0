@@ -14,6 +14,34 @@ Platzierbare Punktlichter aus der Element-Bibliothek — unabhängig von Sonne u
 
 Lichter drehen mit dem Grundstück (`siteOffset`).
 
+## Raumhülle (lichtdicht)
+
+Ein Raum wird durch **Wände, Boden, Decke und Laibungen** begrenzt. Punktlicht darf nur durch **echte Öffnungen** entweichen:
+
+| Durchlässig | Blockiert |
+|---|---|
+| Fenster-/Türöffnung in der Wand (Loch) | Wandkörper, Verkleidung, Rahmen, Sprossen |
+| Klarglas (Transmission, kein Shadow-Cast) | Sichtbare Geschoss-Boden und -Decke (Innenkante) |
+| Geöffnete Fenster/Tür (kein Glas im Weg) | Unsichtbare Außenring-Platten (Wandstärke, nur Shadow-Map) |
+| | Rollladen (geschlossen), Laibung, **Konche**, Öffnungs-Tunnel |
+
+Im **Render**-Modus (3D/Front) ist die Okklusion **automatisch aktiv**, sobald mindestens ein Punktlicht eingeschaltet ist.
+
+**Warum keine Layer-Trennung fürs Licht:** Three.js WebGLRenderer beleuchtet jedes sichtbare Mesh mit jedem Licht, das die **Kamera** sieht. Objekt-Layer steuern das nicht. Deshalb:
+
+1. **Shader-Maske** (`skipPointLights.ts`): Außen-Materialien (Paneele, Sockel, Gesimse, äußere Fensterbänke, Wand-Außenmaterial, Fensterrahmen, **Konche/Nische-Außenmaterial**) bekommen **kein Punktlicht**. **Innenwand** (Materialgruppe 1), Böden, Decken, Glas und Laibungs-Innenseite schon — sichtbar durch Fenster in 2D/Front. Innenwände nutzen **kein** Gegenlicht-Shader (`applyFacadeShadeShader`). Der Patch sitzt in `getPointLightInfo` (Three.js-Lichtfunktion), nicht nur im Fragment-Include.
+2. **Konche:** sichtbare Kalotte ohne flache Okklusions-Kappen; Dichtung nur im unsichtbaren Shadow-Tunnel (`OPENING_SHADOW_TUNNEL_INFLATE_CM = 2,5`).
+3. **Unsichtbare Okkluder** (`SHADOW_LAYER_OCCLUDER = 3`): Boden/Decke auf dem **Grundriss-Außenring**, mit `customDistanceMaterial` in der Punktlicht-Cube-Map.
+4. **Sichtbare Böden** bleiben auf der Innenkante und der echten Fußbodenhöhe (`storeyFloorSurfaceY`) — nicht durch Kellerfenster angehoben.
+5. **Wände** sind **ein Mesh** mit zwei Materialien (außen/innen).
+6. **Marker im Render:** kein additives Billboard-Glühen (sticht durch Wände). Stattdessen eine kleine **opake Kugel** mit Tiefentest. Additive Glühen nur in Vorschau/Entwurf.
+7. **Innen-Fill:** Bei aktivem Punktlicht im Render zusätzlich schwaches `dirLightIndoor` (nur Layer Innen).
+8. **Wand-Normalen:** Außenfläche nach außen, Innenfläche in den Raum (`wallFaceNormalReverse`). Sonst ist der Freistreifen über den Paneelen ein Loch, und Innenwände erscheinen schwarz.
+9. **2D-Glas:** Orthografische Front nutzt Alpha-Transparenz statt Physical-Transmission (`setOrthographicGlassSeeThrough`).
+10. **Innen-Schatten:** Innenwände bekommen Punktlicht, aber keine Cube-Selbstabschattung (`bindSkipPointShadows`).
+
+**Selective Bloom:** Nur Objekte auf **BLOOM_LAYER (2)** (Licht-Marker) erzeugen Bloom. **EnvMap** nur aus dem Außen-Layer.
+
 ## Einstellungen (Toolbar)
 
 | Feld | Default | Beschreibung |
@@ -39,6 +67,12 @@ Persistiert in `FacadeState.sceneLights`. Hydrate: `normalizeSceneLights` in `sr
 | Datei | Rolle |
 |---|---|
 | `src/scene/sceneLights.ts` | CRUD, Duplizieren, Normalisierung |
+| `src/FacadeController.ts` | Wandkörper, Indoor-Böden, Okkluder-Gruppe, Shader-Maske |
+| `src/lighting/skipPointLights.ts` | Außen-Materialien ohne Punktlicht (WebGL-Limit) |
+| `src/lighting/pointLightRoomOccluders.ts` | Unsichtbare Außenring-Platten (Layer 3) |
+| `src/studio/panelGeometry.ts` | Öffnungs-Shadow-Tunnel (Konche, Keller) |
+| `src/utils/layers.ts` | `effectiveStoreyFloorCapY` (Kellerfenster-Oberkante) |
+| `src/lighting/selectiveBloom.ts` | Bloom nur auf BLOOM_LAYER (Licht-Marker) |
 | `src/lighting/sceneLightUnits.ts` | Watt ↔ Three.js-Intensität (cm-Maßstab) |
 | `src/lighting/lightGlowMarker.ts` | Weiches Glühen (Sprite, depthTest für Okklusion) |
 | `src/lighting/sceneLightRuntime.ts` | THREE.PointLight + Marker/Pick |
@@ -62,6 +96,7 @@ Noch **nicht** umgesetzt — bei Bedarf separat planen:
 
 - Nur Punktlicht (kein Spot/Area).
 - Schatten nur im **Render**-Darstellungsmodus; Checkbox **Schatten werfen** muss an sein.
-- In **2D-Front** und **3D** blockieren Wand, Rahmen, Sprossen, **Decken, Böden und Geschoss-Vollplatten** das Licht (Cube-Shadow-Map); durch Fensteröffnungen fällt es sichtbar nach außen — Glas blockiert nicht und filtert Klarglas nicht.
+- In **2D-Front** und **3D** bleibt Licht im Raum: Wände, Böden, Decken und Laibungen sind lichtdicht. Durch Fensteröffnungen und Glas sieht man den **Innenraum**; Paneele, Sockel und Gesimse werden vom Innenlicht nicht direkt angestrahlt.
+- Three.js-Layer allein isolieren Punktlicht **nicht** — Isolation über Shader-Maske und Shadow-Okkluder.
 - Marker aus: Pick-Kugel bleibt unsichtbar, Auswahl per Klick in der Nähe weiter möglich.
-- Glühen nutzt **depthTest** — Wände, Rahmen und Sprossen verdecken den Schein; **Klarglas** und **offene Öffnungen** nicht (`depthWrite: false`, Transmission ohne Farbfilter).
+- Im **Render** (Raumhülle an): kein additives Billboard-Glühen — das sticht durch Wände. Stattdessen eine kleine opake Kugel. Additive Glühen nur in Vorschau/Entwurf, dort weiterhin `depthTest` gegen opake Geometrie; **Klarglas** schreibt keine Tiefe.

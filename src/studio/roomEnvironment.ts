@@ -11,6 +11,7 @@ import {
   glassSkyReflectionColor,
   setGlassEnvironment,
 } from '../utils/threeColors'
+import { SHADOW_LAYER_EXTERIOR } from '../utils/sunLighting'
 
 let pmrem: THREE.PMREMGenerator | null = null
 let cubeRT: THREE.WebGLCubeRenderTarget | null = null
@@ -104,12 +105,10 @@ export function initRoomEnvironment(renderer: THREE.WebGLRenderer, scene: THREE.
   })
   cubeCamera = new THREE.CubeCamera(12, 14000, cubeRT)
   cubeCamera.name = 'glassCubeCamera'
-  cubeCamera.layers.enable(0)
-  cubeCamera.layers.enable(1)
+  cubeCamera.layers.set(SHADOW_LAYER_EXTERIOR)
   for (const child of cubeCamera.children) {
     if (child instanceof THREE.Camera) {
-      child.layers.enable(0)
-      child.layers.enable(1)
+      child.layers.set(SHADOW_LAYER_EXTERIOR)
     }
   }
   scene.add(cubeCamera)

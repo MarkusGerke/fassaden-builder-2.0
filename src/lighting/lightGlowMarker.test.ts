@@ -3,10 +3,13 @@ import * as THREE from 'three'
 import {
   createLightBloomCore,
   createLightGlowSprite,
+  createLightSolidMarker,
   disposeLightBloomCore,
   disposeLightGlowSprite,
+  disposeLightSolidMarker,
   updateLightBloomCore,
   updateLightGlowSprite,
+  updateLightSolidMarker,
 } from './lightGlowMarker'
 
 describe('lightGlowMarker', () => {
@@ -48,5 +51,18 @@ describe('lightGlowMarker', () => {
     updateLightBloomCore(core, '#ffaa66', 80, 12, false, true)
     expect(core.visible).toBe(false)
     disposeLightBloomCore(core)
+  })
+
+  it('erzeugt opake Positions-Kugel mit Tiefenschreiben', () => {
+    const mesh = createLightSolidMarker()
+    const mat = mesh.material as THREE.MeshBasicMaterial
+    expect(mat.depthTest).toBe(true)
+    expect(mat.depthWrite).toBe(true)
+    expect(mat.blending).not.toBe(THREE.AdditiveBlending)
+    updateLightSolidMarker(mesh, '#ffaa66', true, false)
+    expect(mesh.visible).toBe(true)
+    updateLightSolidMarker(mesh, '#ffaa66', false, false)
+    expect(mesh.visible).toBe(false)
+    disposeLightSolidMarker(mesh)
   })
 })

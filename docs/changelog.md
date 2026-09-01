@@ -2,6 +2,50 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Wandflächen, Innenlicht, 2D-Glas (2026-09-01) — v2.0.54
+
+**Ursache:** ShapeGeometry blickt nach +Z; `faceReverse` war invertiert. Von außen war die nackte Wand über den Paneelen weggekullt (Loch), von innen sah man die unbeleuchtete Außenseite (schwarz). **Fix:** `wallFaceNormalReverse` dreht Außen nach außen / Innen in den Raum; Vertex-Normalen werden vor dem Accumulator genullt. Innenmaterialien ohne Punktlicht-Cube-Selbstschatten (`bindSkipPointShadows`). 2D-Front: Glas per Alpha statt Transmission (`setOrthographicGlassSeeThrough`). Dateien: `panelGeometry.ts`, `skipPointLights.ts`, `threeColors.ts`, `FacadeController.ts`, `main.ts`.
+
+### Innenwände, 2D-Licht, Freistreifen (2026-09-01) — v2.0.53
+
+`wallFaceNormalReverse`: Außen-/Innen-Normalen abhängig von `panelFlip` (nicht mehr pauschal `z === depth`) — behebt schwarze Innenwände und fehlende Außenfläche im Freistreifen. `skipFacadeShade` für Innenwand- und Laibungs-Innenmaterial. Bei aktivem Punktlicht schwaches `dirLightIndoor`-Fill (nur Innen-Layer). Dateien: `panelGeometry.ts`, `facadeShade.ts`, `FacadeController.ts`, `main.ts`.
+
+### Start-Fix (2026-09-01) — v2.0.52
+
+Falscher Import `getGlassEnvMap` in `FacadeController.ts` — Modul brach beim Laden ab (endloser Ladebildschirm). Korrekt: `getGlassEnvironment` aus `threeColors.ts`.
+
+### Konche, Freistreifen, Innenlicht (2026-09-01) — v2.0.51
+
+Konche: flache Masken-Kappen aus **sichtbarer** `createStudioConchRevealGeometry` entfernt — Okklusion nur über unsichtbaren Shadow-Tunnel (`createStudioOpeningShadowTunnelGeometry`, Aufweitung 2,5 cm). Freistreifen oben: Außenfläche nur im nackten Streifen auf voller Tiefe, darunter wieder leicht eingesenkt — Paneele bleiben sichtbar. Innenwand-Materialien ohne `applyFacadeShadeShader`; leichte EnvMap-Reflexion (`interiorWallSurface`). Dateien: `panelGeometry.ts`, `FacadeController.ts`, `threeColors.ts`.
+
+### Punktlicht: Konche und Fassade dicht (2026-09-01) — v2.0.50
+
+Konche/Nische: **beide** Laibungs-Materialien ohne Punktlicht (`sealedNiche`); sichtbare Masken-Kappen an Nischengrund und Wandinnenseite, damit das durchgehende Wandloch den Innenraum nicht zeigt. Shader-Maske patcht `getPointLightInfo` in `lights_pars_begin`. Additive Marker-Sprites im Render aus — sie staken als Billboards durch Wände; stattdessen opake Tiefen-Kugel. Öffnungs-Tunnel und Außenring-Platten mit `customDistanceMaterial` in der Punktlicht-Cube-Map. Dateien: `skipPointLights.ts`, `FacadeController.ts`, `panelGeometry.ts`, `sceneLightRuntime.ts`, `lightGlowMarker.ts`.
+
+### Punktlicht: Raum wirklich lichtdicht (2026-09-01) — v2.0.49
+
+**Ursache:** WebGLRenderer wendet Licht-Layer nicht auf Meshes an — Paneele/Sockel bekamen Innenlicht trotz Layer 0. Wand-Split und sichtbare Extra-Platten zerstörten die Geometrie. **Fix:** Shader-Maske `uSkipPointLights` auf Außen-Materialien; unsichtbare Außenring-Okkluder nur auf `SHADOW_LAYER_OCCLUDER` (Kamera/Sonne sehen sie nicht); Wände wieder ein Mesh. Dateien: `skipPointLights.ts`, `pointLightRoomOccluders.ts`, `FacadeController.ts`, `sceneLightRuntime.ts`.
+
+### Punktlicht: Raum ohne Duplikat-Geometrie (2026-09-01) — v2.0.48
+
+**Rückbau** der unsichtbaren Boden-/Decken-Schalen und Öffnungs-Dichtungen (`pointLightRoomShell.ts` entfernt) — die erzeugten Z-Fighting, sichtbare Extra-Flächen und zerstörte Wände. Stattdessen: **bestehende Geometrie** (Indoor-Böden/Decken, Wand-Innenschale, Laibungen, Shadow-Tunnel) plus **Layer-Trennung** Außen (0) / Innen (1). Studio-Wände via `cloneWallGeometryGroup`. Dateien: `FacadeController.ts`, `panelGeometry.ts`, `scene-lights.md`.
+
+### Punktlicht: kein Bloom auf der Fassade (2026-09-01) — v2.0.47
+
+**Selective Bloom** (`selectiveBloom.ts`): nur `BLOOM_LAYER`-Marker blühen — Fenster-Innenhelligkeit spreadet nicht mehr per Post-Processing auf Außenfassade. EnvMap-Bake nur **Außen-Layer**. Härtere Cube-Shadows; Wand-Außen-`FrontSide` bei Okklusion.
+
+### Punktlicht: nur Innenraum (2026-09-01) — v2.0.46
+
+Bibliotheks-Punktlicht nur **Layer 1 (Innen)** — Außen-Geometrie (Paneele, Gesimse, Sockel, äußere Fensterbank) empfängt kein direktes Punktlicht mehr. Raumhülle mit **depthWrite** blockiert Glühen/Bloom durch Wände. Konche/Keller: erweiterte Öffnungs-Kappen. Dateien: `sceneLightRuntime.ts`, `FacadeController.ts`, `panelGeometry.ts`.
+
+### Punktlicht: Konche, Keller & Fundament (2026-09-01) — v2.0.45
+
+**Konche** und **Kellerfenster** okkludieren zuverlässig: Öffnungs-Dichtungen (`createPointLightOpeningSealGeometry`) mit vollem Tunnel-Umfang; Konche mit Innen- und Nischen-Rückwand. Boden-Vollplatte via `effectiveStoreyFloorCapY` mindestens über Kellerfenster-Oberkante; **Fundament-Platte** unter dem EG. Dateien: `layers.ts`, `pointLightRoomShell.ts`, `panelGeometry.ts`, `FacadeController.ts`.
+
+### Punktlicht: lichtdichte Raumhülle (2026-09-01) — v2.0.44
+
+Horizontale **Raum-Schalen** aus Grundriss (Boden/Decke pro Face) plus **BBox-Vollplatten** pro Geschoss; Okklusion bei jedem aktiven Licht im Render-Modus. Wände, Verkleidung, Rollläden, Tunnel, Rahmen casten; Glas nicht. Dateien: `pointLightRoomShell.ts`, `FacadeController.ts`, `sceneLightRuntime.ts`, `main.ts`.
+
 ### Punktlicht: Geschoss-Schatten, Okkluder & Bloom (2026-09-01) — v2.0.43
 
 Horizontale **Vollplatten** pro Geschoss (Gebäude-BBox) für Cube-Shadows — Licht aus dem EG erreicht Kellerfenster nicht mehr diagonal. Okkluder: Wände, Verkleidung, Laibungen, Öffnungs-Tunnel, Rahmen. **Bloom-HDR-Kern** an jeder Lichtquelle. Front-Ansicht in Bloom-Pipeline. Dateien: `FacadeController.ts`, `sceneLightRuntime.ts`, `lightGlowMarker.ts`, `main.ts`.

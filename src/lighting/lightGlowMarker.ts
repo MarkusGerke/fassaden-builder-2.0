@@ -105,3 +105,41 @@ export function disposeLightBloomCore(mesh: THREE.Mesh): void {
   mesh.geometry.dispose()
   ;(mesh.material as THREE.Material).dispose()
 }
+
+/**
+ * Opake Positions-Kugel für den Render-Modus.
+ * Additive Sprites sind kamera-füllende Quads — sie stecken durch Wände
+ * und sehen aus wie Lichtflecken auf der Fassade.
+ */
+export function createLightSolidMarker(): THREE.Mesh {
+  const material = new THREE.MeshBasicMaterial({
+    toneMapped: false,
+    depthTest: true,
+    depthWrite: true,
+    transparent: false,
+  })
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), material)
+  mesh.renderOrder = 1
+  mesh.name = 'lightSolidMarker'
+  mesh.castShadow = false
+  mesh.receiveShadow = false
+  mesh.scale.setScalar(8)
+  return mesh
+}
+
+export function updateLightSolidMarker(
+  mesh: THREE.Mesh,
+  colorHex: string,
+  visible: boolean,
+  selected: boolean,
+): void {
+  const material = mesh.material as THREE.MeshBasicMaterial
+  material.color.set(colorHex)
+  mesh.visible = visible
+  mesh.scale.setScalar(selected ? 12 : 8)
+}
+
+export function disposeLightSolidMarker(mesh: THREE.Mesh): void {
+  mesh.geometry.dispose()
+  ;(mesh.material as THREE.Material).dispose()
+}

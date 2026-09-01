@@ -140,6 +140,13 @@ export const SHADOW_GROUND_MAX_LENGTH = 3200
  */
 export const SHADOW_LAYER_EXTERIOR = 0
 export const SHADOW_LAYER_INTERIOR = 1
+/** Nur diese Layer-Objekte erzeugen Bloom (Glühbirnen-Marker) — nicht die ganze Szene. */
+export const BLOOM_LAYER = 2
+/**
+ * Nur Cube-Shadow der Bibliotheks-Punktlichter (nicht Sonne, nicht Hauptkamera).
+ * Unsichtbare Raum-Dichtungen: keine Extra-Flächen im Bild, kein Z-Fighting.
+ */
+export const SHADOW_LAYER_OCCLUDER = 3
 /** Dicke der Innenboden-/Decken-Extrusion (cm) für stabile Shadow-Occluder. */
 export const INDOOR_SLAB_THICKNESS = 8
 export const SUN_PATH_ANIM_SEC_MIN = 5

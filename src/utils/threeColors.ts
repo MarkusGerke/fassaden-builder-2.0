@@ -39,6 +39,10 @@ export function bindMaterialsToGlassEnv(root: THREE.Object3D) {
       if (isGlassLike(material) || material.envMap || material.envMapIntensity > 0.2) {
         material.envMap = glassEnvMap
         material.needsUpdate = true
+      } else if (material.userData.interiorWallSurface === true) {
+        material.envMap = glassEnvMap
+        material.envMapIntensity = Math.max(material.envMapIntensity, 0.42)
+        material.needsUpdate = true
       }
     }
   })
@@ -85,6 +89,7 @@ export function applyGlassLook(material: THREE.MeshPhysicalMaterial, config: Ope
   const tint = clear ? PHYSICAL_CLEAR_GLASS_COLOR : config.color
   const seeThrough = config.mode !== 'physical' || config.transmission <= 0.08
   material.name = 'glass'
+  material.userData.glassConfig = config
   material.metalness = 0
   material.specularIntensity = 1
   material.specularColor.set('#ffffff')
@@ -134,6 +139,31 @@ export function applyGlassLook(material: THREE.MeshPhysicalMaterial, config: Ope
     material.envMapIntensity = glassEnvMap ? 1.8 : 0
   }
   material.needsUpdate = true
+}
+
+/** True wenn das Material Glas (Transmission oder Name) ist. */
+export function materialIsGlassLike(material: THREE.Material): boolean {
+  return isGlassLike(material)
+}
+
+/**
+ * Orthografische 2D-Front: Physical-Transmission liefert oft Schwarz.
+ * Echte Alpha-Transparenz zeigt den Innenraum / das Punktlicht durch die Scheibe.
+ */
+export function applyOrthographicGlassSeeThrough(
+  material: THREE.MeshPhysicalMaterial,
+  enable: boolean,
+): void {
+  const config = material.userData.glassConfig as OpeningGlassConfig | undefined
+  if (enable) {
+    material.transmission = 0
+    material.transparent = true
+    material.opacity = 0.18
+    material.depthWrite = false
+    material.needsUpdate = true
+    return
+  }
+  if (config) applyGlassLook(material, config)
 }
 
 export function createGlassMaterial(source: string | OpeningGlassConfig): THREE.MeshPhysicalMaterial {
