@@ -94,7 +94,7 @@ export function updateLightBloomCore(
   }
   const material = mesh.material as THREE.MeshBasicMaterial
   const c = new THREE.Color(colorHex)
-  const gain = 5 + Math.sqrt(Math.max(1, watts)) * 1.2
+  const gain = 10 + Math.sqrt(Math.max(1, watts)) * 2.4
   material.color.copy(c).multiplyScalar(gain)
   material.opacity = 1
   mesh.visible = true

@@ -56,7 +56,7 @@ import {
   normalizeOpeningGuard,
   normalizeOpeningInteriorShade,
 } from './windows/openingExtras'
-import { applyMeshColor, applyOrthographicGlassSeeThrough, applySurfaceFinish, applyWorkModeSurfaceLook, createTintedMaterial, getGlassEnvironment, materialIsGlassLike } from './utils/threeColors'
+import { applyMeshColor, applyOrthographicGlassSeeThrough, applyRenderExteriorSurfaceLook, applyRenderInteriorSurfaceLook, applySurfaceFinish, applyWorkModeSurfaceLook, createTintedMaterial, getGlassEnvironment, materialIsGlassLike } from './utils/threeColors'
 import { applyFacadeShadeShader, facadeOutwardLocalZ } from './utils/facadeShade'
 import { openingGlassConfig } from './utils/glassConfig'
 import { DEFAULT_STUDIO_PANEL } from './studio/constants'
@@ -538,10 +538,13 @@ export class FacadeController {
   }
 
   /** Bibliotheks-Punktlicht: Shader-Maske außen + unsichtbare Shadow-Platten. */
-  syncPointLightOccluders(enable: boolean): void {
-    this.pointLightOccludersEnabled = enable
+  syncPointLightOccluders(roomOcclusion: boolean, sceneLightsActive: boolean): void {
+    this.pointLightOccludersEnabled = roomOcclusion
+    this.sceneLightsActive = sceneLightsActive
     this.applyPointLightOccluders()
   }
+
+  private sceneLightsActive = false
 
   private bindSkipPointLightsOn(
     material: THREE.Material | THREE.Material[] | undefined,
@@ -585,7 +588,7 @@ export class FacadeController {
 
   private applyPointLightOccluders(): void {
     const enable = this.pointLightOccludersEnabled
-    setSkipPointLights(enable)
+    setSkipPointLights(this.sceneLightsActive)
     this.rebuildPointLightRoomOccluders()
 
     for (const child of this.indoorFloorGroup.children) {
@@ -611,6 +614,7 @@ export class FacadeController {
 
     for (const mesh of this.meshes.values()) {
       mesh.castShadow = true
+      this.syncWallMeshLightLayers(mesh)
     }
     for (const tunnel of this.openingShadowTunnelMeshes.values()) {
       this.tagPointLightShadowOccluder(tunnel)
@@ -697,6 +701,25 @@ export class FacadeController {
   /** Arbeit oder Leicht: vereinfachte Profile, harte Schatten, kein High-Cladding. */
   private isPerfPresentation(): boolean {
     return this.presentationMode !== 'render'
+  }
+
+  private finishExteriorMaterial(material: THREE.MeshStandardMaterial): void {
+    if (this.isPerfPresentation()) {
+      if (this.isPreviewPresentation()) applyWorkModeSurfaceLook(material)
+      return
+    }
+    applyRenderExteriorSurfaceLook(material)
+  }
+
+  private finishInteriorMaterial(material: THREE.MeshStandardMaterial): void {
+    if (this.isPerfPresentation()) return
+    applyRenderInteriorSurfaceLook(material)
+  }
+
+  private syncWallMeshLightLayers(mesh: THREE.Mesh): void {
+    mesh.layers.enable(SHADOW_LAYER_EXTERIOR)
+    if (this.sceneLightsActive) mesh.layers.enable(SHADOW_LAYER_INTERIOR)
+    else mesh.layers.disable(SHADOW_LAYER_INTERIOR)
   }
 
   /**
@@ -2464,6 +2487,7 @@ export class FacadeController {
     }
     exterior.side = THREE.FrontSide
     exterior.shadowSide = shadowSide
+    this.finishExteriorMaterial(exterior)
 
     let interior = this.wallInteriorMaterials.get(wall.id)
     if (!interior) {
@@ -2478,11 +2502,7 @@ export class FacadeController {
     interior.userData.interiorWallSurface = true
     interior.userData.skipFacadeShade = true
     bindSkipPointShadows(interior)
-    const glassEnv = getGlassEnvironment()
-    if (glassEnv) {
-      interior.envMap = glassEnv
-      interior.envMapIntensity = Math.max(interior.envMapIntensity, 0.42)
-    }
+    this.finishInteriorMaterial(interior)
 
     return isStudioWall(wall) ? [exterior, interior] : exterior
   }
@@ -2515,6 +2535,7 @@ export class FacadeController {
     mesh.userData = { kind: 'wall', wallId: wall.id, buildingId: wall.buildingId }
     mesh.position.set(transform.position.x, transform.position.y, transform.position.z)
     mesh.rotation.y = transform.rotationY
+    this.syncWallMeshLightLayers(mesh)
   }
 
   private rebuild() {
@@ -3047,6 +3068,7 @@ export class FacadeController {
                 const color = useMultiColor ? (palette[stageIndex] ?? claddingColor) : claddingColor
                 const material = createTintedMaterial(this.material, color, wall.claddingFinish)
                 if (this.isPreviewPresentation()) applyWorkModeSurfaceLook(material)
+                else this.finishExteriorMaterial(material)
                 const mesh = new THREE.Mesh(geometry, material)
                 mesh.castShadow = !this.isPreviewPresentation()
                 mesh.receiveShadow = this.isPreviewPresentation()
@@ -3074,6 +3096,7 @@ export class FacadeController {
                     wall.wallFinish,
                   )
                   if (this.isPreviewPresentation()) applyWorkModeSurfaceLook(mortarMaterial)
+                  else this.finishExteriorMaterial(mortarMaterial)
                   const mortarMesh = new THREE.Mesh(mortarGeometry, mortarMaterial)
                   mortarMesh.castShadow = !this.isPreviewPresentation()
                   mortarMesh.receiveShadow = this.isPreviewPresentation()
@@ -3146,6 +3169,7 @@ export class FacadeController {
                 }
                 const color = palette[stageIndex] ?? claddingColor
                 const material = createTintedMaterial(this.material, color, wall.claddingFinish)
+                this.finishExteriorMaterial(material)
                 const mesh = new THREE.Mesh(geometry, material)
                 mesh.castShadow = true
                 mesh.receiveShadow = false

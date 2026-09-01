@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.56'
+export const APP_VERSION = '2.0.60'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,44 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.60',
+    date: '2026-09-01',
+    title: 'Wandflächen reflektieren Licht',
+    changes: [
+      'Render-Modus: Außen-Paneele und Wände mit EnvMap (Himmel/Szene) und geringerer Rauheit — sichtbare Lichtreflexion',
+      'Innenwände empfangen Punktlicht (Wand-Mesh auf Innen-Layer; Außen-Material blockiert Punktlicht per Shader)',
+      'Außenflächen reflektieren Sonne/Himmel; Innenflächen das Punktlicht aus dem Raum',
+    ],
+  },
+  {
+    version: '2.0.59',
+    date: '2026-09-01',
+    title: 'Lade-Fix CSS',
+    changes: [
+      'Behoben: App lud nicht — CSS-Syntaxfehler in style.css nach Ebenen-Lichter-Styles',
+    ],
+  },
+  {
+    version: '2.0.58',
+    date: '2026-09-01',
+    title: 'Lichter im Ebenenbaum',
+    changes: [
+      'Neue Sektion „Lichter“ in der linken Ebenen-Liste — alle platzierten Punktlichter auf einen Blick',
+      'Lichter auswählen, ein-/ausblenden (Licht an/aus), duplizieren und löschen über Zeilen- oder Mehr-Menü',
+      'Ebenen-Panel wieder sichtbar; leerer Zustand mit Hinweis auf Bibliothek → Licht',
+    ],
+  },
+  {
+    version: '2.0.57',
+    date: '2026-09-01',
+    title: 'Fassadenlicht, Bloom, Schattenseiten',
+    changes: [
+      'Gegenlicht-Shader dimmt Schattenseiten der Hauptflächen wieder (Ost/Nord bei Südsonne nicht mehr fälschlich hell)',
+      'Außenfassade erhält EnvMap-Reflexionen aus der CubeCamera (Himmel/Nachbarflügel)',
+      'Bloom stärker und früher sichtbar (Default-Schwelle/Stärke, hellerer HDR-Kern an Lichtquellen)',
+    ],
+  },
   {
     version: '2.0.56',
     date: '2026-09-01',

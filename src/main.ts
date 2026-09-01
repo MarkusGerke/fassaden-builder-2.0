@@ -3667,6 +3667,7 @@ let presentationMode: PresentationMode = loadPresentationMode()
 const collapsedFloors = new Set<number>()
 const collapsedBuildings = new Set<string>()
 const expandedRoofs = new Set<string>()
+let sceneLightsLayerCollapsed = false
 const buildingAddBtn = document.querySelector<HTMLButtonElement>('#building-add')!
 const expandedWalls = new Set<string>()
 let planBuildingDrag: {
@@ -8229,8 +8230,13 @@ function sceneLightShadowFarCm(): number {
   return Math.min(4800, span * 1.8 + 400)
 }
 
+function sceneLightsActive(): boolean {
+  return normalizeSceneLights(state.sceneLights).some((item) => item.enabled)
+}
+
 function syncSceneLightRuntime(): void {
   const roomOcclusion = sceneLightRoomOcclusionActive()
+  const lightsActive = sceneLightsActive()
   sceneLightRuntime.sync(normalizeSceneLights(state.sceneLights), {
     roomOcclusion,
     selectedId: editor.selectedSceneLightId,
@@ -8239,7 +8245,7 @@ function syncSceneLightRuntime(): void {
     bloomActive: bloomIsActive(),
   })
   if (!facadeReady) return
-  facade.syncPointLightOccluders(roomOcclusion)
+  facade.syncPointLightOccluders(roomOcclusion, lightsActive)
   if (roomOcclusion) scheduleSunShadowMapUpdate()
 }
 
@@ -9659,7 +9665,12 @@ function ensureOpeningSelected(wallId: string, openingId: string) {
 }
 
 function sceneLightContextItems(lightId: string): MenuItem[] {
+  const light = sceneLightById(state, lightId)
   return [
+    {
+      label: light?.enabled !== false ? 'Ausblenden' : 'Einblenden',
+      action: () => toggleSceneLightEnabled(lightId),
+    },
     {
       label: 'Duplizieren',
       action: () => {
@@ -9677,6 +9688,12 @@ function sceneLightContextItems(lightId: string): MenuItem[] {
       },
     },
   ]
+}
+
+function toggleSceneLightEnabled(lightId: string) {
+  const light = sceneLightById(state, lightId)
+  if (!light) return
+  commitState(updateSceneLight(state, lightId, { enabled: !light.enabled }))
 }
 
 function showElementContextMenu(
@@ -10049,8 +10066,102 @@ function removeStoreyAtFloor(floor: number) {
   rebuildFloorPlanOverlay()
 }
 
+function sceneLightsLayerContextItems(): MenuItem[] {
+  return [
+    {
+      label: 'Punktlicht einfügen',
+      action: () => insertSceneLightFromLibrary(),
+    },
+  ]
+}
+
+function renderSceneLightsLayerSection() {
+  const lights = normalizeSceneLights(state.sceneLights)
+  const sectionItem = document.createElement('li')
+  sectionItem.className = 'layer-building layer-scene-lights'
+
+  const collapseBtn = document.createElement('button')
+  collapseBtn.type = 'button'
+  collapseBtn.className = 'layer-floor-collapse'
+  collapseBtn.title = 'Ein-/Ausklappen'
+  collapseBtn.textContent = sceneLightsLayerCollapsed ? '▸' : '▾'
+  collapseBtn.addEventListener('click', (event) => {
+    event.stopPropagation()
+    sceneLightsLayerCollapsed = !sceneLightsLayerCollapsed
+    renderLayerList()
+  })
+
+  const titleBtn = document.createElement('button')
+  titleBtn.type = 'button'
+  titleBtn.className = 'layer-floor-toggle'
+  titleBtn.title = 'Szene-Lichter'
+  const title = document.createElement('span')
+  title.textContent = lights.length > 0 ? `Lichter (${lights.length})` : 'Lichter'
+  titleBtn.append(title)
+  titleBtn.addEventListener('click', () => {
+    if (editor.selectedSceneLightId) {
+      applyEditorSelection(createDefaultEditorState())
+      return
+    }
+    if (lights.length > 0) selectSceneLight(lights[0]!.id)
+  })
+
+  const moreBtn = createLayerMoreButton(sceneLightsLayerContextItems())
+  const header = document.createElement('div')
+  header.className = 'layer-building-header layer-floor-header'
+  header.append(collapseBtn, titleBtn, moreBtn)
+  sectionItem.appendChild(header)
+
+  if (!sceneLightsLayerCollapsed) {
+    const body = document.createElement('ul')
+    body.className = 'layer-floor-body'
+
+    if (lights.length === 0) {
+      const emptyItem = document.createElement('li')
+      const emptyHint = document.createElement('p')
+      emptyHint.className = 'layer-empty-hint'
+      emptyHint.textContent = 'Bibliothek → Licht — hierher ziehen oder Mehr-Menü'
+      emptyItem.appendChild(emptyHint)
+      body.appendChild(emptyItem)
+    }
+
+    for (const light of lights) {
+      const rowWrap = document.createElement('li')
+      rowWrap.className = 'layer-row-wrap' + layerHiddenClass(!light.enabled)
+      const row = document.createElement('div')
+      row.className = 'layer-wall-row'
+
+      const btn = document.createElement('button')
+      btn.type = 'button'
+      const selected = editor.selectedSceneLightId === light.id
+      btn.className = (selected ? 'layer-row selected' : 'layer-row') + layerHiddenClass(!light.enabled)
+      const kind = document.createElement('span')
+      kind.className = 'layer-kind'
+      kind.textContent = 'Licht'
+      const label = document.createElement('span')
+      label.className = 'layer-label'
+      label.textContent = light.label?.trim() || 'Punktlicht'
+      const meta = document.createElement('span')
+      meta.className = 'layer-meta'
+      meta.textContent = `${Math.round(light.intensity)} W`
+      btn.append(kind, label, meta)
+      btn.addEventListener('click', () => selectSceneLight(light.id))
+
+      const lightMoreBtn = createLayerMoreButton(sceneLightContextItems(light.id))
+      row.append(btn, lightMoreBtn)
+      rowWrap.appendChild(row)
+      body.appendChild(rowWrap)
+    }
+
+    sectionItem.appendChild(body)
+  }
+
+  layerList.appendChild(sectionItem)
+}
+
 function renderLayerList() {
   layerList.replaceChildren()
+  renderSceneLightsLayerSection()
   let layerIndex = 0
 
   for (const building of [...state.buildings].reverse()) {

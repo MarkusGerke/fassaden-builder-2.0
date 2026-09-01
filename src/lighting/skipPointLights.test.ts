@@ -56,7 +56,7 @@ describe('skipPointLights', () => {
       shader as unknown as THREE.WebGLProgramParametersWithUniforms,
       {} as THREE.WebGLRenderer,
     )
-    const dimBlocks = shader.fragmentShader.split('mix(sideOrTop, 1.0, uLabelShade)').length - 1
+    const dimBlocks = shader.fragmentShader.split('mix(1.0 - sideOrTop, 1.0, uLabelShade)').length - 1
     expect(dimBlocks).toBe(1)
     expect(shader.fragmentShader).toContain('light.color *= (1.0 - uSkipPointLights)')
     expect(shader.fragmentShader).toContain('#include <lights_fragment_begin>')

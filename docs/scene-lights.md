@@ -9,8 +9,9 @@ Platzierbare Punktlichter aus der Element-Bibliothek — unabhängig von Sonne u
 3. Unter **Anzeige** (Bibliothek) oder **Szene → Licht**: **Lichtpunkte anzeigen** schaltet alle Editor-Glühen global ein/aus (Lichtwirkung bleibt).
 4. **3D:** leuchtende Kugel anklicken und per **Drag** verschieben.
 4. **2D-Front:** Kugel per **Drag** in der Bildebene verschieben; **Tiefe (Blickrichtung)** per Slider vor/zurück entlang der Blickachse.
-5. **Rechtsklick:** **Duplizieren** oder **Licht entfernen**.
-6. Rechts in `#toolbar-scene-light`: Position, Farbe, Leistung (Watt LED), Marker, Reichweite, Abfall, Schatten.
+5. **Ebenenbaum (links):** Sektion **Lichter** — Klick wählt, Mehr-Menü **Ausblenden/Einblenden**, Duplizieren, Entfernen.
+6. **Rechtsklick** in der Szene: **Duplizieren** oder **Licht entfernen**.
+7. Rechts in `#toolbar-scene-light`: Position, Farbe, Leistung (Watt LED), Marker, Reichweite, Abfall, Schatten.
 
 Lichter drehen mit dem Grundstück (`siteOffset`).
 
@@ -27,7 +28,9 @@ Ein Raum wird durch **Wände, Boden, Decke und Laibungen** begrenzt. Punktlicht 
 
 Im **Render**-Modus (3D/Front) ist die Okklusion **automatisch aktiv**, sobald mindestens ein Punktlicht eingeschaltet ist.
 
-**Warum keine Layer-Trennung fürs Licht:** Three.js WebGLRenderer beleuchtet jedes sichtbare Mesh mit jedem Licht, das die **Kamera** sieht. Objekt-Layer steuern das nicht. Deshalb:
+**Warum keine Layer-Trennung fürs Licht:** Three.js WebGLRenderer beleuchtet jedes sichtbare Mesh mit jedem Licht, dessen Layer mit dem Objekt-Layer überlappt. Objekt-Layer steuern das — Material allein nicht.
+
+**Wandkörper (v2.0.60):** Studio-Wand-Meshes liegen auf Außen- **und** Innen-Layer, sobald mindestens ein Punktlicht aktiv ist. Außen-Material (`wallMaterials`) nutzt `uSkipPointLights` — kein Punktlicht auf der Fassade. Innen-Material empfängt Punktlicht und EnvMap-Fill (`applyRenderInteriorSurfaceLook`). Außen-Paneele: `applyRenderExteriorSurfaceLook` (EnvMap ~0,58, Rauheit ≤ 0,78) im Render-Modus.
 
 1. **Shader-Maske** (`skipPointLights.ts`): Außen-Materialien (Paneele, Sockel, Gesimse, äußere Fensterbänke, Wand-Außenmaterial, Fensterrahmen, **Konche/Nische-Außenmaterial**) bekommen **kein Punktlicht**. **Innenwand** (Materialgruppe 1), Böden, Decken, Glas und Laibungs-Innenseite schon — sichtbar durch Fenster in 2D/Front. Innenwände nutzen **kein** Gegenlicht-Shader (`applyFacadeShadeShader`). Der Patch sitzt in `getPointLightInfo` (Three.js-Lichtfunktion), nicht nur im Fragment-Include.
 2. **Konche:** sichtbare Kalotte ohne flache Okklusions-Kappen; Dichtung nur im unsichtbaren Shadow-Tunnel (`OPENING_SHADOW_TUNNEL_INFLATE_CM = 2,5`).

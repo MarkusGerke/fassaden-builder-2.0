@@ -24,6 +24,12 @@ describe('facadeShade', () => {
     expect(facadeOutwardLocalZ(false)).toBe(1)
   })
 
+  it('markiert Außenflächen für EnvMap-Bindung', () => {
+    const mat = new THREE.MeshStandardMaterial()
+    applyFacadeShadeShader(mat, 1)
+    expect(mat.userData.exteriorSurface).toBe(true)
+  })
+
   it('hängt den Gegenlicht-Shader an Standard-Material', () => {
     const mat = new THREE.MeshStandardMaterial()
     applyFacadeShadeShader(mat, -1)
@@ -36,7 +42,7 @@ describe('facadeShade', () => {
     expect(shader.fragmentShader).not.toContain('normalMatrix *')
     expect(shader.fragmentShader).toContain('vFacadeView')
     expect(shader.fragmentShader).toContain('#include <lights_fragment_begin>')
-    expect(shader.fragmentShader).toContain('mix(sideOrTop, 1.0, uLabelShade)')
+    expect(shader.fragmentShader).toContain('mix(1.0 - sideOrTop, 1.0, uLabelShade)')
     expect(shader.fragmentShader).not.toContain('lights_fragment_end')
     expect(shader.vertexShader).not.toContain('vDirectionalShadowCoord[ 0 ].z -=')
   })
@@ -50,7 +56,7 @@ describe('facadeShade', () => {
     expect(shader.uniforms.uLabelShade.value).toBe(1)
     expect(shader.fragmentShader).toContain('uLabelDirectDim')
     expect(shader.fragmentShader).toContain('uLabelHemiDim')
-    expect(shader.fragmentShader).toContain('mix(sideOrTop, 1.0, uLabelShade)')
+    expect(shader.fragmentShader).toContain('mix(1.0 - sideOrTop, 1.0, uLabelShade)')
     expect(shader.vertexShader).toContain(
       `vDirectionalShadowCoord[ 0 ].z -= ${LABEL_SHADOW_COORD_Z_BIAS.toFixed(4)}`,
     )

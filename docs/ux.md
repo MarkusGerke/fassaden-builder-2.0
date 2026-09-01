@@ -8,7 +8,7 @@ Dieses Dokument hält Interaktion und die zugehörigen Defaults fest. Code ohne 
 
 ## Fassaden-Builder 2.0 (v2.0.0)
 
-Schlanker Produkt-Fokus auf **2D-Front im Render-Modus**; **3D** ist wieder per Button wählbar (OrbitControls, freie Navigation, Scene-Lights verschieben). Aus der Toolbar ausgeblendet (`hidden`, IDs bleiben): **Ebenen**-Panel, **Oben**, **Entwurf**, **Einfach/Komplex**, **Galerie**. Vorschau, Render, Export und Zeichnung bleiben.
+Schlanker Produkt-Fokus auf **2D-Front im Render-Modus**; **3D** ist wieder per Button wählbar (OrbitControls, freie Navigation, Scene-Lights verschieben). Aus der Toolbar ausgeblendet (`hidden`, IDs bleiben): **Oben**, **Entwurf**, **Einfach/Komplex**, **Galerie**. **Ebenen**-Panel (linksb) mit **Lichter**-Sektion ist sichtbar (v2.0.58). Vorschau, Render, Export und Zeichnung bleiben.
 
 **Auswahl-Performance (2D):** `selectWall` / `selectOpening` rufen `applyEditorSelection` statt `applyState` — nur `facade.setEditor` + debounced `persistApp` (350 ms), kein `svgView.setState`, kein Geometrie-Rebuild. Voller `applyState` nur bei Geometrie-/Datenänderungen.
 
@@ -636,7 +636,8 @@ Swatch `transparent` (`TRANSPARENT_GLASS`) macht Klarverglasung. 3D-Glas (`apply
 ## Ebenen-Baum (Multi-Haus)
 
 - `FacadeState.buildings[]` + `activeBuildingId`; Legacy-Saves werden beim Laden in ein Gebäude „Haus 1“ migriert (`migrateToBuildings`).
-- Ebenen-Liste: **Haus** → **Dach** (Sektion, aufklappbar) → **Geschosse** → **Decke / Boden** / Wände / Öffnungen / **Treppe** (Unterzeile unter Tür).
+- Ebenen-Liste: **Lichter** (Szene, aufklappbar) → **Haus** → **Dach** (Sektion, aufklappbar) → **Geschosse** → **Decke / Boden** / Wände / Öffnungen / **Treppe** (Unterzeile unter Tür).
+- **Lichter:** Alle platzierten Punktlichter (`FacadeState.sceneLights`) als eigene Sektion oben im Ebenenbaum. Klick wählt das Licht (`selectedSceneLightId`, Toolbar `#toolbar-scene-light`). Mehr-Menü: **Ausblenden/Einblenden** (`enabled`), **Duplizieren**, **Licht entfernen**. Sektions-Mehr-Menü: **Punktlicht einfügen**. Ausgeschaltete Lichter gedimmt (`.layer-dimmed`).
 - Zeilen-Labels: nur **Typ** (`Wand`, `Fenster`, `Tür`, `Treppe`, `Decke / Boden`, `Dach`, `Ziegel`, `Rinne`) + **Meta** (Breite in cm oder Stufenanzahl). Keine Himmelsrichtung, kein Fenstermodell-String, keine x/y-Position.
 - Haus-Zeile: Klick **aktiviert** das Haus und setzt `selectedBuildingId` (Grundriss-Umriss orange). Mehr-Menü: **Neues Haus**, **Nur weiße Wände** / **Fassade einblenden** (`Building.bareWalls`), Umbenennen, Ausblenden, **Duplizieren** (Ost/West/Nord/Süd), Löschen (mind. ein Haus). Bei `bareWalls` zeigt die Hauszeile „· nur Wände“; 3D/2D nur weiße Vollwände (keine Öffnungen/Mauerwerk/Profile/Dach/Decken), Projektdaten unverändert.
 - **Decke / Boden** pro Geschoss: Zeile wie Wand (`selectedCeiling`, Toolbar `#toolbar-ceiling`, Farbe `FloorPlan.ceilingColor`, Default **Weiß** `#ffffff`). Farbe auch im Wand-Reiter **Farben**. **v0.7.227:** per Klick auf die Decke in 3D auswählbar. Mehr-Menü: Ein-/Ausblenden (`FloorPlan.showCeiling`). Alte braune Defaults (`#9a8a7a` / `#8a7a6a`) werden beim Laden weiß (Schema 13), eigene Farben bleiben.

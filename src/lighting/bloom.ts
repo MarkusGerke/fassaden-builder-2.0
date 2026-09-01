@@ -17,9 +17,9 @@ export interface BloomSettings {
 
 export const DEFAULT_BLOOM_SETTINGS: BloomSettings = {
   enabled: false,
-  strength: 0.12,
+  strength: 0.28,
   radius: 0.6,
-  threshold: 0.85,
+  threshold: 0.72,
   exposure: 1.116,
 }
 

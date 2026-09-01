@@ -3481,6 +3481,19 @@ html[data-ui-mode='simple'] [data-ui-level='advanced'] {
 
 
 
+.layer-scene-lights {
+  margin-bottom: 0.65rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid #ececec;
+}
+
+.layer-empty-hint {
+  margin: 0.15rem 0.35rem 0.45rem;
+  font-size: 0.62rem;
+  line-height: 1.35;
+  color: #999;
+}
+
 .layer-building {
   margin-top: 0.35rem;
 }

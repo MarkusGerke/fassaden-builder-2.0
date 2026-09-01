@@ -41,7 +41,14 @@ export function bindMaterialsToGlassEnv(root: THREE.Object3D) {
         material.needsUpdate = true
       } else if (material.userData.interiorWallSurface === true) {
         material.envMap = glassEnvMap
-        material.envMapIntensity = Math.max(material.envMapIntensity, 0.42)
+        material.envMapIntensity = Math.max(material.envMapIntensity, 0.55)
+        material.needsUpdate = true
+      } else if (material.userData.exteriorSurface === true) {
+        material.envMap = glassEnvMap
+        material.envMapIntensity = Math.max(
+          material.envMapIntensity,
+          material.metalness > 0.08 ? 0.75 : 0.58,
+        )
         material.needsUpdate = true
       }
     }
@@ -266,6 +273,34 @@ export function applySurfaceFinish(
   } else {
     material.envMap = null
   }
+  material.needsUpdate = true
+}
+
+/** Render-Modus: Außenflächen reflektieren Himmel/Szene (CubeCamera-EnvMap). */
+export function applyRenderExteriorSurfaceLook(material: THREE.MeshStandardMaterial): void {
+  material.userData.exteriorSurface = true
+  const env = getGlassEnvironment()
+  if (env) {
+    material.envMap = env
+    material.envMapIntensity = Math.max(
+      material.envMapIntensity,
+      material.metalness > 0.08 ? 0.75 : 0.58,
+    )
+  }
+  material.roughness = Math.min(material.roughness, 0.78)
+  material.metalness = Math.min(material.metalness, 0.06)
+  material.needsUpdate = true
+}
+
+/** Render-Modus: Innenwände nehmen Punktlicht und EnvMap-Fill sichtbar auf. */
+export function applyRenderInteriorSurfaceLook(material: THREE.MeshStandardMaterial): void {
+  material.userData.interiorWallSurface = true
+  const env = getGlassEnvironment()
+  if (env) {
+    material.envMap = env
+    material.envMapIntensity = Math.max(material.envMapIntensity, 0.55)
+  }
+  material.roughness = Math.min(material.roughness, 0.86)
   material.needsUpdate = true
 }
 

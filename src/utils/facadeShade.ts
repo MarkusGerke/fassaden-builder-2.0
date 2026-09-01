@@ -91,6 +91,7 @@ export function applyFacadeShadeShader(
 
   material.userData.uFacadeOutwardLocal = outwardLocalZ
   material.userData.uLabelShade = isLabel ? 1 : 0
+  material.userData.exteriorSurface = true
   const existing = material.userData.uFacadeOutwardUniform as { value: number } | undefined
   if (existing) existing.value = outwardLocalZ
   const existingLabel = material.userData.uLabelShadeUniform as { value: number } | undefined
@@ -99,7 +100,7 @@ export function applyFacadeShadeShader(
   material.userData.facadeShadeApplied = true
   const prevKey = material.customProgramCacheKey?.bind(material)
   material.customProgramCacheKey = () =>
-    `${prevKey ? prevKey() : ''}|facade-backlit-v9${isLabel ? '|label' : ''}`
+    `${prevKey ? prevKey() : ''}|facade-backlit-v10${isLabel ? '|label' : ''}`
   const prevCompile = material.onBeforeCompile
   material.onBeforeCompile = (shader, renderer) => {
     prevCompile?.(shader, renderer)
@@ -173,7 +174,8 @@ uniform float uLabelHemiDim;`,
             sunOnFront = dot(normalize(vFacadeView), directionalLights[0].direction);
           #endif
           float backlit = 1.0 - smoothstep(-0.28, -0.04, sunOnFront);
-          float dimMask = mix(sideOrTop, 1.0, uLabelShade);
+          // Hauptfläche (sideOrTop≈0): bei Gegenlicht dimmen; Seiten/Oberkanten bleiben hell.
+          float dimMask = mix(1.0 - sideOrTop, 1.0, uLabelShade);
           float dim = clamp(backlit * dimMask, 0.0, 1.0);
           float directAmt = mix(uDirectDim, uLabelDirectDim, uLabelShade);
           float hemiAmt = mix(uHemiDim, uLabelHemiDim, uLabelShade);
@@ -195,7 +197,8 @@ uniform float uLabelHemiDim;`,
             sunOnFront = dot(normalize(vFacadeView), directionalLights[0].direction);
           #endif
           float backlit = 1.0 - smoothstep(-0.28, -0.04, sunOnFront);
-          float dimMask = mix(sideOrTop, 1.0, uLabelShade);
+          // Hauptfläche (sideOrTop≈0): bei Gegenlicht dimmen; Seiten/Oberkanten bleiben hell.
+          float dimMask = mix(1.0 - sideOrTop, 1.0, uLabelShade);
           float dim = clamp(backlit * dimMask, 0.0, 1.0);
           float directAmt = mix(uDirectDim, uLabelDirectDim, uLabelShade);
           float hemiAmt = mix(uHemiDim, uLabelHemiDim, uLabelShade);

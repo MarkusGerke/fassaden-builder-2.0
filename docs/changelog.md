@@ -2,6 +2,22 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Wandflächen reflektieren Licht (2026-09-01) — v2.0.60
+
+**Außen:** `applyRenderExteriorSurfaceLook` — EnvMap ~0,58, Rauheit max. 0,78 auf Paneele/Wände im Render-Modus. **Innen:** Wand-Mesh auf Innen-Layer wenn Punktlicht aktiv; Innenmaterial ohne Punktlicht-Skip; `applyRenderInteriorSurfaceLook`. Außen-Shader skippt Punktlicht sobald ein Licht an ist. Dateien: `threeColors.ts`, `FacadeController.ts`, `main.ts`.
+
+### Lade-Fix CSS (2026-09-01) — v2.0.59
+
+CSS-Syntaxfehler in `style.css` (kaputte `.layer-building`-Regel nach Lichter-Styles) — Vite konnte die App nicht bauen/laden.
+
+### Lichter im Ebenenbaum (2026-09-01) — v2.0.58
+
+**Lichter-Sektion** oben in `#layer-list`: Klick wählt, Mehr-Menü **Ausblenden/Einblenden** (`enabled`), Duplizieren, Entfernen. Sektions-Mehr: **Punktlicht einfügen**. Ebenen-Panel (`layers-section`) wieder sichtbar. Dateien: `main.ts`, `index.html`, `style.css`, `ux.md`.
+
+### Fassadenlicht, Bloom, Schattenseiten (2026-09-01) — v2.0.57
+
+**Ost/Nord fälschlich hell:** Gegenlicht-Shader nutzte `dim = backlit × sideOrTop` — Hauptflächen (`sideOrTop≈0`) wurden nie abgedunkelt. **Fix:** `dimMask = 1 − sideOrTop` auf Wänden; Seiten/Oberkanten bleiben hell. **Außen-Reflexion:** `exteriorSurface`-Materialien bekommen nach CubeCamera-Bake EnvMap (Intensität ~0,32). **Bloom:** Default threshold 0,72 / strength 0,28; HDR-Kern ~2× heller. Dateien: `facadeShade.ts`, `threeColors.ts`, `bloom.ts`, `lightGlowMarker.ts`.
+
 ### Weiße Decken und Fußböden (2026-09-01) — v2.0.56
 
 **Decke/Boden grau oder dunkel:** Platten nutzten `ceilingColor` ohne Innenwand-Behandlung (kein EnvMap, Punktlicht-Schatten-Acne). **Fix:** `createIndoorSlabMaterial()` — `interiorWallSurface`, `skipFacadeShade`, `bindSkipPointShadows`, EnvMap 0,42; Default `#ffffff`, Farbwähler (`ceilingColor`) bleibt wirksam. Datei: `FacadeController.ts`.
