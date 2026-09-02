@@ -237,9 +237,12 @@ export interface OpeningMasonrySnapResult {
   height: number
 }
 
+export type OpeningMasonryMoveMode = 'drag' | 'nudge'
+
 /**
- * Position nach Verschiebung an Fugen/Schichten. Kleine Schritte (±8 cm) → nächste Fuge;
- * größere Moves → nächste Fuge zur vorgeschlagenen Position (bevorzugt beidseitig bündig).
+ * Position nach Verschiebung an Fugen/Schichten.
+ * - `drag`: immer nächste Fuge zur **vorgeschlagenen** Absolutposition (kein Hin-und-Her).
+ * - `nudge`: ±Schritt → nächste Fuge/Schicht (0,5er / 1er je nach Raster).
  */
 export function snapOpeningMoveToMasonry(
   wall: Wall,
@@ -249,6 +252,7 @@ export function snapOpeningMoveToMasonry(
   proposedY: number,
   dx: number,
   dy: number,
+  mode: OpeningMasonryMoveMode = 'drag',
 ): OpeningMasonrySnapResult {
   let { x, y, width, height } = {
     x: proposedX,
@@ -263,10 +267,9 @@ export function snapOpeningMoveToMasonry(
 
   const xs = openingMasonryJambXs(wall, allWalls)
   if (xs.length >= 2) {
-    const absDx = Math.abs(dx)
-    if (absDx > EPS && absDx <= STUDIO_MASONRY + 0.5) {
+    if (mode === 'nudge' && Math.abs(dx) > EPS) {
       x = adjacentCut(xs, opening.x, dx > 0 ? 1 : -1)
-    } else if (absDx > EPS) {
+    } else if (Math.abs(dx) > EPS || Math.abs(proposedX - opening.x) > EPS) {
       x = bestLeftForWidth(xs, proposedX, width)
     } else {
       x = nearestCut(xs, opening.x)
@@ -277,10 +280,9 @@ export function snapOpeningMoveToMasonry(
   if (!lockY) {
     const ys = openingMasonryCourseYs(wall)
     if (ys.length >= 2) {
-      const absDy = Math.abs(dy)
-      if (absDy > EPS && absDy <= STUDIO_MASONRY + 0.5) {
+      if (mode === 'nudge' && Math.abs(dy) > EPS) {
         y = adjacentCut(ys, opening.y, dy > 0 ? 1 : -1)
-      } else if (absDy > EPS) {
+      } else if (Math.abs(dy) > EPS || Math.abs(proposedY - opening.y) > EPS) {
         y = nearestCut(ys, proposedY)
       } else {
         y = nearestCut(ys, opening.y)

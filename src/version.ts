@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.67'
+export const APP_VERSION = '2.0.68'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,16 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.68',
+    date: '2026-09-02',
+    title: '24/48-Raster bündig, Öffnungs-Drag ohne Springen',
+    changes: [
+      'Läuferlagen: Restbreite nur am Wandende — 24er- und 48er-Muster fluchten wieder auf gemeinsamen Fugen',
+      'Öffnung ziehen: rastet sauber an der nächsten Fuge zur Mausposition (kein Hin-und-Her mehr)',
+      'Pfeiltasten/Nudge springen weiter in 0,5er-/1er-Schritten des Musters',
+    ],
+  },
   {
     version: '2.0.67',
     date: '2026-09-02',

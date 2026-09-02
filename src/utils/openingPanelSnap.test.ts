@@ -60,7 +60,7 @@ describe('openingPanelSnap', () => {
     expect(xs).toContain(24)
   })
 
-  it('rückt ±8 cm zur nächsten Fuge, nicht nur 8 cm', () => {
+  it('rückt per Nudge zur nächsten Fuge; Drag snapt absolut ohne Überspringen', () => {
     const wall = studioWall({ id: 'w', width: 384 })
     const opening = {
       x: 48,
@@ -69,10 +69,13 @@ describe('openingPanelSnap', () => {
       height: 96,
       type: 'window' as const,
     }
-    const right = snapOpeningMoveToMasonry(wall, [wall], opening, 56, 32, 8, 0)
-    expect(right.x).toBe(72)
-    const left = snapOpeningMoveToMasonry(wall, [wall], opening, 40, 32, -8, 0)
-    expect(left.x).toBe(24)
+    const nudged = snapOpeningMoveToMasonry(wall, [wall], opening, 56, 32, 8, 0, 'nudge')
+    expect(nudged.x).toBe(72)
+    // Drag: Vorschlag 56 → nächste Fuge 48 (nicht adjacent 72)
+    const dragged = snapOpeningMoveToMasonry(wall, [wall], opening, 56, 32, 8, 0, 'drag')
+    expect(dragged.x).toBe(48)
+    const draggedFar = snapOpeningMoveToMasonry(wall, [wall], opening, 70, 32, 22, 0, 'drag')
+    expect(draggedFar.x).toBe(72)
   })
 
   it('richtet Laibungen beidseitig auf Fugen aus', () => {
@@ -139,6 +142,7 @@ describe('gemeinsames Raster 24er + 48er Etagen', () => {
       32,
       8,
       0,
+      'nudge',
     )
     expect(moved.x).toBe(24)
   })

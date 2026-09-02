@@ -13339,7 +13339,7 @@ function nudgeSelectedOpenings(dx: number, dy: number) {
   if (refs.length === 0) return
   let next = state
   for (const ref of refs) {
-    next = moveOpening(next, ref.wallId, ref.openingId, dx, dy)
+    next = moveOpening(next, ref.wallId, ref.openingId, dx, dy, { mode: 'nudge' })
   }
   commitState(next)
 }
@@ -15952,7 +15952,7 @@ svgView.setOpeningsMoveHandler((dx, dy, commit, source) => {
   if (!openingDragBase) openingDragBase = cloneFacadeState(state)
   let next = openingDragBase
   for (const ref of refs) {
-    next = moveOpening(next, ref.wallId, ref.openingId, dx, dy)
+    next = moveOpening(next, ref.wallId, ref.openingId, dx, dy, { mode: 'drag' })
   }
   previewOpeningDrag(next, refs, () => {
     facade.applyLiveOpeningOffsets(openingDragBase!, state, refs)
@@ -16697,21 +16697,27 @@ canvas.addEventListener('pointermove', (event) => {
     if (wall) {
       const local = pick3dLocal(event)
       if (local !== null) {
-        const newX = Math.round((drag3dStartOpeningX + local.x - drag3dStartLocalHit.x) / STUDIO_MASONRY) * STUDIO_MASONRY
-        const newY = Math.round((drag3dStartOpeningY + local.y - drag3dStartLocalHit.y) / STUDIO_MASONRY) * STUDIO_MASONRY
+        // Absolut vom Drag-Start (Base-State) — kein Inkrement auf schon gesnapptem x (sonst Springen).
+        const dx = local.x - drag3dStartLocalHit.x
+        const dy = local.y - drag3dStartLocalHit.y
         if (!openingDragBase) openingDragBase = cloneFacadeState(state)
+        const inSel = editor.selectedOpenings.some(
+          (r) => r.wallId === drag3dOpening!.wallId && r.openingId === drag3dOpening!.openingId,
+        )
+        const refs = inSel ? scopedOpeningRefs() : [drag3dOpening]
+        let next = openingDragBase
+        for (const ref of refs) {
+          next = moveOpening(next, ref.wallId, ref.openingId, dx, dy, { mode: 'drag' })
+        }
         const opening = wall.openings.find((item) => item.id === drag3dOpening!.openingId)
-        if (opening && (newX !== opening.x || newY !== opening.y)) {
-          const dx = newX - opening.x
-          const dy = newY - opening.y
-          const inSel = editor.selectedOpenings.some(
-            (r) => r.wallId === drag3dOpening!.wallId && r.openingId === drag3dOpening!.openingId,
-          )
-          const refs = inSel ? scopedOpeningRefs() : [drag3dOpening]
-          let next = state
-          for (const ref of refs) {
-            next = moveOpening(next, ref.wallId, ref.openingId, dx, dy)
-          }
+        const moved = getWall(next, drag3dOpening.wallId)?.openings.find(
+          (item) => item.id === drag3dOpening!.openingId,
+        )
+        if (
+          opening &&
+          moved &&
+          (Math.abs(moved.x - opening.x) > 1e-6 || Math.abs(moved.y - opening.y) > 1e-6)
+        ) {
           previewOpeningDrag(next, refs, () => {
             facade.applyLiveOpeningOffsets(openingDragBase!, state, refs)
           })

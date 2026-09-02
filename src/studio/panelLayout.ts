@@ -414,50 +414,44 @@ function pierceWallCutsToField(wallCuts: number[], fieldX0: number, fieldX1: num
   return uniqueSortedCuts(local, len)
 }
 
+/**
+ * Gerade Läuferlage: volle Steine exakt `step` ab x=0; Restbreite nur am **Ende**.
+ * So bleiben Fugen bei 24er- und 48er-Modul auf demselben Raster (Vielfache),
+ * statt durch symmetrische End-Aufweitung gegeneinander zu laufen.
+ */
 function buildStretcherCuts(length: number, step: number): number[] {
   if (length <= MIN_TILE) return [0, Math.max(length, 0)]
   if (step <= MIN_TILE) return [0, length]
   const n = Math.max(1, Math.floor((length + MIN_TILE) / step))
-  const used = n * step
-  const leftover = Math.max(0, length - used)
-  if (leftover <= MIN_TILE || n === 1) {
-    const cuts: number[] = [0]
-    const brick = length / n
-    for (let i = 1; i < n; i += 1) cuts.push(i * brick)
-    cuts.push(length)
-    return cuts
-  }
-  const endW = step + leftover / 2
-  const cuts: number[] = [0, endW]
-  for (let i = 1; i < n - 1; i += 1) {
-    cuts.push(endW + i * step)
+  if (n === 1) return [0, length]
+  const cuts: number[] = [0]
+  for (let i = 1; i <= n; i += 1) {
+    const x = i * step
+    if (x >= length - MIN_TILE) break
+    cuts.push(x)
   }
   cuts.push(length)
-  return cuts
+  return uniqueSortedCuts(cuts, length)
 }
 
 /**
- * Versatzlage: Endstücke der Breite `firstW` (z. B. ½/⅓/¼ Läufer), Restbreite
- * gleichmäßig auf beide Enden. `firstW` nahe 0 oder `step` → volle Läufer.
+ * Versatzlage: Startstück `firstW` (½/⅓/¼), dann volle Läufer exakt `step`,
+ * Restbreite nur am Ende — gleiche Phasenlage wie die Gerade ab x=0.
  */
 function buildOffsetStretcherCuts(length: number, step: number, firstW = step / 2): number[] {
   if (length <= MIN_TILE) return [0, Math.max(length, 0)]
   if (step <= MIN_TILE) return [0, length]
-  const endTarget = Math.min(Math.max(firstW, MIN_TILE), step - MIN_TILE)
-  if (length <= endTarget * 2 + MIN_TILE) {
-    if (length <= endTarget + MIN_TILE) return [0, length]
-    return [0, length / 2, length]
-  }
-  const mid = length - endTarget * 2
-  const nFull = Math.max(0, Math.floor((mid + MIN_TILE) / step))
-  const leftover = Math.max(0, mid - nFull * step)
-  const endW = endTarget + leftover / 2
-  const cuts: number[] = [0, endW]
-  for (let i = 1; i <= nFull; i += 1) {
-    cuts.push(endW + i * step)
+  const startW = Math.min(Math.max(firstW, MIN_TILE), step - MIN_TILE)
+  if (length <= startW + MIN_TILE) return [0, length]
+  if (length <= startW * 2 + MIN_TILE) return [0, length / 2, length]
+  const cuts: number[] = [0, startW]
+  let x = startW
+  while (x + step < length - MIN_TILE) {
+    x += step
+    cuts.push(x)
   }
   cuts.push(length)
-  return cuts
+  return uniqueSortedCuts(cuts, length)
 }
 
 /** Versatz in eine Endstückbreite im offenen Intervall (0, step) wickeln. */

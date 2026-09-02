@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Wall } from '../types/facade'
 import { emptyNeighbors } from '../types/facade'
 import { DEFAULT_STUDIO_PANEL, PLAN_DIAGONAL_STEP } from './constants'
-import { layoutPanelTiles, panelCourseCount, visiblePanelRowRect } from './panelLayout'
+import { layoutPanelTiles, masonryPatternCuts, panelCourseCount, visiblePanelRowRect } from './panelLayout'
 import { WALL_DEPTH } from '../constants/presets'
 import { panelMiterEnds, studioPanelFaceLocalZ } from './walls'
 import { studioMiterLocalX } from './wallMiterX'
@@ -928,6 +928,36 @@ describe('Verbandsmuster gleichmäßig (wandweites Raster)', () => {
       .filter((t) => Math.round((t.y - ph / 2) / ph) === row)
       .sort((a, b) => a.x - b.x)
   }
+
+  it('24er und 48er gleichen Wandmaßes teilen Innenfugen (Rest nur am Ende)', () => {
+    const mk = (id: string, panelWidth: number, panelHeight: number) => {
+      const panel = {
+        ...DEFAULT_STUDIO_PANEL,
+        pattern: 'runningBond' as const,
+        panelWidth,
+        panelHeight,
+        joint: panelWidth === 24 ? 0.8 : 1.2,
+        plinthEnabled: false,
+        plinthHeight: 0,
+        cornerJoin: 'miter' as const,
+      }
+      return studioWall({ id, width: 400, height: 128, panel })
+    }
+    const w24 = mk('a24', 24, 8)
+    const w48 = mk('a48', 48, 16)
+    const cuts24 = masonryPatternCuts(w24, w24.panel!, [], 0)
+    const cuts48 = masonryPatternCuts(w48, w48.panel!, [], 0)
+    for (const j of [0, 48, 96, 144, 192, 240, 288, 336, 384]) {
+      expect(cuts24.some((c) => Math.abs(c - j) < 0.05)).toBe(true)
+      expect(cuts48.some((c) => Math.abs(c - j) < 0.05)).toBe(true)
+    }
+    expect(cuts24.some((c) => Math.abs(c - 24) < 0.05)).toBe(true)
+    // Rest am Ende: letzter Cut = 400, vorletzter = 384 (= 16×24 = 8×48)
+    expect(cuts24.at(-1)).toBe(400)
+    expect(cuts48.at(-1)).toBe(400)
+    expect(cuts24.at(-2)).toBe(384)
+    expect(cuts48.at(-2)).toBe(384)
+  })
 
   it('Läuferverband 24×8: gerade 1/1/…, versetzt 0,5/1/…/0,5 — auch mit Öffnungen', () => {
     const panel = {

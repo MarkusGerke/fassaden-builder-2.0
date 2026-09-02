@@ -2,6 +2,10 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### 24/48 bündig + Drag ohne Springen (2026-09-02) — v2.0.68
+
+`buildStretcherCuts` / `buildOffsetStretcherCuts`: Restbreite nur am **Ende**, volle Module ab x=0 — unterschiedliche Modulbreiten (24/48) teilen Innenfugen. Öffnungs-Drag: immer Absolut-Snap vom Drag-Start (`mode: 'drag'`); Nudge nutzt `mode: 'nudge'` (nächste Fuge). Dateien: `panelLayout.ts`, `openingPanelSnap.ts`, `openings.ts`, `main.ts`, Tests, Docs.
+
 ### Gemeinsames Öffnungs-Snap über Etagen (2026-09-02) — v2.0.67
 
 Gestapelte Studio-Wände mit gleichem Fußabdruck und **unterschiedlicher** Modulbreite (z. B. 24 / 48): Snap-Ziele = **kgV** der `patternModuleUnit`-Werte (½-Läufer → 12 & 24 → Schritt 24). Fugenbreite beeinflusst nur die sichtbare Steinbreite, nicht die Cuts. Eine Etage allein: weiterhin echte `masonryPatternCuts`. Dateien: `openingPanelSnap.ts`, Tests, Docs.

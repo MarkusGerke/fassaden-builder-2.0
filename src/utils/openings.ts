@@ -1455,16 +1455,18 @@ export function applyWallOpeningPreset(
   return { state: next, opening }
 }
 
-/** Verschiebt eine Öffnung um dx/dy, gerundet auf Platzierungsraster, geclampt auf Wandgrenzen. */
+/** Verschiebt eine Öffnung um dx/dy; Studio-Mauerwerk: an Fugen/Schichten. */
 export function moveOpening(
   state: FacadeState,
   wallId: string,
   openingId: string,
   dx: number,
   dy: number,
+  opts?: { mode?: 'drag' | 'nudge' },
 ): FacadeState {
   const MIN_GAP = OPENING_MIN_GAP
   const allWalls = getAllWalls(state)
+  const mode = opts?.mode ?? 'drag'
   return mapWall(state, wallId, (wall) => {
     const step = openingPositionStep(wall)
     const grid = openingGridForWall(wall)
@@ -1474,11 +1476,14 @@ export function moveOpening(
       ...cloneWall(wall),
       openings: wall.openings.map((opening) => {
         if (opening.id !== openingId) return opening
-        let newX = Math.round((opening.x + dx) / step) * step
+        // Mauerwerk: Rohposition (kein 8-cm-Vorschritt — sonst Springen gegen Fugen-Snap).
+        let newX = useMasonry ? opening.x + dx : Math.round((opening.x + dx) / step) * step
         let newY =
           opening.type === 'door' && opening.stairs?.enabled
             ? stairTopY(normalizeOpeningStairs(opening.stairs, opening))
-            : Math.round((opening.y + dy) / step) * step
+            : useMasonry
+              ? opening.y + dy
+              : Math.round((opening.y + dy) / step) * step
         let newWidth = opening.width
         let newHeight = opening.height
         if (useMasonry) {
@@ -1490,6 +1495,7 @@ export function moveOpening(
             newY,
             dx,
             dy,
+            mode,
           )
           newX = snapped.x
           newY = snapped.y
@@ -1502,7 +1508,6 @@ export function moveOpening(
           grid,
           { snapToGrid: !useMasonry },
         )
-        // Mindestabstand zu Nachbarn: wenn Konflikt, Position beibehalten
         const hasConflict = others.some((o) => openingsTooClose(clamped, o, MIN_GAP))
         return hasConflict ? opening : clamped
       }),
