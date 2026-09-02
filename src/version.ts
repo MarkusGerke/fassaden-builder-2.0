@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.78'
+export const APP_VERSION = '2.0.79'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,16 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.79',
+    date: '2026-09-02',
+    title: 'Notfall: kaputte Bogen-Rustika aus',
+    changes: [
+      'Die automatische radiale Rustika (v2.0.78) ist abgeschaltet — sie hat große Löcher und schwebende Fächer erzeugt',
+      'Bogenöffnungen nutzen wieder den bisherigen Clip-/Keilstein-Pfad',
+      'Quaderfeld-Reiter bleibt optional (Default aus); ggf. manuell ausschalten falls noch an',
+    ],
+  },
   {
     version: '2.0.78',
     date: '2026-09-02',

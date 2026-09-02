@@ -65,11 +65,17 @@ export function defaultKnuckleOffsetCm(panel: Pick<StudioPanelConfig, 'panelHeig
 /**
  * Aktiv bei Bogenöffnung (nicht eckig) + Strip oder Verband (nicht `none`).
  * Unabhängig vom Keilstein-Ring — der steuert nur optionale Scheitel-Keilsteine.
+ *
+ * **v2.0.79:** Standardmäßig **aus**. Die Auto-Rustika (v2.0.78) hat Spandrillen
+ * ausgestanzt und mit fehlerhaften Polygonen gefüllt (graue Treppenlöcher,
+ * schwebende Fächer). Generator bleibt für die nächste Iteration; Einbindung
+ * erst wieder mit explizitem Opt-in (`Opening.archRustication?.enabled`).
  */
 export function openingArchRusticationEnabled(
   opening: Opening,
   panelPattern?: string | null,
 ): boolean {
+  if (!opening.archRustication?.enabled) return false
   const form = normalizeOpeningArch(opening.arch).form
   if (form === 'rect') return false
   if (!buildRusticationGeom(opening)) return false

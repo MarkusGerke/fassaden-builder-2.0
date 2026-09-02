@@ -2,9 +2,13 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Notfall: Auto-Rustika aus (2026-09-02) — v2.0.79
+
+v2.0.78 hat Spandrillen ausgestanzt und mit fehlerhaften Polygonen gefüllt (graue Treppenlöcher, Fächer). **`openingArchRusticationEnabled` nur noch mit `Opening.archRustication.enabled`** (Default aus). Renderer fällt auf Clip/Voussoir zurück. Docs: [facade-layers.md](facade-layers.md).
+
 ### Radiale Rustika-Lagen am Rundbogen (2026-09-02) — v2.0.78
 
-Strip/Verband-Lagen umschließen den Rundbogen radial: Knick nahe Laibung, Lagerfugen zum Bogenmittelpunkt, trapez-/keilförmige Quader — auch ohne Keilstein-Ring. Schließt Scheitel ohne Loch; mit Voussoir Scheitel-Keilstein. `Opening.taperedField` bleibt optionales separates Verdachungs-Trapez (Default aus, UI umbenannt). Generator `archRustication.ts`, Einbindung `prepareStudioPanelParts`. Docs: [facade-layers.md](facade-layers.md), [opening-features.md](opening-features.md), [panel-geometry.md](panel-geometry.md).
+Strip/Verband-Lagen umschließen den Rundbogen radial: Knick nahe Laibung, Lagerfugen zum Bogenmittelpunkt, trapez-/keilförmige Quader — auch ohne Keilstein-Ring. Schließt Scheitel ohne Loch; mit Voussoir Scheitel-Keilstein. `Opening.taperedField` bleibt optionales separates Verdachungs-Trapez (Default aus, UI umbenannt). Generator `archRustication.ts`, Einbindung `prepareStudioPanelParts`. **Durch v2.0.79 deaktiviert.** Docs: [facade-layers.md](facade-layers.md), [opening-features.md](opening-features.md), [panel-geometry.md](panel-geometry.md).
 
 ### Trapez-Quaderfeld / taperedField (2026-09-02) — v2.0.77
 

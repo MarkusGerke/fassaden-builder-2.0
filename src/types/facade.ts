@@ -305,6 +305,11 @@ export interface Opening {
   /** Rundbogen der Wandöffnung + optionale Keilsteine. Dekorative Profile folgen automatisch. */
   arch?: OpeningArch
   /**
+   * Radiale Rustika-Lagen am Bogen (Experiment). Default aus — v2.0.78 Auto war unbrauchbar.
+   * Siehe `archRustication.ts` / docs/facade-layers.md.
+   */
+  archRustication?: { enabled?: boolean }
+  /**
    * Legacy-Feld. Wird ignoriert — Blendrahmen/Flügel/Glas folgen immer `Opening.arch.form`.
    * Bleibt nur für Alt-Saves erhalten; beim Speichern nicht mehr setzen.
    */
@@ -1246,6 +1251,9 @@ export function cloneWall(wall: Wall): Wall {
             }
           : undefined,
         taperedField: migrated.taperedField ? { ...migrated.taperedField } : undefined,
+        archRustication: migrated.archRustication
+          ? { enabled: Boolean(migrated.archRustication.enabled) }
+          : undefined,
         stairs: migrated.stairs ? { ...migrated.stairs } : undefined,
         basementWindow: migrated.basementWindow ? { ...migrated.basementWindow } : undefined,
         guard: migrated.guard ? { ...migrated.guard } : undefined,

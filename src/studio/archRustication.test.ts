@@ -26,20 +26,31 @@ function roundOpening(arch: Opening['arch']): Opening {
 }
 
 describe('Arch-Rustikation (radiale Quaderlagen)', () => {
-  it('aktiv bei Strip/Verband und Bogen (round/tudor), nicht bei none/eckig', () => {
+  it('Standard aus; nur mit archRustication.enabled (v2.0.79)', () => {
     const round = roundOpening({ enabled: true, form: 'round', riseCm: 48, voussoirs: false })
-    expect(openingArchRusticationEnabled(round, 'strip')).toBe(true)
-    expect(openingArchRusticationEnabled(round, 'runningBond')).toBe(true)
-    expect(openingArchRusticationEnabled(round, 'none')).toBe(false)
-    expect(openingArchRusticationEnabled(round, null)).toBe(false)
-    const tudor = roundOpening({ enabled: true, form: 'tudor', voussoirs: false })
+    expect(openingArchRusticationEnabled(round, 'strip')).toBe(false)
+    expect(openingArchRusticationEnabled(round, 'runningBond')).toBe(false)
+    const on = { ...round, archRustication: { enabled: true } }
+    expect(openingArchRusticationEnabled(on, 'strip')).toBe(true)
+    expect(openingArchRusticationEnabled(on, 'runningBond')).toBe(true)
+    expect(openingArchRusticationEnabled(on, 'none')).toBe(false)
+    expect(openingArchRusticationEnabled(on, null)).toBe(false)
+    const tudor = {
+      ...roundOpening({ enabled: true, form: 'tudor', voussoirs: false }),
+      archRustication: { enabled: true },
+    }
     expect(openingArchRusticationEnabled(tudor, 'strip')).toBe(true)
     const rect = roundOpening({ enabled: false, form: 'rect' })
-    expect(openingArchRusticationEnabled(rect, 'strip')).toBe(false)
+    expect(openingArchRusticationEnabled({ ...rect, archRustication: { enabled: true } }, 'strip')).toBe(
+      false,
+    )
   })
 
   it('inaktiv bei eckiger Öffnung', () => {
-    const opening = roundOpening({ enabled: false, form: 'rect' })
+    const opening = {
+      ...roundOpening({ enabled: false, form: 'rect' }),
+      archRustication: { enabled: true },
+    }
     expect(openingArchRusticationEnabled(opening, 'strip')).toBe(false)
   })
 
