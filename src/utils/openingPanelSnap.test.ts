@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { Wall } from '../types/facade'
 import { emptyNeighbors } from '../types/facade'
-import { DEFAULT_STUDIO_PANEL, WALL_DEPTH } from '../studio/constants'
+import { DEFAULT_STUDIO_PANEL, PLAN_DIAGONAL_STEP, WALL_DEPTH } from '../studio/constants'
 import {
   alignOpeningToMasonry,
   commonMasonrySnapStepCm,
   masonryFacadeStack,
   openingMasonryJambXs,
+  openingPlacementCandidateXs,
   snapOpeningMoveToMasonry,
   wallUsesOpeningMasonrySnap,
 } from './openingPanelSnap'
@@ -60,7 +61,54 @@ describe('openingPanelSnap', () => {
     expect(xs).toContain(24)
   })
 
-  it('rückt per Nudge zur nächsten Fuge; Drag snapt absolut ohne Überspringen', () => {
+  it('Kandidaten: Fuge, Steinmitte und Wandmitte', () => {
+    const wall = studioWall({ id: 'w', width: 384 })
+    const width = 96
+    const xs = openingPlacementCandidateXs(wall, [wall], width)
+    // Fuge
+    expect(xs).toContain(48)
+    // Steinmitte 24–48 → mid 36 → x = 36 - 48 = -12 verworfen; Stein 48–72 → mid 60 → x = 12
+    expect(xs.some((x) => Math.abs(x - 12) < 0.05)).toBe(true)
+    // Wandmitte
+    expect(xs.some((x) => Math.abs(x - (384 / 2 - width / 2)) < 0.05)).toBe(true)
+  })
+
+  it('45°-Wand: Wandmitte ist Snap-Ziel auch wenn nicht auf Fugenraster', () => {
+    const width = 128
+    const wallW = PLAN_DIAGONAL_STEP * 4 // ≈ 271.53, Hälfte nicht auf 8/24-Raster
+    const wall = studioWall({
+      id: 'diag',
+      width: wallW,
+      yawDeg: 45,
+      panel: {
+        ...DEFAULT_STUDIO_PANEL,
+        pattern: 'runningBond',
+        panelWidth: 48,
+        panelHeight: 8,
+        plinthEnabled: false,
+        plinthHeight: 0,
+      },
+    })
+    const centerX = wallW / 2 - width / 2
+    const xs = openingPlacementCandidateXs(wall, [wall], width)
+    expect(xs.some((x) => Math.abs(x - centerX) < 0.05)).toBe(true)
+
+    const opening = { x: 0, y: 32, width, height: 96, type: 'window' as const }
+    const snapped = snapOpeningMoveToMasonry(
+      wall,
+      [wall],
+      opening,
+      centerX + 2,
+      32,
+      centerX + 2,
+      0,
+      'drag',
+    )
+    expect(Math.abs(snapped.x - centerX)).toBeLessThan(0.05)
+    expect(Math.abs(snapped.x + width / 2 - wallW / 2)).toBeLessThan(0.05)
+  })
+
+  it('Nudge springt zum nächsten Kandidaten; Drag snapt absolut', () => {
     const wall = studioWall({ id: 'w', width: 384 })
     const opening = {
       x: 48,
@@ -69,16 +117,16 @@ describe('openingPanelSnap', () => {
       height: 96,
       type: 'window' as const,
     }
+    const candidates = openingPlacementCandidateXs(wall, [wall], 96)
+    const after48 = candidates.find((c) => c > 48 + 0.05)!
     const nudged = snapOpeningMoveToMasonry(wall, [wall], opening, 56, 32, 8, 0, 'nudge')
-    expect(nudged.x).toBe(72)
-    // Drag: Vorschlag 56 → nächste Fuge 48 (nicht adjacent 72)
+    expect(nudged.x).toBe(after48)
+
     const dragged = snapOpeningMoveToMasonry(wall, [wall], opening, 56, 32, 8, 0, 'drag')
-    expect(dragged.x).toBe(48)
-    const draggedFar = snapOpeningMoveToMasonry(wall, [wall], opening, 70, 32, 22, 0, 'drag')
-    expect(draggedFar.x).toBe(72)
+    expect(dragged.x).toBe(nearestIn(candidates, 56))
   })
 
-  it('richtet Laibungen beidseitig auf Fugen aus', () => {
+  it('richtet Laibungen beidseitig auf Fugen aus wenn Breite snappt', () => {
     const wall = studioWall({ id: 'w', width: 384 })
     const aligned = alignOpeningToMasonry(wall, [wall], {
       x: 50,
@@ -92,6 +140,19 @@ describe('openingPanelSnap', () => {
     expect(xs.some((c) => Math.abs(c - (aligned.x + aligned.width)) < 0.05)).toBe(true)
   })
 })
+
+function nearestIn(values: number[], target: number): number {
+  let best = values[0]!
+  let bestD = Math.abs(best - target)
+  for (const v of values) {
+    const d = Math.abs(v - target)
+    if (d < bestD) {
+      best = v
+      bestD = d
+    }
+  }
+  return best
+}
 
 describe('gemeinsames Raster 24er + 48er Etagen', () => {
   const panel24 = {
@@ -121,18 +182,15 @@ describe('gemeinsames Raster 24er + 48er Etagen', () => {
     expect(commonMasonrySnapStepCm(stack)).toBe(24)
   })
 
-  it('snapt bei gemischtem Stapel auf 24 cm (nicht 12)', () => {
+  it('snapt bei gemischtem Stapel auf gemeinsames Cut-Raster', () => {
     const lower = studioWall({ id: 'eg', y: 0, width: 384, panel: panel48 })
     const upper = studioWall({ id: 'og', y: 448, width: 384, panel: panel24 })
     const walls = [lower, upper]
     const xsLower = openingMasonryJambXs(lower, walls)
-    const xsUpper = openingMasonryJambXs(upper, walls)
-    // Gemeinsames Raster: alle 24 cm — 12 wäre nur auf dem 24er bündig.
     expect(xsLower).toContain(0)
     expect(xsLower).toContain(24)
     expect(xsLower).toContain(48)
     expect(xsLower).not.toContain(12)
-    expect(xsUpper).toEqual(xsLower)
 
     const moved = snapOpeningMoveToMasonry(
       lower,
@@ -144,7 +202,8 @@ describe('gemeinsames Raster 24er + 48er Etagen', () => {
       0,
       'nudge',
     )
-    expect(moved.x).toBe(24)
+    const next = openingPlacementCandidateXs(lower, walls, 96).find((c) => c > 0.05)!
+    expect(moved.x).toBe(next)
   })
 
   it('alleinstehende 24er-Wand behält Halbstein-Fugen (12)', () => {

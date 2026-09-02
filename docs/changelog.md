@@ -2,6 +2,10 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Öffnungen: Fuge / Steinmitte / Wandmitte (2026-09-02) — v2.0.69
+
+Kein festes 8-cm-Schrittmaß mehr. `openingPlacementCandidateXs`: (1) Laibung auf Cut, (2) Fenstermitte auf Steinmitte, (3) Wandmitte `width/2−öff/2` inkl. Magnet ±8 cm (45°-Längen). Nudge = nächster Kandidat; Drag = Absolut-Nearest. Dateien: `openingPanelSnap.ts`, Tests, Docs.
+
 ### 24/48 bündig + Drag ohne Springen (2026-09-02) — v2.0.68
 
 `buildStretcherCuts` / `buildOffsetStretcherCuts`: Restbreite nur am **Ende**, volle Module ab x=0 — unterschiedliche Modulbreiten (24/48) teilen Innenfugen. Öffnungs-Drag: immer Absolut-Snap vom Drag-Start (`mode: 'drag'`); Nudge nutzt `mode: 'nudge'` (nächste Fuge). Dateien: `panelLayout.ts`, `openingPanelSnap.ts`, `openings.ts`, `main.ts`, Tests, Docs.

@@ -18,7 +18,7 @@ Toolbar **Maße** (Auszug):
 
 | Steuerung | Verhalten |
 |---|---|
-| Breite / Höhe / Position | Studio mit Modulverband: Laibungen an **Steinfugen**/Schichten; Drag absolut, Nudge in 0,5/1; gestapelte Etagen → kgV-Raster. 24/48-Muster fluchten (Rest am Ende). Sonst 8-cm-Raster. Abstand zwischen Öffnungen 32 cm; kein Pflicht-Randabstand zur Wandkante |
+| Breite / Höhe / Position | Modulverband: Snap an **Fuge**, **Steinmitte** oder **Wandmitte** (45° inkl.); Nudge = nächster Kandidat. Sonst 8-cm-Raster. Abstand zwischen Öffnungen 32 cm; kein Pflicht-Randabstand zur Wandkante |
 | Fenstertiefe | UI **Frontlage (cm von Außenkante)** unter Maße; speichert `Opening.depthOffset` pro Öffnung (Gültigkeitsbereich). Fehlt → `Building.windowDepthOffset`. Standard 24 cm Laibung + Offset |
 | Öffnungsart | Fenster/Tür: durchgehend · Wandfläche (bündig) · Nische. Cutout: Durchbruch oder Nische (+ Tiefe). Konche: immer Kalotte, Tiefe steuerbar |
 | In Wand eingebettet | `revealFrame.enabled` → kein Wandloch, kein Rahmen/Glas; Bänke/Profile/Bogen/Verdachung bleiben. Nicht bei Cutouts |

@@ -509,7 +509,7 @@ Beim **Verschieben oder Platzieren** von Wänden und Öffnungen erscheint ein **
 - **Wand aus Bibliothek / Wand verschieben:** blaues Gitter auf dem **Boden** der Ziel-Etage (Oben, 2D, 3D).
 - **Öffnung verschieben:** Gitter auf der **Zielwand** (Außenfläche).
 - Nach **Ablegen** oder Abbruch wird das Raster ausgeblendet (`clearPlacementGridOverlay`).
-- Öffnungs-**Position** (Drag, Nudge, Zahlenfelder): bei Modulverband an **echten Steinfugen**/Schichten (`openingPanelSnap.ts`); sonst **8 cm** (`STUDIO_MASONRY`). Schrift-Position bleibt 32 cm. Öffnungs-**Maße** am Verband bzw. 8-cm-Mauerwerksraster.
+- Öffnungs-**Position** (Drag, Nudge, Zahlenfelder): bei Modulverband an **Fuge / Steinmitte / Wandmitte** (`openingPanelSnap.ts`); sonst **8 cm**. Schrift-Position bleibt 32 cm.
 
 ### Öffnungen (`src/studio/openingGuides.ts`)
 
@@ -596,7 +596,7 @@ Neue Elemente: Wand, Paneele, Profile, Rahmen, Türen → `#ffffff`. Neue Fenste
 
 ## Fenster verschieben
 
-Studio-Öffnungen: **Position** bei Modulverband an **Mauerwerksfugen**. **Ziehen:** rastet an der Fuge zur aktuellen Mausposition (kein Springen). **Pfeile/Nudge:** nächste 0,5er-/1er-Fuge. Gestapelte Etagen mit verschiedenem Modul: kgV-Raster. Sonst **8 cm**. **Kein Randabstand** zur Wandkante. Abstand **zwischen** Öffnungen 32 cm (`OPENING_MIN_GAP`).
+Studio-Öffnungen: rastet an **Fuge**, **Stein-/Paneelmitte** oder **Wandmitte** (`openingPlacementCandidateXs`) — kein festes 8-cm-Schrittmaß. **Ziehen:** nächster Absolut-Kandidat. **Pfeile:** nächster Kandidat. 45°-Wände: Wandmitte mit Magnet ±8 cm. Streifen/ohne Modul: 8 cm. Abstand **zwischen** Öffnungen 32 cm.
 
 ---
 

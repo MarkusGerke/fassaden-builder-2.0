@@ -1,11 +1,13 @@
 /**
- * Öffnungen an echte Paneel-/Mauerwerksfugen ausrichten (Laibung bündig mit Steinkante).
- * Nutzt dasselbe Cut-Raster wie `layoutPanelTiles` (Referenzlagen, ohne Öffnungs-Blocker) —
- * keine zweite Ideal-Gitter-Logik, Verband bleibt unverändert.
+ * Öffnungen immer bündig oder zentriert zu Fugen/Ziegeln/Paneelen — kein festes 8-cm-Raster.
  *
- * Gestapelte Etagen mit **unterschiedlicher** Modulbreite (z. B. 24er Ziegel / 48er Paneel):
- * Snap auf dem gemeinsamen LCM der Modul-Einheiten, damit Laibungen auf beiden
- * Fassaden bündig sitzen können — ohne den Verband zu dehnen.
+ * Snap-Ziele für die linke Laibung `x`:
+ * 1. Bündig an Fuge — `x` = Cut
+ * 2. Zentriert auf Stein — Fenstermitte auf Steinmitte (Mitte zwischen zwei Cuts)
+ * 3. Wandmitte — `x` = wall.width/2 − width/2 (wichtig bei 45°-Längen)
+ *
+ * Drag: nächster Absolut-Kandidat. Nudge: nächster/vorheriger Kandidat.
+ * Gestapelte Etagen mit unterschiedlichem Modul: gemeinsame Cuts (LCM), sonst echte Lagen-Cuts.
  */
 import type { Opening, Wall } from '../types/facade'
 import {
@@ -20,20 +22,27 @@ import {
 } from '../studio/panelLayout'
 
 const EPS = 0.05
-/** Plan-Toleranz für „gleiche Fassaden-Stapel“ (Origin/Breite/Yaw). */
 const STACK_EPS = 1.5
+/** Magnet: Vorschlag nahe Wandmitte → bevorzugt exakt zentrieren (45°-Längen). */
+const WALL_CENTER_MAGNET_CM = STUDIO_MASONRY
 
 function headerSize(stretcher: number): number {
   return Math.max(STUDIO_MASONRY, stretcher / 2)
 }
 
-function uniqueSorted(values: number[], max: number): number[] {
+function uniqueSorted(values: number[], max?: number): number[] {
   const out: number[] = []
   for (const v of [...values].sort((a, b) => a - b)) {
-    if (v < -EPS || v > max + EPS) continue
-    const clamped = Math.max(0, Math.min(max, v))
+    if (!Number.isFinite(v)) continue
+    if (max != null && (v < -EPS || v > max + EPS)) continue
+    const clamped = max != null ? Math.max(0, Math.min(max, v)) : v
     if (out.length === 0 || clamped - out[out.length - 1]! > EPS) out.push(clamped)
   }
+  return out
+}
+
+function uniqueSortedCuts(values: number[], max: number): number[] {
+  const out = uniqueSorted(values, max)
   if (out.length === 0 || out[0]! > EPS) out.unshift(0)
   if (out[out.length - 1]! < max - EPS) out.push(max)
   return out
@@ -85,7 +94,6 @@ export function wallMasonryModuleUnitCm(wall: Wall): number | null {
 
 /**
  * Gleiche Fassadenfläche über Etagen: gleicher Building, Yaw, Origin, Breite.
- * (Duplizierte Geschosse teilen den Fußabdruck.)
  */
 export function masonryFacadeStack(wall: Wall, allWalls: Wall[]): Wall[] {
   if (!wallUsesOpeningMasonrySnap(wall)) return [wall]
@@ -107,10 +115,6 @@ export function masonryFacadeStack(wall: Wall, allWalls: Wall[]): Wall[] {
   return peers.length > 0 ? peers : [wall]
 }
 
-/**
- * Gemeinsamer Snap-Schritt (cm) für einen Fassadenstapel:
- * LCM der Modul-Einheiten — z. B. 12 (24er) und 24 (48er) → 24.
- */
 export function commonMasonrySnapStepCm(walls: Wall[]): number | null {
   let step: number | null = null
   for (const w of walls) {
@@ -129,21 +133,17 @@ function regularJambCuts(length: number, step: number): number[] {
   for (let i = 1; i < n; i += 1) cuts.push(i * step)
   if (cuts[cuts.length - 1]! < length - EPS) cuts.push(length)
   else cuts[cuts.length - 1] = length
-  return uniqueSorted(cuts, length)
+  return uniqueSortedCuts(cuts, length)
 }
 
 function wallOwnJambCuts(wall: Wall, allWalls: Wall[]): number[] {
   const panel = normalizeStudioPanel(wall.panel ?? DEFAULT_STUDIO_PANEL)
   const even = masonryPatternCuts(wall, panel, allWalls, 0)
   const odd = masonryPatternCuts(wall, panel, allWalls, 1)
-  return uniqueSorted([...even, ...odd], wall.width)
+  return uniqueSortedCuts([...even, ...odd], wall.width)
 }
 
-/**
- * Vertikale Fugen als Snap-Ziele.
- * Eine Wand / gleiches Modul: echte Cuts (inkl. Forced-Ends).
- * Gestapelte Etagen mit **verschiedenem** Modul: LCM-Raster (immer beidseitig einpassbar).
- */
+/** Vertikale Fugen (Cuts) als Basis für Laibungs-/Mitten-Kandidaten. */
 export function openingMasonryJambXs(wall: Wall, allWalls: Wall[] = [wall]): number[] {
   const stack = masonryFacadeStack(wall, allWalls)
   const own = wallOwnJambCuts(wall, allWalls)
@@ -161,58 +161,120 @@ export function openingMasonryJambXs(wall: Wall, allWalls: Wall[] = [wall]): num
   return regularJambCuts(wall.width, step)
 }
 
-/** Horizontale Schichtgrenzen (Ziegel-Ebenen) als Snap-Ziele. */
+/** Horizontale Schichtgrenzen. */
 export function openingMasonryCourseYs(wall: Wall): number[] {
   const panel = normalizeStudioPanel(wall.panel ?? DEFAULT_STUDIO_PANEL)
   const { rowCuts } = visiblePanelRowRange(wall.height, panel)
-  return uniqueSorted(rowCuts, wall.height)
+  return uniqueSortedCuts(rowCuts, wall.height)
 }
 
-function nearestCut(cuts: number[], value: number): number {
-  let best = cuts[0] ?? value
-  let bestD = Math.abs(best - value)
+/**
+ * Erlaubte linke Laibungs-X: Fugen-bündig, auf Steinmitte zentriert, Wandmitte.
+ * Nur Positionen, bei denen die Öffnung vollständig auf der Wand liegt.
+ */
+export function openingPlacementCandidateXs(
+  wall: Wall,
+  allWalls: Wall[],
+  width: number,
+): number[] {
+  const maxX = Math.max(0, wall.width - width)
+  const cuts = openingMasonryJambXs(wall, allWalls)
+  const xs: number[] = []
+
+  // 1) Bündig an Fuge (linke Laibung auf Cut)
   for (const c of cuts) {
-    const d = Math.abs(c - value)
+    if (c >= -EPS && c <= maxX + EPS) xs.push(c)
+  }
+
+  // 2) Zentriert auf Stein/Paneel (Fenstermitte = Steinmitte)
+  for (let i = 0; i < cuts.length - 1; i += 1) {
+    const a = cuts[i]!
+    const b = cuts[i + 1]!
+    if (b - a <= EPS) continue
+    const mid = (a + b) / 2
+    const x = mid - width / 2
+    if (x >= -EPS && x <= maxX + EPS) xs.push(x)
+  }
+
+  // 3) Wandmitte (auch wenn nicht auf dem Fugenraster — 45°-Längen)
+  const wallCenterX = wall.width / 2 - width / 2
+  if (wallCenterX >= -EPS && wallCenterX <= maxX + EPS) {
+    xs.push(wallCenterX)
+  }
+
+  return uniqueSorted(xs)
+}
+
+/** Y-Kandidaten: Schicht-bündig und Wand-vertikal-Mitte. */
+export function openingPlacementCandidateYs(
+  wall: Wall,
+  height: number,
+): number[] {
+  const maxY = Math.max(0, wall.height - height)
+  const cuts = openingMasonryCourseYs(wall)
+  const ys: number[] = []
+  for (const c of cuts) {
+    if (c >= -EPS && c <= maxY + EPS) ys.push(c)
+  }
+  for (let i = 0; i < cuts.length - 1; i += 1) {
+    const a = cuts[i]!
+    const b = cuts[i + 1]!
+    if (b - a <= EPS) continue
+    const mid = (a + b) / 2
+    const y = mid - height / 2
+    if (y >= -EPS && y <= maxY + EPS) ys.push(y)
+  }
+  const wallCenterY = wall.height / 2 - height / 2
+  if (wallCenterY >= -EPS && wallCenterY <= maxY + EPS) ys.push(wallCenterY)
+  return uniqueSorted(ys)
+}
+
+function nearestValue(values: number[], target: number): number {
+  if (values.length === 0) return target
+  let best = values[0]!
+  let bestD = Math.abs(best - target)
+  for (const v of values) {
+    const d = Math.abs(v - target)
     if (d < bestD) {
-      best = c
+      best = v
       bestD = d
     }
   }
   return best
 }
 
-function adjacentCut(cuts: number[], value: number, dir: 1 | -1): number {
+function adjacentValue(values: number[], current: number, dir: 1 | -1): number {
+  if (values.length === 0) return current
   if (dir > 0) {
-    for (const c of cuts) {
-      if (c > value + EPS) return c
+    for (const v of values) {
+      if (v > current + EPS) return v
     }
-    return value
+    return current
   }
-  for (let i = cuts.length - 1; i >= 0; i -= 1) {
-    const c = cuts[i]!
-    if (c < value - EPS) return c
+  for (let i = values.length - 1; i >= 0; i -= 1) {
+    const v = values[i]!
+    if (v < current - EPS) return v
   }
-  return value
+  return current
 }
 
-/**
- * Beste linke Fuge: Nähe zu `proposedX`, und rechte Kante (`+width`) möglichst auch auf Fuge.
- */
-function bestLeftForWidth(cuts: number[], proposedX: number, width: number): number {
-  if (cuts.length < 2 || width <= EPS) return nearestCut(cuts, proposedX)
-  let best = nearestCut(cuts, proposedX)
-  let bestScore = Infinity
-  for (const left of cuts) {
-    const rightTarget = left + width
-    if (rightTarget > cuts[cuts.length - 1]! + EPS) continue
-    const right = nearestCut(cuts, rightTarget)
-    const score = Math.abs(left - proposedX) + Math.abs(right - rightTarget) * 0.75
-    if (score < bestScore) {
-      bestScore = score
-      best = left
-    }
+/** Nächster X-Kandidat; nahe Wandmitte mit Magnet auf exakte Zentrierung. */
+function nearestPlacementX(
+  candidates: number[],
+  proposedX: number,
+  width: number,
+  wallWidth: number,
+): number {
+  const wallCenterX = wallWidth / 2 - width / 2
+  const proposedCenter = proposedX + width / 2
+  if (
+    wallCenterX >= -EPS &&
+    wallCenterX <= wallWidth - width + EPS &&
+    Math.abs(proposedCenter - wallWidth / 2) <= WALL_CENTER_MAGNET_CM
+  ) {
+    return wallCenterX
   }
-  return best
+  return nearestValue(candidates, proposedX)
 }
 
 /** Breite so snappen, dass rechte Laibung auf einer Fuge liegt (linke bleibt). */
@@ -224,8 +286,8 @@ export function snapOpeningWidthToMasonryJambs(
 ): number {
   if (!wallUsesOpeningMasonrySnap(wall)) return width
   const cuts = openingMasonryJambXs(wall, allWalls)
-  const left = nearestCut(cuts, x)
-  const right = nearestCut(cuts, left + width)
+  const left = nearestValue(cuts, x)
+  const right = nearestValue(cuts, left + width)
   const next = Math.max(STUDIO_MASONRY, right - left)
   return next <= wall.width + EPS ? next : width
 }
@@ -240,9 +302,9 @@ export interface OpeningMasonrySnapResult {
 export type OpeningMasonryMoveMode = 'drag' | 'nudge'
 
 /**
- * Position nach Verschiebung an Fugen/Schichten.
- * - `drag`: immer nächste Fuge zur **vorgeschlagenen** Absolutposition (kein Hin-und-Her).
- * - `nudge`: ±Schritt → nächste Fuge/Schicht (0,5er / 1er je nach Raster).
+ * Position an Kandidaten (Fuge / Steinmitte / Wandmitte).
+ * - `drag`: nächster Absolut-Kandidat zur vorgeschlagenen Position
+ * - `nudge`: nächster/vorheriger Kandidat
  */
 export function snapOpeningMoveToMasonry(
   wall: Wall,
@@ -265,27 +327,27 @@ export function snapOpeningMoveToMasonry(
     return { x, y, width, height }
   }
 
-  const xs = openingMasonryJambXs(wall, allWalls)
-  if (xs.length >= 2) {
+  const xs = openingPlacementCandidateXs(wall, allWalls, width)
+  if (xs.length > 0) {
     if (mode === 'nudge' && Math.abs(dx) > EPS) {
-      x = adjacentCut(xs, opening.x, dx > 0 ? 1 : -1)
+      x = adjacentValue(xs, opening.x, dx > 0 ? 1 : -1)
     } else if (Math.abs(dx) > EPS || Math.abs(proposedX - opening.x) > EPS) {
-      x = bestLeftForWidth(xs, proposedX, width)
+      x = nearestPlacementX(xs, proposedX, width, wall.width)
     } else {
-      x = nearestCut(xs, opening.x)
+      x = nearestPlacementX(xs, opening.x, width, wall.width)
     }
   }
 
   const lockY = opening.type === 'door' && Boolean(opening.stairs?.enabled)
   if (!lockY) {
-    const ys = openingMasonryCourseYs(wall)
-    if (ys.length >= 2) {
+    const ys = openingPlacementCandidateYs(wall, height)
+    if (ys.length > 0) {
       if (mode === 'nudge' && Math.abs(dy) > EPS) {
-        y = adjacentCut(ys, opening.y, dy > 0 ? 1 : -1)
+        y = adjacentValue(ys, opening.y, dy > 0 ? 1 : -1)
       } else if (Math.abs(dy) > EPS || Math.abs(proposedY - opening.y) > EPS) {
-        y = nearestCut(ys, proposedY)
+        y = nearestValue(ys, proposedY)
       } else {
-        y = nearestCut(ys, opening.y)
+        y = nearestValue(ys, opening.y)
       }
     }
   }
@@ -293,7 +355,7 @@ export function snapOpeningMoveToMasonry(
   return { x, y, width, height }
 }
 
-/** Einmalige Ausrichtung (Platzieren / Maße ändern): Laibungen auf Fugen, Höhen auf Schichten. */
+/** Einmalige Ausrichtung: nächster Kandidat (optional Breite/Höhe an Fugen). */
 export function alignOpeningToMasonry(
   wall: Wall,
   allWalls: Wall[],
@@ -305,25 +367,34 @@ export function alignOpeningToMasonry(
     return { x, y, width, height }
   }
 
-  const xs = openingMasonryJambXs(wall, allWalls)
-  if (xs.length >= 2) {
-    x = bestLeftForWidth(xs, x, width)
-    if (opts?.snapWidth !== false) {
-      width = snapOpeningWidthToMasonryJambs(wall, allWalls, x, width)
+  if (opts?.snapWidth !== false) {
+    // Breite zuerst an Fugen, dann Position an Kandidaten
+    const xsFlush = openingMasonryJambXs(wall, allWalls)
+    if (xsFlush.length >= 2) {
+      const left = nearestValue(xsFlush, x)
+      width = snapOpeningWidthToMasonryJambs(wall, allWalls, left, width)
     }
   }
 
+  const xs = openingPlacementCandidateXs(wall, allWalls, width)
+  if (xs.length > 0) x = nearestPlacementX(xs, x, width, wall.width)
+
   const lockY = opening.type === 'door' && Boolean(opening.stairs?.enabled)
   if (!lockY) {
-    const ys = openingMasonryCourseYs(wall)
-    if (ys.length >= 2) {
-      y = nearestCut(ys, y)
-      if (opts?.snapHeight !== false) {
-        const bottom = nearestCut(ys, y + height)
-        const h = bottom - y
-        if (h >= STUDIO_MASONRY - EPS) height = h
+    if (opts?.snapHeight !== false) {
+      const ysCuts = openingMasonryCourseYs(wall)
+      if (ysCuts.length >= 2) {
+        const top = nearestValue(ysCuts, y)
+        const bottom = nearestValue(ysCuts, top + height)
+        const h = bottom - top
+        if (h >= STUDIO_MASONRY - EPS) {
+          y = top
+          height = h
+        }
       }
     }
+    const ys = openingPlacementCandidateYs(wall, height)
+    if (ys.length > 0) y = nearestValue(ys, y)
   }
 
   return { x, y, width, height }

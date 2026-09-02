@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.68'
+export const APP_VERSION = '2.0.69'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,16 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.69',
+    date: '2026-09-02',
+    title: 'Öffnungen: Fuge, Steinmitte oder Wandmitte',
+    changes: [
+      'Platzierung rastet an Fuge (Laibung bündig), Stein-/Paneelmitte oder Wandmitte — kein festes 8-cm-Schrittmaß mehr',
+      'An 45°-Wänden lässt sich die Öffnung exakt auf die gelbe Wandmitte setzen (Magnet ±8 cm)',
+      'Pfeile springen zum nächsten Kandidaten; Ziehen wählt den nächsten Absolut-Kandidaten ohne Springen',
+    ],
+  },
   {
     version: '2.0.68',
     date: '2026-09-02',
