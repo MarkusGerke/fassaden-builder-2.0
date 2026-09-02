@@ -433,6 +433,90 @@ describe('90°-Ecke: Mauerwerk bis zur Außenecke (panelFlip false)', () => {
   })
 })
 
+describe('Bossen an maskierten Reststeinen (Rundbogen)', () => {
+  it('Steine über dem Scheitel und an der Laibung bekommen ein Trapez, Öffnung bleibt frei', () => {
+    const panel = {
+      ...DEFAULT_STUDIO_PANEL,
+      enabled: true,
+      pattern: 'runningBond' as const,
+      panelWidth: 64,
+      panelHeight: 32,
+      joint: 0.8,
+      projectDepth: 4,
+      taper: 0.6,
+      taperDepth: 4,
+      plinthEnabled: false,
+      plinthHeight: 0,
+    }
+    const opening = {
+      id: 'arch',
+      type: 'window' as const,
+      x: 160,
+      y: 64,
+      width: 128,
+      height: 176,
+      arch: { enabled: true, voussoirs: false, keystones: false },
+    }
+    const wall: Wall = {
+      ...createStudioWall(0, 0),
+      id: 'w',
+      width: 448,
+      height: 320,
+      depth: 24,
+      originX: 0,
+      originZ: 0,
+      yawDeg: 0,
+      panelFlip: false,
+      miterStart: 0,
+      miterEnd: 0,
+      openings: [opening as never],
+      panel,
+    }
+    const bodyFrontZ = studioPanelFaceLocalZ(wall)
+    const geo = createStudioPanelGeometry(wall, panel, [wall])
+    const pos = geo.getAttribute('position') as {
+      getX(i: number): number
+      getY(i: number): number
+      getZ(i: number): number
+      count: number
+    }
+    let minX = Infinity
+    for (let i = 0; i < pos.count; i += 1) {
+      if (Math.abs(pos.getZ(i) - bodyFrontZ) < 0.8) minX = Math.min(minX, pos.getX(i))
+    }
+    expect(Number.isFinite(minX)).toBe(true)
+    const toWallX = (lx: number) => lx - minX
+    const toWallY = (ly: number) => ly + wall.height / 2
+
+    const r = opening.width / 2
+    const cx = opening.x + r
+    const cy = opening.y + opening.height - r
+    const crownY = cy + r
+    const raised = (i: number) => pos.getZ(i) > bodyFrontZ + 0.6
+
+    let bossOverCrown = 0
+    let bossAtJamb = 0
+    let bossInsideArch = 0
+    for (let i = 0; i < pos.count; i += 1) {
+      if (!raised(i)) continue
+      const wx = toWallX(pos.getX(i))
+      const wy = toWallY(pos.getY(i))
+      if (Math.abs(wx - cx) < 24 && wy > crownY + 0.5 && wy < crownY + 32) bossOverCrown += 1
+      if (wx > opening.x - 32 && wx < opening.x - 0.5 && wy > opening.y + 40 && wy < cy - 8) {
+        bossAtJamb += 1
+      }
+      const dx = wx - cx
+      const dy = wy - cy
+      const insideBody = wx > opening.x + 0.5 && wx < opening.x + opening.width - 0.5 && wy > opening.y + 0.5 && wy < cy
+      const insideCap = dy >= 0 && Math.hypot(dx, dy) < r - 0.5
+      if (insideBody || insideCap) bossInsideArch += 1
+    }
+    expect(bossOverCrown, 'Reststein über dem Scheitel ohne Bossen-Trapez').toBeGreaterThan(0)
+    expect(bossAtJamb, 'Laibungsstein ohne Bossen-Trapez').toBeGreaterThan(0)
+    expect(bossInsideArch, 'Bossen ragen in die Öffnung').toBe(0)
+  })
+})
+
 describe('Feld-Raster ohne Wand-Scherung', () => {
   it('hält Feld-Fugen auf Plan-X (Öffnungen bleiben unverzerrt)', () => {
     const panel = {

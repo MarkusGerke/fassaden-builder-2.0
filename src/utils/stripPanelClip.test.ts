@@ -14,12 +14,17 @@ import {
   clipPolysMinusArches,
   claddingEdgeHitsOpening,
   filterStudioDrawingSegment,
+  filterStudioDrawingSegments,
+  isSpuriousOpeningShoulderDiagonal,
   flushClipPartsToOpeningJambs,
   mergeNarrowClipParts,
   minClipRemnantWidth,
   openingArchGeom,
   openingContainsPoint,
   snapDrawingLocalX,
+  studioDrawingBossFrontLocalZ,
+  subdivideLargeTilesAtArchCaps,
+  ARCH_ZWICKEL_MAX_WIDTH_CM,
 } from './openingGeometry'
 
 /**
@@ -136,7 +141,12 @@ function countTrianglesInsideOpenings(
   return inside
 }
 
-function countSlantedEdges(geo: THREE.BufferGeometry, minDx = 15, minDy = 3): number {
+function countSlantedEdges(
+  geo: THREE.BufferGeometry,
+  minDx = 15,
+  minDy = 3,
+  minLen = 64,
+): number {
   const edges = new THREE.EdgesGeometry(geo, 22)
   const ep = edges.getAttribute('position')
   let n = 0
@@ -144,7 +154,9 @@ function countSlantedEdges(geo: THREE.BufferGeometry, minDx = 15, minDy = 3): nu
     const dx = Math.abs(ep.getX(i) - ep.getX(i + 1))
     const dy = Math.abs(ep.getY(i) - ep.getY(i + 1))
     const dz = Math.abs(ep.getZ(i) - ep.getZ(i + 1))
-    if (dx > minDx && dy > minDy && dz < 2) n += 1
+    const len = Math.hypot(dx, dy)
+    // Kappen-Trapezseiten sind kurz; CSG-Artefakte spannen oft über eine ganze Schicht.
+    if (dx > minDx && dy > minDy && dz < 2 && len > minLen) n += 1
   }
   edges.dispose()
   return n
@@ -561,9 +573,10 @@ describe('Zeichnung: Kanten und Laibung', () => {
         thetaEndDeg: 0,
       },
     }
-    // Wie Sockel-CSG: Start knapp im Rechteck oben rechts, Ende vor dem nächsten Fenster.
-    expect(claddingEdgeHitsOpening(opening as never, 492.1, 58.9, 735, 48.2)).toBe(true)
+    // Schulter liegt außerhalb der Bogenmaske — nicht mehr als „Loch“ werten (kein Phantom-Rechteck).
+    expect(claddingEdgeHitsOpening(opening as never, 492.1, 58.9, 735, 48.2)).toBe(false)
     expect(openingContainsPoint(opening as never, 492.1, 58.9)).toBe(false)
+    expect(isSpuriousOpeningShoulderDiagonal(opening as never, 492.1, 58.9, 735, 48.2)).toBe(true)
   })
 
   it('verwirft lange CSG-Schrägen im Sockel auch zwischen Kellerfenstern', () => {
@@ -723,8 +736,13 @@ describe('Zeichnung: Kanten und Laibung', () => {
     expect(filterStudioDrawingSegment(-5, 0, 0, -5, 10, 8, wall)).toBeNull()
     // Bossen-Fase: kleiner dz, aber > DRAWING_DEPTH_EDGE_CM
     expect(filterStudioDrawingSegment(10, 0, -2.7, 10, 3.2, -3.7, wall)).toBeNull()
-    const through = filterStudioDrawingSegment(-120, 0, -4, 120, 0, -4, wall)
-    expect(through).toBeNull()
+    const through = filterStudioDrawingSegments(-120, 0, -4, 120, 0, -4, wall)
+    expect(through.length).toBeGreaterThanOrEqual(2)
+    for (const seg of through) {
+      expect(
+        claddingEdgeHitsOpening(opening as never, seg[0]! + 120, seg[1]! + 80, seg[3]! + 120, seg[4]! + 80),
+      ).toBe(false)
+    }
     expect(snapDrawingLocalX(-120 - 20, 240)).toBeCloseTo(-120, 5)
     const snapped = filterStudioDrawingSegment(-140, 20, -4, -100, 20, -4, wall)
     expect(snapped).not.toBeNull()
@@ -772,7 +790,7 @@ describe('Zeichnung: Kanten und Laibung', () => {
     let keptHits = 0
     let kept = 0
     for (let i = 0; i < ep.count; i += 2) {
-      const seg = filterStudioDrawingSegment(
+      const segs = filterStudioDrawingSegments(
         ep.getX(i),
         ep.getY(i),
         ep.getZ(i),
@@ -781,18 +799,19 @@ describe('Zeichnung: Kanten und Laibung', () => {
         ep.getZ(i + 1),
         wall,
       )
-      if (!seg) continue
-      kept += 1
-      if (
-        claddingEdgeHitsOpening(
-          wall.openings[0] as never,
-          seg[0] + wall.width / 2,
-          seg[1] + wall.height / 2,
-          seg[3] + wall.width / 2,
-          seg[4] + wall.height / 2,
-        )
-      ) {
-        keptHits += 1
+      for (const seg of segs) {
+        kept += 1
+        if (
+          claddingEdgeHitsOpening(
+            wall.openings[0] as never,
+            seg[0] + wall.width / 2,
+            seg[1] + wall.height / 2,
+            seg[3] + wall.width / 2,
+            seg[4] + wall.height / 2,
+          )
+        ) {
+          keptHits += 1
+        }
       }
     }
     edges.dispose()
@@ -1090,5 +1109,351 @@ describe('Läuferverband: Ecken und Laibungen im Render', () => {
     geo.dispose()
     expect(endFaces).toBeGreaterThan(0) // Westwand ohne Paneele deckt nichts ab
     expect(startFaces).toBe(0) // 45°-Wand mit Paneelen trifft auf Gehrung
+  })
+
+  it('Zeichnung: Streifen-Fugen folgen der Bogenmaske, nicht dem Rechteckloch', () => {
+    const wall = {
+      id: 'strip-draw-arch',
+      kind: 'studio' as const,
+      x: 0,
+      z: 0,
+      y: 0,
+      width: 640,
+      height: 400,
+      depth: 32,
+      yawDeg: 0,
+      miterStart: 0,
+      miterEnd: 0,
+      openings: [
+        {
+          id: 'a',
+          type: 'window' as const,
+          x: 200,
+          y: 80,
+          width: 192,
+          height: 240,
+          arch: { enabled: true, voussoirs: false, keystones: false },
+        },
+      ],
+      panel: normalizeStudioPanel({
+        enabled: true,
+        pattern: 'strip' as const,
+        panelWidth: 64,
+        panelHeight: 32,
+        joint: 0.8,
+        projectDepth: 3.8,
+        plinthEnabled: false,
+      }),
+    }
+    const opening = wall.openings[0]!
+    const geom = openingArchGeom(opening as never, 0)!
+    const y = geom.springY + geom.r * 0.45
+    const localY = y - wall.height / 2
+    const segs = filterStudioDrawingSegments(-wall.width / 2, localY, -4, wall.width / 2, localY, -4, wall)
+    const leftJamb = opening.x
+    const dy = y - geom.cy
+    const curveX = geom.cx - Math.sqrt(Math.max(0, geom.r * geom.r - dy * dy))
+    let maxXInShoulder = -Infinity
+    for (const s of segs) {
+      const x0 = s[0]! + wall.width / 2
+      const x1 = s[3]! + wall.width / 2
+      if (Math.min(x0, x1) < leftJamb + 4) {
+        maxXInShoulder = Math.max(maxXInShoulder, Math.max(x0, x1))
+      }
+    }
+    expect(maxXInShoulder).toBeGreaterThan(leftJamb + 0.4 * (curveX - leftJamb))
+    for (const s of segs) {
+      expect(
+        claddingEdgeHitsOpening(
+          opening as never,
+          s[0]! + wall.width / 2,
+          s[1]! + wall.height / 2,
+          s[3]! + wall.width / 2,
+          s[4]! + wall.height / 2,
+        ),
+      ).toBe(false)
+    }
+
+    const panel = normalizeStudioPanel(wall.panel)
+    const geo = createStudioPanelFlatGeometriesByColorIndex(wall as never, panel, 1, 'draw-arch', [])[0]!
+      .geometry
+    const sil = geo.userData.drawingArchPolylines as number[][] | undefined
+    expect(sil?.length ?? 0).toBeGreaterThan(0)
+    const pos = geo.getAttribute('position')
+    let shoulderVerts = 0
+    if (pos) {
+      for (let i = 0; i < pos.count; i += 1) {
+        const x = pos.getX(i) + wall.width / 2
+        const vy = pos.getY(i) + wall.height / 2
+        if (vy > geom.springY + 4 && vy < geom.cy + geom.r - 4 && x > leftJamb + 2 && x < geom.cx) {
+          shoulderVerts += 1
+        }
+      }
+    }
+    geo.dispose()
+    expect(shoulderVerts).toBeGreaterThan(8)
+  })
+
+  it('große Paneele in der Bogenkappe werden Zwickel entlang der Kurve, kleine Ziegel nicht', () => {
+    const opening = {
+      id: 'a',
+      type: 'window' as const,
+      x: 200,
+      y: 80,
+      width: 192,
+      height: 240,
+      arch: { enabled: true, voussoirs: false, keystones: false },
+    }
+    const geom = openingArchGeom(opening as never, 0)!
+    const small = [{ x: 180, y: geom.springY + 8, width: 24, height: 8 }]
+    expect(subdivideLargeTilesAtArchCaps(small, [opening] as never, 8)).toEqual(small)
+
+    const capTile = { x: geom.cx - 80, y: geom.springY + 8, width: 64, height: 32 }
+    const split = subdivideLargeTilesAtArchCaps([capTile], [opening] as never, 32)
+    expect(split.length).toBeGreaterThan(2)
+    const overArch = split.filter((t) => t.x < opening.x + opening.width - 1 && t.x + t.width > opening.x + 1)
+    expect(overArch.length).toBeGreaterThan(1)
+    expect(overArch.every((t) => t.width <= ARCH_ZWICKEL_MAX_WIDTH_CM + 0.6)).toBe(true)
+
+    const wall = {
+      id: 'zwickel-bond',
+      kind: 'studio' as const,
+      x: 0,
+      z: 0,
+      y: 0,
+      width: 640,
+      height: 400,
+      depth: 32,
+      yawDeg: 0,
+      miterStart: 0,
+      miterEnd: 0,
+      openings: [opening],
+      panel: normalizeStudioPanel({
+        enabled: true,
+        pattern: 'runningBond' as const,
+        panelWidth: 64,
+        panelHeight: 32,
+        joint: 0.8,
+        projectDepth: 3.8,
+        plinthEnabled: false,
+      }),
+    }
+    const panel = normalizeStudioPanel(wall.panel)
+    const tiles = subdivideLargeTilesAtArchCaps(
+      layoutPanelTiles(wall as never, panel, []),
+      wall.openings as never,
+      panel.panelHeight,
+    )
+    const parts = clipPolysMinusArches(tiles.map((t) => ({ ...t })), wall.openings as never, 0, panel.panelHeight, {
+      panelWidth: panel.panelWidth,
+      joint: panel.joint,
+    })
+    const capHits = parts.filter(
+      (p) =>
+        p.y + p.height > geom.springY + 6 &&
+        p.y < geom.cy + geom.r - 6 &&
+        p.x < geom.cx &&
+        p.x + p.width > geom.x0 + 2,
+    )
+    expect(capHits.length).toBeGreaterThan(3)
+    expect(capHits.every((p) => p.width <= ARCH_ZWICKEL_MAX_WIDTH_CM + 1.2)).toBe(true)
+    const withArc = capHits.filter((p) => (p.bottomArc?.length ?? 0) >= 2)
+    expect(withArc.length).toBeGreaterThan(0)
+    for (const p of withArc) {
+      const maxX = Math.max(...p.bottomArc!.map((pt) => pt.x))
+      expect(maxX).toBeGreaterThan(opening.x + 2)
+    }
+  })
+
+  it('Kappensteine über dem Rundbogen bleiben im Verband: nur maskiert, keine Schrägseiten', () => {
+    const opening = {
+      id: 'a',
+      type: 'window' as const,
+      x: 200,
+      y: 80,
+      width: 160,
+      height: 200,
+      arch: { enabled: true, voussoirs: false, keystones: false },
+    }
+    const geom = openingArchGeom(opening as never, 0)!
+    const y = geom.cy + geom.r - 18
+    const h = 32
+    const tiles = [
+      { x: geom.cx - 32, y, width: 16, height: h },
+      { x: geom.cx - 16, y, width: 16, height: h },
+      { x: geom.cx, y, width: 16, height: h },
+      { x: geom.cx + 16, y, width: 16, height: h },
+      { x: geom.cx - 72, y: geom.springY + 6, width: 16, height: h },
+    ]
+    const clipped = clipPolysMinusArches(
+      tiles.map((t) => ({ ...t })),
+      [opening] as never,
+      0,
+      h,
+    )
+    const out = flushClipPartsToOpeningJambs(clipped, [opening] as never, 0)
+    const caps = out.filter((p) => (p.bottomArc?.length ?? 0) >= 2)
+    expect(caps.length).toBeGreaterThanOrEqual(4)
+    for (const cap of caps) {
+      const src = tiles.find((t) => Math.abs(t.x - cap.x) < 0.2 && Math.abs(t.x + t.width - (cap.x + cap.width)) < 0.2)
+      expect(src).toBeTruthy()
+      expect(cap.y + cap.height).toBeCloseTo(src!.y + src!.height, 3)
+      // Bogenkante endet lotrecht an den Steinseiten — kein Strahl zum Bogenmittelpunkt.
+      const arc = cap.bottomArc!
+      expect(Math.abs(arc[0]!.x - cap.x)).toBeLessThan(0.3)
+      expect(Math.abs(arc[arc.length - 1]!.x - (cap.x + cap.width))).toBeLessThan(0.3)
+      if (cap.outline) {
+        for (const pt of cap.outline) {
+          expect(pt.x).toBeGreaterThanOrEqual(cap.x - 0.3)
+          expect(pt.x).toBeLessThanOrEqual(cap.x + cap.width + 0.3)
+        }
+      }
+    }
+  })
+
+  it('Zeichnung: Bossen-Front ums Fenster erzeugt kein inneres Quadrat', () => {
+    const opening = {
+      id: 'w',
+      type: 'window' as const,
+      x: 80,
+      y: 40,
+      width: 80,
+      height: 80,
+      arch: { enabled: true, voussoirs: false, keystones: false },
+    }
+    const wall = {
+      id: 'boss-draw',
+      kind: 'studio' as const,
+      x: 0,
+      z: 0,
+      y: 0,
+      width: 240,
+      height: 160,
+      depth: 32,
+      yawDeg: 0,
+      panelFlip: true,
+      openings: [opening],
+      panel: normalizeStudioPanel({
+        enabled: true,
+        pattern: 'runningBond',
+        panelWidth: 32,
+        panelHeight: 16,
+        joint: 0.8,
+        projectDepth: 3.8,
+        taper: 0.55,
+        taperDepth: 4,
+        plinthEnabled: false,
+      }),
+    }
+    const bossZ = studioDrawingBossFrontLocalZ(wall)
+    expect(bossZ).not.toBeNull()
+    expect(filterStudioDrawingSegment(10, 20, bossZ!, 24, 20, bossZ!, wall)).toBeNull()
+    const bodyZ = -3.8
+    const body = filterStudioDrawingSegment(-90, 20, bodyZ, -50, 20, bodyZ, wall)
+    expect(body).not.toBeNull()
+
+    const panel = normalizeStudioPanel(wall.panel)
+    const geo = createStudioPanelGeometry(wall as never, panel, [])
+    const edges = new THREE.EdgesGeometry(geo, 22)
+    const ep = edges.getAttribute('position')
+    let bossFrontKept = 0
+    for (let i = 0; i < ep.count; i += 2) {
+      const segs = filterStudioDrawingSegments(
+        ep.getX(i),
+        ep.getY(i),
+        ep.getZ(i),
+        ep.getX(i + 1),
+        ep.getY(i + 1),
+        ep.getZ(i + 1),
+        wall,
+      )
+      for (const seg of segs) {
+        if (Math.abs(seg[2]! - bossZ!) <= 0.45 && Math.abs(seg[5]! - bossZ!) <= 0.45) {
+          bossFrontKept += 1
+        }
+      }
+    }
+    edges.dispose()
+    geo.dispose()
+    expect(bossFrontKept).toBe(0)
+  })
+
+  it('Zeichnung: Bossen 48×32 / taper 2 ums Fenster ohne inneres Quadrat', () => {
+    const opening = {
+      id: 'w',
+      type: 'window' as const,
+      x: 96,
+      y: 48,
+      width: 192,
+      height: 192,
+      arch: { enabled: true, form: 'round' as const, voussoirs: false, keystones: false },
+    }
+    const wall = {
+      id: 'boss-draw-48',
+      kind: 'studio' as const,
+      x: 0,
+      z: 0,
+      y: 0,
+      width: 480,
+      height: 320,
+      depth: 32,
+      yawDeg: 0,
+      panelFlip: true,
+      openings: [opening],
+      panel: normalizeStudioPanel({
+        enabled: true,
+        pattern: 'runningBond',
+        panelWidth: 48,
+        panelHeight: 32,
+        joint: 4,
+        projectDepth: 2.7,
+        taper: 0.55,
+        taperDepth: 2,
+        plinthEnabled: false,
+      }),
+    }
+    const panel = normalizeStudioPanel(wall.panel)
+    const geo = createStudioPanelGeometry(wall as never, panel, [])
+    const edges = new THREE.EdgesGeometry(geo, 22)
+    const ep = edges.getAttribute('position')
+    const bossZ = studioDrawingBossFrontLocalZ(wall)!
+    let bossFrontKept = 0
+    let insetNearOpening = 0
+    const hole = {
+      x0: opening.x - wall.width / 2,
+      x1: opening.x + opening.width - wall.width / 2,
+      y0: opening.y - wall.height / 2,
+      y1: opening.y + opening.height - wall.height / 2,
+    }
+    for (let i = 0; i < ep.count; i += 2) {
+      const segs = filterStudioDrawingSegments(
+        ep.getX(i),
+        ep.getY(i),
+        ep.getZ(i),
+        ep.getX(i + 1),
+        ep.getY(i + 1),
+        ep.getZ(i + 1),
+        wall,
+      )
+      for (const seg of segs) {
+        if (Math.abs(seg[2]! - bossZ) <= 0.6 && Math.abs(seg[5]! - bossZ) <= 0.6) {
+          bossFrontKept += 1
+        }
+        const mx = (seg[0]! + seg[3]!) / 2
+        const my = (seg[1]! + seg[4]!) / 2
+        const near =
+          mx > hole.x0 - 20 &&
+          mx < hole.x1 + 20 &&
+          my > hole.y0 - 20 &&
+          my < hole.y1 + 20
+        const insidePad =
+          mx > hole.x0 + 2 && mx < hole.x1 - 2 && my > hole.y0 + 2 && my < hole.y1 - 2
+        if (near && !insidePad && Math.abs(seg[2]! - bossZ) <= 1.2) insetNearOpening += 1
+      }
+    }
+    edges.dispose()
+    geo.dispose()
+    expect(bossFrontKept).toBe(0)
+    expect(insetNearOpening).toBe(0)
   })
 })

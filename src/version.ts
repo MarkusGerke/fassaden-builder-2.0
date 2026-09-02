@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.79'
+export const APP_VERSION = '2.0.87'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,88 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.87',
+    date: '2026-09-02',
+    title: 'Bossen an Bogen-Resten: gleiche Fase wie im Feld, First statt Mini-Pyramide',
+    changes: [
+      'Reststeine am Bogen bekommen exakt dieselbe Fasenbreite und -tiefe wie volle Steine — nichts wird kleiner skaliert oder steiler',
+      'Wo ein Rest schmaler als zwei Fasen ist (über dem Scheitel, an der Schulter), laufen die Fasen in einen First zusammen, wie bei einem echten behauenen Stein',
+      'Die Front des Scheitelsteins teilt sich sauber links und rechts der Kerbe; keine flachen Steine ohne Boss und keine schiefen Fronten mehr',
+      'Bitte hart neu laden, bis v2.0.87 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.86',
+    date: '2026-09-02',
+    title: 'Bossen: Steine bleiben im Verband, Restform wird Trapez',
+    changes: [
+      'Keine Strahlen mehr über dem Bogen — jeder Stein bleibt in Größe und Lage im Verband und wird von der Öffnung nur maskiert',
+      'Die übrig bleibende Form (3, 4 oder mehr Ecken, auch mit Bogenkante) bekommt rundum dasselbe Bossen-Trapez wie volle Steine; schmale Reste ein kleineres, gleich steiles',
+      'Auch die Steine direkt über dem Scheitel und an der Laibung haben jetzt eine Bossen-Front — vorher flach',
+      'Bitte hart neu laden, bis v2.0.86 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.85',
+    date: '2026-09-02',
+    title: 'Trapez bis zur Schulter, Zeichnung ohne Innenquadrat',
+    changes: [
+      'Bossen über dem Bogen sind bis zur Schulter trapezförmig — nicht mehr als Rechteckgitter über der Rundung',
+      'In der Zeichnung kein inneres Quadrat mehr in den Steinen ums Fenster',
+      'Bitte hart neu laden, bis v2.0.85 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.84',
+    date: '2026-09-02',
+    title: 'Trapez-Bossen an der Schulter, Zeichnung ohne Innenquadrat',
+    changes: [
+      'Auch die Steine an der Bogenschulter sind trapezförmig — nicht nur am Scheitel; Fugen laufen zum Bogenmittelpunkt',
+      'In der Zeichnung entfällt das innere Quadrat in den Bossensteinen ums Fenster',
+      'Bitte hart neu laden, bis v2.0.84 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.83',
+    date: '2026-09-02',
+    title: 'Trapez-Bossen am Bogen, Zeichnung ohne Innenquadrat',
+    changes: [
+      'Steine über dem Bogen sind trapezförmig: die Fugen laufen zum Bogenmittelpunkt, nicht mehr als gestapelte Rechtecke auf der Rundung',
+      'In der Zeichnung entfällt das innere Quadrat in den Bossensteinen ums Fenster — nur noch die Steinumrisse',
+      'Bitte hart neu laden, bis v2.0.83 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.82',
+    date: '2026-09-02',
+    title: 'Läuferverband und Fenstermaße',
+    changes: [
+      'Fenster und Türen sitzen im Läuferverband auf den Steinfugen (halbe Steinlänge) — nicht mehr als 8-cm-Stummel neben dem Verband',
+      'Ziehen rastet immer ein; Breite so, dass beide Laibungen auf Fugen liegen. Bestehende Projekte werden einmalig ausgerichtet',
+      'Bitte hart neu laden, bis v2.0.82 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.81',
+    date: '2026-09-02',
+    title: 'Große Paneele als Zwickel am Bogen',
+    changes: [
+      'Breite Streifen und große Verbandssteine werden in der Bogenkappe in schmale Zwickel geteilt und laufen auf die Rundung zu — wie kleine Ziegel, nicht mehr als abgeschrägtes Riesenrechteck',
+      'Unter der Kämpferlinie bleiben große Paneele ungeteilt bis zur lotrechten Laibung',
+      'Bitte hart neu laden, bis v2.0.81 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.80',
+    date: '2026-09-02',
+    title: 'Streifen in der Zeichnung am Bogen',
+    changes: [
+      'Horizontale Streifen und Paneele folgen in der Zeichnung der Bogenkurve — nicht mehr als leeres Rechteck um den Bogen und nicht durchs Glas',
+      'Gilt für Rund-, Segment- und Tudorbogen; kleine Ziegel bleiben das Referenzbild',
+      'Bitte hart neu laden (ohne Cache), falls noch v2.0.79 in der Titelleiste steht',
+    ],
+  },
   {
     version: '2.0.79',
     date: '2026-09-02',

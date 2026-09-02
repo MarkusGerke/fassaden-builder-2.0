@@ -9,6 +9,7 @@ import { createOpening } from './openings'
 import { hydrateOpening, hydrateWall, openingHasCanonicalFields } from './hydrate'
 import {
   FACADE_SCHEMA_VERSION,
+  migrateAlignMasonryOpenings,
   migrateFacadeSchema,
   migrateIndoorWhiteDefaults,
   migrateOpeningPanelFan,
@@ -142,6 +143,24 @@ describe('migrateFacadeSchema', () => {
     } as Wall['panel']
     const next = migratePlinthSockelStandard(state)
     expect(next.buildings[0]!.walls[0]!.panel?.plinthProfileId).toBe('sockelprofil')
+  })
+
+  it('Läuferverband: Öffnung auf Halbstein-Fugen (13→14)', () => {
+    const state = facadeWithOpenings([
+      { id: 'off', type: 'window', x: 50, y: 32, width: 80, height: 100 },
+    ])
+    state.buildings[0]!.walls[0]!.panel = {
+      enabled: true,
+      pattern: 'runningBond',
+      panelWidth: 24,
+      panelHeight: 8,
+      plinthEnabled: false,
+    } as Wall['panel']
+    const next = migrateAlignMasonryOpenings(state)
+    const o = next.buildings[0]!.walls[0]!.openings[0]!
+    expect(o.x % 12).toBeCloseTo(0, 5)
+    expect(o.width % 12).toBeCloseTo(0, 5)
+    expect(o.width).toBeGreaterThanOrEqual(24)
   })
 })
 

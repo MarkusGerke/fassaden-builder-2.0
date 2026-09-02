@@ -38,7 +38,7 @@ import {
   normalizeOpeningArch,
   openingCutsWall,
   openingFillMode,
-  filterStudioDrawingSegment,
+  filterStudioDrawingSegments,
   openingHasRoundMask,
   openingMaskPolyline,
   openingMasonryRect,
@@ -1455,7 +1455,18 @@ export class FacadeController {
 
   private syncLineOverlayVisibility() {
     const show = this.lineOverlaysVisible && this.renderStyle === 'line'
-    for (const line of this.lineOverlays) line.visible = show
+    for (const line of this.lineOverlays) {
+      let ancestorVisible = true
+      let p: THREE.Object3D | null = line.parent
+      while (p) {
+        if (!p.visible) {
+          ancestorVisible = false
+          break
+        }
+        p = p.parent
+      }
+      line.visible = show && ancestorVisible
+    }
   }
 
   private createFatLineSegments(edges: THREE.BufferGeometry): LineSegments2 {
@@ -1476,7 +1487,7 @@ export class FacadeController {
     if (!pos || pos.count < 2) return edges
     const kept: number[] = []
     for (let i = 0; i < pos.count; i += 2) {
-      const seg = filterStudioDrawingSegment(
+      const segs = filterStudioDrawingSegments(
         pos.getX(i),
         pos.getY(i),
         pos.getZ(i),
@@ -1485,8 +1496,7 @@ export class FacadeController {
         pos.getZ(i + 1),
         wall,
       )
-      if (!seg) continue
-      kept.push(...seg)
+      for (const seg of segs) kept.push(...seg)
     }
     edges.dispose()
     const filtered = new THREE.BufferGeometry()
@@ -1519,6 +1529,20 @@ export class FacadeController {
       obj.userData.lodTier === 'light'
     if (wall && isStudioWall(wall) && claddingLike && !isOpeningMesh) {
       edges = this.filterCladdingEdgesOutsideOpenings(edges, wall)
+    }
+    const archPolys = obj.geometry.userData.drawingArchPolylines as number[][] | undefined
+    if (Array.isArray(archPolys) && archPolys.length > 0) {
+      const attr = edges.getAttribute('position')
+      const kept: number[] = attr ? Array.from(attr.array as ArrayLike<number>) : []
+      for (const poly of archPolys) {
+        for (let i = 0; i + 5 < poly.length; i += 3) {
+          kept.push(poly[i]!, poly[i + 1]!, poly[i + 2]!, poly[i + 3]!, poly[i + 4]!, poly[i + 5]!)
+        }
+      }
+      edges.dispose()
+      const merged = new THREE.BufferGeometry()
+      merged.setAttribute('position', new THREE.Float32BufferAttribute(kept, 3))
+      edges = merged
     }
     const pos = edges.getAttribute('position')
     if (!pos || pos.count < 2) {
@@ -2195,6 +2219,7 @@ export class FacadeController {
     for (const [wallId, mesh] of this.openingShadowTunnelMeshes) {
       mesh.visible = this.isGalleryWallDrawn(wallId)
     }
+    this.syncLineOverlayVisibility()
   }
 
   private disposeBuildingHighDetail(buildingId: string) {
@@ -3130,6 +3155,7 @@ export class FacadeController {
                 mesh.userData.lodTier = 'low'
                 mesh.userData.buildingId = buildingId
                 mesh.userData.wallId = wall.id
+                if ((panel.taperDepth ?? 0) > 0.35) mesh.userData.lineEdgeThreshold = 48
                 tagPickable(mesh, { kind: 'wall', wallId: wall.id, wallPart: 'cladding' })
                 mesh.userData.originalMaterial = material
                 mesh.position.set(transform.position.x, transform.position.y, transform.position.z)
@@ -3232,6 +3258,7 @@ export class FacadeController {
                 mesh.userData.lodTier = 'high'
                 mesh.userData.buildingId = buildingId
                 mesh.userData.wallId = wall.id
+                if ((panel.taperDepth ?? 0) > 0.35) mesh.userData.lineEdgeThreshold = 48
                 tagPickable(mesh, { kind: 'wall', wallId: wall.id, wallPart: 'cladding' })
                 mesh.userData.originalMaterial = material
                 mesh.position.set(transform.position.x, transform.position.y, transform.position.z)

@@ -418,6 +418,25 @@ function pierceWallCutsToField(wallCuts: number[], fieldX0: number, fieldX1: num
 }
 
 /**
+ * Stummel an der Laibung (Öffnung nicht auf dem Halbstein-Raster) mit dem
+ * Nachbarstein verschmelzen. Kleinster sinnvoller Ankerstein = Verbandmodul
+ * (Läufer: ½ Stein). Halbsteine an Wandende und Versatzlage bleiben.
+ */
+function absorbJambSlivers(
+  cuts: number[],
+  minCloser: number,
+  edges: { start: boolean; end: boolean },
+): number[] {
+  if (cuts.length < 3 || minCloser <= MIN_TILE) return cuts
+  const out = [...cuts]
+  if (edges.start && out[1]! - out[0]! < minCloser - MIN_TILE) out.splice(1, 1)
+  if (edges.end && out.length >= 3 && out[out.length - 1]! - out[out.length - 2]! < minCloser - MIN_TILE) {
+    out.splice(out.length - 2, 1)
+  }
+  return out
+}
+
+/**
  * Gerade Läuferlage: volle Steine exakt `step` ab x=0; Restbreite nur am **Ende**.
  * So bleiben Fugen bei 24er- und 48er-Modul auf demselben Raster (Vielfache),
  * statt durch symmetrische End-Aufweitung gegeneinander zu laufen.
@@ -939,6 +958,9 @@ function computeRowColCuts(
       cuts = buildCourseCuts(len, brickW, offset, sF != null, eF != null, bondCornerW)
     } else if (wallPatternCuts) {
       cuts = pierceWallCutsToField(wallPatternCuts, field.x0, field.x1)
+      if (unit != null) {
+        cuts = absorbJambSlivers(cuts, unit, { start: !field.first, end: !field.last })
+      }
     } else {
       const phaseW = courseEndWidth(offset, brickW) ?? brickW
       cuts = moduleCourseCuts(len, brickW, unit, phaseW, sF, startAlt, eF, endAlt, granularity)

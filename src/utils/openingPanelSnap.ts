@@ -6,10 +6,10 @@
  * 2. Zentriert auf Stein — Fenstermitte auf Steinmitte (Mitte zwischen zwei Cuts)
  * 3. Wandmitte — `x` = wall.width/2 − width/2 (wichtig bei 45°-Längen)
  *
- * Drag: nur Fugen-bündig + Wandmitte-Magnet; Stein-/Schichtmitten entfallen.
- *       Magnet-Radius: nur snappen wenn |Vorschlag − Kandidat| ≤ DRAG_SNAP_MAGNET_CM,
- *       sonst freie Position (kein Frame-Springen zwischen dichten Kandidaten).
+ * Drag: nur Fugen-bündig + Wandmitte; immer nächster Kandidat (kein Freilauf).
+ *       Freie Position ließ Öffnungen zwischen Halbstein-Fugen stehen → Stummel.
  * Nudge: volles Raster (Fuge + Steinmitte + Wandmitte).
+ * Breite: rechte Laibung ebenfalls auf eine Fuge, damit beide Kanten aufgehen.
  *
  * Gestapelte Etagen mit unterschiedlichem Modul: gemeinsame Cuts (LCM), sonst echte Lagen-Cuts.
  * Multi-Zone (`claddingZones` mit rect): Cuts aus dem Modul der Zone an Öffnungs-Mitte-Y.
@@ -32,8 +32,8 @@ const STACK_EPS = 1.5
 /** Magnet: Vorschlag nahe Wandmitte → bevorzugt exakt zentrieren (45°-Längen). */
 const WALL_CENTER_MAGNET_CM = STUDIO_MASONRY
 /**
- * Drag-Magnet: nur einrasten wenn der Vorschlag so nah am Kandidaten liegt.
- * Größer als typischer Pointer-Jitter, kleiner als halber Modul-Schritt → kein Springen.
+ * @deprecated v2.0.82: Drag rastet immer auf die nächste Fuge; Konstante bleibt
+ * für Tests/Doku (früher Freilauf außerhalb dieses Radius).
  */
 export const DRAG_SNAP_MAGNET_CM = 7
 
@@ -82,7 +82,7 @@ function normYaw(yawDeg: number): number {
 }
 
 /** Studio-Wand mit Vertikal-Modul (kein Streifen / Wildverband / aus). */
-export function wallUsesOpeningMasonrySnap(wall: Wall): boolean {
+export function wallUsesOpeningMasonrySnap(wall: Pick<Wall, 'kind' | 'panel'>): boolean {
   if (wall.kind !== 'studio') return false
   const raw = wall.panel
   if (!raw || raw.enabled === false) return false
@@ -92,6 +92,13 @@ export function wallUsesOpeningMasonrySnap(wall: Wall): boolean {
   }
   const header = headerSize(panel.panelWidth)
   return patternModuleUnit(panel.pattern, panel.panelWidth, header) != null
+}
+
+/** Raster für neue/geänderte Öffnungsmaße: Halbstein (o. ä.), nicht pauschal 8 cm. */
+export function studioOpeningSnapGridCm(wall: { kind?: Wall['kind']; panel?: Wall['panel'] }): number {
+  if (wall.kind !== 'studio') return STUDIO_MASONRY
+  if (!wallUsesOpeningMasonrySnap({ kind: 'studio', panel: wall.panel })) return STUDIO_MASONRY
+  return wallMasonryModuleUnitCm({ kind: 'studio', panel: wall.panel } as Wall) ?? STUDIO_MASONRY
 }
 
 /** Paneel für Snap-Cuts: bei Zonen-Rects am `atY`, sonst `wall.panel`. */
@@ -374,7 +381,7 @@ export type OpeningMasonryMoveMode = 'drag' | 'nudge'
 
 /**
  * Position an Kandidaten (Fuge / Steinmitte / Wandmitte).
- * - `drag`: Fugen-bündig + Wandmitte, Magnet `DRAG_SNAP_MAGNET_CM` — sonst frei
+ * - `drag`: Fugen-bündig + Wandmitte, immer nächster Kandidat; Breite so dass beide Laibungen auf Fugen liegen
  * - `nudge`: nächster/vorheriger Kandidat aus dem vollen Raster
  */
 export function snapOpeningMoveToMasonry(
@@ -400,16 +407,22 @@ export function snapOpeningMoveToMasonry(
 
   const atY = openingCenterY(opening, proposedY)
   const kind: OpeningPlacementCandidateKind = mode === 'drag' ? 'drag' : 'full'
-  const magnetCm = mode === 'drag' ? DRAG_SNAP_MAGNET_CM : undefined
   const xs = openingPlacementCandidateXs(wall, allWalls, width, atY, kind)
   if (xs.length > 0) {
     if (mode === 'nudge' && Math.abs(dx) > EPS) {
       x = adjacentValue(xs, opening.x, dx > 0 ? 1 : -1)
     } else if (Math.abs(dx) > EPS || Math.abs(proposedX - opening.x) > EPS) {
-      x = nearestPlacementX(xs, proposedX, width, wall.width, magnetCm)
+      x = nearestPlacementX(xs, proposedX, width, wall.width)
     } else {
-      x = nearestPlacementX(xs, opening.x, width, wall.width, magnetCm)
+      x = nearestPlacementX(xs, opening.x, width, wall.width)
     }
+  }
+
+  const centered = Math.abs(x + width / 2 - wall.width / 2) <= EPS
+  width = snapOpeningWidthToMasonryJambs(wall, allWalls, x, width, atY)
+  if (centered) {
+    const maxX = Math.max(0, wall.width - width)
+    x = Math.max(0, Math.min(maxX, wall.width / 2 - width / 2))
   }
 
   const lockY = opening.type === 'door' && Boolean(opening.stairs?.enabled)
@@ -419,15 +432,9 @@ export function snapOpeningMoveToMasonry(
       if (mode === 'nudge' && Math.abs(dy) > EPS) {
         y = adjacentValue(ys, opening.y, dy > 0 ? 1 : -1)
       } else if (Math.abs(dy) > EPS || Math.abs(proposedY - opening.y) > EPS) {
-        y =
-          magnetCm != null
-            ? magnetNearest(ys, proposedY, magnetCm)
-            : nearestValue(ys, proposedY)
+        y = nearestValue(ys, proposedY)
       } else {
-        y =
-          magnetCm != null
-            ? magnetNearest(ys, opening.y, magnetCm)
-            : nearestValue(ys, opening.y)
+        y = nearestValue(ys, opening.y)
       }
     }
   }

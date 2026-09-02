@@ -652,6 +652,142 @@ export function openingHasCurvedMask(opening: Opening, _inflate = 0): boolean {
   return openingArchForm(opening) !== 'rect' || openingHasRoundMask(opening)
 }
 
+/**
+ * Maximale Zwickelbreite in der Bogenkappe (cm). Große Paneele werden so
+ * spaltenweise auf die Kurve geführt — wie kleine Ziegel, nicht als ein
+ * abgeschrägtes Riesenrechteck.
+ */
+export const ARCH_ZWICKEL_MAX_WIDTH_CM = 16
+
+type ArchCapZone = { x0: number; x1: number; springY: number; apexY: number }
+
+function archCapZones(openings: Opening[]): ArchCapZone[] {
+  const out: ArchCapZone[] = []
+  for (const opening of openings) {
+    if (opening.hidden || !openingCutsWall(opening)) continue
+    if (!openingHasCurvedMask(opening)) continue
+    const springY = openingArchSpringY(opening)
+    if (springY == null) continue
+    const masonry = openingMasonryRect(opening)
+    out.push({
+      x0: masonry.x,
+      x1: masonry.x + masonry.width,
+      springY,
+      apexY: masonry.y + masonry.height,
+    })
+  }
+  return out
+}
+
+type ZwickelTile = {
+  x: number
+  y: number
+  width: number
+  height: number
+  sourceX?: number
+  sourceY?: number
+  sourceWidth?: number
+  sourceHeight?: number
+}
+
+function sliceZwickelTile<T extends ZwickelTile>(tile: T, x: number, y: number, w: number, h: number): T {
+  return {
+    ...tile,
+    x,
+    y,
+    width: w,
+    height: h,
+    sourceX: tile.sourceX ?? tile.x,
+    sourceY: tile.sourceY ?? tile.y,
+    sourceWidth: tile.sourceWidth ?? tile.width,
+    sourceHeight: tile.sourceHeight ?? tile.height,
+  }
+}
+
+function uniqueSortedCuts(values: number[], lo: number, hi: number, eps = 0.05): number[] {
+  const inner = values.filter((v) => v > lo + eps && v < hi - eps)
+  const all = [lo, ...inner, hi].sort((a, b) => a - b)
+  const out: number[] = []
+  for (const v of all) {
+    if (out.length === 0 || v - out[out.length - 1]! > eps) out.push(v)
+  }
+  return out
+}
+
+/**
+ * Große Streifen/Paneele in der Bogenkappe in Ziegel-breite Spalten teilen
+ * (Kämpferlinie + Laibungs-X). Kleine Ziegel (niedrig und schmal) bleiben unangetastet.
+ */
+export function subdivideLargeTilesAtArchCaps<T extends ZwickelTile>(
+  tiles: T[],
+  openings: Opening[],
+  panelHeight: number,
+): T[] {
+  if (panelHeight < 14) {
+    const wide = tiles.some((t) => t.width >= 40)
+    if (!wide) return tiles
+  }
+  const caps = archCapZones(openings)
+  if (caps.length === 0) return tiles
+  const maxW = ARCH_ZWICKEL_MAX_WIDTH_CM
+  const out: T[] = []
+  for (const tile of tiles) {
+    if (tile.height < 14 && tile.width < 40) {
+      out.push(tile)
+      continue
+    }
+    const hits = caps.filter(
+      (c) =>
+        tile.x < c.x1 - 0.05 &&
+        tile.x + tile.width > c.x0 + 0.05 &&
+        tile.y < c.apexY - 0.05 &&
+        tile.y + tile.height > c.springY + 0.05,
+    )
+    if (hits.length === 0) {
+      out.push(tile)
+      continue
+    }
+    const yCuts = uniqueSortedCuts(
+      hits.flatMap((c) => [c.springY, c.apexY]),
+      tile.y,
+      tile.y + tile.height,
+    )
+    for (let yi = 0; yi < yCuts.length - 1; yi += 1) {
+      const y0 = yCuts[yi]!
+      const y1 = yCuts[yi + 1]!
+      const bandH = y1 - y0
+      if (bandH < 0.08) continue
+      const band = sliceZwickelTile(tile, tile.x, y0, tile.width, bandH)
+      const inCap = hits.filter((c) => y0 < c.apexY - 0.05 && y1 > c.springY + 0.05)
+      if (inCap.length === 0) {
+        out.push(band)
+        continue
+      }
+      const xCuts = uniqueSortedCuts(
+        inCap.flatMap((c) => [c.x0, c.x1]),
+        band.x,
+        band.x + band.width,
+      )
+      for (let xi = 0; xi < xCuts.length - 1; xi += 1) {
+        const a = xCuts[xi]!
+        const b = xCuts[xi + 1]!
+        if (b - a < 0.08) continue
+        const overArch = inCap.some((c) => a < c.x1 - 0.05 && b > c.x0 + 0.05)
+        if (overArch && b - a > maxW + 0.5) {
+          for (let x = a; x < b - 0.05; ) {
+            const w = Math.min(maxW, b - x)
+            if (w >= 0.08) out.push(sliceZwickelTile(band, x, y0, w, bandH))
+            x += w
+          }
+        } else {
+          out.push(sliceZwickelTile(band, a, y0, b - a, bandH))
+        }
+      }
+    }
+  }
+  return out
+}
+
 export function openingStadiumGeom(opening: Opening, inflate = 0): StadiumGeom | null {
   if (!openingCutsWall(opening)) return null
   if (!openingHasRoundMask(opening)) return null
@@ -828,13 +964,103 @@ export function openingMaskPolyline(
   return [{ x: x0, y: y0 }, { x: x1, y: y0 }, ...arch]
 }
 
+function polylineContainsXY(
+  pts: { x: number; y: number }[],
+  x: number,
+  y: number,
+): boolean {
+  if (pts.length < 3) return false
+  let inside = false
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i, i += 1) {
+    const yi = pts[i]!.y
+    const yj = pts[j]!.y
+    const xi = pts[i]!.x
+    const xj = pts[j]!.x
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi + 1e-12) + xi) {
+      inside = !inside
+    }
+  }
+  return inside
+}
+
+const DRAWING_HOLE_HIT_PAD_CM = -0.4
+const DRAWING_HOLE_CLIP_PAD_CM = 0.08
+
+/** Glas-/Cladding-Loch für die Zeichnung. `pad` negativ = etwas kleiner (Endpunkte auf der Kante zählen nicht als Treffer). */
+export function openingDrawingHolePolyline(
+  opening: Opening,
+  pad = DRAWING_HOLE_HIT_PAD_CM,
+): { x: number; y: number }[] {
+  return openingMaskPolyline(opening, openingPanelClearance(opening) + pad)
+}
+
+export function openingDrawingHoleContainsPoint(opening: Opening, x: number, y: number): boolean {
+  if (opening.hidden || !openingCutsWall(opening)) return false
+  return polylineContainsXY(openingDrawingHolePolyline(opening), x, y)
+}
+
+function segmentLineHitT(
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  cx: number,
+  cy: number,
+  dx: number,
+  dy: number,
+): number | null {
+  const rx = bx - ax
+  const ry = by - ay
+  const sx = dx - cx
+  const sy = dy - cy
+  const denom = rx * sy - ry * sx
+  if (Math.abs(denom) < 1e-12) return null
+  const t = ((cx - ax) * sy - (cy - ay) * sx) / denom
+  const u = ((cx - ax) * ry - (cy - ay) * rx) / denom
+  if (t > 1e-6 && t < 1 - 1e-6 && u > -1e-6 && u < 1 + 1e-6) return t
+  return null
+}
+
+function clipSegmentOutsidePolyline(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  pts: { x: number; y: number }[],
+): Array<{ x0: number; y0: number; x1: number; y1: number }> {
+  if (pts.length < 3) return [{ x0, y0, x1, y1 }]
+  const ts = [0, 1]
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i, i += 1) {
+    const t = segmentLineHitT(x0, y0, x1, y1, pts[j]!.x, pts[j]!.y, pts[i]!.x, pts[i]!.y)
+    if (t != null) ts.push(t)
+  }
+  ts.sort((a, b) => a - b)
+  const uniq: number[] = []
+  for (const t of ts) {
+    if (uniq.length === 0 || t - uniq[uniq.length - 1]! > 1e-5) uniq.push(t)
+  }
+  const out: Array<{ x0: number; y0: number; x1: number; y1: number }> = []
+  for (let i = 0; i < uniq.length - 1; i += 1) {
+    const tA = uniq[i]!
+    const tB = uniq[i + 1]!
+    if (tB - tA < 1e-5) continue
+    const tm = (tA + tB) / 2
+    const mx = x0 + (x1 - x0) * tm
+    const my = y0 + (y1 - y0) * tm
+    if (polylineContainsXY(pts, mx, my)) continue
+    out.push({
+      x0: x0 + (x1 - x0) * tA,
+      y0: y0 + (y1 - y0) * tA,
+      x1: x0 + (x1 - x0) * tB,
+      y1: y0 + (y1 - y0) * tB,
+    })
+  }
+  return out
+}
+
 /**
- * Zeichnungs-Kante in Wand-XY: trifft die Öffnung, wenn ein Punkt auf der Strecke
- * im **Rechteckloch** liegt — nicht nur die Streckenmitte und nicht nur die
- * Bogenmaske (CSG-Diagonalen zwischen Kellerfenstern liegen oft in der
- * Rechteck-Schulternzone außerhalb des Bogens).
- *
- * `inset` default 0: Kanten, die nur die Laibung streifen, sonst bleiben stehen.
+ * Zeichnungs-Kante in Wand-XY: trifft die Öffnung nur im **Maskenloch** (Bogen, nicht Bounding-Box).
+ * Schultersteine am Rund-/Tudorbogen bleiben stehen; Glas und Freiraum nicht.
  */
 export function claddingEdgeHitsOpening(
   opening: Opening,
@@ -842,14 +1068,14 @@ export function claddingEdgeHitsOpening(
   y0: number,
   x1: number,
   y1: number,
-  inset = 0,
+  _inset = 0,
 ): boolean {
   if (opening.hidden || !openingCutsWall(opening)) return false
-  const ox0 = opening.x + inset
-  const ox1 = opening.x + opening.width - inset
-  const oy0 = opening.y + inset
-  const oy1 = opening.y + opening.height - inset
-  if (ox1 <= ox0 || oy1 <= oy0) return false
+  const hole = openingDrawingHolePolyline(opening)
+  const ox0 = Math.min(...hole.map((p) => p.x))
+  const ox1 = Math.max(...hole.map((p) => p.x))
+  const oy0 = Math.min(...hole.map((p) => p.y))
+  const oy1 = Math.max(...hole.map((p) => p.y))
   const minX = Math.min(x0, x1)
   const maxX = Math.max(x0, x1)
   const minY = Math.min(y0, y1)
@@ -861,7 +1087,7 @@ export function claddingEdgeHitsOpening(
     const t = i / samples
     const x = x0 + (x1 - x0) * t
     const y = y0 + (y1 - y0) * t
-    if (x > ox0 && x < ox1 && y > oy0 && y < oy1) return true
+    if (polylineContainsXY(hole, x, y)) return true
   }
   return false
 }
@@ -888,6 +1114,44 @@ export function isSpuriousPlinthDrawingDiagonal(
   return true
 }
 
+/**
+ * CSG-Diagonale in der Rechteck-Schulter eines Bogens: liegt in der Bounding-Box,
+ * aber nicht im Maskenloch. Nicht für eckige Öffnungen (außer Rund-Cutout).
+ */
+export function isSpuriousOpeningShoulderDiagonal(
+  opening: Opening,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+): boolean {
+  if (opening.hidden || !openingCutsWall(opening)) return false
+  if (!openingHasCurvedMask(opening)) return false
+  const dx = Math.abs(x1 - x0)
+  const dy = Math.abs(y1 - y0)
+  if (dx < 8 || dy < 2.5) return false
+  const ox0 = opening.x
+  const ox1 = opening.x + opening.width
+  const oy0 = opening.y
+  const oy1 = opening.y + opening.height
+  const minX = Math.min(x0, x1)
+  const maxX = Math.max(x0, x1)
+  const minY = Math.min(y0, y1)
+  const maxY = Math.max(y0, y1)
+  if (maxX < ox0 || minX > ox1 || maxY < oy0 || minY > oy1) return false
+  const hole = openingDrawingHolePolyline(opening)
+  const len = Math.hypot(dx, dy)
+  const samples = Math.max(6, Math.min(40, Math.ceil(len / 8)))
+  for (let i = 0; i <= samples; i += 1) {
+    const t = i / samples
+    const x = x0 + (x1 - x0) * t
+    const y = y0 + (y1 - y0) * t
+    if (x <= ox0 || x >= ox1 || y <= oy0 || y >= oy1) continue
+    if (!polylineContainsXY(hole, x, y)) return true
+  }
+  return false
+}
+
 /** Kanten in die Wandtiefe (Stirn, Bossen-Fase) — in der Aufriss-Zeichnung Reißverschluss. */
 export const DRAWING_DEPTH_EDGE_CM = 0.4
 
@@ -906,15 +1170,100 @@ export function snapDrawingLocalX(localX: number, wallWidth: number): number {
 export type StudioDrawingWall = {
   width: number
   height: number
+  depth?: number
+  panelFlip?: boolean
   openings: Opening[]
-  panel?: { plinthEnabled?: boolean; plinthHeight?: number } | null
+  panel?: {
+    plinthEnabled?: boolean
+    plinthHeight?: number
+    taperDepth?: number
+    projectDepth?: number
+  } | null
 }
 
+/** Lokales Z der Bossen-Front (eingezogene Fläche). null ohne Bossen-Vorstand. */
+export function studioDrawingBossFrontLocalZ(wall: StudioDrawingWall): number | null {
+  const taper = wall.panel?.taperDepth ?? 0
+  if (taper <= 0.35) return null
+  const project = wall.panel?.projectDepth ?? 4
+  const flip = wall.panelFlip !== false
+  const depth = wall.depth ?? 32
+  const bodyFrontZ = flip ? -project : depth + project
+  return flip ? bodyFrontZ - taper : bodyFrontZ + taper
+}
+
+/** Kanten auf der Bossen-Front — in der Zeichnung das innere Quadrat im Stein. */
+export const DRAWING_BOSS_FRONT_Z_EPS = 0.45
+
 /**
- * Eine EdgesGeometry-Strecke für den Linienmodus: keine Tiefenkanten, keine Strecke
- * durchs Fenster, Endpunkte an der Plan-Kante bündig.
- * Rückgabe `null` = Kante weglassen, sonst sechs Zahlen (ax,ay,az,bx,by,bz).
+ * EdgesGeometry-Strecke(n) für den Linienmodus: keine Tiefenkanten, Glas rausgeschnitten
+ * (Maske, nicht Bounding-Box), Endpunkte an der Plan-Kante bündig.
+ * Eine Wand-Fuge, die ein Fenster kreuzt, wird in Pier-Stücke geteilt — nicht ganz verworfen.
  */
+export function filterStudioDrawingSegments(
+  ax: number,
+  ay: number,
+  az: number,
+  bx: number,
+  by: number,
+  bz: number,
+  wall: StudioDrawingWall,
+): number[][] {
+  const sax = snapDrawingLocalX(ax, wall.width)
+  if (Math.abs(az - bz) > DRAWING_DEPTH_EDGE_CM) return []
+  const taper = wall.panel?.taperDepth ?? 0
+  if (taper > 0.35) {
+    const project = wall.panel?.projectDepth ?? 4
+    const flip = wall.panelFlip !== false
+    const depth = wall.depth ?? 32
+    const bodyFrontZ = flip ? -project : depth + project
+    const bossZ = flip ? bodyFrontZ - taper : bodyFrontZ + taper
+    const midz = (az + bz) / 2
+    const zEps = Math.max(DRAWING_BOSS_FRONT_Z_EPS, taper * 0.55)
+    if (Math.abs(midz - bossZ) <= zEps) return []
+    // Bossen-Platte vor der Steinfront: inneres Quadrat ums Fenster sitzt oft
+    // nicht exakt auf bossZ (andere projectDepth, Overlay). Alles zwischen
+    // Körperfront und Bossen-Front entfällt — Mörtel liegt davor/dahinter.
+    const toward = flip ? -1 : 1
+    const zFromBody = (midz - bodyFrontZ) * toward
+    if (zFromBody > 0.35 && zFromBody < taper + 0.85) return []
+  }
+  const sbx = snapDrawingLocalX(bx, wall.width)
+  if (Math.hypot(sax - sbx, ay - by, az - bz) < 0.08) return []
+  const halfW = wall.width / 2
+  const halfH = wall.height / 2
+  const wx0 = sax + halfW
+  const wy0 = ay + halfH
+  const wx1 = sbx + halfW
+  const wy1 = by + halfH
+  const plinthOn = wall.panel?.plinthEnabled !== false
+  const plinthH = plinthOn && typeof wall.panel?.plinthHeight === 'number' ? wall.panel.plinthHeight : 0
+  if (isSpuriousPlinthDrawingDiagonal(wx0, wy0, wx1, wy1, plinthH)) return []
+  if (
+    wall.openings.some((opening) => isSpuriousOpeningShoulderDiagonal(opening, wx0, wy0, wx1, wy1))
+  ) {
+    return []
+  }
+  let pieces: Array<{ x0: number; y0: number; x1: number; y1: number }> = [
+    { x0: wx0, y0: wy0, x1: wx1, y1: wy1 },
+  ]
+  for (const opening of wall.openings) {
+    if (opening.hidden || !openingCutsWall(opening)) continue
+    const hole = openingDrawingHolePolyline(opening, DRAWING_HOLE_CLIP_PAD_CM)
+    const next: Array<{ x0: number; y0: number; x1: number; y1: number }> = []
+    for (const piece of pieces) {
+      next.push(...clipSegmentOutsidePolyline(piece.x0, piece.y0, piece.x1, piece.y1, hole))
+    }
+    pieces = next
+    if (pieces.length === 0) return []
+  }
+  const z = (az + bz) / 2
+  return pieces
+    .filter((p) => Math.hypot(p.x1 - p.x0, p.y1 - p.y0) >= 0.08)
+    .map((p) => [p.x0 - halfW, p.y0 - halfH, z, p.x1 - halfW, p.y1 - halfH, z])
+}
+
+/** Erstes Teilstück oder `null` (Kompatibilität). */
 export function filterStudioDrawingSegment(
   ax: number,
   ay: number,
@@ -924,22 +1273,7 @@ export function filterStudioDrawingSegment(
   bz: number,
   wall: StudioDrawingWall,
 ): number[] | null {
-  if (Math.abs(az - bz) > DRAWING_DEPTH_EDGE_CM) return null
-  const sax = snapDrawingLocalX(ax, wall.width)
-  const sbx = snapDrawingLocalX(bx, wall.width)
-  if (Math.hypot(sax - sbx, ay - by, az - bz) < 0.08) return null
-  const halfW = wall.width / 2
-  const halfH = wall.height / 2
-  const wx0 = sax + halfW
-  const wy0 = ay + halfH
-  const wx1 = sbx + halfW
-  const wy1 = by + halfH
-  const hits = wall.openings.some((opening) => claddingEdgeHitsOpening(opening, wx0, wy0, wx1, wy1))
-  if (hits) return null
-  const plinthOn = wall.panel?.plinthEnabled !== false
-  const plinthH = plinthOn && typeof wall.panel?.plinthHeight === 'number' ? wall.panel.plinthHeight : 0
-  if (isSpuriousPlinthDrawingDiagonal(wx0, wy0, wx1, wy1, plinthH)) return null
-  return [sax, ay, az, sbx, by, bz]
+  return filterStudioDrawingSegments(ax, ay, az, bx, by, bz, wall)[0] ?? null
 }
 
 /** True wenn der Wandpunkt im Öffnungsloch liegt (Maskenkontur, inkl. Rundbogen). */
@@ -1324,7 +1658,7 @@ export function flushClipPartsToOpeningJambs(
         : openingPanelClearance(opening) + inflate
     const rect = openingMasonryRect(opening, clearance)
     const geom = openingArchGeom(opening, clearance)
-    const springY = geom?.springY ?? rect.y + rect.height
+    const springY = openingArchSpringY(opening, clearance) ?? geom?.springY ?? rect.y + rect.height
     if (rect.width <= JAMB_FLUSH_EPS || springY - rect.y <= JAMB_FLUSH_EPS) continue
     bodies.push({ x0: rect.x, x1: rect.x + rect.width, y0: rect.y, y1: springY })
   }
@@ -1777,8 +2111,9 @@ function clipPolyMinusColumnHole(
       continue
     }
     // C/O: Loch von beiden Seiten umschlossen → an Sohlbank/Kämpfer trennen.
-    // L/[ : nur eine Laibung verbindet die Bänder → ein Polygon (ein Bossen-Diamant).
-    if (!isEnclosedCShape(byXList, eps)) {
+    // L in der Bogenkappe nicht als ein Outline (Sehne durch den Bogen) — unten
+    // Rechteck zur Laibung, oben bottomArc. Kleine L-Steine ohne Kappe bleiben ein Stück.
+    if (!isEnclosedCShape(byXList, eps) && !group.some((b) => b.aboveHole)) {
       const outlinePoly = emitOutlinePoly(group, props, eps, minRemnant)
       if (outlinePoly) {
         out.push(outlinePoly)

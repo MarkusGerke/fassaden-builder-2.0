@@ -5,8 +5,9 @@
 import type { FacadeState, Opening, Wall } from '../types/facade'
 import { cloneFacadeState, cloneWall } from '../types/facade'
 import { repairPlanLinkedWallFronts } from '../studio/walls'
-import { mapAllWalls } from './buildings'
+import { getAllWalls, mapAllWalls } from './buildings'
 import { migrateOpeningPanelFan } from './openingGeometry'
+import { alignOpeningToMasonry, wallUsesOpeningMasonrySnap } from './openingPanelSnap'
 import {
   DEFAULT_CEILING_COLOR,
   DEFAULT_INTERIOR_COLOR,
@@ -25,7 +26,7 @@ import {
 } from './hydrate'
 
 /** Aktuelle Persistenz-Schema-Version (steigt nur bei Datenmodell-Änderungen). */
-export const FACADE_SCHEMA_VERSION = 13
+export const FACADE_SCHEMA_VERSION = 14
 
 /** Unterste Version, die Hash-/Datei-Imports ohne gespeicherte schemaVersion annehmen. */
 export const FACADE_SCHEMA_IMPORT_BASE = 7
@@ -162,6 +163,54 @@ export function migrateIndoorWhiteDefaults(state: FacadeState): FacadeState {
   }
 }
 
+function openingsAabbOverlap(
+  a: Pick<Opening, 'x' | 'y' | 'width' | 'height'>,
+  b: Pick<Opening, 'x' | 'y' | 'width' | 'height'>,
+): boolean {
+  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y
+}
+
+/**
+ * Läufer-/Mauerwerksverband: Laibungen und Maße auf Fugen/Schichten (einmalig).
+ * Idempotent wenn die Öffnung schon sitzt. Bei Überlappung nach Snap bleibt das Original.
+ */
+export function migrateAlignMasonryOpenings(state: FacadeState): FacadeState {
+  const allWalls = getAllWalls(state)
+  return mapAllWalls(state, (wall: Wall) => {
+    if (!wallUsesOpeningMasonrySnap(wall)) return cloneWall(wall)
+    const cloned = cloneWall(wall)
+    const openings: Opening[] = []
+    for (const opening of cloned.openings) {
+      if (opening.hidden) {
+        openings.push(opening)
+        continue
+      }
+      const aligned = alignOpeningToMasonry(wall, allWalls, opening)
+      const next: Opening = {
+        ...opening,
+        x: aligned.x,
+        y: aligned.y,
+        width: aligned.width,
+        height: aligned.height,
+      }
+      if (openings.some((o) => !o.hidden && openingsAabbOverlap(next, o))) {
+        openings.push(opening)
+        continue
+      }
+      if (
+        next.arch?.enabled &&
+        next.arch.form === 'round' &&
+        next.arch.riseCm != null &&
+        Math.abs(opening.width / 2 - next.arch.riseCm) < 1.5
+      ) {
+        next.arch = { ...next.arch, riseCm: Math.min(next.width / 2, next.height) }
+      }
+      openings.push(next)
+    }
+    return { ...cloned, openings }
+  })
+}
+
 /**
  * Schema-Migrationen in Reihenfolge.
  * Fehlende Stufen (from → from+1 ohne Eintrag) werden als No-Op hochgezählt.
@@ -196,6 +245,12 @@ export const SCHEMA_MIGRATIONS: SchemaMigration[] = [
     to: 13,
     id: 'indoor-white-defaults',
     apply: migrateIndoorWhiteDefaults,
+  },
+  {
+    from: 13,
+    to: 14,
+    id: 'align-masonry-openings',
+    apply: migrateAlignMasonryOpenings,
   },
 ]
 

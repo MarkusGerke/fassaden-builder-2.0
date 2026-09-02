@@ -50,6 +50,7 @@ import { normalizeOpeningMotion } from './openingMotion'
 import {
   alignOpeningToMasonry,
   snapOpeningMoveToMasonry,
+  studioOpeningSnapGridCm,
   wallUsesOpeningMasonrySnap,
 } from './openingPanelSnap'
 import {
@@ -67,8 +68,8 @@ export function findOpeningSlot(
   type: Opening['type'],
 ): number | null {
   const isStudio = wall.kind === 'studio'
-  const sizeGrid = isStudio ? STUDIO_MASONRY : GRID_SIZE
-  const posGrid = isStudio ? STUDIO_MASONRY : GRID_SIZE
+  const sizeGrid = isStudio ? studioOpeningSnapGridCm(wall) : GRID_SIZE
+  const posGrid = isStudio ? studioOpeningSnapGridCm(wall) : GRID_SIZE
   const margin = 0
   const MIN_GAP = OPENING_MIN_GAP
 
@@ -163,7 +164,8 @@ export function insertOpeningReplacingOverlaps(
 }
 
 function openingGridForWall(wall: Wall): number | undefined {
-  return wall.kind === 'studio' ? STUDIO_MASONRY : undefined
+  if (wall.kind !== 'studio') return undefined
+  return studioOpeningSnapGridCm(wall)
 }
 
 /** Platzierungsraster für Studio-Öffnungs-Positionen (Drag/Nudge). Maße bleiben am Mauerwerksraster. */
@@ -347,8 +349,8 @@ export function createOpening(
   at?: { x: number; y?: number },
   opts?: { donorWalls?: Array<{ openings?: Opening[] }> },
 ): Opening {
-  const sizeGrid = wall.kind === 'studio' ? STUDIO_MASONRY : undefined
-  const posGrid = wall.kind === 'studio' ? STUDIO_MASONRY : undefined
+  const sizeGrid = wall.kind === 'studio' ? studioOpeningSnapGridCm(wall) : undefined
+  const posGrid = wall.kind === 'studio' ? studioOpeningSnapGridCm(wall) : undefined
   const snappedWidth = snapToGrid(width, sizeGrid)
   const snappedHeight = snapToGrid(height, sizeGrid)
 

@@ -19,6 +19,7 @@ import {
   hybridSectorRMax,
   mergeNarrowClipParts,
   minClipRemnantWidth,
+  subdivideLargeTilesAtArchCaps,
   normalizeOpeningFill,
   openingArchGeom,
   openingArchHybridMasonryEnabled,
@@ -89,6 +90,7 @@ import {
 } from './walls'
 import { facadeOutward } from './elevation'
 import { innerFaceRingWorld, planNodeWorld, type PlanNode } from './floorPlan'
+import { buildRemnantBossSurface } from './remnantBoss'
 import {
   arcWallLocalPoint,
   ARC_WALL_MESH_STRIPS,
@@ -304,6 +306,118 @@ function topArcHasStone(arcY: number, yBot: number, eps = 0.05): boolean {
   return arcY > yBot + eps
 }
 
+/** Flat-/Arbeitsansicht: Bogenkappe als Trapez-Spalten (wie High-LOD), nicht ein Umriss. */
+function addWorkFaceArcPart(
+  wall: Wall,
+  miter: { start: boolean; end: boolean },
+  faceZ: number,
+  positions: number[],
+  normals: number[],
+  indices: number[],
+  part: OpeningPoly,
+) {
+  const y0 = part.y
+  const y1 = part.y + part.height
+  if (part.bottomArc && part.bottomArc.length >= 2) {
+    const arc = part.bottomArc
+    for (let i = 0; i < arc.length - 1; i += 1) {
+      const a = arc[i]!
+      const b = arc[i + 1]!
+      if (!bottomArcHasStone(a.y, y1) || !bottomArcHasStone(b.y, y1)) continue
+      if (Math.abs(b.x - a.x) < 1e-4) continue
+      addWorkFaceOutlinePoly(wall, miter, faceZ, positions, normals, indices, [
+        { x: a.x, y: Math.max(a.y, y0) },
+        { x: b.x, y: Math.max(b.y, y0) },
+        { x: b.x, y: y1 },
+        { x: a.x, y: y1 },
+      ])
+    }
+    return
+  }
+  if (part.topArc && part.topArc.length >= 2) {
+    const arc = part.topArc
+    for (let i = 0; i < arc.length - 1; i += 1) {
+      const a = arc[i]!
+      const b = arc[i + 1]!
+      if (!topArcHasStone(a.y, y0) || !topArcHasStone(b.y, y0)) continue
+      if (Math.abs(b.x - a.x) < 1e-4) continue
+      addWorkFaceOutlinePoly(wall, miter, faceZ, positions, normals, indices, [
+        { x: a.x, y: y0 },
+        { x: b.x, y: y0 },
+        { x: b.x, y: Math.min(b.y, y1) },
+        { x: a.x, y: Math.min(a.y, y1) },
+      ])
+    }
+  }
+}
+
+function appendArcPolylineSamples(
+  out: number[][],
+  arc: { x: number; y: number }[],
+  kind: 'bottom' | 'top',
+  y0: number,
+  y1: number,
+  xAt: (wx: number) => number,
+  yAt: (wy: number) => number,
+  z: number,
+) {
+  let run: number[] = []
+  const flush = () => {
+    if (run.length >= 6) out.push(run)
+    run = []
+  }
+  for (const pt of arc) {
+    const ok = kind === 'bottom' ? bottomArcHasStone(pt.y, y1) : topArcHasStone(pt.y, y0)
+    if (!ok) {
+      flush()
+      continue
+    }
+    const y = kind === 'bottom' ? Math.max(pt.y, y0) : Math.min(pt.y, y1)
+    run.push(xAt(pt.x), yAt(y), z)
+  }
+  flush()
+}
+
+/** Explizite Bogen-Silhouette für den Linienmodus (`geometry.userData.drawingArchPolylines`). */
+function attachDrawingArchPolylines(
+  geometry: THREE.BufferGeometry,
+  wall: Wall,
+  parts: OpeningPoly[],
+  xAt: (wx: number) => number,
+  z: number,
+) {
+  const halfH = wall.height / 2
+  const yAt = (wy: number) => wy - halfH
+  const polylines: number[][] = []
+  for (const part of parts) {
+    if (part.bottomArc && part.bottomArc.length >= 2) {
+      appendArcPolylineSamples(
+        polylines,
+        part.bottomArc,
+        'bottom',
+        part.y,
+        part.y + part.height,
+        xAt,
+        yAt,
+        z,
+      )
+    }
+    if (part.topArc && part.topArc.length >= 2) {
+      appendArcPolylineSamples(
+        polylines,
+        part.topArc,
+        'top',
+        part.y,
+        part.y + part.height,
+        xAt,
+        yAt,
+        z,
+      )
+    }
+  }
+  if (polylines.length > 0) geometry.userData.drawingArchPolylines = polylines
+}
+
 /**
  * Wand-X im zentrierten Lokalraum.
  * Feld: `wallX − halfW` (Öffnungen unverzerrt). Gehrung nur als Clamp auf die
@@ -383,6 +497,9 @@ function hidePanelReturnFace(
   return false
 }
 
+/** Abstand, in dem Reststeine an Laibung/Sohlbank bündig bleiben (Fuge + Raster). */
+const BOSS_FLUSH_PLANE_CM = 3
+
 /** Bossen-Seite nicht einziehen: Wandende und vertikale Laibung bleiben eine Gerade. */
 function flushBossSide(
   wall: Wall,
@@ -396,8 +513,8 @@ function flushBossSide(
   if (end === 'end' && wallX >= wall.width - 1e-4) return true
   for (const hole of jambs) {
     if (y1 <= hole.y + CLIP_EPS || y0 >= hole.y + hole.height - CLIP_EPS) continue
-    if (end === 'start' && Math.abs(wallX - (hole.x + hole.width)) <= 1.5) return true
-    if (end === 'end' && Math.abs(wallX - hole.x) <= 1.5) return true
+    if (end === 'start' && Math.abs(wallX - (hole.x + hole.width)) <= BOSS_FLUSH_PLANE_CM) return true
+    if (end === 'end' && Math.abs(wallX - hole.x) <= BOSS_FLUSH_PLANE_CM) return true
   }
   return false
 }
@@ -1089,8 +1206,8 @@ function ringFromTile(rect: Rect): { x: number; y: number }[] | null {
     const ring = ringCcw(
       cleanRing([
         ...bottom,
-        { x: bottom[bottom.length - 1].x, y: y1 },
-        { x: bottom[0].x, y: y1 },
+        { x: rect.x + rect.width, y: y1 },
+        { x: rect.x, y: y1 },
       ]),
     )
     return ring.length >= 3 ? ring : null
@@ -1255,103 +1372,6 @@ function rectAsRing(rect: Rect): Pt2[] {
   ]
 }
 
-function lineIntersect(a1: Pt2, a2: Pt2, b1: Pt2, b2: Pt2): Pt2 | null {
-  const dax = a2.x - a1.x
-  const day = a2.y - a1.y
-  const dbx = b2.x - b1.x
-  const dby = b2.y - b1.y
-  const det = dax * dby - day * dbx
-  if (Math.abs(det) < 1e-9) return null
-  const t = ((b1.x - a1.x) * dby - (b1.y - a1.y) * dbx) / det
-  return { x: a1.x + t * dax, y: a1.y + t * day }
-}
-
-/** Konvexer Ring (alle Außenwinkel gleiche Orientierung). */
-function ringIsConvex(ring: Pt2[]): boolean {
-  const n = ring.length
-  if (n < 3) return false
-  let sign = 0
-  for (let i = 0; i < n; i += 1) {
-    const a = ring[i]!
-    const b = ring[(i + 1) % n]!
-    const c = ring[(i + 2) % n]!
-    const cross = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
-    if (Math.abs(cross) < 1e-8) continue
-    const s = cross > 0 ? 1 : -1
-    if (sign === 0) sign = s
-    else if (s !== sign) return false
-  }
-  return true
-}
-
-/**
- * Gleichmäßiger Kanteneinzug (wie Wand-Bossen): parallele Kanten, gleiche Fase.
- * 1:1-Vertex-Zuordnung — kein cleanRing/Resample (sonst verdrehen die Schrägseiten).
- */
-function insetRing(ring: Pt2[], dist: number): Pt2[] | null {
-  if (ring.length < 3 || dist <= 1e-6) return null
-  const src = ringCcw(cleanRing(ring))
-  const n = src.length
-  if (n < 3) return null
-  const off: { a: Pt2; b: Pt2 }[] = []
-  for (let i = 0; i < n; i += 1) {
-    const a = src[i]!
-    const b = src[(i + 1) % n]!
-    const ex = b.x - a.x
-    const ey = b.y - a.y
-    const len = Math.hypot(ex, ey) || 1
-    const nx = -ey / len
-    const ny = ex / len
-    off.push({
-      a: { x: a.x + nx * dist, y: a.y + ny * dist },
-      b: { x: b.x + nx * dist, y: b.y + ny * dist },
-    })
-  }
-  const out: Pt2[] = []
-  const maxMiter = dist * 2.5
-  for (let i = 0; i < n; i += 1) {
-    const prev = off[(i - 1 + n) % n]!
-    const cur = off[i]!
-    const vertex = src[i]!
-    const hit = lineIntersect(prev.a, prev.b, cur.a, cur.b)
-    if (hit) {
-      const d = Math.hypot(hit.x - vertex.x, hit.y - vertex.y)
-      if (d <= maxMiter) {
-        out.push(hit)
-        continue
-      }
-      // Miter klemmen — Vertex-Zahl bleibt, keine Zacken aus Bisector-Fallback.
-      const t = maxMiter / d
-      out.push({
-        x: vertex.x + (hit.x - vertex.x) * t,
-        y: vertex.y + (hit.y - vertex.y) * t,
-      })
-      continue
-    }
-    const px = vertex.x - src[(i - 1 + n) % n]!.x
-    const py = vertex.y - src[(i - 1 + n) % n]!.y
-    const qx = src[(i + 1) % n]!.x - vertex.x
-    const qy = src[(i + 1) % n]!.y - vertex.y
-    const lp = Math.hypot(px, py) || 1
-    const lq = Math.hypot(qx, qy) || 1
-    let nx = -py / lp + -qy / lq
-    let ny = px / lp + qx / lq
-    const nl = Math.hypot(nx, ny) || 1
-    nx /= nl
-    ny /= nl
-    out.push({ x: vertex.x + nx * dist, y: vertex.y + ny * dist })
-  }
-  if (out.length !== n) return null
-  const a0 = Math.abs(ringArea(src))
-  const a1 = Math.abs(ringArea(out))
-  if (a1 < 1 || a1 < a0 * 0.12) return null
-  // Selbstüberschneidung / Umdrehung → unbrauchbar für EdgesGeometry.
-  if (Math.sign(ringArea(out)) !== Math.sign(ringArea(src)) && Math.abs(ringArea(src)) > 1e-6) {
-    return null
-  }
-  return out
-}
-
 /**
  * Bogenpolylinie ausdünnen (Douglas-Peucker), Endpunkte bleiben.
  * Wenige Stützpunkte → saubere Fase; zu viele → gezackter „zweiter Extrados“.
@@ -1443,23 +1463,39 @@ function simplifyClosedRing(ring: Pt2[], maxN: number, tol: number): Pt2[] {
  * Bossen als paralleler Einzug der Restform (Trapez → kleineres Trapez).
  * Gleiche Fase wie volle Wandsteine — Vertex-Paare 1:1, kein unabhängiges Resample.
  */
-function pinInsetXToFlushPlanes(
+function pinInsetToFlushPlanes(
   outerX: number,
   outerY: number,
   insetX: number,
+  insetY: number,
   wall: Wall | undefined,
   jambs: Rect[] | undefined,
-): number {
-  if (!wall) return insetX
-  if (outerX <= 1e-4 || outerX >= wall.width - 1e-4) return outerX
-  if (!jambs) return insetX
+): Pt2 {
+  let x = insetX
+  let y = insetY
+  if (!wall) return { x, y }
+  if (outerX <= 1e-4 || outerX >= wall.width - 1e-4) x = outerX
+  if (outerY <= 1e-4 || outerY >= wall.height - 1e-4) y = outerY
+  if (!jambs) return { x, y }
   for (const hole of jambs) {
-    if (outerY < hole.y - 1.5 || outerY > hole.y + hole.height + 1.5) continue
-    if (Math.abs(outerX - hole.x) <= 1.5 || Math.abs(outerX - (hole.x + hole.width)) <= 1.5) {
-      return outerX
+    const inY =
+      outerY >= hole.y - BOSS_FLUSH_PLANE_CM && outerY <= hole.y + hole.height + BOSS_FLUSH_PLANE_CM
+    const inX =
+      outerX >= hole.x - BOSS_FLUSH_PLANE_CM && outerX <= hole.x + hole.width + BOSS_FLUSH_PLANE_CM
+    if (inY) {
+      if (
+        Math.abs(outerX - hole.x) <= BOSS_FLUSH_PLANE_CM ||
+        Math.abs(outerX - (hole.x + hole.width)) <= BOSS_FLUSH_PLANE_CM
+      ) {
+        x = outerX
+      }
+    }
+    if (inX) {
+      if (Math.abs(outerY - hole.y) <= BOSS_FLUSH_PLANE_CM) y = outerY
+      if (Math.abs(outerY - (hole.y + hole.height)) <= BOSS_FLUSH_PLANE_CM) y = outerY
     }
   }
-  return insetX
+  return { x, y }
 }
 
 function extrudeInsetRingFrustum(
@@ -1474,71 +1510,66 @@ function extrudeInsetRingFrustum(
   flush?: { wall: Wall; jambs: Rect[] },
 ): boolean {
   if (chamfer <= 1e-6 || ring.length < 3) return false
-  const outerSrc = ringCcw(cleanRing(ring))
-  if (outerSrc.length < 3) return false
-  const b = ringBounds(outerSrc)
-  const minSide = Math.min(b.w, b.h)
-  if (minSide < 3.5) return false
-  const convex = ringIsConvex(outerSrc)
+  const outer = ringCcw(cleanRing(ring))
+  if (outer.length < 3) return false
+  const b = ringBounds(outer)
+  if (Math.min(b.w, b.h) < REMNANT_BOSS_MIN_SIDE_CM) return false
 
-  const tryChamfers = [
-    Math.min(chamfer, minSide * 0.45 - 0.05),
-    Math.min(chamfer, minSide * 0.32),
-    Math.min(chamfer * 0.65, minSide * 0.22),
-  ].filter((c, i, arr) => c > 0.35 && arr.indexOf(c) === i)
+  // Dieselbe Fase wie volle Steine (Breite + Tiefe, also gleicher Winkel) rundum.
+  // Wo der Rest schmaler als zwei Fasen ist, treffen sich die Fasen in einem First
+  // (t < chamfer) — kein Skalieren, kein steileres Mini-Trapez.
+  const surf = buildRemnantBossSurface(outer, chamfer, {
+    pin: flush
+      ? (base, top) =>
+          pinInsetToFlushPlanes(base.x, base.y, top.x, top.y, flush.wall, flush.jambs)
+      : undefined,
+  })
+  if (!surf) return false
+  const zAt = (t: number) => baseZ + (frontZ - baseZ) * Math.min(1, Math.max(0, t / chamfer))
 
-  let oPts = outerSrc
-  let iPts: Pt2[] | null = null
-  for (const c of tryChamfers) {
-    // Konkave Bogen-Reste (Streifen mit Kerbe): Schwerpunkt-Einzug erzeugt
-    // Sehnen/Diagonalen in der Zeichnung — nur echter paralleler Offset.
-    if (!convex) break
-    const edge = insetRing(outerSrc, c)
-    if (edge && edge.length === outerSrc.length) {
-      iPts = edge
-      break
-    }
-  }
-  if (!iPts || iPts.length !== oPts.length) return false
-  if (flush) {
-    iPts = iPts.map((pt, i) => ({
-      x: pinInsetXToFlushPlanes(oPts[i]!.x, oPts[i]!.y, pt.x, flush.wall, flush.jambs),
-      y: pt.y,
-    }))
-  }
-
-  const front = iPts.map((pt) => p(pt.x, pt.y, frontZ))
-  const contour = iPts.map((pt) => new THREE.Vector2(pt.x, pt.y))
-  let tris: number[][] = []
-  try {
-    tris = THREE.ShapeUtils.triangulateShape(contour, [])
-  } catch {
-    tris = []
-  }
-  if (tris.length > 0) {
-    for (const tri of tris) {
-      addTri(positions, normals, indices, front[tri[0]!]!, front[tri[1]!]!, front[tri[2]!]!)
-    }
-  } else {
-    for (let i = 1; i < front.length - 1; i += 1) {
-      addTri(positions, normals, indices, front[0]!, front[i]!, front[i + 1]!)
+  for (const strip of surf.strips) {
+    for (let k = 0; k < strip.base.length - 1; k += 1) {
+      const b0 = strip.base[k]!
+      const b1 = strip.base[k + 1]!
+      const t0 = strip.top[k]!
+      const t1 = strip.top[k + 1]!
+      addQuad(
+        positions,
+        normals,
+        indices,
+        p(b0.x, b0.y, baseZ),
+        p(b1.x, b1.y, baseZ),
+        p(t1.x, t1.y, zAt(t1.t)),
+        p(t0.x, t0.y, zAt(t0.t)),
+      )
     }
   }
 
-  for (let i = 0; i < oPts.length; i += 1) {
-    const j = (i + 1) % oPts.length
-    addQuad(
-      positions,
-      normals,
-      indices,
-      p(oPts[i]!.x, oPts[i]!.y, baseZ),
-      p(oPts[j]!.x, oPts[j]!.y, baseZ),
-      p(iPts[j]!.x, iPts[j]!.y, frontZ),
-      p(iPts[i]!.x, iPts[i]!.y, frontZ),
-    )
+  for (const top of surf.tops) {
+    if (Math.abs(ringArea(top)) < 0.05) continue
+    const front = top.map((pt) => p(pt.x, pt.y, frontZ))
+    const contour = top.map((pt) => new THREE.Vector2(pt.x, pt.y))
+    let tris: number[][] = []
+    try {
+      tris = THREE.ShapeUtils.triangulateShape(contour, [])
+    } catch {
+      tris = []
+    }
+    if (tris.length > 0) {
+      for (const tri of tris) {
+        addTri(positions, normals, indices, front[tri[0]!]!, front[tri[1]!]!, front[tri[2]!]!)
+      }
+    } else {
+      for (let i = 1; i < front.length - 1; i += 1) {
+        addTri(positions, normals, indices, front[0]!, front[i]!, front[i + 1]!)
+      }
+    }
   }
   return true
 }
+
+/** Reste schmaler als das: kein Boss (Krümel bleibt flache Steinfront). */
+const REMNANT_BOSS_MIN_SIDE_CM = 1.5
 
 function fillRingFront(
   ring: Pt2[],
@@ -1566,42 +1597,6 @@ function fillRingFront(
       addTri(positions, normals, indices, front[0]!, front[i]!, front[i + 1]!)
     }
   }
-}
-
-/** Bossen-Einzug eines monotonen Bogen-Bands (Streifen/Ziegel an der Kurve). */
-function offsetArcIntoBand(
-  arc: { x: number; y: number }[],
-  dist: number,
-  towardTop: boolean,
-): { x: number; y: number }[] {
-  const n = arc.length
-  const out: { x: number; y: number }[] = []
-  for (let i = 0; i < n; i += 1) {
-    const prev = arc[Math.max(0, i - 1)]!
-    const cur = arc[i]!
-    const next = arc[Math.min(n - 1, i + 1)]!
-    const e1x = cur.x - prev.x
-    const e1y = cur.y - prev.y
-    const e2x = next.x - cur.x
-    const e2y = next.y - cur.y
-    const l1 = Math.hypot(e1x, e1y) || 1
-    const l2 = Math.hypot(e2x, e2y) || 1
-    let nx = -e1y / l1 + -e2y / l2
-    let ny = e1x / l1 + e2x / l2
-    const nl = Math.hypot(nx, ny) || 1
-    nx /= nl
-    ny /= nl
-    if (towardTop && ny < 0) {
-      nx = -nx
-      ny = -ny
-    }
-    if (!towardTop && ny > 0) {
-      nx = -nx
-      ny = -ny
-    }
-    out.push({ x: cur.x + nx * dist, y: cur.y + ny * dist })
-  }
-  return out
 }
 
 function fillMonotoneArcFront(
@@ -1647,153 +1642,6 @@ function fillMonotoneArcFront(
       )
     }
   }
-}
-
-/**
- * Bossen entlang bottomArc/topArc: paralleler Einzug des Bands, Segment-Quads.
- * Kein Fächer und kein konvexer Ring-Offset (der füllt die Kerbe).
- */
-function extrudeMonotoneArcBoss(
-  rect: Rect,
-  chamfer: number,
-  p: (wx: number, wy: number, z: number) => THREE.Vector3,
-  baseZ: number,
-  frontZ: number,
-  positions: number[],
-  normals: number[],
-  indices: number[],
-  flush?: { wall: Wall; jambs: Rect[] },
-): boolean {
-  if (chamfer <= 0.35) return false
-  const pinX = (outerX: number, outerY: number, insetX: number) =>
-    flush ? pinInsetXToFlushPlanes(outerX, outerY, insetX, flush.wall, flush.jambs) : insetX
-  const bottom = rect.bottomArc
-  const top = rect.topArc
-  const y0 = rect.y
-  const y1 = rect.y + rect.height
-  if (bottom && bottom.length >= 3 && !(top && top.length >= 2)) {
-    const innerY1 = y1 - chamfer
-    if (innerY1 - y0 < 1) return false
-    const inner = offsetArcIntoBand(bottom, chamfer, true).map((pt, i) => ({
-      x: pinX(bottom[i]!.x, bottom[i]!.y, pt.x),
-      y: Math.min(innerY1 - 0.05, pt.y),
-    }))
-    if (inner.length !== bottom.length) return false
-    if (innerY1 - Math.max(...inner.map((pt) => pt.y)) < 0.4) return false
-    for (let i = 0; i < bottom.length - 1; i += 1) {
-      const a = inner[i]!
-      const b = inner[i + 1]!
-      addQuad(
-        positions,
-        normals,
-        indices,
-        p(a.x, a.y, frontZ),
-        p(b.x, b.y, frontZ),
-        p(b.x, innerY1, frontZ),
-        p(a.x, innerY1, frontZ),
-      )
-      addQuad(
-        positions,
-        normals,
-        indices,
-        p(bottom[i]!.x, bottom[i]!.y, baseZ),
-        p(bottom[i + 1]!.x, bottom[i + 1]!.y, baseZ),
-        p(b.x, b.y, frontZ),
-        p(a.x, a.y, frontZ),
-      )
-    }
-    addQuad(
-      positions,
-      normals,
-      indices,
-      p(bottom[0]!.x, y1, baseZ),
-      p(bottom[bottom.length - 1]!.x, y1, baseZ),
-      p(inner[inner.length - 1]!.x, innerY1, frontZ),
-      p(inner[0]!.x, innerY1, frontZ),
-    )
-    addQuad(
-      positions,
-      normals,
-      indices,
-      p(bottom[0]!.x, bottom[0]!.y, baseZ),
-      p(bottom[0]!.x, y1, baseZ),
-      p(inner[0]!.x, innerY1, frontZ),
-      p(inner[0]!.x, inner[0]!.y, frontZ),
-    )
-    const last = bottom.length - 1
-    addQuad(
-      positions,
-      normals,
-      indices,
-      p(bottom[last]!.x, y1, baseZ),
-      p(bottom[last]!.x, bottom[last]!.y, baseZ),
-      p(inner[last]!.x, inner[last]!.y, frontZ),
-      p(inner[last]!.x, innerY1, frontZ),
-    )
-    return true
-  }
-  if (top && top.length >= 3 && !(bottom && bottom.length >= 2)) {
-    const innerY0 = y0 + chamfer
-    if (y1 - innerY0 < 1) return false
-    const inner = offsetArcIntoBand(top, chamfer, false).map((pt, i) => ({
-      x: pinX(top[i]!.x, top[i]!.y, pt.x),
-      y: Math.max(innerY0 + 0.05, pt.y),
-    }))
-    if (inner.length !== top.length) return false
-    if (Math.min(...inner.map((pt) => pt.y)) - innerY0 < 0.4) return false
-    for (let i = 0; i < top.length - 1; i += 1) {
-      const a = inner[i]!
-      const b = inner[i + 1]!
-      addQuad(
-        positions,
-        normals,
-        indices,
-        p(a.x, innerY0, frontZ),
-        p(b.x, innerY0, frontZ),
-        p(b.x, b.y, frontZ),
-        p(a.x, a.y, frontZ),
-      )
-      addQuad(
-        positions,
-        normals,
-        indices,
-        p(top[i]!.x, top[i]!.y, baseZ),
-        p(top[i + 1]!.x, top[i + 1]!.y, baseZ),
-        p(b.x, b.y, frontZ),
-        p(a.x, a.y, frontZ),
-      )
-    }
-    addQuad(
-      positions,
-      normals,
-      indices,
-      p(top[0]!.x, y0, baseZ),
-      p(inner[0]!.x, innerY0, frontZ),
-      p(inner[inner.length - 1]!.x, innerY0, frontZ),
-      p(top[top.length - 1]!.x, y0, baseZ),
-    )
-    addQuad(
-      positions,
-      normals,
-      indices,
-      p(top[0]!.x, y0, baseZ),
-      p(top[0]!.x, top[0]!.y, baseZ),
-      p(inner[0]!.x, inner[0]!.y, frontZ),
-      p(inner[0]!.x, innerY0, frontZ),
-    )
-    const last = top.length - 1
-    addQuad(
-      positions,
-      normals,
-      indices,
-      p(top[last]!.x, top[last]!.y, baseZ),
-      p(top[last]!.x, y0, baseZ),
-      p(inner[last]!.x, innerY0, frontZ),
-      p(inner[last]!.x, inner[last]!.y, frontZ),
-    )
-    return true
-  }
-  return false
 }
 
 /** Trapez-Boss der Restkontur; false = kein Boss (kein Diamant-Fallback). */
@@ -1869,23 +1717,26 @@ function extrudeFrustum(
     atEnd = false
   }
   const jambs = openingJambBodyRects(wall)
+  // Der Stein bleibt im Verband und wird von der Öffnung nur maskiert; die Restform
+  // bekommt rundum dieselbe Fase — auch an der Laibung. Bündig nur am Wandende.
+  const noJambFlush: Rect[] = []
   const x0Flush = rect.x
   const x1Flush = rect.x + rect.width
   const y0Flush = rect.y
   const y1Flush = rect.y + rect.height
   if (
     !rect.keepBossChamferStart &&
-    flushBossSide(wall, x0Flush, y0Flush, y1Flush, 'start', jambs)
+    flushBossSide(wall, x0Flush, y0Flush, y1Flush, 'start', noJambFlush)
   ) {
     atStart = true
   }
   if (
     !rect.keepBossChamferEnd &&
-    flushBossSide(wall, x1Flush, y0Flush, y1Flush, 'end', jambs)
+    flushBossSide(wall, x1Flush, y0Flush, y1Flush, 'end', noJambFlush)
   ) {
     atEnd = true
   }
-  const remnantFlush = { wall, jambs }
+  const remnantFlush = { wall, jambs: noJambFlush }
 
   if (rect.outline && rect.outline.length >= 3) {
     const polar = rect.polar
@@ -1906,29 +1757,27 @@ function extrudeFrustum(
     return
   }
 
-  // Zugeschnittene Steine: Bogenkante als Band-Boss; sonst paralleler Einzug.
-  // Laibungs-X bleibt bündig (remnantFlush) — kein Bossen-Einzug „nach innen“.
-  if (isOpeningCut(rect) || Boolean(rect.bottomArc?.length) || Boolean(rect.topArc?.length)) {
-    if (
-      extrudeMonotoneArcBoss(
-        rect,
-        chamfer,
-        p,
-        bodyFrontZ,
-        taperFrontZ,
-        positions,
-        normals,
-        indices,
-        remnantFlush,
-      )
-    ) {
-      return
-    }
+  // Bogen-Reste (3, 4 oder n Ecken, Bogenkante): die maskierte Restform bekommt als
+  // Ganzes dieselbe Fase wie volle Steine (Dachfläche mit First, wo sie schmal ist).
+  // Kein Band-Boss mehr als Rückfall — der hatte eine andere, steilere Fase.
+  if (Boolean(rect.bottomArc?.length) || Boolean(rect.topArc?.length)) {
     if (extrudeRemnantTrapezoidBoss(rect, chamfer, p, bodyFrontZ, taperFrontZ, positions, normals, indices, remnantFlush)) {
       return
     }
     fillMonotoneArcFront(rect, p, bodyFrontZ, positions, normals, indices)
     return
+  }
+
+  // Schmale Rechteck-Reste an der Laibung: der isotrope Pfad unten müsste die Fase
+  // steiler machen (Innenkante > 48° in der Zeichnung) — stattdessen Dachfläche/First.
+  if (isOpeningCut(rect)) {
+    const fullBoss = 2 * chamfer + 0.05
+    if (
+      (rect.width < fullBoss || rect.height < fullBoss) &&
+      extrudeRemnantTrapezoidBoss(rect, chamfer, p, bodyFrontZ, taperFrontZ, positions, normals, indices, remnantFlush)
+    ) {
+      return
+    }
   }
 
   let x0 = rect.x
@@ -2176,6 +2025,7 @@ function prepareStudioPanelParts(
   const joint = panel.joint ?? 0.8
   const kind = panelKindForPattern(panel.pattern)
   const { rowCuts } = visiblePanelRowRange(wall.height, panel)
+  const clipTiles = subdivideLargeTilesAtArchCaps(tiles, wall.openings, panel.panelHeight)
 
   // Rustika (v2.0.78) oder Hybrid: Clip am Intrados + Bogenband ersetzen.
   // Klassischer Ring: Extrados-Dock.
@@ -2188,7 +2038,7 @@ function prepareStudioPanelParts(
       openingArchRusticationUsesCircleClip(o),
   )
   let rects: OpeningPoly[] = clipPolysMinusArches(
-    tiles.flatMap((tile) => clipTileAgainstHoles(tile, holes)),
+    clipTiles.flatMap((tile) => clipTileAgainstHoles(tile, holes)),
     wall.openings,
     PANEL_OPENING_CLEARANCE,
     panel.panelHeight,
@@ -2382,6 +2232,16 @@ function extrudeStudioPanelParts(
   geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3))
   geometry.setIndex(indices)
   geometry.computeBoundingSphere()
+  const zs = panelDepthZs(wall, panel, Math.max(panel.projectDepth, 1e-6))
+  const toward = zs.flip ? -1 : 1
+  const overlayZ = zs.bodyFrontZ + toward * 0.12
+  attachDrawingArchPolylines(
+    geometry,
+    wall,
+    [...parts.rects, ...parts.ringAndFan],
+    (wx) => wallLocalX(wall, wx, overlayZ, 0, overlayZ, miter.start, miter.end),
+    overlayZ,
+  )
   return geometry
 }
 
@@ -3764,14 +3624,25 @@ function buildStudioPanelFlatTileGeometry(
       addWorkFaceOutlinePoly(wall, miter, faceZ, positions, normals, indices, part.outline)
       continue
     }
-    if (part.bottomArc || part.topArc) continue
+    if (part.bottomArc || part.topArc) {
+      addWorkFaceArcPart(wall, miter, faceZ, positions, normals, indices, part)
+      continue
+    }
     const x0 = part.x + halfJ
     const y0 = part.y + halfJ
     const x1 = part.x + part.width - halfJ
     const y1 = part.y + part.height - halfJ
     addWorkFaceQuad(wall, miter, faceZ, positions, normals, indices, x0, y0, x1, y1)
   }
-  return finishWorkFlatGeometry(positions, normals, indices)
+  const geometry = finishWorkFlatGeometry(positions, normals, indices)
+  attachDrawingArchPolylines(
+    geometry,
+    wall,
+    rects,
+    (wx) => wallLocalX(wall, wx, faceZ, 0, faceZ, miter.start, miter.end),
+    faceZ,
+  )
+  return geometry
 }
 
 function buildStudioPanelFlatJointGeometry(
@@ -3815,7 +3686,10 @@ function buildStudioPanelFlatJointGeometry(
       addWorkFaceOutlinePoly(wall, miter, faceZ, positions, normals, indices, part.outline)
       continue
     }
-    if (part.bottomArc || part.topArc) continue
+    if (part.bottomArc || part.topArc) {
+      addWorkFaceArcPart(wall, miter, faceZ, positions, normals, indices, part)
+      continue
+    }
     addWorkFaceQuad(
       wall,
       miter,

@@ -11,7 +11,7 @@
 | [lighting-mood.md](lighting-mood.md) | Mehrschichtige Lichtstimmung: Umbra, Kontakt, Bounce |
 | [scene-lights.md](scene-lights.md) | Bibliotheks-Punktlichter: einfügen, XYZ, Persistenz |
 | [celestial-sky.md](celestial-sky.md) | Takram-Himmel, Sonne/Mond, Dämmerung, Tageszeit 0–24 h |
-| [panel-geometry.md](panel-geometry.md) | Gehrungsberechnung, `wallLocalX`, Paneelextrusion, 3D-Leibung |
+| [panel-geometry.md](panel-geometry.md) | Gehrungsberechnung, `wallLocalX`, Paneelextrusion, 3D-Leibung, Rest-Bossen an Öffnungen (`remnantBoss.ts`) |
 | [floor-plan.md](floor-plan.md) | Grundriss-System, Ring-Erkennung, Miter, Etagen, Innenkante Decke/Boden |
 | [views-and-state.md](views-and-state.md) | Views, Persistenz, Undo/Redo, Navigation |
 | [camera.md](camera.md) | 3D-Kamera, Orbit-Ziel, ⌘/Ctrl-Gesten, Geschwindigkeiten |
@@ -39,7 +39,7 @@
 | Konstante | Wert | Bedeutung |
 |---|---|---|
 | `STUDIO_TILE` | 32 cm | Grundraster für Studio-Wände |
-| `STUDIO_MASONRY` | 8 cm | Mauerwerks-Raster (Öffnungen, Zierbänder) |
+| `STUDIO_MASONRY` | 8 cm | Feines Raster (Streifen, Zierbänder). Läuferverband-Öffnungen: ½ Steinlänge |
 | `STUDIO_PANEL_SOFT_MAX` | 10000 cm | Soft-Obergrenze für Paneel-/Maß-Clamps (kein hartes UI-Max) |
 | `PLAN_GRID` | 48 cm | Grundriss-Gitterabstand / Wand-Verschieben (`WALL_MOVE_SNAP`) |
 | `PLAN_DIAGONAL_STEP` | \(48\sqrt{2}\) cm | 45°-Wandschritt (Diagonale eines Rasterfeldes) |

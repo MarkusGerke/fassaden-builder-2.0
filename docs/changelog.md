@@ -2,6 +2,38 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Bossen an Bogen-Resten als Dachfläche (2026-09-02) — v2.0.87
+
+v2.0.86 skalierte Einzug und Höhe bei schmalen Resten (`REMNANT_BOSS_SCALE_STEPS`) und fiel bei Selbstüberschneidung des Miter-Einzugs auf den Band-Boss oder flach zurück — am Bogen standen steile Mini-Pyramiden, flache Steine ohne Boss und schief eingezogene Fronten neben normalen Feldsteinen. Neues Modul `src/studio/remnantBoss.ts` (`buildRemnantBossSurface`): exakter Innen-Offset der Restkontur (Rohoffset mit Miter-Ecken, Kreuzungen nicht benachbarter Offset-Kanten, Gültigkeitsfilter, Verkettung → 0…n Deckflächen; umgedrehte Offset-Kanten werden übersprungen, ihre Nachbarn um 3·Fase verlängert) plus Fasenstreifen aus Normalenstrahlen, die an der Mittelachse enden (`ridgeT`, Bisektion). Ergebnis: Fasenbreite und -tiefe überall wie im Feld, schmale Reste bekommen einen First, geteilte Fronten (Scheitelstein) funktionieren. Band-Boss (`extrudeMonotoneArcBoss`, `offsetArcIntoBand`), `insetRing`, `ringIsSimple`/`segmentsCross` in `panelGeometry.ts` entfernt; nicht-einfache Konturen liefern keinen Boss. Dateien: `remnantBoss.ts` (+ Tests), `panelGeometry.ts`. Docs: [panel-geometry.md](panel-geometry.md), [ux.md](ux.md).
+
+### Bossen: Stein bleibt im Verband, Restform wird Trapez (2026-09-02) — v2.0.86
+
+v2.0.83–85 hatten „Trapez“ als Keilstein-Geometrie gelesen und die Kappensteine radial geschnitten (`radializeArchCapPolys`) — in der Zeichnung Strahlen durch zwei Lagen. Gemeint war das **Bossenprofil**: Der Stein bleibt in Größe und Lage im Verband, die Öffnung maskiert ihn nur; die Restform (Rechteck, L, Zwickel, Bogenkante — 3, 4 oder n Ecken) wird als Ganzes eingezogen (`extrudeInsetRingFrustum`, jetzt auch konkav) und bekommt rundum dieselbe Fase wie volle Steine. Schmale Reste: Einzug **und** Höhe mit gleichem Faktor skaliert (`REMNANT_BOSS_SCALE_STEPS`, Winkel konstant), Krümel < 1,5 cm flach. Kein Laibungs-Flush mehr (Fase auch zur Öffnung; bündig nur am Wandende). `radializeArchCapPolys` entfernt. Dateien: `openingGeometry.ts`, `panelGeometry.ts`, Tests. Docs: [panel-geometry.md](panel-geometry.md), [ux.md](ux.md).
+
+### Trapez bis zur Schulter, Zeichnung ohne Innenquadrat (2026-09-02) — v2.0.85
+
+v2.0.84 ließ Schultersteine nahe der Laibung rechteckig (`maxDx` 40 cm) und Reststeine ums Fenster mit steilem Einzug — in der Zeichnung inneres Quadrat plus Geistergitter. Jetzt Versatz bis 80 cm; rechteckige Laibungssteine dieselbe Fase wie Feldsteine; Bossen-Zeichnung `EdgesGeometry` 48°. Dateien: `openingGeometry.ts`, `panelGeometry.ts`, `FacadeController.ts`, Tests. Docs: [panel-geometry.md](panel-geometry.md), [ux.md](ux.md).
+
+### Trapez-Bossen an der Schulter, Zeichnung ohne Innenquadrat (2026-09-02) — v2.0.84
+
+v2.0.83 radialisierte nur Steine nahe am Scheitel (`maxDx` 14 cm) — Schultersteine blieben Rechtecke. Jetzt bis 28–40 cm Versatz, gemeinsame Fuge, Laibung lotrecht. Zeichnung blendet die ganze Bossen-Platte vor der Steinfront aus (nicht nur exaktes `bossZ`) — kein inneres Quadrat ums Fenster, auch bei `projectDepth` 2.7. Dateien: `openingGeometry.ts`, `panelGeometry.ts`, Tests. Docs: [panel-geometry.md](panel-geometry.md), [ux.md](ux.md).
+
+### Trapez-Bossen am Bogen, Zeichnung ohne Innenquadrat (2026-09-02) — v2.0.83
+
+Kappensteine mit `bottomArc` bekommen radiale Seiten zum Bogenmittelpunkt (`radializeArchCapPolys` nach dem Laibungs-Flush) — Trapez/Zwickel, gemeinsame Fuge mit dem Nachbarn; Laibung bleibt lotrecht. Keine Auto-Rustika. In der Zeichnung entfallen Kanten auf der Bossen-Front (`studioDrawingBossFrontLocalZ`), die ums Fenster als inneres Quadrat erschienen. Reststeine: bündiger Einzug an Laibung/Sohlbank (3 cm) und kleinere Fase. Dateien: `openingGeometry.ts`, `panelGeometry.ts`, Tests. Docs: [panel-geometry.md](panel-geometry.md), [ux.md](ux.md).
+
+### Läuferverband: Öffnungen auf dem Steinmodul (2026-09-02) — v2.0.82
+
+Fenster und Türen sitzen im Läuferverband auf **Halbstein-Fugen** (bzw. dem Verbandmodul), nicht mehr auf einem 8-cm-Raster, das 8-cm-Stummel neben 24-cm-Läufern erzeugt. Layout verschmilzt Reste schmaler als ½ Stein an der Laibung (`absorbJambSlivers`). Drag rastet immer; beide Laibungen auf Fugen. Alt-Saves: Schema 14. Docs: [panel-geometry.md](panel-geometry.md), [ux.md](ux.md), [migration.md](migration.md).
+
+### Große Paneele als Zwickel am Bogen (2026-09-02) — v2.0.81
+
+`subdivideLargeTilesAtArchCaps`: in der Kappe (Kämpfer bis Scheitel, nur über der Öffnung) werden Paneele breiter als 16 cm in Spalten geteilt, danach der bestehende Kurven-Clip. Kleine Ziegel (Höhe &lt; 14 cm und Breite &lt; 40 cm) unverändert. L-Reste in der Kappe nicht mehr als ein Outline (Sehne). Docs: [panel-geometry.md](panel-geometry.md).
+
+### Zeichnung: Streifen am Bogen (2026-09-02) — v2.0.80
+
+`claddingEdgeHitsOpening` / `filterStudioDrawingSegments` nutzen die **Bogenmaske**, nicht die Bounding-Box (v2.0.32 hatte Schulterkanten mitgelöscht → Phantom-Rechteck bei breiten Streifen). Strecken durchs Glas werden **zerschnitten** (Pier bleibt). CSG-Schultern-Diagonalen: `isSpuriousOpeningShoulderDiagonal`. Arbeitsansicht zeichnet `bottomArc`/`topArc` als Trapez-Spalten; `drawingArchPolylines` als explizite Silhouette (`addMeshEdges`). `flushClipPartsToOpeningJambs` nutzt `openingArchSpringY` (Tudor/Segment, nicht nur `openingArchGeom`). Docs: [panel-geometry.md](panel-geometry.md), [ux.md](ux.md).
+
 ### Notfall: Auto-Rustika aus (2026-09-02) — v2.0.79
 
 v2.0.78 hat Spandrillen ausgestanzt und mit fehlerhaften Polygonen gefüllt (graue Treppenlöcher, Fächer). **`openingArchRusticationEnabled` nur noch mit `Opening.archRustication.enabled`** (Default aus). Renderer fällt auf Clip/Voussoir zurück. Docs: [facade-layers.md](facade-layers.md).

@@ -1053,6 +1053,49 @@ describe('Verbandsmuster gleichmäßig (wandweites Raster)', () => {
     expect(Math.abs(even[1]!.x - odd[1]!.x)).toBeGreaterThan(8)
   })
 
+  it('Läuferverband: keine Stummel schmaler als der Halbstein an der Laibung', () => {
+    const panel = {
+      ...DEFAULT_STUDIO_PANEL,
+      pattern: 'runningBond' as const,
+      panelWidth: 24,
+      panelHeight: 8,
+      joint: 0.8,
+      plinthEnabled: false,
+      cornerJoin: 'miter' as const,
+    }
+    const w = studioWall({
+      id: 'sliver',
+      width: 480,
+      height: 128,
+      panel,
+      openings: [
+        {
+          id: 'a',
+          type: 'window',
+          x: 128,
+          y: 32,
+          width: 80,
+          height: 64,
+        },
+      ],
+    })
+    const tiles = layoutPanelTiles(w, panel, [])
+    const o = w.openings[0]!
+    const midY = o.y + o.height * 0.4
+    const atJamb = tiles.filter(
+      (t) =>
+        t.y <= midY &&
+        t.y + t.height >= midY &&
+        (Math.abs(t.x + t.width - o.x) < 1.5 || Math.abs(t.x - (o.x + o.width)) < 1.5),
+    )
+    expect(atJamb.length).toBeGreaterThan(0)
+    const half = panel.panelWidth / 2
+    for (const t of atJamb) {
+      expect(t.width).toBeGreaterThanOrEqual(half - panel.joint - 1)
+      expect(t.width).toBeLessThanOrEqual(panel.panelWidth + half + 1)
+    }
+  })
+
   it('Läuferverband 64×32: innere Steine volle Breite, kein Dehnungs-Chaos', () => {
     const panel = {
       ...DEFAULT_STUDIO_PANEL,
@@ -1151,7 +1194,8 @@ describe('Verbandsmuster gleichmäßig (wandweites Raster)', () => {
           Math.abs(t.x + t.width - o.x) < 1.5,
       )
       expect(atJamb.length).toBeGreaterThan(0)
-      expect(atJamb.every((t) => t.width <= panel.panelWidth + 1)).toBe(true)
+      expect(atJamb.every((t) => t.width <= panel.panelWidth + panel.panelWidth / 2 + 1)).toBe(true)
+      expect(atJamb.every((t) => t.width >= panel.panelWidth / 2 - 2)).toBe(true)
       // Kein Stein ragt in die Öffnung hinein
       const intoHole = tiles.filter(
         (t) =>

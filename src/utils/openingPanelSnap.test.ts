@@ -106,11 +106,10 @@ describe('openingPanelSnap', () => {
       0,
       'drag',
     )
-    expect(Math.abs(snapped.x - centerX)).toBeLessThan(0.05)
-    expect(Math.abs(snapped.x + width / 2 - wallW / 2)).toBeLessThan(0.05)
+    expect(Math.abs(snapped.x + snapped.width / 2 - wallW / 2)).toBeLessThan(0.05)
   })
 
-  it('Nudge springt zum nächsten Kandidaten; Drag nur Fuge + Magnet', () => {
+  it('Nudge springt zum nächsten Kandidaten; Drag immer auf Fuge', () => {
     const wall = studioWall({ id: 'w', width: 384 })
     const opening = {
       x: 48,
@@ -124,14 +123,16 @@ describe('openingPanelSnap', () => {
     const nudged = snapOpeningMoveToMasonry(wall, [wall], opening, 56, 32, 8, 0, 'nudge')
     expect(nudged.x).toBe(after48)
 
-    // Nahe Fuge 48 (≤ Magnet) → rastet
+    // Nahe Fuge 48 → rastet
     const nearFlush = snapOpeningMoveToMasonry(wall, [wall], opening, 48 + 4, 32, 4, 0, 'drag')
     expect(nearFlush.x).toBe(48)
 
-    // Außerhalb Magnet → freie Position (kein Springen zur nächsten Fuge)
-    const freeX = 48 + DRAG_SNAP_MAGNET_CM + 2
-    const free = snapOpeningMoveToMasonry(wall, [wall], opening, freeX, 32, freeX - 48, 0, 'drag')
-    expect(free.x).toBe(freeX)
+    // Auch außerhalb des alten Magnet-Radius: nächste Fuge, kein Freilauf
+    const farX = 48 + DRAG_SNAP_MAGNET_CM + 2
+    const far = snapOpeningMoveToMasonry(wall, [wall], opening, farX, 32, farX - 48, 0, 'drag')
+    const xs = openingPlacementCandidateXs(wall, [wall], 96, undefined, 'drag')
+    expect(xs.some((c) => Math.abs(c - far.x) < 0.05)).toBe(true)
+    expect(far.x).not.toBe(farX)
   })
 
   it('Drag-Kandidaten ohne Steinmitten; Nudge behält Steinmitte', () => {
@@ -158,6 +159,34 @@ describe('openingPanelSnap', () => {
     const xs = openingMasonryJambXs(wall, [wall])
     expect(xs.some((c) => Math.abs(c - aligned.x) < 0.05)).toBe(true)
     expect(xs.some((c) => Math.abs(c - (aligned.x + aligned.width)) < 0.05)).toBe(true)
+  })
+
+  it('Drag snapt die Breite auf Fugen (beide Laibungen)', () => {
+    const wall = studioWall({
+      id: 'w24',
+      width: 384,
+      panel: {
+        ...DEFAULT_STUDIO_PANEL,
+        pattern: 'runningBond',
+        panelWidth: 24,
+        panelHeight: 8,
+        plinthEnabled: false,
+        plinthHeight: 0,
+      },
+    })
+    const moved = snapOpeningMoveToMasonry(
+      wall,
+      [wall],
+      { x: 50, y: 32, width: 80, height: 96, type: 'window' },
+      50,
+      32,
+      0,
+      0,
+      'drag',
+    )
+    const xs = openingMasonryJambXs(wall, [wall])
+    expect(xs.some((c) => Math.abs(c - moved.x) < 0.05)).toBe(true)
+    expect(xs.some((c) => Math.abs(c - (moved.x + moved.width)) < 0.05)).toBe(true)
   })
 })
 
