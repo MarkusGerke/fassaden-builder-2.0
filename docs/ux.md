@@ -596,7 +596,7 @@ Neue Elemente: Wand, Paneele, Profile, Rahmen, Türen → `#ffffff`. Neue Fenste
 
 ## Fenster verschieben
 
-Studio-Öffnungen: **Position** bei Modulverband an **Mauerwerksfugen** (Laibung bündig mit Cut aus `masonryPatternCuts`, Höhe an `visiblePanelRowRange`); sonst **8 cm** (`STUDIO_MASONRY`). **Breite/Höhe** richten sich beim Ändern mit an Fugen/Schichten. Pfeiltasten und Toolbar springen zur **nächsten** Fuge/Schicht. **Kein Randabstand** zur Wandkante (v0.7.188) — Öffnungen dürfen bündig an den Rand (`clampOpeningToWall` inset 0). Abstand **zwischen** Öffnungen bleibt 32 cm (`OPENING_MIN_GAP`).
+Studio-Öffnungen: **Position** bei Modulverband an **Mauerwerksfugen** (Laibung bündig mit Cut; Höhe an Schichten). **Mehrere Etagen** derselben Fassade mit unterschiedlichem Modul: gemeinsames Snap-Maß = kgV der Modul-Einheiten (`commonMasonrySnapStepCm`). Sonst **8 cm** (`STUDIO_MASONRY`). **Breite/Höhe** richten sich beim Ändern mit an Fugen/Schichten. Pfeiltasten und Toolbar springen zur **nächsten** Fuge/Schicht. **Kein Randabstand** zur Wandkante (v0.7.188) — Öffnungen dürfen bündig an den Rand (`clampOpeningToWall` inset 0). Abstand **zwischen** Öffnungen bleibt 32 cm (`OPENING_MIN_GAP`).
 
 ---
 

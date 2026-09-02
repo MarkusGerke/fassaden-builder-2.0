@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.66'
+export const APP_VERSION = '2.0.67'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,16 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.67',
+    date: '2026-09-02',
+    title: 'Fenster-Snap über Etagen mit unterschiedlichem Modul',
+    changes: [
+      'Gestapelte Fassaden (z. B. 24er Ziegel über 48er Paneelen): Öffnungen rasten auf dem gemeinsamen Fugenmaß (kgV der Modul-Einheiten)',
+      'So bleiben Laibungen auf beiden Geschossen einpassbar — ohne den Verband zu dehnen; unterschiedliche Fugenbreiten stören das Cut-Raster nicht',
+      'Eine Etage allein: weiterhin echte Lagen-Cuts inkl. Halbstein-Versatz',
+    ],
+  },
   {
     version: '2.0.66',
     date: '2026-09-02',

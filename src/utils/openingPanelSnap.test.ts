@@ -4,6 +4,8 @@ import { emptyNeighbors } from '../types/facade'
 import { DEFAULT_STUDIO_PANEL, WALL_DEPTH } from '../studio/constants'
 import {
   alignOpeningToMasonry,
+  commonMasonrySnapStepCm,
+  masonryFacadeStack,
   openingMasonryJambXs,
   snapOpeningMoveToMasonry,
   wallUsesOpeningMasonrySnap,
@@ -21,6 +23,7 @@ function studioWall(partial: Partial<Wall> & { id: string }): Wall {
     originX: 0,
     originZ: 0,
     yawDeg: 0,
+    buildingId: 'b1',
     openings: [],
     profiles: [],
     neighbors: emptyNeighbors(),
@@ -84,5 +87,66 @@ describe('openingPanelSnap', () => {
     const xs = openingMasonryJambXs(wall, [wall])
     expect(xs.some((c) => Math.abs(c - aligned.x) < 0.05)).toBe(true)
     expect(xs.some((c) => Math.abs(c - (aligned.x + aligned.width)) < 0.05)).toBe(true)
+  })
+})
+
+describe('gemeinsames Raster 24er + 48er Etagen', () => {
+  const panel24 = {
+    ...DEFAULT_STUDIO_PANEL,
+    pattern: 'runningBond' as const,
+    panelWidth: 24,
+    panelHeight: 8,
+    joint: 0.8,
+    plinthEnabled: false,
+    plinthHeight: 0,
+  }
+  const panel48 = {
+    ...DEFAULT_STUDIO_PANEL,
+    pattern: 'runningBond' as const,
+    panelWidth: 48,
+    panelHeight: 16,
+    joint: 1.2,
+    plinthEnabled: false,
+    plinthHeight: 0,
+  }
+
+  it('findet gestapelte Fassaden und LCM-Schritt 24', () => {
+    const lower = studioWall({ id: 'eg', y: 0, width: 384, panel: panel48 })
+    const upper = studioWall({ id: 'og', y: 448, width: 384, panel: panel24 })
+    const stack = masonryFacadeStack(lower, [lower, upper])
+    expect(stack).toHaveLength(2)
+    expect(commonMasonrySnapStepCm(stack)).toBe(24)
+  })
+
+  it('snapt bei gemischtem Stapel auf 24 cm (nicht 12)', () => {
+    const lower = studioWall({ id: 'eg', y: 0, width: 384, panel: panel48 })
+    const upper = studioWall({ id: 'og', y: 448, width: 384, panel: panel24 })
+    const walls = [lower, upper]
+    const xsLower = openingMasonryJambXs(lower, walls)
+    const xsUpper = openingMasonryJambXs(upper, walls)
+    // Gemeinsames Raster: alle 24 cm — 12 wäre nur auf dem 24er bündig.
+    expect(xsLower).toContain(0)
+    expect(xsLower).toContain(24)
+    expect(xsLower).toContain(48)
+    expect(xsLower).not.toContain(12)
+    expect(xsUpper).toEqual(xsLower)
+
+    const moved = snapOpeningMoveToMasonry(
+      lower,
+      walls,
+      { x: 0, y: 32, width: 96, height: 96, type: 'window' },
+      8,
+      32,
+      8,
+      0,
+    )
+    expect(moved.x).toBe(24)
+  })
+
+  it('alleinstehende 24er-Wand behält Halbstein-Fugen (12)', () => {
+    const only = studioWall({ id: 'solo', width: 384, panel: panel24 })
+    const xs = openingMasonryJambXs(only, [only])
+    expect(xs).toContain(12)
+    expect(xs).toContain(24)
   })
 })

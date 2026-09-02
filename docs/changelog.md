@@ -2,6 +2,10 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Gemeinsames Öffnungs-Snap über Etagen (2026-09-02) — v2.0.67
+
+Gestapelte Studio-Wände mit gleichem Fußabdruck und **unterschiedlicher** Modulbreite (z. B. 24 / 48): Snap-Ziele = **kgV** der `patternModuleUnit`-Werte (½-Läufer → 12 & 24 → Schritt 24). Fugenbreite beeinflusst nur die sichtbare Steinbreite, nicht die Cuts. Eine Etage allein: weiterhin echte `masonryPatternCuts`. Dateien: `openingPanelSnap.ts`, Tests, Docs.
+
 ### Öffnungen an Mauerwerksfugen (2026-09-02) — v2.0.66
 
 Studio-Öffnungen mit Modulverband rasten wieder an **echten** Paneel-Cuts (Referenzlagen ohne Öffnungs-Blocker), nicht nur am 8-cm-Raster: `masonryPatternCuts` + `openingPanelSnap.ts`. Drag/Nudge/`moveOpening`, Maße/`updateOpening`, `addOpening`. Clamp/Validierung ohne Zwangs-4/8-cm-Rundung, wenn Snap aktiv. Streifen/Wild/none: 8 cm. Verband-Pipeline unverändert. Dateien: `panelLayout.ts`, `openingPanelSnap.ts`, `openings.ts`, `validation.ts`, Docs.
