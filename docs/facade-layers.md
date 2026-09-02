@@ -78,7 +78,9 @@ Ziel (Referenz echter Steinbogen): keine Rechteck-Clip-Splitter an der Kurve und
 
 **MVP-Grenzen:** nur `form === 'round'`; Stoßfugen der Wand greifen noch nicht in die Keil-Außenkanten; Springer an flachen Winkeln genähert; keine echte L-Schulter wie im Naturstein-Foto über mehrere Module seitlich.
 
-### Radiale Rustika-Lagen am Rundbogen (v2.0.78)
+### Radiale Rustika-Lagen am Rundbogen (v2.0.78 / **aus ab v2.0.79**)
+
+v2.0.78 hat Spandrillen ausgestanzt und fehlerhaft gefüllt. **Ab v2.0.79:** nur noch mit `Opening.archRustication.enabled === true` (kein UI, Default aus). Generator `archRustication.ts` bleibt für die nächste Iteration.
 
 **Das ist das geforderte Verhalten** (Referenzfoto): horizontale Strip-/Verband-Lagen knicken nahe der Laibung radial zum Bogenmittelpunkt ab → trapez-/keilförmige Quader, die den Bogen umschließen. Kein schwebendes Trapez über dem Scheitel.
 
