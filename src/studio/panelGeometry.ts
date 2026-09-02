@@ -11,10 +11,11 @@ import {
   archVoussoirPolys,
   archVoussoirPolysFromSpec,
   buildSemicircularArchSpec,
+  cartesianPartOverlapsHybridSector,
   clipPolysMinusArches,
   clipRectMinusBox,
   flushClipPartsToOpeningJambs,
-  hybridArchBayRect,
+  hybridSectorRMax,
   mergeNarrowClipParts,
   minClipRemnantWidth,
   normalizeOpeningFill,
@@ -2205,17 +2206,10 @@ function prepareStudioPanelParts(
       )
       const hybridPolys = archHybridVoussoirPolysFromSpec(spec, courseYs, {
         panelWidth: panel.panelWidth,
+        panelHeight: panel.panelHeight,
       })
-      const bay = hybridArchBayRect(spec, hybridPolys)
-      rects = rects.flatMap((part) => clipRectMinusBox(part, bay))
-      // Clip-Splitter (bottomArc) im Bogenband entfernen — Hybrid füllt die Zone
-      rects = rects.filter((part) => {
-        if (!part.bottomArc?.length && !part.topArc?.length) return true
-        const py1 = part.y + part.height
-        const overlapY = part.y < bay.y + bay.height && py1 > bay.y
-        const overlapX = part.x < bay.x + bay.width && part.x + part.width > bay.x
-        return !(overlapY && overlapX)
-      })
+      const rMax = hybridSectorRMax(spec, hybridPolys)
+      rects = rects.filter((part) => !cartesianPartOverlapsHybridSector(part, spec, rMax))
       ringAndFan.push(...hybridPolys)
     } else {
       ringAndFan.push(...archVoussoirPolysFromSpec(spec))

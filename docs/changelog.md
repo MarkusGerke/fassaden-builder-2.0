@@ -2,6 +2,10 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Hybrid schichtweise + Sektor-Clip (2026-09-02) — v2.0.76
+
+Audit von v2.0.75: ein Keil pro Winkel bis eine Dock-Y + AABB-Bucht ließ ~30 % leere Fläche und überhohe Steine. **Jetzt:** Steine = Schnitt Winkelsektor × Schichtband (Lagerfugen durchlaufend); kartesisches Raster nur im Sektor entfernt. Empfohlene Maße in [facade-layers.md](facade-layers.md). Dateien: `openingGeometry.ts`, `panelGeometry.ts`, Tests, Docs.
+
 ### Hybrid-Übergang Bogen ↔ Verband (2026-09-02) — v2.0.75
 
 Erste Version der Naht **Rechteckverband ↔ Radialkeile**: bei Rundbogen + Keilstein + Mauerwerk/Läuferverband erzeugen `archHybridVoussoirPolysFromSpec` Hybrid-Polygone (Intrados radial, Extrados an Lagerfugen-Y, Schultern oft L-förmig). Kartesisches Raster wird im Bogenband entfernt (`hybridArchBayRect`), nicht gegen die Kurve geclippt — keine Dreiecks-Splitter. Aktiv über `openingArchHybridMasonryEnabled` (Voussoir an + Pattern ≠ strip/none). Streifen und Alt ohne Voussoir: alter Extrados-Clip. Dateien: `openingGeometry.ts`, `panelGeometry.ts`, `main.ts`, Tests, Docs.

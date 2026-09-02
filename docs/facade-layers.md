@@ -64,12 +64,19 @@ Ziel (Referenz echter Steinbogen): keine Rechteck-Clip-Splitter an der Kurve und
 - Außenseite: Abschluss an der nächsten **Lagerfuge** des Wandrasters; Schultern oft **L-förmig** bis ±Extrados-X
 - Unter Kämpfer: kartesischer Verband in den Pfeilern unverändert
 - Über der obersten Hybrid-Abschlusskante: Verband setzt normal fort
+- **v2.0.76:** Steine sind **schichtweise** (Sektor × Lagerfugenband), nicht ein Keil bis zu einer Dock-Y. Kartesisches Raster wird nur im **Winkelsektor** entfernt (kein AABB-Loch ~30 % leer).
 
 **Wann aktiv:** `openingArchHybridMasonryEnabled` = Rundbogen + `voussoirs` an + Paneel-Pattern weder `strip` noch `none` (also Läufer-/Mauerwerksverbände). Streifenpaneele und Alt-Saves ohne Voussoir → bisheriger Extrados-Clip.
 
-**Generator:** `archHybridVoussoirPolysFromSpec` / `archHybridCourseYs` / `hybridArchBayRect` in `openingGeometry.ts`; Einbindung in `prepareStudioPanelParts` (`panelGeometry.ts`). 3D-Extrude und Linienzeichnung nutzen dieselben `outline`-Polygone; Toolbar-SVG ebenfalls Hybrid wenn aktiv.
+**Generator:** `archHybridVoussoirPolysFromSpec` / `archHybridCourseYs` / `cartesianPartOverlapsHybridSector` in `openingGeometry.ts`; Einbindung in `prepareStudioPanelParts` (`panelGeometry.ts`).
 
-**MVP-Grenzen:** nur `form === 'round'`; andere Bogenformen unverändert; Stoßfugen-X-Snap der Schulter noch grob (±rOuter); Zwei-Bänder-UI unberührt.
+**Empfohlene Maße (sonst wirkt der Übergang weiter „kaputt“):**
+- Stichmaß (Bogenhöhe) ≈ **ganzzahliges Vielfaches** der Schichthöhe (`panelHeight`), mind. **3 Schichten** im Bogen
+- Schichthöhe eher **8–24 cm**; sehr hohe Module (z. B. 48 cm) bei kleinem Stich → zu wenige Lagen
+- Pattern **Läufer-/Mauerwerk**, nicht Streifen; **Keilstein-Ring an**
+- Ungerade Keilstein-Anzahl (Default/Auto)
+
+**MVP-Grenzen:** nur `form === 'round'`; Stoßfugen der Wand greifen noch nicht in die Keil-Außenkanten; Springer an flachen Winkeln genähert; keine echte L-Schulter wie im Naturstein-Foto über mehrere Module seitlich.
 
 ### Zwei Horizontal-Bänder (UI, v2.0.72)
 

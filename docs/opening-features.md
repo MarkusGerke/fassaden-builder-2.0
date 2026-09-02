@@ -90,7 +90,7 @@ Dateien: `src/studio/basementWindow.ts`, FacadeController / SvgView / main.
 ## Fallstricke
 
 - Ohne Keilstein-Ring clippt das Mauerwerk am Intrados — Zwickel über dem Bogen können fragmentiert wirken.
-- Mit Keilstein + **Verband** (v2.0.75): Hybridsteine (radial innen, Lagerfuge außen) statt Clip-Splitter — siehe [facade-layers.md](facade-layers.md). Streifenpaneele: weiterhin Extrados-Dock.
+- Mit Keilstein + **Verband** (v2.0.75/76): Hybridsteine **schichtweise** (radial innen, Lagerfuge außen) — siehe [facade-layers.md](facade-layers.md). Streifenpaneele: weiterhin Extrados-Dock.
 - Keilstein-UI ausblenden wenn Ring aus (nicht nur disabled).
 - Fake-Einbettung: Profile folgen weiter der Bogenform, obwohl kein Loch.
 - Verdachungs-UI ≠ Profil-ID `fensterverdachung` im allgemeinen Picker.
