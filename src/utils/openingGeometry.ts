@@ -1149,9 +1149,13 @@ export const MIN_ARCH_CLIP_REMNANT = 1
  */
 export const ARCH_REMNANT_CRUMB_CM = 3.2
 
-/** Mindestbreite für Clip-Reste — halbe Steinbreite (wie `mergeNarrowPanelGaps`). */
+/**
+ * Mindestbreite fürs Verschmelzen schmaler Clip-Reste.
+ * Obergrenze `2 × STUDIO_MASONRY` (16 cm): sonst bei 64-cm-Steinen alles &lt; 32 cm
+ * weg/merged — Zwickel am Bogen und Streifen-Keile zerfallen.
+ */
 export function minClipRemnantWidth(panelWidth = 32): number {
-  return Math.max(STUDIO_MASONRY, panelWidth / 2)
+  return Math.max(STUDIO_MASONRY, Math.min(panelWidth / 2, STUDIO_MASONRY * 2))
 }
 
 function clipPartRowKey(p: OpeningPoly): string {
@@ -2057,8 +2061,8 @@ export function clipPolysMinusArches(
     )
   }
   return splitMultiNotchArcPolys(next, {
-    minSliceWidth:
-      options?.panelWidth != null ? minClipRemnantWidth(options.panelWidth) : MIN_ARCH_CLIP_REMNANT,
+    // Nicht ½ Steinbreite: bei 64-cm-Paneelen würden Keile &lt; 32 cm verworfen.
+    minSliceWidth: MIN_ARCH_CLIP_REMNANT,
   })
 }
 

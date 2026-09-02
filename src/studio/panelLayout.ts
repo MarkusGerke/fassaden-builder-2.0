@@ -367,7 +367,11 @@ export function moduleCourseCuts(
   )
 }
 
-/** Felder einer Lage zwischen Wandanfang, Laibungen (`blockers`) und Wandende. */
+/**
+ * Pfeiler-Felder einer Lage: nur die Mauer **zwischen** den Laibungen
+ * (Wandanfang ↔ Laibung ↔ Laibung ↔ Wandende). Die Öffnung selbst ist kein Feld —
+ * Steine dort würden nur skaliert und später verworfen.
+ */
 function courseFields(
   length: number,
   blockers: XSpan[],
@@ -383,9 +387,6 @@ function courseFields(
   let cursor = 0
   for (const b of spans) {
     if (b.x0 - cursor > MIN_TILE) fields.push({ x0: cursor, x1: b.x0 })
-    // Laibungsfeld selbst: eigene Lage — der Öffnungs-Clip nimmt später weg, was im Loch
-    // liegt; darunter/darüber (Teilzeile) bleiben Steine mit Fugen an der Laibung.
-    if (b.x1 > cursor + MIN_TILE) fields.push({ x0: Math.max(cursor, b.x0), x1: b.x1 })
     cursor = Math.max(cursor, b.x1)
   }
   if (length - cursor > MIN_TILE) fields.push({ x0: cursor, x1: length })
@@ -394,6 +395,22 @@ function courseFields(
     first: f.x0 <= MIN_TILE,
     last: f.x1 >= length - MIN_TILE,
   }))
+}
+
+/**
+ * Wandweites Verband-Raster auf ein Pfeiler-Feld schneiden: innere Fugen bleiben auf
+ * dem globalen Raster (gleichmäßig über die ganze Wand), Endstücke an der Laibung
+ * nehmen den Rest bis x0/x1.
+ */
+function pierceWallCutsToField(wallCuts: number[], fieldX0: number, fieldX1: number): number[] {
+  const len = fieldX1 - fieldX0
+  if (len <= MIN_TILE) return [0, Math.max(0, len)]
+  const local: number[] = [0]
+  for (const c of wallCuts) {
+    if (c > fieldX0 + MIN_TILE && c < fieldX1 - MIN_TILE) local.push(c - fieldX0)
+  }
+  local.push(len)
+  return uniqueSortedCuts(local, len)
 }
 
 function buildStretcherCuts(length: number, step: number): number[] {
@@ -873,6 +890,38 @@ function computeRowColCuts(
     layoutLen,
     blockers.map((b) => ({ x0: planToLayout(b.x0), x1: planToLayout(b.x1) })),
   )
+
+  // Wandweites Verbandmuster (klassisch 1/1/1 bzw. 0,5/1/…/0,5) — Fugen bleiben
+  // über alle Pfeiler hinweg auf demselben Raster. Pro Feld nur an der Laibung
+  // abschneiden; Ecken/Dock-Forced-Ends greifen am ersten/letzten Feld.
+  let wallPatternCuts: number[] | null = null
+  if (!spec.sequence && unit != null) {
+    if (startForce != null || endForce != null) {
+      // Forced-Ends (45°, Dock, Bossen): freie Seite = natürlicher Verband (1 bzw. 0,5),
+      // Forced-Ende exakt. Beide Enden gesetzt → komplementär 0,5/1.
+      wallPatternCuts = buildRunningBondWithForcedEnds(
+        layoutLen,
+        brickW,
+        offset,
+        startForce,
+        endForce,
+      )
+    } else if (endDock) {
+      const phaseW = courseEndWidth(offset, brickW)
+      const fromEnd =
+        phaseW !== undefined
+          ? buildOffsetStretcherCuts(layoutLen, brickW, phaseW)
+          : buildStretcherCuts(layoutLen, brickW)
+      wallPatternCuts = fromEnd.map((c) => layoutLen - c).reverse()
+    } else {
+      const phaseW = courseEndWidth(offset, brickW)
+      wallPatternCuts =
+        phaseW !== undefined
+          ? buildOffsetStretcherCuts(layoutLen, brickW, phaseW)
+          : buildStretcherCuts(layoutLen, brickW)
+    }
+  }
+
   const merged: number[] = [0]
   for (const field of fields) {
     const len = field.x1 - field.x0
@@ -880,34 +929,15 @@ function computeRowColCuts(
     const eF = field.last ? endForce : null
     let cuts: number[]
     if (spec.sequence) {
-      // Folge-Verbände: Feldlänge aufs Raster (½ Läufer) runden und die Lage darauf skalieren.
-      const snapUnit = unit != null && unit > MIN_TILE ? unit * granularity : null
-      const snapped = snapUnit != null ? Math.max(1, Math.round(len / snapUnit)) * snapUnit : len
-      const raw = buildMixedCourseCuts(snapped, panelWidth, header, spec.sequence, offset ?? 0)
-      const scale = snapped > MIN_TILE ? len / snapped : 1
-      cuts = wrapSequenceForcedEnds(
-        raw.map((c) => c * scale),
-        len,
-        sF,
-        eF,
-      )
+      const raw = buildMixedCourseCuts(len, panelWidth, header, spec.sequence, offset ?? 0)
+      cuts = wrapSequenceForcedEnds(raw, len, sF, eF)
     } else if (unit == null) {
       cuts = buildCourseCuts(len, brickW, offset, sF != null, eF != null, bondCornerW)
-    } else if (sF != null && eF != null && (startAlt || endAlt)) {
-      // Beide Enden erzwungen (zwei 45°-Ecken): Endbreiten exakt, Feld nur volle Läufer.
-      cuts = buildRunningBondWithForcedEnds(len, brickW, offset, sF, eF)
+    } else if (wallPatternCuts) {
+      cuts = pierceWallCutsToField(wallPatternCuts, field.x0, field.x1)
     } else {
       const phaseW = courseEndWidth(offset, brickW) ?? brickW
-      if (field.last && endDock && sF == null && eF == null) {
-        // Letzte Wand vor einer Dock-Naht ohne eigenen Start-Zwang: von der Naht her legen,
-        // damit der Endstein je Lage 1/0,5 wechselt (Nachfolger spiegelt ihn); der Rest
-        // wandert an den freien Feldanfang.
-        cuts = moduleCourseCuts(len, brickW, unit, phaseW, null, false, null, false, granularity)
-          .map((c) => len - c)
-          .reverse()
-      } else {
-        cuts = moduleCourseCuts(len, brickW, unit, phaseW, sF, startAlt, eF, endAlt, granularity)
-      }
+      cuts = moduleCourseCuts(len, brickW, unit, phaseW, sF, startAlt, eF, endAlt, granularity)
     }
     for (let i = 1; i < cuts.length; i += 1) merged.push(field.x0 + cuts[i]!)
   }

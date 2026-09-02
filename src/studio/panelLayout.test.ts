@@ -870,3 +870,132 @@ describe('45° Verband-Ecke 0,5 / 1', () => {
     }
   })
 })
+
+describe('Verbandsmuster gleichmäßig (wandweites Raster)', () => {
+  function rowTiles(tiles: ReturnType<typeof layoutPanelTiles>, row: number, ph: number) {
+    return tiles
+      .filter((t) => Math.round((t.y - ph / 2) / ph) === row)
+      .sort((a, b) => a.x - b.x)
+  }
+
+  it('Läuferverband 24×8: gerade 1/1/…, versetzt 0,5/1/…/0,5 — auch mit Öffnungen', () => {
+    const panel = {
+      ...DEFAULT_STUDIO_PANEL,
+      pattern: 'runningBond' as const,
+      panelWidth: 24,
+      panelHeight: 8,
+      joint: 0.8,
+      plinthEnabled: false,
+      cornerJoin: 'miter' as const,
+    }
+    const w = studioWall({
+      id: 'w',
+      width: 480,
+      height: 128,
+      panel,
+      openings: [
+        {
+          id: 'a',
+          type: 'window',
+          x: 120,
+          y: 32,
+          width: 96,
+          height: 64,
+          arch: { enabled: true, form: 'segmental' },
+        },
+        {
+          id: 'b',
+          type: 'window',
+          x: 280,
+          y: 32,
+          width: 96,
+          height: 64,
+          arch: { enabled: true, form: 'segmental' },
+        },
+      ],
+    })
+    const tiles = layoutPanelTiles(w, panel, [])
+    const even = rowTiles(tiles, 0, 8).filter((t) => t.x + t.width > 5 && t.x < 115)
+    const odd = rowTiles(tiles, 1, 8).filter((t) => t.x + t.width > 5 && t.x < 115)
+    expect(even[0]!.width).toBeGreaterThan(20)
+    expect(odd[0]!.width).toBeLessThan(16)
+    expect(odd[0]!.width).toBeGreaterThan(8)
+    expect(Math.abs(even[1]!.x - odd[1]!.x)).toBeGreaterThan(8)
+  })
+
+  it('Läuferverband 64×32: innere Steine volle Breite, kein Dehnungs-Chaos', () => {
+    const panel = {
+      ...DEFAULT_STUDIO_PANEL,
+      pattern: 'runningBond' as const,
+      panelWidth: 64,
+      panelHeight: 32,
+      joint: 0.8,
+      plinthEnabled: false,
+      cornerJoin: 'miter' as const,
+    }
+    const w = studioWall({
+      id: 'w64',
+      width: 960,
+      height: 320,
+      panel,
+      openings: [
+        {
+          id: 'a',
+          type: 'window',
+          x: 200,
+          y: 64,
+          width: 192,
+          height: 192,
+          arch: { enabled: true, form: 'segmental', riseCm: 24 },
+        },
+      ],
+    })
+    const tiles = layoutPanelTiles(w, panel, [])
+    const even = rowTiles(tiles, 0, 32)
+    const odd = rowTiles(tiles, 1, 32)
+    expect(even.length).toBeGreaterThan(5)
+    expect(odd.length).toBeGreaterThan(5)
+    const innerEven = even.filter((t) => t.x > 10 && t.x + t.width < 190)
+    const innerOdd = odd.filter((t) => t.x > 40 && t.x + t.width < 190)
+    for (const t of innerEven.slice(1, -1)) {
+      expect(Math.abs(t.width - 64)).toBeLessThan(4)
+    }
+    for (const t of innerOdd.slice(1, -1)) {
+      expect(Math.abs(t.width - 64)).toBeLessThan(4)
+    }
+    expect(odd[0]!.width).toBeLessThan(40)
+    expect(even[0]!.width).toBeGreaterThan(50)
+  })
+
+  it('Streifen 64×32: eine Bahn je Reihe', () => {
+    const panel = {
+      ...DEFAULT_STUDIO_PANEL,
+      pattern: 'strip' as const,
+      panelWidth: 64,
+      panelHeight: 32,
+      joint: 0.8,
+      plinthEnabled: false,
+    }
+    const w = studioWall({
+      id: 'strip64',
+      width: 960,
+      height: 320,
+      panel,
+      openings: [
+        {
+          id: 'a',
+          type: 'window',
+          x: 200,
+          y: 64,
+          width: 192,
+          height: 192,
+          arch: { enabled: true, form: 'segmental', riseCm: 24 },
+        },
+      ],
+    })
+    const tiles = layoutPanelTiles(w, panel, [])
+    const row0 = rowTiles(tiles, 0, 32)
+    expect(row0.length).toBe(1)
+    expect(row0[0]!.width).toBeCloseTo(960, 0)
+  })
+})

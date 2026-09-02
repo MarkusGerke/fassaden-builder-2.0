@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.61'
+export const APP_VERSION = '2.0.62'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,16 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.62',
+    date: '2026-09-02',
+    title: 'Mauerverbände: klassisches 0,5/1-Muster, Streifen bei großen Steinen',
+    changes: [
+      'Läuferverband wieder wandweit: gerade Lagen 1/1/1…, versetzte 0,5/1/…/0,5 — Fugen fluchten über alle Pfeiler; Laibungen schneiden nur ab (Ecken/Bögen unverändert)',
+      'Kein gleichmäßiges Dehnen aller Steine pro Feld mehr — innere Steine behalten die Sollbreite (auch bei 64×32 cm)',
+      'Streifen/Zwickel bei großen Paneelen: Clip-Reste werden nicht mehr bis ½ Steinbreite (bei 64 cm: 32 cm) verworfen oder verschmolzen',
+    ],
+  },
   {
     version: '2.0.61',
     date: '2026-09-02',

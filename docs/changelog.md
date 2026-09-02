@@ -2,6 +2,10 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Mauerverbände: klassisches 0,5/1-Muster (2026-09-02) — v2.0.62
+
+v2.0.61 hat jedes Pfeiler-Feld unabhängig im Modulraster **gedehnt** — innere Steine verloren die Sollbreite, Muster wirkten unregelmäßig; bei 64×32 cm zusätzlich Chaos, weil `minClipRemnantWidth` = ½ Stein (32 cm) Zwickel/Streifen-Keile verwarf. **Jetzt:** wandweites klassisches Raster (`buildStretcherCuts` / `buildOffsetStretcherCuts` / `buildRunningBondWithForcedEnds`), Pfeiler nur per `pierceWallCutsToField` an Laibungen geschnitten — Ecken/Bogen-Clip unverändert. `courseFields` legt keine Steine mehr in die Öffnung. `minClipRemnantWidth` gedeckelt auf 2×`STUDIO_MASONRY`; `splitMultiNotchArcPolys` nutzt `MIN_ARCH_CLIP_REMNANT`. Dateien: `panelLayout.ts`, `openingGeometry.ts`, Tests.
+
 ### Mauerwerk: Modulraster an Laibungen, Ecken und Dock-Nähten (2026-09-02) — v2.0.61
 
 Feldweise Layout mit Modulraster (`moduleCourseCuts`) an Laibungen; Keile über der Bogenkappe; Dock-Ketten spiegeln Endsteine. Dateien: `panelLayout.ts`, `openingGeometry.ts`, Tests.
