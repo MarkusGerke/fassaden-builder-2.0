@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.69'
+export const APP_VERSION = '2.0.70'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,16 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.70',
+    date: '2026-09-02',
+    title: 'Fassaden-Schichten: Shell, Verkleidung, Anbauteile',
+    changes: [
+      'Architektur-Vertrag: dichte Wandschale (lichtdicht), Verkleidungszonen, Anbauteile — eine Öffnungsmaske für alle',
+      'Freiraum vergrößert nur die Verkleidung; „In Wand eingebettet“ schließt Loch und Glas, Dekor bleibt',
+      'Grundlage für spätere Sonderzonen (Keilsteine, konische Felder) ohne die Clip-Logik weiter zu überladen',
+    ],
+  },
   {
     version: '2.0.69',
     date: '2026-09-02',

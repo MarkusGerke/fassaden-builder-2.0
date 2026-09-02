@@ -2,6 +2,10 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Fassaden-Schichten-Vertrag (2026-09-02) — v2.0.70
+
+Grundlage für skalierbare Öffnungen/Verkleidung/Profile: Schichten **A Shell** (lichtdicht) / **B Cladding** (Zonen) / **C Attachments**. `resolveOpeningLayerContract` klärt Freiraum (nur B), Einbettung (kein Shell-Loch), flush/niche/opening. Optional `Wall.claddingZones`; sonst Ableitung aus `panel`. Shadow-Tunnel nutzt `openingCutsShell`. Docs: [facade-layers.md](facade-layers.md). Dateien: `facadeLayers.ts`, `facade.ts`, Tests.
+
 ### Öffnungen: Fuge / Steinmitte / Wandmitte (2026-09-02) — v2.0.69
 
 Kein festes 8-cm-Schrittmaß mehr. `openingPlacementCandidateXs`: (1) Laibung auf Cut, (2) Fenstermitte auf Steinmitte, (3) Wandmitte `width/2−öff/2` inkl. Magnet ±8 cm (45°-Längen). Nudge = nächster Kandidat; Drag = Absolut-Nearest. Dateien: `openingPanelSnap.ts`, Tests, Docs.

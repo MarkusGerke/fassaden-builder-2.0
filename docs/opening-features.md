@@ -27,7 +27,7 @@ Toolbar **Maße** (Auszug):
 | Keilstein-Ring | Nur Rundbogen; aus → Felder/Vorschau `hidden`. Optional Schenkel bis Sohlbank |
 | Glasbogen | Folgt immer `Opening.arch.form` / `riseCm` — keine separate Checkbox (`glazingArch` Legacy, ignoriert) |
 
-Kern: `src/utils/archForms.ts`, `openingGeometry.ts`. Aktionen: `#duplicate-opening`, `#reset-opening`, `#delete-opening`.
+Kern: `src/utils/archForms.ts`, `openingGeometry.ts`. Schichten-Vertrag (Shell/Freiraum/Einbettung): [facade-layers.md](facade-layers.md), `resolveOpeningLayerContract`. Aktionen: `#duplicate-opening`, `#reset-opening`, `#delete-opening`.
 
 ## Fensterbänke
 

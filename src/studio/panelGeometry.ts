@@ -29,6 +29,7 @@ import {
   openingPanelClearanceFinish,
   type OpeningPoly,
 } from '../utils/openingGeometry'
+import { openingCutsShell } from './facadeLayers'
 import { STUDIO_MASONRY, panelKindForPattern, studioPlinthActive } from './constants'
 import { basementWindowEnabled } from './basementWindow'
 import { studioMiterLocalX } from './wallMiterX'
@@ -3227,7 +3228,8 @@ export function createStudioOpeningShadowTunnelGeometry(wall: Wall): THREE.Buffe
   const forward = studioWindowDepthForwardSign(wall)
   let quads = 0
   for (const opening of wall.openings) {
-    if (opening.hidden || !openingCutsWall(opening)) continue
+    // Schicht-A-Vertrag: eingebettet / flush / hidden → kein Tunnel.
+    if (opening.hidden || !openingCutsShell(opening)) continue
     const revealZ = studioOpeningRevealOuterZ(wall, opening)
     const outerZ = forward >= 0 ? Math.max(facadeZ, revealZ) : Math.min(facadeZ, revealZ)
     if (Math.abs(outerZ - innerZ) < 0.35) continue

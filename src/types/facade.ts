@@ -790,6 +790,37 @@ export type EndBossPattern = 'off' | 'full' | 'half' | 'alternate'
 /** Stoß Bossen-Endstein an Nachbarwand. */
 export type EndBossJoin = 'flush' | 'miter'
 
+/** Verkleidungs-Zone (Schicht B) — siehe docs/facade-layers.md. */
+export type CladdingZoneKind =
+  | 'bond'
+  | 'strip'
+  | 'boss'
+  | 'voussoir'
+  | 'taperedField'
+  | 'none'
+
+export type CladdingFrontKind = 'flat' | 'frustum' | 'profile'
+
+export interface CladdingZoneRect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/**
+ * Eine Verkleidungszone auf der Wandfläche.
+ * Ohne `rect` = volle sichtbare Paneelfläche (wie `wall.panel`).
+ */
+export interface CladdingZone {
+  id: string
+  kind: CladdingZoneKind
+  front: CladdingFrontKind
+  rect?: CladdingZoneRect
+  /** Optionale Overrides; fehlen → Wand-`panel`. */
+  panel?: Partial<StudioPanelConfig>
+}
+
 export interface StudioPanelConfig {
   /** Läufer-Sichtlänge (cm), 8-cm-Raster. Binder sind die Hälfte. */
   panelWidth: number
@@ -934,6 +965,11 @@ export interface Wall extends WallDimensions {
     inward?: boolean
   }
   panel?: StudioPanelConfig
+  /**
+   * Verkleidungszonen (Schicht B). Fehlt oder leer → Ableitung aus `panel`
+   * (`claddingZonesForWall` in `facadeLayers.ts`). Siehe docs/facade-layers.md.
+   */
+  claddingZones?: CladdingZone[]
   id: string
   moduleName?: string
   x: number
@@ -1205,6 +1241,11 @@ export function cloneWall(wall: Wall): Wall {
     }),
     profiles: wall.profiles.map((profile) => ({ ...profile })),
     panel: wall.panel ? { ...wall.panel } : undefined,
+    claddingZones: wall.claddingZones?.map((zone) => ({
+      ...zone,
+      rect: zone.rect ? { ...zone.rect } : undefined,
+      panel: zone.panel ? { ...zone.panel } : undefined,
+    })),
     cornice: wall.cornice ? { ...wall.cornice } : undefined,
     trimBands: wall.trimBands?.map((band) => ({ ...band })),
     label: wall.label ? { ...wall.label } : undefined,

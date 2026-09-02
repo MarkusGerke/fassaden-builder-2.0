@@ -5,6 +5,7 @@
 | Datei | Inhalt |
 |---|---|
 | [architecture.md](architecture.md) | Gesamtarchitektur, Kerntypen-Überblick |
+| [facade-layers.md](facade-layers.md) | Schichten A/B/C, Öffnungsvertrag, Freiraum/Einbettung, Verkleidungszonen |
 | [changelog.md](changelog.md) | Änderungsprotokoll (Historie) |
 | [shadows.md](shadows.md) | 3D-Sonnenlicht, Shadow-Camera, Bias, Glas/Decke; Gesims-Cast bei Schrift (v0.7.288); 2D-Front Paneel-Werfschatten |
 | [lighting-mood.md](lighting-mood.md) | Mehrschichtige Lichtstimmung: Umbra, Kontakt, Bounce |

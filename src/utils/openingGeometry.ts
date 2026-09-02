@@ -386,7 +386,7 @@ export function openingShowsGlazing(opening: Opening): boolean {
   return openingFillMode(opening) === 'opening'
 }
 
-/** True wenn Wandkörper/Paneele ein Loch bekommen. */
+/** True wenn Wandkörper/Paneele ein Loch bekommen (Schicht A — dichte Schale). */
 export function openingCutsWall(opening: Opening): boolean {
   if (opening.hidden) return false
   if (openingIsEmbeddedFake(opening)) return false
@@ -420,7 +420,10 @@ export function normalizePanelClearance(
   return out
 }
 
-/** Extra-Ausschnitt nur für Paneele/Ziegel/Mörtel — das Mauerloch bleibt unverändert. */
+/**
+ * Extra-Ausschnitt nur für Paneele/Ziegel/Mörtel — das Mauerloch bleibt unverändert.
+ * Schicht B (Verkleidung); kanonisch auch `openingCladdingInflateCm` / `resolveOpeningLayerContract`.
+ */
 export function openingPanelClearance(opening: Opening): number {
   const gap = normalizePanelClearance(opening.panelClearance)
   return gap.enabled ? (gap.cm ?? DEFAULT_PANEL_CLEARANCE_CM) : 0
