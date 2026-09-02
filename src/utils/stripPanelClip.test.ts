@@ -1062,7 +1062,10 @@ describe('Läuferverband: Ecken und Laibungen im Render', () => {
         const gap = xs[i] - xs[i - 1]
         // Stein an der Laibung darf einen verworfenen Splitter (< 8 cm) aufnehmen;
         // Fensterbreite (192) ist die einzige erlaubte große Lücke.
-        if (gap > panel.panelWidth + 8 + panel.joint) expect(gap).toBeGreaterThan(150)
+        // Laibung darf Clip-Rest bis minClipRemnantWidth aufnehmen;
+        // Fensterbreite (~192) ist die einzige erlaubte große Lücke.
+        const maxStone = panel.panelWidth + minClipRemnantWidth(panel.panelWidth) + panel.joint
+        if (gap > maxStone) expect(gap).toBeGreaterThan(150)
       }
     }
     geo.dispose()

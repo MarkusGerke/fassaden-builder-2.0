@@ -302,15 +302,15 @@ function wallLocalX(
   return studioMiterLocalX(wall, wallX, z, miterStartEnabled, miterEndEnabled)
 }
 
-/** Rechteck unter der Kämpferlinie — Laibung ohne Bogenkappe. */
+/** Rechteck der Öffnungs-Laibung für Bossen-Flush (volle Höhe inkl. Bogenkappe). */
 function openingJambBodyRects(wall: Wall): Rect[] {
   const out: Rect[] = []
   for (const opening of wall.openings) {
     if (opening.hidden || !openingCutsWall(opening)) continue
     const rect = openingMasonryRect(opening, PANEL_OPENING_CLEARANCE)
-    const geom = openingArchGeom(opening, PANEL_OPENING_CLEARANCE)
-    const height = geom ? Math.max(0, geom.springY - rect.y) : rect.height
-    if (height > 0.5) out.push({ x: rect.x, y: rect.y, width: rect.width, height })
+    // Volle Clip-Höhe — nicht nur bis Kämpfer: sonst zieht der Bossen-Einzug
+    // oberhalb der Kämpferlinie / am Bogenansatz nach innen.
+    if (rect.height > 0.5) out.push({ x: rect.x, y: rect.y, width: rect.width, height: rect.height })
   }
   return out
 }
@@ -1635,8 +1635,11 @@ function extrudeMonotoneArcBoss(
   positions: number[],
   normals: number[],
   indices: number[],
+  flush?: { wall: Wall; jambs: Rect[] },
 ): boolean {
   if (chamfer <= 0.35) return false
+  const pinX = (outerX: number, outerY: number, insetX: number) =>
+    flush ? pinInsetXToFlushPlanes(outerX, outerY, insetX, flush.wall, flush.jambs) : insetX
   const bottom = rect.bottomArc
   const top = rect.topArc
   const y0 = rect.y
@@ -1644,8 +1647,8 @@ function extrudeMonotoneArcBoss(
   if (bottom && bottom.length >= 3 && !(top && top.length >= 2)) {
     const innerY1 = y1 - chamfer
     if (innerY1 - y0 < 1) return false
-    const inner = offsetArcIntoBand(bottom, chamfer, true).map((pt) => ({
-      x: pt.x,
+    const inner = offsetArcIntoBand(bottom, chamfer, true).map((pt, i) => ({
+      x: pinX(bottom[i]!.x, bottom[i]!.y, pt.x),
       y: Math.min(innerY1 - 0.05, pt.y),
     }))
     if (inner.length !== bottom.length) return false
@@ -1705,8 +1708,8 @@ function extrudeMonotoneArcBoss(
   if (top && top.length >= 3 && !(bottom && bottom.length >= 2)) {
     const innerY0 = y0 + chamfer
     if (y1 - innerY0 < 1) return false
-    const inner = offsetArcIntoBand(top, chamfer, false).map((pt) => ({
-      x: pt.x,
+    const inner = offsetArcIntoBand(top, chamfer, false).map((pt, i) => ({
+      x: pinX(top[i]!.x, top[i]!.y, pt.x),
       y: Math.max(innerY0 + 0.05, pt.y),
     }))
     if (inner.length !== top.length) return false
@@ -1877,8 +1880,21 @@ function extrudeFrustum(
   }
 
   // Zugeschnittene Steine: Bogenkante als Band-Boss; sonst paralleler Einzug.
+  // Laibungs-X bleibt bündig (remnantFlush) — kein Bossen-Einzug „nach innen“.
   if (isOpeningCut(rect) || Boolean(rect.bottomArc?.length) || Boolean(rect.topArc?.length)) {
-    if (extrudeMonotoneArcBoss(rect, chamfer, p, bodyFrontZ, taperFrontZ, positions, normals, indices)) {
+    if (
+      extrudeMonotoneArcBoss(
+        rect,
+        chamfer,
+        p,
+        bodyFrontZ,
+        taperFrontZ,
+        positions,
+        normals,
+        indices,
+        remnantFlush,
+      )
+    ) {
       return
     }
     if (extrudeRemnantTrapezoidBoss(rect, chamfer, p, bodyFrontZ, taperFrontZ, positions, normals, indices, remnantFlush)) {

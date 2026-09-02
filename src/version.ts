@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.62'
+export const APP_VERSION = '2.0.64'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,26 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.64',
+    date: '2026-09-02',
+    title: 'Läuferverband: echtes 0,5∶1 an 45°-Ecken',
+    changes: [
+      '45°-Forced-Ends: Halbstein bleibt exakt ½ Läufer (bei 24 cm: 12, nicht auf 16 gerastert) — Stoßfugen wieder mittig statt ~⅓/⅔',
+      'Feldsteinbreite je Lage identisch — kein Fugen-Drift über die Fassadenbreite',
+      'Bossen-Flush an Öffnungen über die volle Höhe inkl. Bogenkappe (kein Einzug oberhalb der Kämpferlinie)',
+    ],
+  },
+  {
+    version: '2.0.63',
+    date: '2026-09-02',
+    title: 'Paneele an Öffnungen: kein Durchschuss, bündige Bögen',
+    changes: [
+      'Läuferverband: keine Phantom-Steine mehr quer durch Fenster (Feldanfang an der Laibung + Filter); Steine enden an der Laibung statt hineinzuragen',
+      'Laibungs-Siegel begrenzt auf echte Rasterlücken (≤ 8 cm) und max. Steinbreite — keine aufgeblasenen Endsteine neben Öffnungen',
+      'Bossen an Bogen-/Laibungsresten bleiben in der Laibungs-X bündig (kein Einzug „nach innen“)',
+    ],
+  },
   {
     version: '2.0.62',
     date: '2026-09-02',

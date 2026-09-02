@@ -53,7 +53,8 @@ export interface PanelTile {
 const MIN_TILE = 0.05
 const CLIP_EPS = 0.05
 /** Nicht über ganze Felder zwischen zwei Fenstern ziehen — nur Rest an der Laibung. */
-const MAX_JAMB_SEAL = STUDIO_TILE * 3
+/** Nicht über ganze Felder zwischen zwei Fenstern ziehen — nur echte Raster-Lücken (≤ 8 cm). */
+const MAX_JAMB_SEAL = STUDIO_MASONRY
 /** Harte Obergrenze gegen Endlosschleifen (0-Schritt, NaN, riesige Wände). */
 const MAX_CUTS = 512
 /** Längste Dock-Kette, entlang der ein Wandanfang dem Vorgänger-Ende folgt. */
@@ -578,6 +579,8 @@ function diagonalBondWallIsFirst(wall: Wall, adj: Wall): boolean {
 
 /**
  * An 45°-Ecken: komplementär 0,5 und 1 Stein auf der **Front** (pro Lage getauscht).
+ * Halbstein = exakt ½ des (ggf. gerasterten) Läufers — nicht `snapMasonryCm(header)`:
+ * bei 24 cm würde 12 auf 16 snappen und der Versatz auf ~⅓ abrutschen.
  */
 function diagonalBondEndWidth(
   wall: Wall,
@@ -585,9 +588,8 @@ function diagonalBondEndWidth(
   panel: StudioPanelConfig,
   rowIndex: number,
 ): number {
-  const panelWidth = panel.panelWidth
-  const header = snapMasonryCm(headerSize(panelWidth))
-  const full = snapMasonryCm(panelWidth)
+  const full = snapMasonryCm(panel.panelWidth)
+  const header = full / 2
   const aFirst = diagonalBondWallIsFirst(wall, adj)
   const even = rowIndex % 2 === 0
   return aFirst === even ? header : full
@@ -623,6 +625,10 @@ function uniqueSortedCuts(cuts: number[], end: number, start = 0): number[] {
  * Endbreiten bleiben exakt; das Feld dazwischen nur volle Läufer
  * (Restbreite gleichmäßig auf die Feldsteine). Kein zusätzlicher
  * Halbstein nach dem Forced-Start — der Versatz steckt schon in den Enden.
+ *
+ * Freies Ende: natürliche Phase (1 bzw. 0,5). Beide Forced-Enden bzw.
+ * Forced+Natur müssen je Lage dieselbe Summenbreite haben (0,5+1 = 1+0,5),
+ * sonst driftet die Feldsteinbreite und der Versatz von 0,5 weg.
  */
 function buildRunningBondWithForcedEnds(
   length: number,
@@ -642,6 +648,7 @@ function buildRunningBondWithForcedEnds(
   if (startW + endW >= length - MIN_TILE) return [0, length / 2, length]
   const field = length - startW - endW
   if (field <= MIN_TILE) return uniqueSortedCuts([0, startW, length - endW, length], length)
+  // Gleiche Feldsteinbreite über alle Lagen: n aus Soll-step, brick = field/n.
   const n = Math.max(1, Math.round(field / step))
   const brick = field / n
   const cuts: number[] = [0, startW]
@@ -939,6 +946,9 @@ function computeRowColCuts(
       const phaseW = courseEndWidth(offset, brickW) ?? brickW
       cuts = moduleCourseCuts(len, brickW, unit, phaseW, sF, startAlt, eF, endAlt, granularity)
     }
+    // Feldanfang mit aufnehmen — sonst fehlt die Laibungs-Kante und der nächste
+    // Stein wird über die Öffnung hinweg bis zum ersten Rasterpunkt gelegt.
+    if (field.x0 > MIN_TILE) merged.push(field.x0)
     for (let i = 1; i < cuts.length; i += 1) merged.push(field.x0 + cuts[i]!)
   }
   let colCuts = uniqueSortedCuts(merged, layoutLen)
@@ -1278,19 +1288,11 @@ export function layoutPanelTiles(
     )
     const shearX = pattern === 'runningBondDiagonal' ? panelWidth * 0.12 * (rowIndex % 2 === 0 ? 1 : -1) : 0
     const rowTiles = tilesAlongRow(colCuts, y, height, joint, wall.width, shearX, dockOpts)
-    // Steine, die ganz im Laibungskörper liegen, entfallen; Teilzeilen (Sohlbank/Kämpfer
-    // in der Zeile) behalten ihre Steine — der Öffnungs-Clip kürzt sie in der Höhe.
+    // Feld-Schnitte werden zu einer Cut-Liste gemerged; zwischen Feldende und nächstem
+    // Feldanfang liegt die Öffnung — tilesAlongRow würde dort einen Stein spawnen.
+    // Jeden Stein mit X-Überlappung zur Laibung verwerfen (nicht nur „ganz innen“).
     tiles.push(
-      ...rowTiles.filter(
-        (tile) =>
-          !rowHoles.some(
-            (h) =>
-              y >= h.y - CLIP_EPS &&
-              yEnd <= h.y + h.height + CLIP_EPS &&
-              tile.x >= h.x - CLIP_EPS &&
-              tile.x + tile.width <= h.x + h.width + CLIP_EPS,
-          ),
-      ),
+      ...rowTiles.filter((tile) => !tileOverlapsJambHoles(tile, rowHoles, y, yEnd)),
     )
   }
 
@@ -1298,10 +1300,30 @@ export function layoutPanelTiles(
     sealTilesToOpeningJambs(
       mergeNarrowPanelGaps(splitTilesAtOpenings(tiles, wall.openings), wall, panel),
       jambHoles,
+      panelWidth,
     ),
     panel,
   )
 }
+
+/** True, wenn der Stein die Laibungsfläche in X schneidet (Öffnungs-Phantomsteine). */
+function tileOverlapsJambHoles(
+  tile: PanelTile,
+  holes: JambHole[],
+  rowY: number,
+  rowYEnd: number,
+): boolean {
+  for (const h of holes) {
+    if (h.height <= CLIP_EPS) continue
+    if (rowYEnd <= h.y + CLIP_EPS || rowY >= h.y + h.height - CLIP_EPS) continue
+    const overlap =
+      Math.min(tile.x + tile.width, h.x + h.width) - Math.max(tile.x, h.x)
+    if (overlap > CLIP_EPS) return true
+  }
+  return false
+}
+
+type JambHole = { x: number; y: number; width: number; height: number }
 
 /**
  * Sockelzone: Steine/Paneele unter der Sockeloberkante entfernen — nicht kürzen,
@@ -1313,8 +1335,6 @@ function clipTilesAbovePlinth(tiles: PanelTile[], panel: StudioPanelConfig): Pan
   if (plinthH < 0.5) return tiles
   return tiles.filter((tile) => tile.y >= plinthH - CLIP_EPS && tile.y + tile.height > plinthH + CLIP_EPS)
 }
-
-type JambHole = { x: number; y: number; width: number; height: number }
 
 /**
  * Laibungskörper je Öffnung (Plan-XY) unter der Kämpferlinie — Grundlage für Feld-Layout
@@ -1353,9 +1373,14 @@ function openingJambSealHoles(wall: Wall): JambHole[] {
  * Steine, die vor der Laibung enden, bis an die Clip-Kante ziehen.
  * Verhindert Mörtel-/Wandstreifen links und rechts der Öffnung.
  */
-function sealTilesToOpeningJambs(tiles: PanelTile[], holes: JambHole[]): PanelTile[] {
+function sealTilesToOpeningJambs(
+  tiles: PanelTile[],
+  holes: JambHole[],
+  panelWidth = Infinity,
+): PanelTile[] {
   if (tiles.length === 0) return tiles
   if (holes.length === 0) return tiles
+  const maxStone = Number.isFinite(panelWidth) ? panelWidth + 0.5 : Infinity
 
   const rowMap = new Map<number, PanelTile[]>()
   for (const tile of tiles) {
@@ -1383,7 +1408,8 @@ function sealTilesToOpeningJambs(tiles: PanelTile[], holes: JambHole[]): PanelTi
         if (candidates.length > 0) {
           const tile = candidates.reduce((a, b) => (a.x + a.width > b.x + b.width ? a : b))
           const gap = left - (tile.x + tile.width)
-          if (gap > CLIP_EPS && gap <= MAX_JAMB_SEAL) tile.width = left - tile.x
+          const nextW = Math.min(left - tile.x, maxStone)
+          if (gap > CLIP_EPS && gap <= MAX_JAMB_SEAL && nextW > tile.width) tile.width = nextW
         }
       }
       const coversRight = row.some(
@@ -1394,8 +1420,9 @@ function sealTilesToOpeningJambs(tiles: PanelTile[], holes: JambHole[]): PanelTi
         if (candidates.length > 0) {
           const tile = candidates.reduce((a, b) => (a.x < b.x ? a : b))
           const gap = tile.x - right
-          if (gap > CLIP_EPS && gap <= MAX_JAMB_SEAL) {
-            tile.width += gap
+          const grow = Math.min(gap, Math.max(0, maxStone - tile.width))
+          if (gap > CLIP_EPS && gap <= MAX_JAMB_SEAL && grow > CLIP_EPS) {
+            tile.width += grow
             tile.x = right
           }
         }

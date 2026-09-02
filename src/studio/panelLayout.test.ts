@@ -522,6 +522,57 @@ describe('45° Verband-Ecke 0,5 / 1', () => {
     expect(Math.abs(oddA.width - oddB.width)).toBeGreaterThan(8)
   })
 
+  it('24-cm-Läufer: 45°-Halbstein bleibt 12 cm (nicht auf 16 gesnappt), Versatz ≈ 0,5', () => {
+    const panel = {
+      ...DEFAULT_STUDIO_PANEL,
+      pattern: 'runningBond' as const,
+      panelWidth: 24,
+      panelHeight: 8,
+      joint: 0.8,
+      cornerJoin: 'miter' as const,
+      plinthEnabled: false,
+      plinthHeight: 0,
+    }
+    const a = studioWall({
+      id: 'a24',
+      width: 960,
+      height: 128,
+      originX: 0,
+      originZ: 0,
+      yawDeg: 0,
+      panel,
+    })
+    const b = studioWall({
+      id: 'b24',
+      width: 304,
+      height: 128,
+      originX: 960,
+      originZ: 0,
+      yawDeg: 45,
+      panel,
+    })
+    const walls = [a, b]
+    const tiles = layoutPanelTiles(a, panel, walls)
+    const even = courseTiles(tiles, 0, 8)
+    const odd = courseTiles(tiles, 1, 8)
+    const endEven = even.at(-1)!.width
+    const endOdd = odd.at(-1)!.width
+    // Früher: snapMasonryCm(12)→16 → Versatz 8 cm ≈ ⅓
+    expect(Math.min(endEven, endOdd)).toBeGreaterThan(10)
+    expect(Math.min(endEven, endOdd)).toBeLessThan(14)
+    expect(Math.max(endEven, endOdd)).toBeGreaterThan(20)
+    expect(Math.abs(endEven - endOdd)).toBeGreaterThan(10)
+    expect(Math.abs(endEven - endOdd)).toBeLessThan(14)
+    const midX = a.width * 0.5
+    const e = even.find((t) => t.x <= midX && t.x + t.width >= midX)!
+    const joints = odd.flatMap((t) => [t.x, t.x + t.width])
+    const inside = joints.filter((j) => j > e.x + 1 && j < e.x + e.width - 1)
+    expect(inside.length).toBeGreaterThan(0)
+    const frac = (inside[0]! - e.x) / e.width
+    expect(frac).toBeGreaterThan(0.4)
+    expect(frac).toBeLessThan(0.6)
+  })
+
   it('hält 45°-0,5/1 planstabil, unabhängig von Wand-IDs', () => {
     const { panel } = masonryPair('miter')
     const pair = (idA: string, idB: string, y: number) => {
@@ -965,6 +1016,73 @@ describe('Verbandsmuster gleichmäßig (wandweites Raster)', () => {
     }
     expect(odd[0]!.width).toBeLessThan(40)
     expect(even[0]!.width).toBeGreaterThan(50)
+  })
+
+  it('keine Phantom-Steine quer durch die Öffnung (Cut-Merge-Lücke)', () => {
+    const panel = {
+      ...DEFAULT_STUDIO_PANEL,
+      pattern: 'runningBond' as const,
+      panelWidth: 24,
+      panelHeight: 8,
+      joint: 0.8,
+      plinthEnabled: false,
+      cornerJoin: 'miter' as const,
+    }
+    const w = studioWall({
+      id: 'phantom',
+      width: 1112.6,
+      height: 384,
+      panel,
+      openings: [
+        {
+          id: 'a',
+          type: 'window',
+          x: 128,
+          y: 128,
+          width: 192,
+          height: 192,
+          arch: { enabled: true, form: 'segmental', riseCm: 8 },
+        },
+        {
+          id: 'b',
+          type: 'window',
+          x: 384,
+          y: 128,
+          width: 192,
+          height: 192,
+          arch: { enabled: true, form: 'segmental', riseCm: 8 },
+        },
+      ],
+    })
+    const tiles = layoutPanelTiles(w, panel, [])
+    for (const o of w.openings) {
+      const midY = o.y + o.height * 0.4
+      const crossing = tiles.filter(
+        (t) =>
+          t.y <= midY &&
+          t.y + t.height >= midY &&
+          t.x < o.x + 1 &&
+          t.x + t.width > o.x + o.width - 1,
+      )
+      expect(crossing.length).toBe(0)
+      const atJamb = tiles.filter(
+        (t) =>
+          t.y <= midY &&
+          t.y + t.height >= midY &&
+          Math.abs(t.x + t.width - o.x) < 1.5,
+      )
+      expect(atJamb.length).toBeGreaterThan(0)
+      expect(atJamb.every((t) => t.width <= panel.panelWidth + 1)).toBe(true)
+      // Kein Stein ragt in die Öffnung hinein
+      const intoHole = tiles.filter(
+        (t) =>
+          t.y <= midY &&
+          t.y + t.height >= midY &&
+          t.x < o.x - 0.5 &&
+          t.x + t.width > o.x + 1,
+      )
+      expect(intoHole.length).toBe(0)
+    }
   })
 
   it('Streifen 64×32: eine Bahn je Reihe', () => {

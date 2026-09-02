@@ -2,6 +2,14 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Läuferverband: echtes 0,5∶1 an 45°-Ecken (2026-09-02) — v2.0.64
+
+`diagonalBondEndWidth` hat `snapMasonryCm(headerSize(24))` = `snapMasonryCm(12)` → **16** cm geliefert. Gerade/ungerade Lagen starteten mit 16 bzw. 24 cm (Differenz 8 ≈ ⅓ Stein) und hatten unterschiedliche Feldsummen → Fugen drifteten über die Wand. **Fix:** Halbstein = exakt ½ des gerasterten Läufers; Bossen-Flush-Laibungen über volle Öffnungshöhe. Dateien: `panelLayout.ts`, `panelGeometry.ts`, Tests.
+
+### Paneele an Öffnungen: kein Durchschuss, bündige Bögen (2026-09-02) — v2.0.63
+
+Beim Mergen der Pfeiler-Cuts fehlte die Laibungs-Kante (`field.x0`) — `tilesAlongRow` legte Steine von der vorherigen Laibung bis zum nächsten Rasterpunkt *durch* die Öffnung. Der alte Filter entfernte nur „ganz innen“ liegende Steine; Überhänge blieben und wurden per `sealTilesToOpeningJambs` (bis 96 cm) zu übergroßen Endsteinen. **Fix:** Feldanfang als Cut; Überlappungs-Filter; Siegel ≤ 8 cm und ≤ `panelWidth`; Bogen-Boss pinnt Laibungs-X (`extrudeMonotoneArcBoss` + `pinInsetXToFlushPlanes`). Dateien: `panelLayout.ts`, `panelGeometry.ts`, Tests.
+
 ### Mauerverbände: klassisches 0,5/1-Muster (2026-09-02) — v2.0.62
 
 v2.0.61 hat jedes Pfeiler-Feld unabhängig im Modulraster **gedehnt** — innere Steine verloren die Sollbreite, Muster wirkten unregelmäßig; bei 64×32 cm zusätzlich Chaos, weil `minClipRemnantWidth` = ½ Stein (32 cm) Zwickel/Streifen-Keile verwarf. **Jetzt:** wandweites klassisches Raster (`buildStretcherCuts` / `buildOffsetStretcherCuts` / `buildRunningBondWithForcedEnds`), Pfeiler nur per `pierceWallCutsToField` an Laibungen geschnitten — Ecken/Bogen-Clip unverändert. `courseFields` legt keine Steine mehr in die Öffnung. `minClipRemnantWidth` gedeckelt auf 2×`STUDIO_MASONRY`; `splitMultiNotchArcPolys` nutzt `MIN_ARCH_CLIP_REMNANT`. Dateien: `panelLayout.ts`, `openingGeometry.ts`, Tests.
