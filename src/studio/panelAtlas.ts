@@ -116,10 +116,9 @@ function paintAtlasStrip(
     }
   }
 
-  let tileIndex = 0
   for (const tile of tiles) {
-    const colorIdx = pickTileColorIndex(seedKey, tileIndex, stages)
-    tileIndex += 1
+    const stableIdx = Math.round((tile.x + 1) * 128 + (tile.y + 1) * 0.5)
+    const colorIdx = pickTileColorIndex(seedKey, stableIdx, stages)
     const x0 = tile.x + halfJ
     const y0 = tile.y + halfJ
     const tw = tile.width - joint

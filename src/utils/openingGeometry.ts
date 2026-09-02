@@ -14,6 +14,7 @@ import {
   snapArchRiseCm,
 } from './archForms'
 import { DEFAULT_WINDOW_DEPTH_OFFSET } from '../constants/presets'
+import { STUDIO_MASONRY } from '../studio/constants'
 export const DEFAULT_REVEAL_EMBED_CM = 8
 export const DEFAULT_REVEAL_INSET_CM = 4
 export const DEFAULT_NICHE_DEPTH_CM = 10
@@ -767,6 +768,120 @@ export function openingMaskPolyline(
   return [{ x: x0, y: y0 }, { x: x1, y: y0 }, ...arch]
 }
 
+/**
+ * Zeichnungs-Kante in Wand-XY: trifft die Öffnung, wenn ein Punkt auf der Strecke
+ * im **Rechteckloch** liegt — nicht nur die Streckenmitte und nicht nur die
+ * Bogenmaske (CSG-Diagonalen zwischen Kellerfenstern liegen oft in der
+ * Rechteck-Schulternzone außerhalb des Bogens).
+ *
+ * `inset` default 0: Kanten, die nur die Laibung streifen, sonst bleiben stehen.
+ */
+export function claddingEdgeHitsOpening(
+  opening: Opening,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  inset = 0,
+): boolean {
+  if (opening.hidden || !openingCutsWall(opening)) return false
+  const ox0 = opening.x + inset
+  const ox1 = opening.x + opening.width - inset
+  const oy0 = opening.y + inset
+  const oy1 = opening.y + opening.height - inset
+  if (ox1 <= ox0 || oy1 <= oy0) return false
+  const minX = Math.min(x0, x1)
+  const maxX = Math.max(x0, x1)
+  const minY = Math.min(y0, y1)
+  const maxY = Math.max(y0, y1)
+  if (maxX < ox0 || minX > ox1 || maxY < oy0 || minY > oy1) return false
+  const len = Math.hypot(x1 - x0, y1 - y0)
+  const samples = Math.max(5, Math.min(80, Math.ceil(len / 6) + 1))
+  for (let i = 0; i <= samples; i += 1) {
+    const t = i / samples
+    const x = x0 + (x1 - x0) * t
+    const y = y0 + (y1 - y0) * t
+    if (x > ox0 && x < ox1 && y > oy0 && y < oy1) return true
+  }
+  return false
+}
+
+/**
+ * Lange Schräge im Sockelstreifen: CSG-Triangulation zwischen Kellerfenstern
+ * (oft **zwischen** den Öffnungen, daher nicht von `claddingEdgeHitsOpening` erfasst).
+ */
+export function isSpuriousPlinthDrawingDiagonal(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  plinthHeight: number,
+): boolean {
+  if (plinthHeight < 0.5) return false
+  const dx = Math.abs(x1 - x0)
+  const dy = Math.abs(y1 - y0)
+  if (dx < 36 || dy < 2.5) return false
+  if (Math.hypot(dx, dy) < 48) return false
+  const minY = Math.min(y0, y1)
+  const maxY = Math.max(y0, y1)
+  if (minY < -2 || maxY > plinthHeight + 6) return false
+  return true
+}
+
+/** Kanten in die Wandtiefe (Stirn, Bossen-Fase) — in der Aufriss-Zeichnung Reißverschluss. */
+export const DRAWING_DEPTH_EDGE_CM = 0.4
+
+/**
+ * Lokal-X auf die Plan-Kante ziehen, wenn der Punkt vor/hinter dem Wandende liegt
+ * (Gehrung `z × tan` und Profil-Kappen). Innenfugen bleiben unangetastet.
+ */
+export function snapDrawingLocalX(localX: number, wallWidth: number): number {
+  const halfW = wallWidth / 2
+  const wallX = localX + halfW
+  if (wallX <= 0.05) return -halfW
+  if (wallX >= wallWidth - 0.05) return halfW
+  return localX
+}
+
+export type StudioDrawingWall = {
+  width: number
+  height: number
+  openings: Opening[]
+  panel?: { plinthEnabled?: boolean; plinthHeight?: number } | null
+}
+
+/**
+ * Eine EdgesGeometry-Strecke für den Linienmodus: keine Tiefenkanten, keine Strecke
+ * durchs Fenster, Endpunkte an der Plan-Kante bündig.
+ * Rückgabe `null` = Kante weglassen, sonst sechs Zahlen (ax,ay,az,bx,by,bz).
+ */
+export function filterStudioDrawingSegment(
+  ax: number,
+  ay: number,
+  az: number,
+  bx: number,
+  by: number,
+  bz: number,
+  wall: StudioDrawingWall,
+): number[] | null {
+  if (Math.abs(az - bz) > DRAWING_DEPTH_EDGE_CM) return null
+  const sax = snapDrawingLocalX(ax, wall.width)
+  const sbx = snapDrawingLocalX(bx, wall.width)
+  if (Math.hypot(sax - sbx, ay - by, az - bz) < 0.08) return null
+  const halfW = wall.width / 2
+  const halfH = wall.height / 2
+  const wx0 = sax + halfW
+  const wy0 = ay + halfH
+  const wx1 = sbx + halfW
+  const wy1 = by + halfH
+  const hits = wall.openings.some((opening) => claddingEdgeHitsOpening(opening, wx0, wy0, wx1, wy1))
+  if (hits) return null
+  const plinthOn = wall.panel?.plinthEnabled !== false
+  const plinthH = plinthOn && typeof wall.panel?.plinthHeight === 'number' ? wall.panel.plinthHeight : 0
+  if (isSpuriousPlinthDrawingDiagonal(wx0, wy0, wx1, wy1, plinthH)) return null
+  return [sax, ay, az, sbx, by, bz]
+}
+
 /** True wenn der Wandpunkt im Öffnungsloch liegt (Maskenkontur, inkl. Rundbogen). */
 export function openingContainsPoint(opening: Opening, x: number, y: number): boolean {
   if (opening.hidden || !openingCutsWall(opening)) return false
@@ -1034,6 +1149,202 @@ export const MIN_ARCH_CLIP_REMNANT = 1
  */
 export const ARCH_REMNANT_CRUMB_CM = 3.2
 
+/** Mindestbreite für Clip-Reste — halbe Steinbreite (wie `mergeNarrowPanelGaps`). */
+export function minClipRemnantWidth(panelWidth = 32): number {
+  return Math.max(STUDIO_MASONRY, panelWidth / 2)
+}
+
+function clipPartRowKey(p: OpeningPoly): string {
+  return `${Math.round(p.y * 1000)}:${Math.round(p.height * 1000)}`
+}
+
+function isMergeableNarrowClip(p: OpeningPoly, minWidth: number, eps: number): boolean {
+  if (p.width >= minWidth - eps) return false
+  if (p.outline && p.outline.length >= 3) return false
+  if ((p.bottomArc?.length ?? 0) >= 2 || (p.topArc?.length ?? 0) >= 2) return false
+  // Ungeschnittener Rasterstein (z. B. halber Endstein am Wandende) ist kein Clip-Rest:
+  // bleibt eigener Stein mit Stoßfuge — sonst 1,5-Steine bzw. Lücken je Farbstufe.
+  if (p.sourceWidth != null && p.width >= p.sourceWidth - eps) return false
+  return true
+}
+
+function clipPartsTouch(a: OpeningPoly, b: OpeningPoly, eps: number): boolean {
+  const gap = Math.max(a.x, b.x) - Math.min(a.x + a.width, b.x + b.width)
+  return gap <= eps
+}
+
+function mergeClipRects(a: OpeningPoly, b: OpeningPoly): OpeningPoly {
+  const x0 = Math.min(a.x, b.x)
+  const y0 = Math.min(a.y, b.y)
+  const x1 = Math.max(a.x + a.width, b.x + b.width)
+  const y1 = Math.max(a.y + a.height, b.y + b.height)
+  return {
+    ...copyPolyProps(a),
+    x: x0,
+    y: y0,
+    width: x1 - x0,
+    height: y1 - y0,
+    outline: undefined,
+    bottomArc: undefined,
+    topArc: undefined,
+  }
+}
+
+/**
+ * Schmale Rechteck-Reste nach dem Öffnungs-Clip mit **anliegenden** Nachbarn verschmelzen.
+ * Outline-/Bogen-Reste bleiben unverändert (L-Steine, Bogenkappen).
+ * Nicht anliegend (Lücke = Öffnung): Rest entfällt — Bounding-Box würde das Fenster füllen.
+ */
+export function mergeNarrowClipParts(
+  parts: OpeningPoly[],
+  minWidth: number,
+  eps = 0.05,
+): OpeningPoly[] {
+  const rowMap = new Map<string, OpeningPoly[]>()
+  for (const p of parts) {
+    const key = clipPartRowKey(p)
+    const list = rowMap.get(key) ?? []
+    list.push({ ...p })
+    rowMap.set(key, list)
+  }
+  const out: OpeningPoly[] = []
+  for (const row of rowMap.values()) {
+    let sorted = row.sort((a, b) => a.x - b.x)
+    for (let guard = 0; guard < 64; guard += 1) {
+      let merged = false
+      const next: OpeningPoly[] = []
+      for (let i = 0; i < sorted.length; i += 1) {
+        const p = sorted[i]!
+        if (!isMergeableNarrowClip(p, minWidth, eps)) {
+          next.push(p)
+          continue
+        }
+        const prev = next[next.length - 1]
+        const succ = sorted[i + 1]
+        if (prev && clipPartsTouch(prev, p, Math.max(eps, 1))) {
+          next[next.length - 1] = mergeClipRects(prev, p)
+          merged = true
+        } else if (succ && clipPartsTouch(p, succ, Math.max(eps, 1))) {
+          sorted[i + 1] = mergeClipRects(p, succ)
+          merged = true
+        }
+        // Schmal und nicht anliegend: Rest fallen lassen — sonst füllt die AABB das Fenster.
+      }
+      sorted = next
+      if (!merged) break
+    }
+    out.push(...sorted)
+  }
+  return out.sort((a, b) => a.y - b.y || a.x - b.x)
+}
+
+const JAMB_FLUSH_EPS = 0.05
+/** Steine, die knapp vor der Laibung enden oder noch ins Rechteckloch ragen, bündig schneiden. */
+const MAX_JAMB_FLUSH = 96
+
+/**
+ * Rechteck-Reste unter der Kämpferlinie auf eine gemeinsame vertikale Laibung ziehen.
+ * Bogenkappen (`bottomArc`/`topArc`/`outline`) bleiben unverändert.
+ */
+export function flushClipPartsToOpeningJambs(
+  parts: OpeningPoly[],
+  openings: Opening[],
+  inflate = 0,
+): OpeningPoly[] {
+  const bodies: Array<{ x0: number; x1: number; y0: number; y1: number }> = []
+  for (const opening of openings) {
+    if (opening.hidden || !openingCutsWall(opening)) continue
+    const clearance =
+      openingArchVoussoirsEnabled(opening) && openingPanelClearanceFinish(opening) !== 'taper'
+        ? inflate
+        : openingPanelClearance(opening) + inflate
+    const rect = openingMasonryRect(opening, clearance)
+    const geom = openingArchGeom(opening, clearance)
+    const springY = geom?.springY ?? rect.y + rect.height
+    if (rect.width <= JAMB_FLUSH_EPS || springY - rect.y <= JAMB_FLUSH_EPS) continue
+    bodies.push({ x0: rect.x, x1: rect.x + rect.width, y0: rect.y, y1: springY })
+  }
+  if (bodies.length === 0) return parts
+
+  // Nur der Stein direkt vor der Laibung wird gezogen: liegt ein anderer Teil derselben
+  // Zeile (auch Bogenkappe) in der Lücke, bleibt der Stein — sonst überlappen ganze Reihen
+  // zu einem Streifen (v2.0.30–2.0.33).
+  const rowMap = new Map<string, OpeningPoly[]>()
+  for (const p of parts) {
+    const key = clipPartRowKey(p)
+    const list = rowMap.get(key) ?? []
+    list.push(p)
+    rowMap.set(key, list)
+  }
+  const gapIsFree = (part: OpeningPoly, gx0: number, gx1: number): boolean => {
+    const row = rowMap.get(clipPartRowKey(part)) ?? []
+    for (const q of row) {
+      if (q === part) continue
+      if (q.x < gx1 - JAMB_FLUSH_EPS && q.x + q.width > gx0 + JAMB_FLUSH_EPS) return false
+    }
+    return true
+  }
+
+  const out: OpeningPoly[] = []
+  for (const part of parts) {
+    if (part.outline && part.outline.length >= 3) {
+      out.push(part)
+      continue
+    }
+    if ((part.bottomArc && part.bottomArc.length >= 2) || (part.topArc && part.topArc.length >= 2)) {
+      out.push(part)
+      continue
+    }
+    let x0 = part.x
+    let x1 = part.x + part.width
+    const y0 = part.y
+    const y1 = part.y + part.height
+    let drop = false
+    for (const hole of bodies) {
+      if (y1 <= hole.y0 + JAMB_FLUSH_EPS || y0 >= hole.y1 - JAMB_FLUSH_EPS) continue
+      const overlapsX = x0 < hole.x1 - JAMB_FLUSH_EPS && x1 > hole.x0 + JAMB_FLUSH_EPS
+      if (!overlapsX) {
+        if (
+          x1 <= hole.x0 + JAMB_FLUSH_EPS &&
+          hole.x0 - x1 > JAMB_FLUSH_EPS &&
+          hole.x0 - x1 <= MAX_JAMB_FLUSH &&
+          gapIsFree(part, x1, hole.x0)
+        ) {
+          x1 = hole.x0
+        }
+        if (
+          x0 >= hole.x1 - JAMB_FLUSH_EPS &&
+          x0 - hole.x1 > JAMB_FLUSH_EPS &&
+          x0 - hole.x1 <= MAX_JAMB_FLUSH &&
+          gapIsFree(part, hole.x1, x0)
+        ) {
+          x0 = hole.x1
+        }
+        continue
+      }
+      const coversLeft = x0 < hole.x0 + JAMB_FLUSH_EPS
+      const coversRight = x1 > hole.x1 - JAMB_FLUSH_EPS
+      if (coversLeft && coversRight) {
+        if (hole.x0 - x0 > JAMB_FLUSH_EPS) {
+          out.push({ ...part, x: x0, width: hole.x0 - x0 })
+        }
+        x0 = hole.x1
+        continue
+      }
+      if (coversLeft) x1 = Math.min(x1, hole.x0)
+      else if (coversRight) x0 = Math.max(x0, hole.x1)
+      else {
+        drop = true
+        break
+      }
+    }
+    if (drop) continue
+    if (x1 - x0 <= JAMB_FLUSH_EPS) continue
+    out.push({ ...part, x: x0, width: x1 - x0 })
+  }
+  return out
+}
+
 /**
  * Naht knapp außerhalb der Laibung, damit bottomArc/topArc eine lotrechte Jamb-Kante
  * (kein Diagonal-Schnitt durch den Stein) interpolieren.
@@ -1073,6 +1384,8 @@ interface ClipBand {
   x: number
   y0: number
   y1: number
+  /** Stück über der Bogenkappe (Keil zwischen Bogen und Schichtoberkante). */
+  aboveHole?: boolean
 }
 
 type ClipRect = { x0: number; y0: number; x1: number; y1: number }
@@ -1299,20 +1612,16 @@ function clipPolyMinusColumnHole(
     if (yHi - yLo <= eps) return []
     const hole = x > holeX0 - 1e-9 && x < holeX1 + 1e-9 ? holeAt(x) : null
     if (!hole) return expand({ x, y0: yLo, y1: yHi })
+    // Dünne Spalten bleiben hier erhalten: Ob ein Stück ein Krümel ist, entscheidet
+    // die zusammenhängende Gruppe (unten). Über dem Bogen laufen Steine/Streifen als
+    // Keil bis zur Schichtoberkante aus — Spaltenweise Verwerfen erzeugte dort flache
+    // Stufen („Kasten“ über dem Scheitel).
     const parts: ClipBand[] = []
     if (yLo < hole.y0 - eps) {
-      const y1 = Math.min(yHi, hole.y0)
-      // Unter dem Loch: Krümel (Sohlbank-Zwickel) nicht stehen lassen.
-      if (y1 - yLo >= ARCH_REMNANT_CRUMB_CM - eps) {
-        parts.push({ x, y0: yLo, y1 })
-      }
+      parts.push({ x, y0: yLo, y1: Math.min(yHi, hole.y0) })
     }
     if (yHi > hole.y1 + eps) {
-      const y0 = Math.max(yLo, hole.y1)
-      // Über dem Bogen: dünne Mondsichel am Scheitel verwerfen (sonst Dreieck im Loch).
-      if (yHi - y0 >= ARCH_REMNANT_CRUMB_CM - eps) {
-        parts.push({ x, y0, y1: yHi })
-      }
+      parts.push({ x, y0: Math.max(yLo, hole.y1), y1: yHi, aboveHole: true })
     }
     return parts.filter((p) => p.y1 - p.y0 > eps)
   })
@@ -1372,8 +1681,12 @@ function clipPolyMinusColumnHole(
     if (width < minRemnant - eps || height < minRemnant - eps) return null
     const bottomVaries = span.some((s) => Math.abs(s.y0 - y0) > eps)
     const topVaries = span.some((s) => Math.abs(s.y1 - y1) > eps)
-    // Krümel über dem Scheitel (Mondsichel) weglassen — sonst Linienhaufen in der Kappe.
-    if ((bottomVaries || topVaries) && height < ARCH_REMNANT_CRUMB_CM - eps) return null
+    // Krümel (Sohlbank-Zwickel) weglassen — sonst Linienhaufen. Keile über der Bogenkappe
+    // bleiben auch flach: Sie schließen die Schicht bis zum Bogen (kein „Kasten“ am Scheitel).
+    const wedgeAbove = spanIn.some((b) => b.aboveHole)
+    if (!wedgeAbove && (bottomVaries || topVaries) && height < ARCH_REMNANT_CRUMB_CM - eps) {
+      return null
+    }
     const poly: OpeningPoly = { ...props, x: x0, y: y0, width, height }
     if (bottomVaries) poly.bottomArc = span.map((s) => ({ x: s.x, y: s.y0 }))
     if (topVaries) poly.topArc = span.map((s) => ({ x: s.x, y: s.y1 }))
@@ -1382,6 +1695,10 @@ function clipPolyMinusColumnHole(
 
   const out: OpeningPoly[] = []
   for (const group of groups.values()) {
+    // Krümel unter dem Loch (Sohlbank-Zwickel), die nirgends Steinhöhe erreichen, weg.
+    // Keile über der Bogenkappe bleiben — sie folgen dem Bogen bis zur Schichtoberkante.
+    const tallest = group.reduce((m, b) => Math.max(m, b.y1 - b.y0), 0)
+    if (tallest < ARCH_REMNANT_CRUMB_CM - eps && !group.some((b) => b.aboveHole)) continue
     group.sort((a, b) => a.x - b.x || a.y0 - b.y0)
     const byXList = new Map<number, ClipBand[]>()
     for (const b of group) {
@@ -1739,7 +2056,10 @@ export function clipPolysMinusArches(
       clipRectMinusArch(part, faux, faux, 0.05, MIN_ARCH_CLIP_REMNANT, outline),
     )
   }
-  return splitMultiNotchArcPolys(next)
+  return splitMultiNotchArcPolys(next, {
+    minSliceWidth:
+      options?.panelWidth != null ? minClipRemnantWidth(options.panelWidth) : MIN_ARCH_CLIP_REMNANT,
+  })
 }
 
 /**
@@ -1749,20 +2069,22 @@ export function clipPolysMinusArches(
  */
 export function splitMultiNotchArcPolys(
   parts: OpeningPoly[],
-  eps = 0.05,
+  options?: { eps?: number; minSliceWidth?: number },
 ): OpeningPoly[] {
-  return parts.flatMap((part) => splitOneMultiNotchArcPoly(part, eps))
+  const eps = options?.eps ?? 0.05
+  const minSlice = options?.minSliceWidth ?? MIN_ARCH_CLIP_REMNANT
+  return parts.flatMap((part) => splitOneMultiNotchArcPoly(part, eps, minSlice))
 }
 
-function splitOneMultiNotchArcPoly(poly: OpeningPoly, eps: number): OpeningPoly[] {
+function splitOneMultiNotchArcPoly(poly: OpeningPoly, eps: number, minSliceWidth: number): OpeningPoly[] {
   if (poly.outline && poly.outline.length >= 3) return [poly]
   const top = poly.topArc
   const bottom = poly.bottomArc
   if (top && top.length >= 4 && !(bottom && bottom.length >= 2)) {
-    return splitPolyAlongNotchedArc(poly, top, 'top', eps)
+    return splitPolyAlongNotchedArc(poly, top, 'top', eps, minSliceWidth)
   }
   if (bottom && bottom.length >= 4 && !(top && top.length >= 2)) {
-    return splitPolyAlongNotchedArc(poly, bottom, 'bottom', eps)
+    return splitPolyAlongNotchedArc(poly, bottom, 'bottom', eps, minSliceWidth)
   }
   return [poly]
 }
@@ -1772,6 +2094,7 @@ function splitPolyAlongNotchedArc(
   arc: { x: number; y: number }[],
   kind: 'top' | 'bottom',
   eps: number,
+  minSliceWidth: number,
 ): OpeningPoly[] {
   const flatY = kind === 'top' ? poly.y + poly.height : poly.y
   const cutEps = Math.max(eps, 0.5)
@@ -1806,6 +2129,8 @@ function splitPolyAlongNotchedArc(
     const cutBefore = runs.slice(0, r).some((x) => x.cut)
     const cutAfter = runs.slice(r + 1).some((x) => x.cut)
     if (!cutBefore || !cutAfter) continue
+    const flatW = Math.abs(arc[run.i1]!.x - arc[run.i0]!.x)
+    if (flatW < minSliceWidth - eps) continue
     splitXs.push((arc[run.i0]!.x + arc[run.i1]!.x) / 2)
   }
   const xs = uniqueSortedXs(splitXs, eps)
@@ -1818,7 +2143,7 @@ function splitPolyAlongNotchedArc(
   for (let i = 0; i < xs.length - 1; i += 1) {
     const x0 = xs[i]!
     const x1 = xs[i + 1]!
-    if (x1 - x0 < MIN_ARCH_CLIP_REMNANT - eps) continue
+    if (x1 - x0 < minSliceWidth - eps) continue
     const slice: { x: number; y: number }[] = []
     const push = (x: number, y: number) => {
       const prev = slice[slice.length - 1]

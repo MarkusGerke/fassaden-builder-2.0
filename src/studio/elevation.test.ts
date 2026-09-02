@@ -21,4 +21,19 @@ describe('facadeSunIsGrazing', () => {
   it('Ost bei Ostsonne: frontal', () => {
     expect(facadeSunIsGrazing(270, 90)).toBe(false)
   })
+
+  it('Nord morgens (Sept. ~09:00): Werfschatten — kein Streiflicht', () => {
+    expect(facadeSunIsGrazing(0, 118)).toBe(false)
+    expect(facadeSunIsGrazing(180, 118)).toBe(false)
+  })
+
+  it('Nord nachmittags (Sept. ~15:12): Werfschatten — kein Streiflicht', () => {
+    expect(facadeSunIsGrazing(0, 242)).toBe(false)
+    expect(facadeSunIsGrazing(180, 242)).toBe(false)
+  })
+
+  it('Ost/West bei Südsonne: weiterhin Streiflicht (Paneel-Acne)', () => {
+    expect(facadeSunIsGrazing(270, 178)).toBe(true)
+    expect(facadeSunIsGrazing(90, 182)).toBe(true)
+  })
 })

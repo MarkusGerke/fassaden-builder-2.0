@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.60'
+export const APP_VERSION = '2.0.61'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,18 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.61',
+    date: '2026-09-02',
+    title: 'Mauerwerk: Modulraster an Laibungen, Ecken und Dock-Nähten',
+    changes: [
+      'Jede Steinlage wird feldweise (Wandende ↔ Laibung ↔ Wandende) im Modulraster gelegt: Endsteine sind immer 1 oder 0,5 (Läufer) — keine 1,5er, keine Splitter, exakter 0,5-Versatz zwischen den Lagen',
+      'Gilt für alle Verbände: Läufer-/Binderlagen gehen in ½-Läufer-Schritten auf — Läuferlage endet nicht mehr mit ¼-Stein',
+      'Dock-Nähte: der erste Stein einer Wand spiegelt den letzten der Vorgängerwand (0,5+0,5 wird ein Stein, 1+1 eine Fuge)',
+      '45°-Ecken: kein Reststück neben dem wechselnden Endstein — Feld wird minimal gedehnt',
+      'Bogen: Steine/Streifen über der Bogenkappe laufen als Keil bis zur Schichtoberkante — kein flacher dunkler „Kasten“ über dem Scheitel',
+    ],
+  },
   {
     version: '2.0.60',
     date: '2026-09-01',

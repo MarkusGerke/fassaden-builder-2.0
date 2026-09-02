@@ -47,7 +47,7 @@ UI: `#studio-cornice-scale` / `#wall-cornice-scale`, `#studio-cornice-offset-for
 
 UI: `#studio-plinth-depth`, `#studio-plinth-offset`, `#studio-plinth-color-swatches`, Profilkarten (erste Kachel **Keiner**). Vorschau: Links = Wand, unten = Boden.
 
-**Ecken:** `cornerJoin: 'none'` gehrt weiter, wo Sockel an 45°/90° anknüpft. Sockelprofil an Außenecken: nach außen längere 45°-Gehrung (Vorzeichen umgekehrt zum Gesims).
+**Ecken:** `cornerJoin: 'none'` gehrt weiter, wo Sockel an 45°/90° anknüpft. Sockelprofil an Außenecken: nach außen längere 45°-Gehrung (Vorzeichen umgekehrt zum Gesims). **v2.0.33:** lange CSG-Schrägen im Sockelstreifen entfallen auch im Pier zwischen Kellerfenstern. **v2.0.32:** Zeichnungsfilter trifft Rechteckloch (nicht nur Bogenmaske). **v2.0.31:** Tiefenkanten/Kappen aus; Plan-Kanten-Snap. **v2.0.30:** CSG-Schwellwinkel; Filter über die ganze Strecke.
 
 **Schatten:** Sockel wirft/empfängt keine Shadow-Map (v0.7.132, Moiré-Schutz).
 

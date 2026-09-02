@@ -56,6 +56,8 @@ const CLIP_EPS = 0.05
 const MAX_JAMB_SEAL = STUDIO_TILE * 3
 /** Harte Obergrenze gegen Endlosschleifen (0-Schritt, NaN, riesige Wände). */
 const MAX_CUTS = 512
+/** Längste Dock-Kette, entlang der ein Wandanfang dem Vorgänger-Ende folgt. */
+const MAX_DOCK_CHAIN = 12
 
 type BrickKind = 'S' | 'H'
 
@@ -216,6 +218,182 @@ function buildCuts(
     cuts.splice(cuts.length - 2, 1)
   }
   return cuts
+}
+
+type XSpan = { x0: number; x1: number }
+
+/**
+ * Rastereinheit des Verbands: kleinste Stein-Teilbreite, die im Muster vorkommt
+ * (½ Läufer, ⅓, ¼, ½ Binder). Alle Lagen einer Wand nutzen dieselbe Einheit —
+ * sonst driften die Stoßfugen zwischen den Lagen. `null` = kein Raster (wild).
+ */
+export function patternModuleUnit(
+  pattern: StudioPanelPattern,
+  stretcher: number,
+  header: number,
+): number | null {
+  switch (pattern) {
+    case 'runningBondThird':
+      return stretcher / 3
+    case 'runningBondQuarter':
+    case 'runningBondDiagonal':
+      return stretcher / 4
+    case 'headerBond':
+    case 'englishBond':
+    case 'englishCrossBond':
+    case 'gothicBond':
+    case 'markishBond':
+    case 'silesianBond':
+    case 'flemishBond':
+    case 'dutchBond':
+      return header / 2
+    case 'wildBond':
+      return null
+    default:
+      return stretcher / 2
+  }
+}
+
+/**
+ * Vielfaches, in dem die Feldlänge in Einheiten aufgehen muss. Verbände mit Läufer-
+ * **und** Binderlagen (Einheit ½ Binder) brauchen eine gerade Einheitenzahl — sonst
+ * endet die Läuferlage mit einem ¼-Stein statt mit 1 / 0,5.
+ */
+export function patternModuleGranularity(
+  pattern: StudioPanelPattern,
+  stretcher: number,
+  header: number,
+): number {
+  switch (pattern) {
+    case 'englishBond':
+    case 'englishCrossBond':
+    case 'gothicBond':
+    case 'markishBond':
+    case 'silesianBond':
+    case 'flemishBond':
+    case 'dutchBond': {
+      const unit = patternModuleUnit(pattern, stretcher, header)
+      if (unit == null || unit <= MIN_TILE) return 1
+      return Math.max(1, Math.round(stretcher / 2 / unit))
+    }
+    default:
+      return 1
+  }
+}
+
+/**
+ * Eine Lage im Modulraster: das Feld ist N Einheiten lang (Steine minimal gedehnt oder
+ * gestaucht, damit es exakt aufgeht), ein Stein = k Einheiten, Endstücke ganze
+ * Einheiten (½ Stein, ⅓, ¼ …) — nie 1,5er oder Splitter. Die inneren Fugen liegen auf
+ * dem Lagen-Raster `phase + j·k`; der Versatz zur Nachbarlage bleibt dadurch exakt.
+ *
+ * `startForce`/`endForce` (cm): erzwungene Endsteine (Ecke Verband, 45°-Ecke, Bossen).
+ * `startAlt` = die erzwungene Breite wechselt selbst je Lage und gibt die Phase vor
+ * (kein zusätzlicher Halbstein dahinter).
+ */
+export function moduleCourseCuts(
+  length: number,
+  step: number,
+  unit: number,
+  phaseW: number,
+  startForce: number | null = null,
+  startAlt = false,
+  endForce: number | null = null,
+  endAlt = false,
+  /** Einheitenzahl des Feldes auf dieses Vielfache runden (Läufer+Binder-Verbände: 2). */
+  nMultiple = 1,
+): number[] {
+  if (!Number.isFinite(length) || length <= MIN_TILE) return [0, Math.max(length, 0)]
+  if (step <= MIN_TILE || unit <= MIN_TILE) return [0, length]
+  const k = Math.max(1, Math.round(step / unit))
+  const m = Math.max(1, Math.round(nMultiple))
+  const n = Math.max(m, Math.round(length / (unit * m)) * m)
+  const u = length / n
+  const toUnits = (w: number | null) =>
+    w != null && w > MIN_TILE ? Math.max(1, Math.round(w / unit)) : 0
+  let sF = toUnits(startForce)
+  let eF = toUnits(endForce)
+  if (sF >= n) sF = 0
+  if (eF >= n) eF = 0
+  if (sF + eF >= n) {
+    const cuts = sF > 0 && eF > 0 ? [0, sF * u, length] : [0, length]
+    return uniqueSortedCuts(cuts, length)
+  }
+
+  const phaseUnits = Math.round(Math.max(0, phaseW) / unit) % k
+  let phase: number
+  if (sF > 0) phase = startAlt ? sF % k : (sF + phaseUnits) % k
+  else phase = phaseUnits
+
+  const cuts: number[] = [0]
+  if (sF > 0) cuts.push(sF)
+  const endBound = n - eF
+  let g = phase
+  while (g <= sF) g += k
+  let lastGrid = sF
+  while (g < endBound) {
+    cuts.push(g)
+    lastGrid = g
+    g += k
+  }
+  const remnant = endBound - lastGrid
+  if (eF > 0 && endAlt && remnant > 0 && remnant < k) {
+    // Kein Reststück direkt vor einem lagenweise wechselnden Endstein (45°-Ecke, Dock):
+    // Endbreiten exakt, das Feld nur volle Steine — minimal gedehnt. Start + Ende haben
+    // je Lage dieselbe Einheiten-Parität, darum bleibt die Dehnung lagenübergreifend gleich.
+    const seq: number[] = []
+    if (sF > 0) seq.push(sF)
+    const lead = sF > 0 && startAlt ? 0 : phaseUnits
+    if (lead > 0) seq.push(lead)
+    const used = seq.reduce((a, b) => a + b, 0) + eF
+    const fulls = Math.max(0, Math.round((n - used) / k))
+    for (let i = 0; i < fulls; i += 1) seq.push(k)
+    seq.push(eF)
+    const total = seq.reduce((a, b) => a + b, 0)
+    const scale = length / total
+    const out: number[] = [0]
+    let pos = 0
+    for (const w of seq) {
+      pos += w
+      out.push(pos * scale)
+    }
+    return uniqueSortedCuts(out, length)
+  }
+  if (eF > 0) cuts.push(endBound)
+  cuts.push(n)
+  return uniqueSortedCuts(
+    cuts.map((c) => c * u),
+    length,
+  )
+}
+
+/** Felder einer Lage zwischen Wandanfang, Laibungen (`blockers`) und Wandende. */
+function courseFields(
+  length: number,
+  blockers: XSpan[],
+): Array<{ x0: number; x1: number; first: boolean; last: boolean }> {
+  const spans = blockers
+    .map((b) => ({
+      x0: Math.max(0, Math.min(b.x0, b.x1)),
+      x1: Math.min(length, Math.max(b.x0, b.x1)),
+    }))
+    .filter((b) => b.x1 - b.x0 > MIN_TILE)
+    .sort((a, b) => a.x0 - b.x0)
+  const fields: Array<{ x0: number; x1: number }> = []
+  let cursor = 0
+  for (const b of spans) {
+    if (b.x0 - cursor > MIN_TILE) fields.push({ x0: cursor, x1: b.x0 })
+    // Laibungsfeld selbst: eigene Lage — der Öffnungs-Clip nimmt später weg, was im Loch
+    // liegt; darunter/darüber (Teilzeile) bleiben Steine mit Fugen an der Laibung.
+    if (b.x1 > cursor + MIN_TILE) fields.push({ x0: Math.max(cursor, b.x0), x1: b.x1 })
+    cursor = Math.max(cursor, b.x1)
+  }
+  if (length - cursor > MIN_TILE) fields.push({ x0: cursor, x1: length })
+  return fields.map((f) => ({
+    ...f,
+    first: f.x0 <= MIN_TILE,
+    last: f.x1 >= length - MIN_TILE,
+  }))
 }
 
 function buildStretcherCuts(length: number, step: number): number[] {
@@ -546,34 +724,6 @@ function endBossStoneWidth(
   return rowIndex % 2 === 0 ? panelWidth : header
 }
 
-function applyEndBossToCuts(
-  cuts: number[],
-  length: number,
-  startWidth: number | null,
-  endWidth: number | null,
-): number[] {
-  let next = [...cuts]
-  if (startWidth && startWidth > MIN_TILE && startWidth < length - MIN_TILE) {
-    if (next.length < 2) next = [0, length]
-    if (next[1] > startWidth + MIN_TILE) next[1] = startWidth
-    else if (next.length === 2) next = [0, startWidth, length]
-  }
-  if (endWidth && endWidth > MIN_TILE && endWidth < length - MIN_TILE) {
-    const endCut = length - endWidth
-    if (next[next.length - 2] < endCut - MIN_TILE) {
-      if (next.length === 2) next = [0, endCut, length]
-      else next[next.length - 2] = endCut
-    }
-  }
-  next = [...new Set(next.map((v) => Math.round(v * 1000) / 1000))].sort((a, b) => a - b)
-  if (next[0] !== 0) next.unshift(0)
-  if (next[next.length - 1] !== length) next.push(length)
-  if (next.length >= 3 && next[next.length - 1] - next[next.length - 2] <= MIN_TILE) {
-    next.splice(next.length - 2, 1)
-  }
-  return next
-}
-
 function buildCourseCuts(
   length: number,
   step: number,
@@ -632,6 +782,10 @@ function computeRowColCuts(
   rowIndex: number,
   allWalls: Wall[],
   bondCornerW: number,
+  /** Laibungskörper dieser Zeile (Plan-X) — Felder werden getrennt im Modulraster gelegt. */
+  blockers: XSpan[] = [],
+  /** Rekursionstiefe entlang einer Dock-Kette (Start folgt dem Ende des Vorgängers). */
+  depth = 0,
 ): number[] {
   panel = normalizeStudioPanel(panel)
   const { panelWidth, pattern, cornerJoin } = panel
@@ -665,48 +819,99 @@ function computeRowColCuts(
     (miters.start || miters.end || Boolean(startDiag) || Boolean(endDiag)) &&
     faceLen > wall.width + 0.5
   const layoutLen = useFrontLayout ? faceLen : wall.width
+  const halfW = wall.width / 2
+  const planToLayout = (x: number) => (useFrontLayout ? x - (faceLeft + halfW) : x)
 
-  let colCuts: number[]
-  if (spec.sequence) {
-    const rowOff = offset ?? 0
-    colCuts = buildMixedCourseCuts(layoutLen, panelWidth, header, spec.sequence, rowOff)
-  } else {
-    const brickW = spec.brickW ?? panelWidth
-    colCuts = buildCourseCuts(
-      layoutLen,
-      brickW,
-      offset,
-      cornerStart,
-      cornerEnd,
-      bondCornerW,
-    )
-  }
+  const brickW = spec.brickW ?? panelWidth
+  const unit = patternModuleUnit(pattern, panelWidth, header)
+  const granularity = patternModuleGranularity(pattern, panelWidth, header)
+  const endDock = Boolean(endAdj && isCollinearDock(wall, endAdj) && wallHasPanels(endAdj))
 
-  // Forced-Ends nur an 45°-Knicken (komplementär 0,5/1).
-  // 90°-Gehrung / Außenkante (faceLen ≈ width): natürlicher Läuferverband aus
-  // buildCourseCuts — Forced-Ends an jeder Gehrung erzeugten Stummel + Stapelverband.
-  if (startDiag || endDiag) {
-    const brickW = spec.brickW ?? panelWidth
-    const startW = startDiag ? diagonalBondEndWidth(wall, startDiag, panel, rowIndex) : null
-    const endW = endDiag ? diagonalBondEndWidth(wall, endDiag, panel, rowIndex) : null
-    if (startW != null || endW != null) {
-      colCuts = spec.sequence
-        ? wrapSequenceForcedEnds(colCuts, layoutLen, startW, endW)
-        : buildRunningBondWithForcedEnds(layoutLen, brickW, offset, startW, endW)
+  // Erzwungene Endsteine (Layout-cm). 45°-Knick und „abwechselnd“ wechseln selbst je
+  // Lage (geben die Phase vor); Ecke Verband und feste Bossen sind konstant.
+  // 90°-Gehrung / Außenkante: natürlicher Verband, keine Forced-Ends (Stummel).
+  let startForce: number | null = null
+  let startAlt = false
+  let endForce: number | null = null
+  let endAlt = false
+  if (startDiag) {
+    startForce = diagonalBondEndWidth(wall, startDiag, panel, rowIndex)
+    startAlt = true
+  } else if (cornerStart) {
+    startForce = bondCornerW
+  } else if (!startAdj && startTurn.length === 0 && panel.endBossStart && panel.endBossStart !== 'off') {
+    startForce = endBossStoneWidth(panel.endBossStart, rowIndex, panelWidth, header)
+    startAlt = panel.endBossStart === 'alternate'
+  } else if (
+    startAdj &&
+    isCollinearDock(wall, startAdj) &&
+    wallHasPanels(startAdj) &&
+    depth < MAX_DOCK_CHAIN
+  ) {
+    // Dock-Kette: unser erster Stein spiegelt den letzten des Vorgängers (0,5+0,5 wird
+    // visuell ein Stein, 1+1 eine Fuge) — so wechselt die Fuge an der Dock-Naht je Lage
+    // statt in jeder Lage übereinander zu stehen.
+    const adjPanel = normalizeStudioPanel(startAdj.panel ?? DEFAULT_STUDIO_PANEL)
+    const adjCuts = rowColCutsWithOpenings(startAdj, adjPanel, rowIndex, allWalls, bondCornerW, depth + 1)
+    const adjEndW = lastSegmentWidth(adjCuts)
+    if (adjEndW > MIN_TILE) {
+      startForce = adjEndW
+      startAlt = true
     }
   }
-
-  const startBossW =
-    !startAdj && startTurn.length === 0 && panel.endBossStart && panel.endBossStart !== 'off'
-      ? endBossStoneWidth(panel.endBossStart, rowIndex, panelWidth, header)
-      : null
-  const endBossW =
-    !endAdj && endTurn.length === 0 && panel.endBossEnd && panel.endBossEnd !== 'off'
-      ? endBossStoneWidth(panel.endBossEnd, rowIndex, panelWidth, header)
-      : null
-  if (startBossW || endBossW) {
-    colCuts = applyEndBossToCuts(colCuts, layoutLen, startBossW, endBossW)
+  if (endDiag) {
+    endForce = diagonalBondEndWidth(wall, endDiag, panel, rowIndex)
+    endAlt = true
+  } else if (cornerEnd) {
+    endForce = bondCornerW
+  } else if (!endAdj && endTurn.length === 0 && panel.endBossEnd && panel.endBossEnd !== 'off') {
+    endForce = endBossStoneWidth(panel.endBossEnd, rowIndex, panelWidth, header)
+    endAlt = panel.endBossEnd === 'alternate'
   }
+
+  const fields = courseFields(
+    layoutLen,
+    blockers.map((b) => ({ x0: planToLayout(b.x0), x1: planToLayout(b.x1) })),
+  )
+  const merged: number[] = [0]
+  for (const field of fields) {
+    const len = field.x1 - field.x0
+    const sF = field.first ? startForce : null
+    const eF = field.last ? endForce : null
+    let cuts: number[]
+    if (spec.sequence) {
+      // Folge-Verbände: Feldlänge aufs Raster (½ Läufer) runden und die Lage darauf skalieren.
+      const snapUnit = unit != null && unit > MIN_TILE ? unit * granularity : null
+      const snapped = snapUnit != null ? Math.max(1, Math.round(len / snapUnit)) * snapUnit : len
+      const raw = buildMixedCourseCuts(snapped, panelWidth, header, spec.sequence, offset ?? 0)
+      const scale = snapped > MIN_TILE ? len / snapped : 1
+      cuts = wrapSequenceForcedEnds(
+        raw.map((c) => c * scale),
+        len,
+        sF,
+        eF,
+      )
+    } else if (unit == null) {
+      cuts = buildCourseCuts(len, brickW, offset, sF != null, eF != null, bondCornerW)
+    } else if (sF != null && eF != null && (startAlt || endAlt)) {
+      // Beide Enden erzwungen (zwei 45°-Ecken): Endbreiten exakt, Feld nur volle Läufer.
+      cuts = buildRunningBondWithForcedEnds(len, brickW, offset, sF, eF)
+    } else {
+      const phaseW = courseEndWidth(offset, brickW) ?? brickW
+      if (field.last && endDock && sF == null && eF == null) {
+        // Letzte Wand vor einer Dock-Naht ohne eigenen Start-Zwang: von der Naht her legen,
+        // damit der Endstein je Lage 1/0,5 wechselt (Nachfolger spiegelt ihn); der Rest
+        // wandert an den freien Feldanfang.
+        cuts = moduleCourseCuts(len, brickW, unit, phaseW, null, false, null, false, granularity)
+          .map((c) => len - c)
+          .reverse()
+      } else {
+        cuts = moduleCourseCuts(len, brickW, unit, phaseW, sF, startAlt, eF, endAlt, granularity)
+      }
+    }
+    for (let i = 1; i < cuts.length; i += 1) merged.push(field.x0 + cuts[i]!)
+  }
+  let colCuts = uniqueSortedCuts(merged, layoutLen)
 
   if (useFrontLayout) {
     colCuts = mapFrontCutsToPlan(wall, colCuts, faceZ, miters)
@@ -749,6 +954,35 @@ function computeRowColCuts(
   }
 
   return colCuts
+}
+
+/** Laibungskörper, die die Zeile `y…yEnd` treffen, als Plan-X-Spannen. */
+function rowJambBlockers(holes: JambHole[], y: number, yEnd: number): JambHole[] {
+  return holes.filter(
+    (h) => h.height > CLIP_EPS && y < h.y + h.height - CLIP_EPS && yEnd > h.y + CLIP_EPS,
+  )
+}
+
+/** Zeilen-Schnitte einer Wand inkl. ihrer eigenen Laibungsfelder (für Dock-Nachbarn). */
+function rowColCutsWithOpenings(
+  wall: Wall,
+  panel: StudioPanelConfig,
+  rowIndex: number,
+  allWalls: Wall[],
+  bondCornerW: number,
+  depth: number,
+): number[] {
+  panel = normalizeStudioPanel(panel)
+  const { rowCuts } = visiblePanelRowRange(wall.height, panel)
+  const y0 = rowCuts[rowIndex]
+  const y1 = rowCuts[rowIndex + 1]
+  const blockers: XSpan[] =
+    y0 != null && y1 != null
+      ? rowJambBlockers(openingJambSealHoles(wall), y0 + panel.joint / 2, y1 - panel.joint / 2).map(
+          (h) => ({ x0: h.x, x1: h.x + h.width }),
+        )
+      : []
+  return computeRowColCuts(wall, panel, rowIndex, allWalls, bondCornerW, blockers, depth)
 }
 
 function tilesAlongRow(
@@ -805,7 +1039,7 @@ function dockRowTileOpts(
 
   if (startAdj && isCollinearDock(wall, startAdj)) {
     const adjPanel = normalizeStudioPanel(startAdj.panel ?? DEFAULT_STUDIO_PANEL)
-    const adjCuts = computeRowColCuts(startAdj, adjPanel, rowIndex, allWalls, bondCornerW)
+    const adjCuts = rowColCutsWithOpenings(startAdj, adjPanel, rowIndex, allWalls, bondCornerW, 1)
     const adjEndW = lastSegmentWidth(adjCuts)
     const ourStartW = firstSegmentWidth(colCuts)
     if (dockHalfHalfMerge(adjEndW, ourStartW, adjPanel.panelWidth, panelWidth)) {
@@ -817,7 +1051,7 @@ function dockRowTileOpts(
 
   if (endAdj && isCollinearDock(wall, endAdj)) {
     const adjPanel = normalizeStudioPanel(endAdj.panel ?? DEFAULT_STUDIO_PANEL)
-    const adjCuts = computeRowColCuts(endAdj, adjPanel, rowIndex, allWalls, bondCornerW)
+    const adjCuts = rowColCutsWithOpenings(endAdj, adjPanel, rowIndex, allWalls, bondCornerW, 1)
     const adjStartW = firstSegmentWidth(adjCuts)
     const ourEndW = lastSegmentWidth(colCuts)
     if (dockHalfHalfMerge(ourEndW, adjStartW, panelWidth, adjPanel.panelWidth)) {
@@ -951,6 +1185,7 @@ export function layoutPanelTiles(
   const header = headerSize(panelWidth)
   const startAdj = findCollinearDockWall(wall, 'start', allWalls)
   const endAdj = findCollinearDockWall(wall, 'end', allWalls)
+  const jambHoles = openingJambSealHoles(wall)
 
   for (let rowIndex = 0; rowIndex <= lastRow; rowIndex += 1) {
     if (rowIndex < firstVisibleRow || rowIndex > lastVisibleRow) continue
@@ -958,6 +1193,7 @@ export function layoutPanelTiles(
     const yEnd = rowCuts[rowIndex + 1] - joint / 2
     const height = yEnd - y
     if (height <= MIN_TILE) continue
+    const rowHoles = rowJambBlockers(jambHoles, y, yEnd)
 
     if (pattern === 'strip') {
       const raised = panel.projectDepth ?? DEFAULT_STUDIO_PANEL.projectDepth
@@ -999,7 +1235,8 @@ export function layoutPanelTiles(
       continue
     }
 
-    const colCuts = computeRowColCuts(wall, panel, rowIndex, allWalls, bondCornerW)
+    const blockers: XSpan[] = rowHoles.map((h) => ({ x0: h.x, x1: h.x + h.width }))
+    const colCuts = computeRowColCuts(wall, panel, rowIndex, allWalls, bondCornerW, blockers)
     const dockOpts = dockRowTileOpts(
       wall,
       panelWidth,
@@ -1010,13 +1247,27 @@ export function layoutPanelTiles(
       bondCornerW,
     )
     const shearX = pattern === 'runningBondDiagonal' ? panelWidth * 0.12 * (rowIndex % 2 === 0 ? 1 : -1) : 0
-    tiles.push(...tilesAlongRow(colCuts, y, height, joint, wall.width, shearX, dockOpts))
+    const rowTiles = tilesAlongRow(colCuts, y, height, joint, wall.width, shearX, dockOpts)
+    // Steine, die ganz im Laibungskörper liegen, entfallen; Teilzeilen (Sohlbank/Kämpfer
+    // in der Zeile) behalten ihre Steine — der Öffnungs-Clip kürzt sie in der Höhe.
+    tiles.push(
+      ...rowTiles.filter(
+        (tile) =>
+          !rowHoles.some(
+            (h) =>
+              y >= h.y - CLIP_EPS &&
+              yEnd <= h.y + h.height + CLIP_EPS &&
+              tile.x >= h.x - CLIP_EPS &&
+              tile.x + tile.width <= h.x + h.width + CLIP_EPS,
+          ),
+      ),
+    )
   }
 
   return clipTilesAbovePlinth(
     sealTilesToOpeningJambs(
       mergeNarrowPanelGaps(splitTilesAtOpenings(tiles, wall.openings), wall, panel),
-      wall,
+      jambHoles,
     ),
     panel,
   )
@@ -1033,15 +1284,15 @@ function clipTilesAbovePlinth(tiles: PanelTile[], panel: StudioPanelConfig): Pan
   return tiles.filter((tile) => tile.y >= plinthH - CLIP_EPS && tile.y + tile.height > plinthH + CLIP_EPS)
 }
 
+type JambHole = { x: number; y: number; width: number; height: number }
+
 /**
- * Steine, die vor der Laibung enden, bis an die Clip-Kante ziehen.
- * Verhindert Mörtel-/Wandstreifen links und rechts der Öffnung.
+ * Laibungskörper je Öffnung (Plan-XY) unter der Kämpferlinie — Grundlage für Feld-Layout
+ * (Stoßfugen 0,5/1 an der Laibung) und für das Siegeln der Nachbarsteine.
+ * Bogenkappe nicht enthalten: dort dockt das Raster am Bogen/Extrados.
  */
-function sealTilesToOpeningJambs(tiles: PanelTile[], wall: Wall): PanelTile[] {
-  if (tiles.length === 0) return tiles
-  // Unter der Kämpferlinie bis an die Laibung ziehen. In der Bogenkappe nicht
-  // auf die Rechteck-Bounding-Box siegeln — dort dockt das Raster am Extrados.
-  const holes = wall.openings
+function openingJambSealHoles(wall: Wall): JambHole[] {
+  return wall.openings
     .filter((opening) => !opening.hidden && openingCutsWall(opening))
     .map((opening) => {
       const clearance =
@@ -1066,6 +1317,14 @@ function sealTilesToOpeningJambs(tiles: PanelTile[], wall: Wall): PanelTile[] {
         height: springY != null ? Math.max(0, springY - rect.y) : rect.height,
       }
     })
+}
+
+/**
+ * Steine, die vor der Laibung enden, bis an die Clip-Kante ziehen.
+ * Verhindert Mörtel-/Wandstreifen links und rechts der Öffnung.
+ */
+function sealTilesToOpeningJambs(tiles: PanelTile[], holes: JambHole[]): PanelTile[] {
+  if (tiles.length === 0) return tiles
   if (holes.length === 0) return tiles
 
   const rowMap = new Map<number, PanelTile[]>()

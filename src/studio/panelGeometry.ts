@@ -11,6 +11,9 @@ import {
   buildSemicircularArchSpec,
   clipPolysMinusArches,
   clipRectMinusBox,
+  flushClipPartsToOpeningJambs,
+  mergeNarrowClipParts,
+  minClipRemnantWidth,
   normalizeOpeningFill,
   openingArchGeom,
   openingArchVoussoirsEnabled,
@@ -49,6 +52,7 @@ import {
   studioWallOuterLocalZ,
   studioWallTransform,
   studioWindowDepthForwardSign,
+  turningAdjacentWalls,
   wallHasPanels,
   wallSpanAlongYaw,
   isWallPlanLinked,
@@ -263,6 +267,16 @@ function addQuad(
   indices.push(base, base + 3, base + 2, base, base + 2, base + 1)
 }
 
+/** Rest über der Kurve: wenn die Kurve über dem Stein liegt, ist die Spalte das Fensterloch. */
+function bottomArcHasStone(arcY: number, yTop: number, eps = 0.05): boolean {
+  return arcY < yTop - eps
+}
+
+/** Rest unter der Kurve: wenn die Kurve unter dem Stein liegt, ist die Spalte das Fensterloch. */
+function topArcHasStone(arcY: number, yBot: number, eps = 0.05): boolean {
+  return arcY > yBot + eps
+}
+
 /**
  * Wand-X im zentrierten Lokalraum.
  * Feld: `wallX − halfW` (Öffnungen unverzerrt). Gehrung nur als Clamp auf die
@@ -286,6 +300,79 @@ function wallLocalX(
     return arcWallLocalPoint(wall, wallX, 0, zDepth).x
   }
   return studioMiterLocalX(wall, wallX, z, miterStartEnabled, miterEndEnabled)
+}
+
+/** Rechteck unter der Kämpferlinie — Laibung ohne Bogenkappe. */
+function openingJambBodyRects(wall: Wall): Rect[] {
+  const out: Rect[] = []
+  for (const opening of wall.openings) {
+    if (opening.hidden || !openingCutsWall(opening)) continue
+    const rect = openingMasonryRect(opening, PANEL_OPENING_CLEARANCE)
+    const geom = openingArchGeom(opening, PANEL_OPENING_CLEARANCE)
+    const height = geom ? Math.max(0, geom.springY - rect.y) : rect.height
+    if (height > 0.5) out.push({ x: rect.x, y: rect.y, width: rect.width, height })
+  }
+  return out
+}
+
+/** Gehrungs-Flags plus: deckt am Wandende eine Nachbarwand **mit Paneelen** die Stirn ab? */
+interface PanelMiter {
+  start: boolean
+  end: boolean
+  coverStart?: boolean
+  coverEnd?: boolean
+}
+
+function panelMiterWithReturnCover(wall: Wall, allWalls: Wall[]): PanelMiter {
+  const miter = panelMiterEnds(wall, allWalls)
+  return {
+    ...miter,
+    coverStart: miter.start && turningAdjacentWalls(wall, 'start', allWalls).some(wallHasPanels),
+    coverEnd: miter.end && turningAdjacentWalls(wall, 'end', allWalls).some(wallHasPanels),
+  }
+}
+
+/**
+ * Stirnfläche weglassen — nur an der gehrten Wandecke, an der die Nachbarwand selbst
+ * Paneele hat (ihre Steine treffen auf der Gehrungsebene). Ohne Paneel-Nachbar (Putzwand)
+ * und an Laibungen bleibt die Stirn: sonst schaut man in den offenen Stein (Kerbe/Treppe
+ * im Render, v2.0.30–2.0.33). Zeichnung filtert Tiefenkanten ohnehin
+ * (`filterStudioDrawingSegment`).
+ */
+function hidePanelReturnFace(
+  wall: Wall,
+  miter: PanelMiter,
+  wallX: number,
+  y0: number,
+  y1: number,
+  end: 'start' | 'end',
+  jambs: Rect[],
+): boolean {
+  void y0
+  void y1
+  void jambs
+  if (end === 'start' && wallX <= 1e-4) return miter.coverStart === true
+  if (end === 'end' && wallX >= wall.width - 1e-4) return miter.coverEnd === true
+  return false
+}
+
+/** Bossen-Seite nicht einziehen: Wandende und vertikale Laibung bleiben eine Gerade. */
+function flushBossSide(
+  wall: Wall,
+  wallX: number,
+  y0: number,
+  y1: number,
+  end: 'start' | 'end',
+  jambs: Rect[],
+): boolean {
+  if (end === 'start' && wallX <= 1e-4) return true
+  if (end === 'end' && wallX >= wall.width - 1e-4) return true
+  for (const hole of jambs) {
+    if (y1 <= hole.y + CLIP_EPS || y0 >= hole.y + hole.height - CLIP_EPS) continue
+    if (end === 'start' && Math.abs(wallX - (hole.x + hole.width)) <= 1.5) return true
+    if (end === 'end' && Math.abs(wallX - hole.x) <= 1.5) return true
+  }
+  return false
 }
 
 /** Lokalpunkt (Wand-X entlang Yaw, Tiefe Z) → Welt-XZ (wie Mesh-Transform). */
@@ -521,6 +608,17 @@ function makeCoordAt(
  */
 
 /** Extrudiert einen geschlossenen Wand-XY-Umriss (Keilstein/Fächer) als Steinquader. */
+function triangulateOutlineRing(
+  outline: { x: number; y: number }[],
+): number[][] {
+  const contour = outline.map((pt) => new THREE.Vector2(pt.x, pt.y))
+  try {
+    return THREE.ShapeUtils.triangulateShape(contour, [])
+  } catch {
+    return []
+  }
+}
+
 function extrudeOutlinePoly(
   outline: { x: number; y: number }[],
   p: (wx: number, wy: number, z: number) => THREE.Vector3,
@@ -535,12 +633,24 @@ function extrudeOutlinePoly(
   if (n < 3) return
   const front = outline.map((pt) => p(pt.x, pt.y, frontZ))
   const back = outline.map((pt) => p(pt.x, pt.y, backZ))
-  // Vorder- und Rückseite: Fächer um den ersten Punkt (wie origin/main v0.7.33)
-  for (let i = 1; i < n - 1; i += 1) {
-    if (!opts?.skipFront) {
-      addTri(positions, normals, indices, front[0], front[i], front[i + 1])
+  const tris = triangulateOutlineRing(outline)
+  if (tris.length > 0) {
+    for (const tri of tris) {
+      const ia = tri[0]!
+      const ib = tri[1]!
+      const ic = tri[2]!
+      if (!opts?.skipFront) {
+        addTri(positions, normals, indices, front[ia]!, front[ib]!, front[ic]!)
+      }
+      addTri(positions, normals, indices, back[ia]!, back[ic]!, back[ib]!)
     }
-    addTri(positions, normals, indices, back[0], back[i + 1], back[i])
+  } else {
+    for (let i = 1; i < n - 1; i += 1) {
+      if (!opts?.skipFront) {
+        addTri(positions, normals, indices, front[0], front[i], front[i + 1])
+      }
+      addTri(positions, normals, indices, back[0], back[i + 1], back[i])
+    }
   }
   for (let i = 0; i < n; i += 1) {
     const j = (i + 1) % n
@@ -731,34 +841,38 @@ function extrudeStone(
 
   if (arc && arc.length >= 2) {
     const skipFront = taperOn
-    const tlf = p(arc[0].x, y1Wall, bodyFrontZ)
-    const tlb = p(arc[0].x, y1Wall, backZ)
-    const trf = p(arc[arc.length - 1].x, y1Wall, bodyFrontZ)
-    const trb = p(arc[arc.length - 1].x, y1Wall, backZ)
-    addQuad(positions, normals, indices, trb, tlb, tlf, trf)
-    addQuad(
-      positions,
-      normals,
-      indices,
-      tlb,
-      p(arc[0].x, arc[0].y, backZ),
-      p(arc[0].x, arc[0].y, bodyFrontZ),
-      tlf,
-    )
-    addQuad(
-      positions,
-      normals,
-      indices,
-      p(arc[arc.length - 1].x, arc[arc.length - 1].y, backZ),
-      trb,
-      trf,
-      p(arc[arc.length - 1].x, arc[arc.length - 1].y, bodyFrontZ),
-    )
+    const first = arc.find((pt) => bottomArcHasStone(pt.y, y1Wall))
+    const last = [...arc].reverse().find((pt) => bottomArcHasStone(pt.y, y1Wall))
+    if (first) {
+      addQuad(
+        positions,
+        normals,
+        indices,
+        p(first.x, y1Wall, backZ),
+        p(first.x, Math.max(first.y, y0Wall), backZ),
+        p(first.x, Math.max(first.y, y0Wall), bodyFrontZ),
+        p(first.x, y1Wall, bodyFrontZ),
+      )
+    }
+    if (last && last !== first) {
+      addQuad(
+        positions,
+        normals,
+        indices,
+        p(last.x, Math.max(last.y, y0Wall), backZ),
+        p(last.x, y1Wall, backZ),
+        p(last.x, y1Wall, bodyFrontZ),
+        p(last.x, Math.max(last.y, y0Wall), bodyFrontZ),
+      )
+    }
     for (let i = 0; i < arc.length - 1; i += 1) {
       const a = arc[i]
       const b = arc[i + 1]
-      const af = p(a.x, a.y, bodyFrontZ)
-      const bf = p(b.x, b.y, bodyFrontZ)
+      if (!bottomArcHasStone(a.y, y1Wall) || !bottomArcHasStone(b.y, y1Wall)) continue
+      const ay = Math.max(a.y, y0Wall)
+      const by = Math.max(b.y, y0Wall)
+      const af = p(a.x, ay, bodyFrontZ)
+      const bf = p(b.x, by, bodyFrontZ)
       const at = p(a.x, y1Wall, bodyFrontZ)
       const bt = p(b.x, y1Wall, bodyFrontZ)
       if (!skipFront) {
@@ -768,8 +882,8 @@ function extrudeStone(
         positions,
         normals,
         indices,
-        p(a.x, a.y, backZ),
-        p(b.x, b.y, backZ),
+        p(a.x, ay, backZ),
+        p(b.x, by, backZ),
         bf,
         af,
       )
@@ -779,32 +893,36 @@ function extrudeStone(
 
   if (topArc && topArc.length >= 2) {
     const skipFront = taperOn
-    const blf = p(topArc[0].x, y0Wall, bodyFrontZ)
-    const blb = p(topArc[0].x, y0Wall, backZ)
-    const brf = p(topArc[topArc.length - 1].x, y0Wall, bodyFrontZ)
-    const brb = p(topArc[topArc.length - 1].x, y0Wall, backZ)
-    addQuad(positions, normals, indices, blb, brb, brf, blf)
-    addQuad(
-      positions,
-      normals,
-      indices,
-      blb,
-      blf,
-      p(topArc[0].x, topArc[0].y, bodyFrontZ),
-      p(topArc[0].x, topArc[0].y, backZ),
-    )
-    addQuad(
-      positions,
-      normals,
-      indices,
-      brf,
-      brb,
-      p(topArc[topArc.length - 1].x, topArc[topArc.length - 1].y, backZ),
-      p(topArc[topArc.length - 1].x, topArc[topArc.length - 1].y, bodyFrontZ),
-    )
+    const first = topArc.find((pt) => topArcHasStone(pt.y, y0Wall))
+    const last = [...topArc].reverse().find((pt) => topArcHasStone(pt.y, y0Wall))
+    if (first) {
+      addQuad(
+        positions,
+        normals,
+        indices,
+        p(first.x, y0Wall, backZ),
+        p(first.x, y0Wall, bodyFrontZ),
+        p(first.x, Math.min(first.y, y1Wall), bodyFrontZ),
+        p(first.x, Math.min(first.y, y1Wall), backZ),
+      )
+    }
+    if (last && last !== first) {
+      addQuad(
+        positions,
+        normals,
+        indices,
+        p(last.x, y0Wall, bodyFrontZ),
+        p(last.x, y0Wall, backZ),
+        p(last.x, Math.min(last.y, y1Wall), backZ),
+        p(last.x, Math.min(last.y, y1Wall), bodyFrontZ),
+      )
+    }
     for (let i = 0; i < topArc.length - 1; i += 1) {
       const a = topArc[i]
       const b = topArc[i + 1]
+      if (!topArcHasStone(a.y, y0Wall) || !topArcHasStone(b.y, y0Wall)) continue
+      const ay = Math.min(a.y, y1Wall)
+      const by = Math.min(b.y, y1Wall)
       if (!skipFront) {
         addQuad(
           positions,
@@ -812,18 +930,18 @@ function extrudeStone(
           indices,
           p(a.x, y0Wall, bodyFrontZ),
           p(b.x, y0Wall, bodyFrontZ),
-          p(b.x, b.y, bodyFrontZ),
-          p(a.x, a.y, bodyFrontZ),
+          p(b.x, by, bodyFrontZ),
+          p(a.x, ay, bodyFrontZ),
         )
       }
       addQuad(
         positions,
         normals,
         indices,
-        p(a.x, a.y, backZ),
-        p(b.x, b.y, backZ),
-        p(b.x, b.y, bodyFrontZ),
-        p(a.x, a.y, bodyFrontZ),
+        p(a.x, ay, backZ),
+        p(b.x, by, backZ),
+        p(b.x, by, bodyFrontZ),
+        p(a.x, ay, bodyFrontZ),
       )
     }
     return
@@ -842,8 +960,13 @@ function extrudeStone(
   addQuad(positions, normals, indices, blf, brf, trf, tlf)
   addQuad(positions, normals, indices, blb, brb, brf, blf)  // unten
   addQuad(positions, normals, indices, trb, tlb, tlf, trf)  // oben
-  addQuad(positions, normals, indices, tlb, blb, blf, tlf)  // linke Seite (Gehrung)
-  addQuad(positions, normals, indices, brb, trb, trf, brf)  // rechte Seite (Gehrung)
+  const jambs = openingJambBodyRects(wall)
+  if (!hidePanelReturnFace(wall, miter, x0, y0Wall, y1Wall, 'start', jambs)) {
+    addQuad(positions, normals, indices, tlb, blb, blf, tlf)  // linke Seite
+  }
+  if (!hidePanelReturnFace(wall, miter, x1, y0Wall, y1Wall, 'end', jambs)) {
+    addQuad(positions, normals, indices, brb, trb, trf, brf)  // rechte Seite
+  }
 }
 
 /**
@@ -1293,6 +1416,25 @@ function simplifyClosedRing(ring: Pt2[], maxN: number, tol: number): Pt2[] {
  * Bossen als paralleler Einzug der Restform (Trapez → kleineres Trapez).
  * Gleiche Fase wie volle Wandsteine — Vertex-Paare 1:1, kein unabhängiges Resample.
  */
+function pinInsetXToFlushPlanes(
+  outerX: number,
+  outerY: number,
+  insetX: number,
+  wall: Wall | undefined,
+  jambs: Rect[] | undefined,
+): number {
+  if (!wall) return insetX
+  if (outerX <= 1e-4 || outerX >= wall.width - 1e-4) return outerX
+  if (!jambs) return insetX
+  for (const hole of jambs) {
+    if (outerY < hole.y - 1.5 || outerY > hole.y + hole.height + 1.5) continue
+    if (Math.abs(outerX - hole.x) <= 1.5 || Math.abs(outerX - (hole.x + hole.width)) <= 1.5) {
+      return outerX
+    }
+  }
+  return insetX
+}
+
 function extrudeInsetRingFrustum(
   ring: Pt2[],
   chamfer: number,
@@ -1302,6 +1444,7 @@ function extrudeInsetRingFrustum(
   positions: number[],
   normals: number[],
   indices: number[],
+  flush?: { wall: Wall; jambs: Rect[] },
 ): boolean {
   if (chamfer <= 1e-6 || ring.length < 3) return false
   const outerSrc = ringCcw(cleanRing(ring))
@@ -1330,6 +1473,12 @@ function extrudeInsetRingFrustum(
     }
   }
   if (!iPts || iPts.length !== oPts.length) return false
+  if (flush) {
+    iPts = iPts.map((pt, i) => ({
+      x: pinInsetXToFlushPlanes(oPts[i]!.x, oPts[i]!.y, pt.x, flush.wall, flush.jambs),
+      y: pt.y,
+    }))
+  }
 
   const front = iPts.map((pt) => p(pt.x, pt.y, frontZ))
   const contour = iPts.map((pt) => new THREE.Vector2(pt.x, pt.y))
@@ -1627,10 +1776,21 @@ function extrudeRemnantTrapezoidBoss(
   positions: number[],
   normals: number[],
   indices: number[],
+  flush?: { wall: Wall; jambs: Rect[] },
 ): boolean {
   const ring = remnantOutline(rect)
   if (!ring) return false
-  return extrudeInsetRingFrustum(ring, chamfer, p, bodyFrontZ, taperFrontZ, positions, normals, indices)
+  return extrudeInsetRingFrustum(
+    ring,
+    chamfer,
+    p,
+    bodyFrontZ,
+    taperFrontZ,
+    positions,
+    normals,
+    indices,
+    flush,
+  )
 }
 
 /**
@@ -1678,6 +1838,24 @@ function extrudeFrustum(
   if (rect.keepBossChamferEnd && rect.x + rect.width >= wall.width - joint / 2 - 0.6) {
     atEnd = false
   }
+  const jambs = openingJambBodyRects(wall)
+  const x0Flush = rect.x
+  const x1Flush = rect.x + rect.width
+  const y0Flush = rect.y
+  const y1Flush = rect.y + rect.height
+  if (
+    !rect.keepBossChamferStart &&
+    flushBossSide(wall, x0Flush, y0Flush, y1Flush, 'start', jambs)
+  ) {
+    atStart = true
+  }
+  if (
+    !rect.keepBossChamferEnd &&
+    flushBossSide(wall, x1Flush, y0Flush, y1Flush, 'end', jambs)
+  ) {
+    atEnd = true
+  }
+  const remnantFlush = { wall, jambs }
 
   if (rect.outline && rect.outline.length >= 3) {
     const polar = rect.polar
@@ -1691,7 +1869,7 @@ function extrudeFrustum(
       return
     }
     // Outline-Reste (L/Zwickel): nur Trapez der Kontur — nie Rechteck-Diamant.
-    if (!extrudeRemnantTrapezoidBoss(rect, chamfer, p, bodyFrontZ, taperFrontZ, positions, normals, indices)) {
+    if (!extrudeRemnantTrapezoidBoss(rect, chamfer, p, bodyFrontZ, taperFrontZ, positions, normals, indices, remnantFlush)) {
       const ring = remnantOutline(rect)
       if (ring) fillRingFront(ring, p, bodyFrontZ, positions, normals, indices)
     }
@@ -1703,7 +1881,7 @@ function extrudeFrustum(
     if (extrudeMonotoneArcBoss(rect, chamfer, p, bodyFrontZ, taperFrontZ, positions, normals, indices)) {
       return
     }
-    if (extrudeRemnantTrapezoidBoss(rect, chamfer, p, bodyFrontZ, taperFrontZ, positions, normals, indices)) {
+    if (extrudeRemnantTrapezoidBoss(rect, chamfer, p, bodyFrontZ, taperFrontZ, positions, normals, indices, remnantFlush)) {
       return
     }
     fillMonotoneArcFront(rect, p, bodyFrontZ, positions, normals, indices)
@@ -1772,8 +1950,12 @@ function extrudeFrustum(
   addQuad(positions, normals, indices, fb0, fb1, ft1, ft0)
   addQuad(positions, normals, indices, bb0, bb1, fb1, fb0)   // unten
   addQuad(positions, normals, indices, bt1, bt0, ft0, ft1)   // oben
-  if (!atStart) addQuad(positions, normals, indices, bt0, bb0, fb0, ft0)   // links
-  if (!atEnd) addQuad(positions, normals, indices, bb1, bt1, ft1, fb1)   // rechts
+  if (!atStart && !hidePanelReturnFace(wall, miter, x0, rect.y, rect.y + rect.height, 'start', jambs)) {
+    addQuad(positions, normals, indices, bt0, bb0, fb0, ft0)   // links
+  }
+  if (!atEnd && !hidePanelReturnFace(wall, miter, x1, rect.y, rect.y + rect.height, 'end', jambs)) {
+    addQuad(positions, normals, indices, bb1, bt1, ft1, fb1)   // rechts
+  }
 }
 
 function computeVertexNormals(positions: number[], indices: number[], normals: number[]) {
@@ -1864,19 +2046,59 @@ export function createStudioPanelGeometriesByColorIndex(
     return [{ stageIndex: 0, geometry: createStudioPanelGeometry(wall, panel, allWalls, precomputedTiles) }]
   }
   const tiles = precomputedTiles ?? layoutPanelTiles(wall, panel, allWalls)
-  const buckets: PanelTile[][] = Array.from({ length: stageCount }, () => [])
-  tiles.forEach((tile, i) => {
-    const idx = pickTileColorIndex(seedKey, i, stageCount)
-    buckets[idx].push(tile)
-  })
+  if (tiles.length === 0) return [{ stageIndex: 0, geometry: new THREE.BufferGeometry() }]
+  // Clip/Merge/Flush einmal über die ganze Wand, dann Reste nach Ursprungsstein einfärben.
+  const parts = prepareStudioPanelParts(wall, panel, tiles, tiles)
+  const buckets = bucketPartsByColorIndex(parts.rects, seedKey, stageCount)
   const out: Array<{ stageIndex: number; geometry: THREE.BufferGeometry }> = []
+  let archParts = parts.ringAndFan
   for (let i = 0; i < stageCount; i += 1) {
     if (buckets[i].length === 0) continue
-    out.push({ stageIndex: i, geometry: buildStudioPanelGeometry(wall, panel, buckets[i], allWalls, tiles) })
+    out.push({
+      stageIndex: i,
+      geometry: extrudeStudioPanelParts(
+        wall,
+        panel,
+        { rects: buckets[i], ringAndFan: archParts, holes: parts.holes },
+        allWalls,
+      ),
+    })
+    archParts = []
   }
   return out.length > 0
     ? out
     : [{ stageIndex: 0, geometry: new THREE.BufferGeometry() }]
+}
+
+/** Farbstufe eines Steins aus dem Ursprungsfeld (`sourceX/Y`, vor dem Öffnungs-Clip). */
+function tileColorBucketIndex(
+  part: { x: number; y: number; sourceX?: number; sourceY?: number },
+  seedKey: string,
+  stageCount: number,
+): number {
+  const x = part.sourceX ?? part.x
+  const y = part.sourceY ?? part.y
+  const stableIdx = Math.round((x + 1) * 128 + (y + 1) * 0.5)
+  return pickTileColorIndex(seedKey, stableIdx, stageCount)
+}
+
+function bucketPartsByColorIndex<T extends { x: number; y: number; sourceX?: number; sourceY?: number }>(
+  parts: T[],
+  seedKey: string,
+  stageCount: number,
+): T[][] {
+  const buckets: T[][] = Array.from({ length: stageCount }, () => [])
+  for (const part of parts) {
+    buckets[tileColorBucketIndex(part, seedKey, stageCount)].push(part)
+  }
+  return buckets
+}
+
+/** Geschnittene Steine + Bogen-/Keilstein-Teile einer Wand (vor der Extrusion). */
+interface StudioPanelParts {
+  rects: OpeningPoly[]
+  ringAndFan: OpeningPoly[]
+  holes: Rect[]
 }
 
 function buildStudioPanelGeometry(
@@ -1887,11 +2109,26 @@ function buildStudioPanelGeometry(
   layoutTiles?: PanelTile[],
 ): THREE.BufferGeometry {
   if (tiles.length === 0) return new THREE.BufferGeometry()
-  const positions: number[] = []
-  const normals: number[] = []
-  const indices: number[] = []
-  const miter = panelMiterEnds(wall, allWalls)
+  return extrudeStudioPanelParts(
+    wall,
+    panel,
+    prepareStudioPanelParts(wall, panel, tiles, layoutTiles),
+    allWalls,
+  )
+}
 
+/**
+ * Öffnungs-Clip, Rest-Verschmelzung und Laibungs-Flush über **alle** Steine der Wand.
+ * Farbstufen teilen erst danach auf (`createStudioPanelGeometriesByColorIndex`) — sonst
+ * sieht der Clip je Stufe nur einen Teil der Reihe: Reste fallen weg (Treppen-Ecke),
+ * Flush zieht Steine über fremde Stufen (Streifen).
+ */
+function prepareStudioPanelParts(
+  wall: Wall,
+  panel: StudioPanelConfig,
+  tiles: PanelTile[],
+  layoutTiles?: PanelTile[],
+): StudioPanelParts {
   const holes = snapOpeningHolesToTileGrid(wall, panel, layoutTiles ?? tiles)
   const joint = panel.joint ?? 0.8
   const kind = panelKindForPattern(panel.pattern)
@@ -1904,6 +2141,8 @@ function buildStudioPanelGeometry(
     panel.panelHeight,
     { panelWidth: panel.panelWidth, joint },
   )
+  rects = mergeNarrowClipParts(rects, minClipRemnantWidth(panel.panelWidth))
+  rects = flushClipPartsToOpeningJambs(rects, wall.openings, PANEL_OPENING_CLEARANCE)
   const voussoirWork: { spec: NonNullable<ReturnType<typeof buildSemicircularArchSpec>> }[] = []
   for (const opening of wall.openings) {
     if (opening.hidden || !openingCutsWall(opening)) continue
@@ -1974,8 +2213,23 @@ function buildStudioPanelGeometry(
     }
   }
 
-  for (const rect of [...rects, ...ringAndFan]) {
-    extrudeStone(rect, wall, panel, miter, positions, normals, indices, holes)
+  rects = flushClipPartsToOpeningJambs(rects, wall.openings, PANEL_OPENING_CLEARANCE)
+  return { rects, ringAndFan, holes }
+}
+
+function extrudeStudioPanelParts(
+  wall: Wall,
+  panel: StudioPanelConfig,
+  parts: StudioPanelParts,
+  allWalls: Wall[],
+): THREE.BufferGeometry {
+  const positions: number[] = []
+  const normals: number[] = []
+  const indices: number[] = []
+  const miter = panelMiterWithReturnCover(wall, allWalls)
+
+  for (const rect of [...parts.rects, ...parts.ringAndFan]) {
+    extrudeStone(rect, wall, panel, miter, positions, normals, indices, parts.holes)
     const tileTaperDepth = rect.taperDepth ?? panel.taperDepth ?? 0
     if (tileTaperDepth > 1e-6) {
       extrudeFrustum(rect, wall, panel, miter, allWalls, positions, normals, indices)
@@ -2038,9 +2292,14 @@ export function createStudioPlinthGeometry(
   const miter = plinthMiterEnds(wall, allWalls)
   const dockStart = Boolean(findCollinearDockWall(wall, 'start', allWalls))
   const dockEnd = Boolean(findCollinearDockWall(wall, 'end', allWalls))
-  const parts = clipTileAgainstOpenings(
-    { x: 0, y: 0, width: wall.width, height },
-    plinthClipOpenings(wall),
+  const clipOpenings = plinthClipOpenings(wall)
+  const parts = flushClipPartsToOpeningJambs(
+    clipTileAgainstOpenings(
+      { x: 0, y: 0, width: wall.width, height },
+      clipOpenings,
+      PANEL_OPENING_CLEARANCE,
+    ),
+    clipOpenings,
     PANEL_OPENING_CLEARANCE,
   )
   if (parts.length === 0) return null
@@ -2071,20 +2330,12 @@ export function createStudioPlinthGeometry(
 
     if (bottomArc && bottomArc.length >= 2) {
       const yTop = y1 - halfH
-      addQuad(
-        positions,
-        normals,
-        indices,
-        v3(xAt(x0, outerZ), yTop, outerZ),
-        v3(xAt(x1, outerZ), yTop, outerZ),
-        v3(xAt(x1, innerZ), yTop, innerZ),
-        v3(xAt(x0, innerZ), yTop, innerZ),
-      )
       for (let i = 0; i < bottomArc.length - 1; i += 1) {
         const a = bottomArc[i]!
         const b = bottomArc[i + 1]!
-        const ya0 = a.y - halfH
-        const ya1 = b.y - halfH
+        if (!bottomArcHasStone(a.y, y1) || !bottomArcHasStone(b.y, y1)) continue
+        const ya0 = Math.max(a.y, y0) - halfH
+        const ya1 = Math.max(b.y, y0) - halfH
         addQuad(
           positions,
           normals,
@@ -2113,28 +2364,27 @@ export function createStudioPlinthGeometry(
           v3(xAt(a.x, outerZ), ya0, outerZ),
         )
       }
-      // Seitliche Kappen am Bogenende
-      const a0 = bottomArc[0]!
-      const aN = bottomArc[bottomArc.length - 1]!
-      if (!(dockStart && rect.x <= 0.5)) {
+      const a0 = bottomArc.find((pt) => bottomArcHasStone(pt.y, y1))
+      const aN = [...bottomArc].reverse().find((pt) => bottomArcHasStone(pt.y, y1))
+      if (a0 && !(dockStart && rect.x <= 0.5)) {
         addQuad(
           positions,
           normals,
           indices,
-          v3(xAt(a0.x, innerZ), a0.y - halfH, innerZ),
+          v3(xAt(a0.x, innerZ), Math.max(a0.y, y0) - halfH, innerZ),
           v3(xAt(a0.x, innerZ), yTop, innerZ),
           v3(xAt(a0.x, outerZ), yTop, outerZ),
-          v3(xAt(a0.x, outerZ), a0.y - halfH, outerZ),
+          v3(xAt(a0.x, outerZ), Math.max(a0.y, y0) - halfH, outerZ),
         )
       }
-      if (!(dockEnd && rect.x + rect.width >= wall.width - 0.5)) {
+      if (aN && aN !== a0 && !(dockEnd && rect.x + rect.width >= wall.width - 0.5)) {
         addQuad(
           positions,
           normals,
           indices,
           v3(xAt(aN.x, innerZ), yTop, innerZ),
-          v3(xAt(aN.x, innerZ), aN.y - halfH, innerZ),
-          v3(xAt(aN.x, outerZ), aN.y - halfH, outerZ),
+          v3(xAt(aN.x, innerZ), Math.max(aN.y, y0) - halfH, innerZ),
+          v3(xAt(aN.x, outerZ), Math.max(aN.y, y0) - halfH, outerZ),
           v3(xAt(aN.x, outerZ), yTop, outerZ),
         )
       }
@@ -2143,33 +2393,27 @@ export function createStudioPlinthGeometry(
 
     if (topArc && topArc.length >= 2) {
       const yBot = y0 - halfH
-      addQuad(
-        positions,
-        normals,
-        indices,
-        v3(xAt(x0, innerZ), yBot, innerZ),
-        v3(xAt(x1, innerZ), yBot, innerZ),
-        v3(xAt(x1, outerZ), yBot, outerZ),
-        v3(xAt(x0, outerZ), yBot, outerZ),
-      )
       for (let i = 0; i < topArc.length - 1; i += 1) {
         const a = topArc[i]!
         const b = topArc[i + 1]!
+        if (!topArcHasStone(a.y, y0) || !topArcHasStone(b.y, y0)) continue
+        const ay = Math.min(a.y, y1) - halfH
+        const by = Math.min(b.y, y1) - halfH
         addQuad(
           positions,
           normals,
           indices,
           v3(xAt(a.x, outerZ), yBot, outerZ),
           v3(xAt(b.x, outerZ), yBot, outerZ),
-          v3(xAt(b.x, outerZ), b.y - halfH, outerZ),
-          v3(xAt(a.x, outerZ), a.y - halfH, outerZ),
+          v3(xAt(b.x, outerZ), by, outerZ),
+          v3(xAt(a.x, outerZ), ay, outerZ),
         )
         addQuad(
           positions,
           normals,
           indices,
-          v3(xAt(a.x, innerZ), a.y - halfH, innerZ),
-          v3(xAt(b.x, innerZ), b.y - halfH, innerZ),
+          v3(xAt(a.x, innerZ), ay, innerZ),
+          v3(xAt(b.x, innerZ), by, innerZ),
           v3(xAt(b.x, innerZ), yBot, innerZ),
           v3(xAt(a.x, innerZ), yBot, innerZ),
         )
@@ -2177,10 +2421,10 @@ export function createStudioPlinthGeometry(
           positions,
           normals,
           indices,
-          v3(xAt(a.x, innerZ), a.y - halfH, innerZ),
-          v3(xAt(a.x, outerZ), a.y - halfH, outerZ),
-          v3(xAt(b.x, outerZ), b.y - halfH, outerZ),
-          v3(xAt(b.x, innerZ), b.y - halfH, innerZ),
+          v3(xAt(a.x, innerZ), ay, innerZ),
+          v3(xAt(a.x, outerZ), ay, outerZ),
+          v3(xAt(b.x, outerZ), by, outerZ),
+          v3(xAt(b.x, innerZ), by, innerZ),
         )
       }
       continue
@@ -2200,8 +2444,17 @@ export function createStudioPlinthGeometry(
     addQuad(positions, normals, indices, blf, brf, trf, tlf)
     addQuad(positions, normals, indices, blb, brb, brf, blf)
     addQuad(positions, normals, indices, trb, tlb, tlf, trf)
-    if (!(dockStart && rect.x <= 0.5)) addQuad(positions, normals, indices, tlb, blb, blf, tlf)
-    if (!(dockEnd && rect.x + rect.width >= wall.width - 0.5)) {
+    const jambs = openingJambBodyRects(wall)
+    if (
+      !(dockStart && rect.x <= 0.5) &&
+      !hidePanelReturnFace(wall, miter, x0, y0, y1, 'start', jambs)
+    ) {
+      addQuad(positions, normals, indices, tlb, blb, blf, tlf)
+    }
+    if (
+      !(dockEnd && rect.x + rect.width >= wall.width - 0.5) &&
+      !hidePanelReturnFace(wall, miter, x1, y0, y1, 'end', jambs)
+    ) {
       addQuad(positions, normals, indices, brb, trb, trf, brf)
     }
   }
@@ -2249,12 +2502,19 @@ export function createStudioMortarGeometry(
   const mortarX0 = tiles.length > 0 ? Math.min(...tiles.map((t) => t.x)) : band.x
   const mortarX1 = tiles.length > 0 ? Math.max(...tiles.map((t) => t.x + t.width)) : band.x + band.width
   const mortarBand = { ...band, x: mortarX0, width: Math.max(CLIP_EPS, mortarX1 - mortarX0) }
-  const fullRects = clipPolysMinusArches(
-    clipTileAgainstHoles(mortarBand, holes),
+  const fullRects = flushClipPartsToOpeningJambs(
+    mergeNarrowClipParts(
+      clipPolysMinusArches(
+        clipTileAgainstHoles(mortarBand, holes),
+        wall.openings,
+        PANEL_OPENING_CLEARANCE,
+        panel.panelHeight,
+        { dockCartesianAtExtrados: false, panelWidth: panel.panelWidth, joint: panel.joint },
+      ),
+      minClipRemnantWidth(panel.panelWidth),
+    ),
     wall.openings,
     PANEL_OPENING_CLEARANCE,
-    panel.panelHeight,
-    { dockCartesianAtExtrados: false },
   )
 
   const xAt = (wx: number, z: number) =>
@@ -2262,11 +2522,6 @@ export function createStudioMortarGeometry(
 
   for (const rect of fullRects) {
     const y1 = rect.y + rect.height
-    const yTop = y1 - halfH
-    const xfTop0 = xAt(rect.x, mortarFrontZ)
-    const xfTop1 = xAt(rect.x + rect.width, mortarFrontZ)
-    const xbTop0 = xAt(rect.x, backZ)
-    const xbTop1 = xAt(rect.x + rect.width, backZ)
     const outline = rect.outline
     if (outline && outline.length >= 3) {
       const p = (wx: number, wy: number, z: number) => v3(xAt(wx, z), wy - halfH, z)
@@ -2276,20 +2531,12 @@ export function createStudioMortarGeometry(
     const arc = rect.bottomArc
 
     if (arc && arc.length >= 2) {
-      addQuad(
-        positions,
-        normals,
-        indices,
-        v3(xfTop0, yTop, mortarFrontZ),
-        v3(xfTop1, yTop, mortarFrontZ),
-        v3(xbTop1, yTop, backZ),
-        v3(xbTop0, yTop, backZ),
-      )
       for (let i = 0; i < arc.length - 1; i += 1) {
         const a = arc[i]
         const b = arc[i + 1]
-        const ya0 = a.y - halfH
-        const ya1 = b.y - halfH
+        if (!bottomArcHasStone(a.y, y1) || !bottomArcHasStone(b.y, y1)) continue
+        const ya0 = Math.max(a.y, rect.y) - halfH
+        const ya1 = Math.max(b.y, rect.y) - halfH
         const yt = y1 - halfH
         addQuad(
           positions,
@@ -2316,35 +2563,27 @@ export function createStudioMortarGeometry(
     const topArc = rect.topArc
     if (topArc && topArc.length >= 2) {
       const yBot = rect.y - halfH
-      addQuad(
-        positions,
-        normals,
-        indices,
-        v3(xAt(topArc[0].x, mortarFrontZ), yBot, mortarFrontZ),
-        v3(xAt(topArc[topArc.length - 1].x, mortarFrontZ), yBot, mortarFrontZ),
-        v3(xAt(topArc[topArc.length - 1].x, backZ), yBot, backZ),
-        v3(xAt(topArc[0].x, backZ), yBot, backZ),
-      )
       for (let i = 0; i < topArc.length - 1; i += 1) {
         const a = topArc[i]
         const b = topArc[i + 1]
+        if (!topArcHasStone(a.y, rect.y) || !topArcHasStone(b.y, rect.y)) continue
         addQuad(
           positions,
           normals,
           indices,
           v3(xAt(a.x, mortarFrontZ), yBot, mortarFrontZ),
           v3(xAt(b.x, mortarFrontZ), yBot, mortarFrontZ),
-          v3(xAt(b.x, mortarFrontZ), b.y - halfH, mortarFrontZ),
-          v3(xAt(a.x, mortarFrontZ), a.y - halfH, mortarFrontZ),
+          v3(xAt(b.x, mortarFrontZ), Math.min(b.y, y1) - halfH, mortarFrontZ),
+          v3(xAt(a.x, mortarFrontZ), Math.min(a.y, y1) - halfH, mortarFrontZ),
         )
         addQuad(
           positions,
           normals,
           indices,
-          v3(xAt(a.x, backZ), a.y - halfH, backZ),
-          v3(xAt(b.x, backZ), b.y - halfH, backZ),
-          v3(xAt(b.x, mortarFrontZ), b.y - halfH, mortarFrontZ),
-          v3(xAt(a.x, mortarFrontZ), a.y - halfH, mortarFrontZ),
+          v3(xAt(a.x, backZ), Math.min(a.y, y1) - halfH, backZ),
+          v3(xAt(b.x, backZ), Math.min(b.y, y1) - halfH, backZ),
+          v3(xAt(b.x, mortarFrontZ), Math.min(b.y, y1) - halfH, mortarFrontZ),
+          v3(xAt(a.x, mortarFrontZ), Math.min(a.y, y1) - halfH, mortarFrontZ),
         )
       }
       continue
@@ -3281,15 +3520,6 @@ export function studioWorkModeTileLocalZ(wall: Wall): number {
   return studioWallOuterLocalZ(wall) + studioWindowDepthForwardSign(wall) * WORK_FLAT_AHEAD_CM
 }
 
-function workModeRectHoles(wall: Wall): Rect[] {
-  const holes: Rect[] = []
-  for (const opening of wall.openings) {
-    if (opening.hidden || !openingCutsWall(opening)) continue
-    holes.push({ x: opening.x, y: opening.y, width: opening.width, height: opening.height })
-  }
-  return holes
-}
-
 function addWorkFaceQuad(
   wall: Wall,
   miter: { start: boolean; end: boolean },
@@ -3316,6 +3546,34 @@ function addWorkFaceQuad(
   )
 }
 
+function addWorkFaceOutlinePoly(
+  wall: Wall,
+  miter: { start: boolean; end: boolean },
+  faceZ: number,
+  positions: number[],
+  normals: number[],
+  indices: number[],
+  outline: Array<{ x: number; y: number }>,
+) {
+  if (outline.length < 3) return
+  const halfH = wall.height / 2
+  const xAt = (wx: number) => wallLocalX(wall, wx, faceZ, 0, faceZ, miter.start, miter.end)
+  const contour = outline.map((p) => new THREE.Vector2(p.x, p.y))
+  const tris = THREE.ShapeUtils.triangulateShape(contour, [])
+  for (const [i0, i1, i2] of tris) {
+    const a = outline[i0]!
+    const b = outline[i1]!
+    const c = outline[i2]!
+    const va = v3(xAt(a.x), a.y - halfH, faceZ)
+    const vb = v3(xAt(b.x), b.y - halfH, faceZ)
+    const vc = v3(xAt(c.x), c.y - halfH, faceZ)
+    const base = positions.length / 3
+    positions.push(va.x, va.y, va.z, vb.x, vb.y, vb.z, vc.x, vc.y, vc.z)
+    normals.push(0, 0, 1, 0, 0, 1, 0, 0, 1)
+    indices.push(base, base + 1, base + 2)
+  }
+}
+
 function finishWorkFlatGeometry(
   positions: number[],
   normals: number[],
@@ -3331,24 +3589,50 @@ function finishWorkFlatGeometry(
   return geometry
 }
 
+/** Flat-LOD: Öffnungs-Clip wie High-LOD, über alle Steine der Wand. */
+function clipFlatPanelTiles(
+  wall: Wall,
+  panel: StudioPanelConfig,
+  tiles: PanelTile[],
+  layoutTiles?: PanelTile[],
+): OpeningPoly[] {
+  const joint = Math.max(0, panel.joint ?? 0.8)
+  const holes = snapOpeningHolesToTileGrid(wall, panel, layoutTiles ?? tiles)
+  let rects: OpeningPoly[] = clipPolysMinusArches(
+    tiles.flatMap((tile) => clipTileAgainstHoles(tile, holes)),
+    wall.openings,
+    PANEL_OPENING_CLEARANCE,
+    panel.panelHeight,
+    { panelWidth: panel.panelWidth, joint },
+  )
+  rects = mergeNarrowClipParts(rects, minClipRemnantWidth(panel.panelWidth))
+  return flushClipPartsToOpeningJambs(rects, wall.openings, PANEL_OPENING_CLEARANCE)
+}
+
 function buildStudioPanelFlatTileGeometry(
   wall: Wall,
   panel: StudioPanelConfig,
   tiles: PanelTile[],
   allWalls: Wall[],
+  layoutTiles?: PanelTile[],
+  precomputedRects?: OpeningPoly[],
 ): THREE.BufferGeometry {
-  if (tiles.length === 0) return new THREE.BufferGeometry()
+  if (tiles.length === 0 && !precomputedRects) return new THREE.BufferGeometry()
   const faceZ = studioWorkModeTileLocalZ(wall)
   const miter = panelMiterEnds(wall, allWalls)
-  const holes = workModeRectHoles(wall)
   const joint = Math.max(0, panel.joint ?? 0.8)
   const halfJ = joint * 0.5
+  const rects = precomputedRects ?? clipFlatPanelTiles(wall, panel, tiles, layoutTiles)
   const positions: number[] = []
   const normals: number[] = []
   const indices: number[] = []
 
-  for (const part of tiles.flatMap((tile) => clipTileAgainstHoles(tile, holes))) {
-    if (part.outline || part.bottomArc || part.topArc) continue
+  for (const part of rects) {
+    if (part.outline && part.outline.length >= 3) {
+      addWorkFaceOutlinePoly(wall, miter, faceZ, positions, normals, indices, part.outline)
+      continue
+    }
+    if (part.bottomArc || part.topArc) continue
     const x0 = part.x + halfJ
     const y0 = part.y + halfJ
     const x1 = part.x + part.width - halfJ
@@ -3369,8 +3653,16 @@ function buildStudioPanelFlatJointGeometry(
   const band = visiblePanelRowRect(wall, panel)
   if (!band) return null
   const halfJ = joint * 0.5
-  const holes = workModeRectHoles(wall)
-  let parts = clipTileAgainstHoles(band, holes)
+  const holes = snapOpeningHolesToTileGrid(wall, panel, tiles)
+  let parts: OpeningPoly[] = clipPolysMinusArches(
+    clipTileAgainstHoles(band, holes),
+    wall.openings,
+    PANEL_OPENING_CLEARANCE,
+    panel.panelHeight,
+    { panelWidth: panel.panelWidth, joint },
+  )
+  parts = mergeNarrowClipParts(parts, minClipRemnantWidth(panel.panelWidth))
+  parts = flushClipPartsToOpeningJambs(parts, wall.openings, PANEL_OPENING_CLEARANCE)
   for (const tile of tiles) {
     const inset = {
       x: tile.x + halfJ,
@@ -3387,7 +3679,11 @@ function buildStudioPanelFlatJointGeometry(
   const normals: number[] = []
   const indices: number[] = []
   for (const part of parts) {
-    if (part.outline || part.bottomArc || part.topArc) continue
+    if (part.outline && part.outline.length >= 3) {
+      addWorkFaceOutlinePoly(wall, miter, faceZ, positions, normals, indices, part.outline)
+      continue
+    }
+    if (part.bottomArc || part.topArc) continue
     addWorkFaceQuad(
       wall,
       miter,
@@ -3418,18 +3714,22 @@ export function createStudioPanelFlatGeometriesByColorIndex(
   }
   const tiles = precomputedTiles ?? layoutPanelTiles(wall, panel, allWalls)
   if (stageCount <= 1) {
-    return [{ stageIndex: 0, geometry: buildStudioPanelFlatTileGeometry(wall, panel, tiles, allWalls) }]
+    return [
+      {
+        stageIndex: 0,
+        geometry: buildStudioPanelFlatTileGeometry(wall, panel, tiles, allWalls, tiles),
+      },
+    ]
   }
-  const buckets: PanelTile[][] = Array.from({ length: stageCount }, () => [])
-  tiles.forEach((tile, i) => {
-    buckets[pickTileColorIndex(seedKey, i, stageCount)].push(tile)
-  })
+  // Clip einmal über die ganze Wand, Reste nach Ursprungsstein einfärben (wie High-LOD).
+  const rects = clipFlatPanelTiles(wall, panel, tiles, tiles)
+  const buckets = bucketPartsByColorIndex(rects, seedKey, stageCount)
   const out: Array<{ stageIndex: number; geometry: THREE.BufferGeometry }> = []
   for (let i = 0; i < stageCount; i += 1) {
     if (buckets[i].length === 0) continue
     out.push({
       stageIndex: i,
-      geometry: buildStudioPanelFlatTileGeometry(wall, panel, buckets[i], allWalls),
+      geometry: buildStudioPanelFlatTileGeometry(wall, panel, tiles, allWalls, tiles, buckets[i]),
     })
   }
   return out.length > 0 ? out : [{ stageIndex: 0, geometry: new THREE.BufferGeometry() }]

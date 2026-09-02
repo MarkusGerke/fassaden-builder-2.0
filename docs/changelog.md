@@ -2,6 +2,10 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Mauerwerk: Modulraster an Laibungen, Ecken und Dock-Nähten (2026-09-02) — v2.0.61
+
+Feldweise Layout mit Modulraster (`moduleCourseCuts`) an Laibungen; Keile über der Bogenkappe; Dock-Ketten spiegeln Endsteine. Dateien: `panelLayout.ts`, `openingGeometry.ts`, Tests.
+
 ### Wandflächen reflektieren Licht (2026-09-01) — v2.0.60
 
 **Außen:** `applyRenderExteriorSurfaceLook` — EnvMap ~0,58, Rauheit max. 0,78 auf Paneele/Wände im Render-Modus. **Innen:** Wand-Mesh auf Innen-Layer wenn Punktlicht aktiv; Innenmaterial ohne Punktlicht-Skip; `applyRenderInteriorSurfaceLook`. Außen-Shader skippt Punktlicht sobald ein Licht an ist. Dateien: `threeColors.ts`, `FacadeController.ts`, `main.ts`.

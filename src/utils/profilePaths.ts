@@ -1373,6 +1373,7 @@ export function createPlinthProfileSweepGeometry(
     const cut = subtractOpeningVolumes(sweep, wall, openings)
     if (cut) {
       sweep.dispose()
+      cut.userData.plinthCsg = true
       return cut
     }
   } catch (err) {

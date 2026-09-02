@@ -38,6 +38,7 @@ import {
   normalizeOpeningArch,
   openingCutsWall,
   openingFillMode,
+  filterStudioDrawingSegment,
   openingHasRoundMask,
   openingMaskPolyline,
   openingMasonryRect,
@@ -1457,13 +1458,77 @@ export class FacadeController {
     for (const line of this.lineOverlays) line.visible = show
   }
 
-  private createFatLineSegments(edges: THREE.EdgesGeometry): LineSegments2 {
+  private createFatLineSegments(edges: THREE.BufferGeometry): LineSegments2 {
     const lineGeo = new LineSegmentsGeometry()
     lineGeo.setPositions(edges.attributes.position.array as Float32Array)
     edges.dispose()
     const line = new LineSegments2(lineGeo, this.lineMaterial)
     line.computeLineDistances()
     return line
+  }
+
+  /** Zeichnungs-Kanten: keine Stirn/Tiefe, keine Strecke durchs Loch, Plan-Kante bündig. */
+  private filterCladdingEdgesOutsideOpenings(
+    edges: THREE.BufferGeometry,
+    wall: Wall,
+  ): THREE.BufferGeometry {
+    const pos = edges.getAttribute('position')
+    if (!pos || pos.count < 2) return edges
+    const kept: number[] = []
+    for (let i = 0; i < pos.count; i += 2) {
+      const seg = filterStudioDrawingSegment(
+        pos.getX(i),
+        pos.getY(i),
+        pos.getZ(i),
+        pos.getX(i + 1),
+        pos.getY(i + 1),
+        pos.getZ(i + 1),
+        wall,
+      )
+      if (!seg) continue
+      kept.push(...seg)
+    }
+    edges.dispose()
+    const filtered = new THREE.BufferGeometry()
+    filtered.setAttribute('position', new THREE.Float32BufferAttribute(kept, 3))
+    return filtered
+  }
+
+  private addMeshEdges(obj: THREE.Mesh, thresholdAngle = 20) {
+    if (!obj.geometry) return
+    const deg =
+      typeof obj.userData.lineEdgeThreshold === 'number'
+        ? obj.userData.lineEdgeThreshold
+        : obj.geometry.userData.plinthCsg
+          ? 48
+          : thresholdAngle
+    let edges: THREE.BufferGeometry = new THREE.EdgesGeometry(obj.geometry, deg)
+    const wallId = obj.userData.wallId as string | undefined
+    const wall = wallId ? findWall(this.state, wallId) : undefined
+    const isOpeningMesh = Boolean(obj.userData.openingId)
+    const wallPart = obj.userData.wallPart as string | undefined
+    const claddingLike =
+      wallPart === 'cladding' ||
+      wallPart === 'plinth' ||
+      wallPart === 'trimBand' ||
+      wallPart === 'cornice' ||
+      obj.userData.lodTier === 'mortar' ||
+      obj.userData.lodTier === 'low' ||
+      obj.userData.lodTier === 'high' ||
+      obj.userData.lodTier === 'plinth' ||
+      obj.userData.lodTier === 'light'
+    if (wall && isStudioWall(wall) && claddingLike && !isOpeningMesh) {
+      edges = this.filterCladdingEdgesOutsideOpenings(edges, wall)
+    }
+    const pos = edges.getAttribute('position')
+    if (!pos || pos.count < 2) {
+      edges.dispose()
+      return
+    }
+    const line = this.createFatLineSegments(edges)
+    line.userData.lineOverlay = true
+    obj.add(line)
+    this.lineOverlays.push(line)
   }
 
   private clearLineGroup() {
@@ -1477,20 +1542,6 @@ export class FacadeController {
       this.lineGroup.remove(child)
       child.geometry?.dispose()
     }
-  }
-
-  private addMeshEdges(obj: THREE.Mesh, thresholdAngle = 20) {
-    if (!obj.geometry) return
-    const deg =
-      typeof obj.userData.lineEdgeThreshold === 'number'
-        ? obj.userData.lineEdgeThreshold
-        : thresholdAngle
-    const edges = new THREE.EdgesGeometry(obj.geometry, deg)
-    const line = this.createFatLineSegments(edges)
-    line.userData.lineOverlay = true
-    // Kind des Meshes: folgt Wand-Lokalraum und Gebäude-Drehung (sitePivot).
-    obj.add(line)
-    this.lineOverlays.push(line)
   }
 
   private applyLineStyleToGroup(group: THREE.Group, thresholdAngle = 20) {
@@ -3101,6 +3152,7 @@ export class FacadeController {
                   mortarMesh.castShadow = !this.isPreviewPresentation()
                   mortarMesh.receiveShadow = this.isPreviewPresentation()
                   mortarMesh.userData.lodTier = 'mortar'
+                  mortarMesh.userData.skipLineEdges = true
                   mortarMesh.userData.buildingId = buildingId
                   mortarMesh.userData.wallId = wall.id
                   tagPickable(mortarMesh, { kind: 'wall', wallId: wall.id })
@@ -3488,10 +3540,12 @@ export class FacadeController {
         if (section.length < 2) continue
       }
       const plinthH = wall?.panel?.plinthHeight ?? 0
+      const usePlinthSweep =
+        path.clipOpeningMask && wall && plinthH > 0.5 && path.role === 'plinthProfile'
       const geometry =
-        this.isPerfPresentation()
+        this.isPerfPresentation() && !usePlinthSweep
           ? createSimpleProfileBarGeometry(path, section, zBase, forwardSign, { flushBack: true })
-          : path.clipOpeningMask && wall && plinthH > 0.5
+          : usePlinthSweep
             ? createPlinthProfileSweepGeometry(path, section, zBase, forwardSign, wall, plinthH)
             : createProfileSweepGeometry(path, section, zBase, forwardSign)
       const material = createTintedMaterial(
@@ -3506,7 +3560,15 @@ export class FacadeController {
       mesh.receiveShadow = this.isPerfPresentation() ? false : !isPlinth
       mesh.userData.originalMaterial = material
       const plinthDiscard = geometry.userData.plinthOpeningDiscard
-      if (plinthDiscard) applyPlinthOpeningFragmentDiscard(mesh, plinthDiscard)
+      if (plinthDiscard) {
+        applyPlinthOpeningFragmentDiscard(mesh, plinthDiscard)
+        // Ungeschnittene Sweep-Kanten würden in der Zeichnung durch Fenster laufen.
+        mesh.userData.skipLineEdges = true
+      } else if (isPlinth && geometry.userData.plinthCsg) {
+        // CSG erzeugt interne Diagonalen zwischen Kellerfenstern; Kantenfilter
+        // entfernt sie, aber Silhouette bleibt über EdgesGeometry + Filter.
+        mesh.userData.lineEdgeThreshold = 35
+      }
 
       if (path.localSpace && wall && isStudioWall(wall)) {
         const transform = studioWallTransform(wall)

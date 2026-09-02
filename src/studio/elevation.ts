@@ -136,14 +136,17 @@ export function facadeOutward(yawDeg: number, panelFlip = true): { x: number; z:
 /**
  * Sonne läuft entlang der Fassade (Streiflicht), nicht frontal/gegen.
  * Dann erzeugen Shadow-Maps auf Paneelen/Mauerwerk Zoom-Schraffur
- * (Ost/West bei Südsonne) — Nord braucht Werfschatten trotz flachem Lambert.
+ * (Ost/West bei Südsonne) — Nord/Süd brauchen Werfschatten auch morgens/abends.
+ *
+ * Nur wenn der Azimut näher als ~14° an der Fassaden-Längsachse liegt (nicht 28° —
+ * sonst fehlen Fenster-/Sohlbank-Schatten auf Nord/Süd schon ab ~09:00 / ~15:10).
  *
  * `sunAzimuthDeg`: CW 0=N, 90=O, 180=S, 270=W (wie `SunSettings.azimuth`).
  */
 export function facadeSunIsGrazing(
   facadeYawDeg: number,
   sunAzimuthDeg: number,
-  epsilonDeg = 28,
+  epsilonDeg = 14,
 ): boolean {
   const out = facadeOutward(facadeYawDeg, true)
   // CW-Azimut der Außennormalen (atan2(x, −z): 0=N, 90=O).
