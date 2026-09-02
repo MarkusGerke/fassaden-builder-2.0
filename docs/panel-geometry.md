@@ -257,6 +257,7 @@ Zwischen zwei Öffnungen (oder Öffnung und Wandende) darf kein sichtbarer Rest 
 - **Zwickel (v0.7.80–0.7.96):** Raster läuft bis an den **Extrados** (Außenkante der Keilsteine, meshgleiche Facetten). Körper und Boss teilen die Clip-Kontur mit paralleler Fase. Krümel unter 3,2 cm Höhe entfallen. Mit Voussoirs + Freiraum „leer“: Dock am Extrados ohne Clearance-Kappe.
 - **Keil-Bossen (v0.7.83):** `extrudePolarFrustum` mit begrenztem Chamfer (~22 % Ringstärke / 18 % Winkel), Radial-Quads statt Fächer; Körper-Front entfällt wenn Polar-Boss die Front übernimmt (kein „Paneel im Keil“).
 - **3D-Flackern (v0.7.87):** Selektion ruft `applyRenderStyle` nicht mehr auf (Linien blieben sonst neu gebaut). Orbit-Lite ändert Pixelratio/Linien/Bloom nicht mehr.
+- **Hybrid-Übergang (v2.0.75):** Bei Rundbogen + Voussoir + Mauerwerk/Läuferverband (`openingArchHybridMasonryEnabled`) ersetzen `archHybridVoussoirPolysFromSpec` den Kreis-Extrados: äußere Keilkante an Lagerfugen-Y, Schultern oft L-förmig; Bogenband wird aus dem kartesischen Raster ausgeschnitten (`hybridArchBayRect`) statt Kurven-Clip. Streifen und Alt ohne Voussoir unverändert. Details: [facade-layers.md](facade-layers.md).
 
 ### Modul-GLB-Verkleidung vs. Fassadenbogen (v0.7.37)
 

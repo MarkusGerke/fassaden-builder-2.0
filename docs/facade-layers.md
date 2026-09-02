@@ -46,7 +46,7 @@ Typ `CladdingZone` an `Wall.claddingZones` (optional). Fehlt/leer → Ableitung 
 | `bond` | Läufer-/Mauerwerksverband | abgeleitet / aktiv |
 | `strip` | Streifenpaneele | abgeleitet / aktiv |
 | `boss` | Bossen (Frustum-Front) | abgeleitet wenn `taperDepth > 0` |
-| `voussoir` | Keilstein-Ring am Bogen | geplant als Zone; **heute** Öffnungs-Arch (`Opening.arch.voussoirs`). v2.0.74: UI-Default an bei neuem Rundbogen |
+| `voussoir` | Keilstein-Ring am Bogen | Zone geplant; **heute** Öffnungs-Arch (`Opening.arch.voussoirs`). v2.0.74: UI-Default an bei neuem Rundbogen. **v2.0.75:** bei Verband Hybrid-Übergang statt Kreis-Extrados-Clip |
 | `taperedField` | konisch zulaufendes Quader-/Verdachungsfeld | geplant |
 | `none` | keine Verkleidung | abgeleitet |
 
@@ -55,6 +55,21 @@ Typ `CladdingZone` an `Wall.claddingZones` (optional). Fehlt/leer → Ableitung 
 Mehrere Zonen mit `rect` ermöglichen z. B. 24er oben / 48er unten ohne globales Dehnen (`layoutPanelTiles` iteriert persistierte `claddingZones`). Ohne persistierte Zonen bleibt der klassische Ein-Panel-Pfad (`Aufruf-panel` maßgeblich; Ableitung liefert nur `kind`/`front`).
 
 `openingCladdingMaskInflateForLayout`: Freiraum-Inflate für Feld-Layout/Siegel; bei Keilstein-Ring ohne taper-Freiraum = 0.
+
+### Hybrid-Übergang Rechteckverband ↔ Radialkeile (v2.0.75)
+
+Ziel (Referenz echter Steinbogen): keine Rechteck-Clip-Splitter an der Kurve und kein isolierter Kreis-Ring, an den Paneele „stoßen“. Stattdessen **Hybridsteine**:
+
+- Innenseite: Intrados + radiale Fugen (Keilform)
+- Außenseite: Abschluss an der nächsten **Lagerfuge** des Wandrasters; Schultern oft **L-förmig** bis ±Extrados-X
+- Unter Kämpfer: kartesischer Verband in den Pfeilern unverändert
+- Über der obersten Hybrid-Abschlusskante: Verband setzt normal fort
+
+**Wann aktiv:** `openingArchHybridMasonryEnabled` = Rundbogen + `voussoirs` an + Paneel-Pattern weder `strip` noch `none` (also Läufer-/Mauerwerksverbände). Streifenpaneele und Alt-Saves ohne Voussoir → bisheriger Extrados-Clip.
+
+**Generator:** `archHybridVoussoirPolysFromSpec` / `archHybridCourseYs` / `hybridArchBayRect` in `openingGeometry.ts`; Einbindung in `prepareStudioPanelParts` (`panelGeometry.ts`). 3D-Extrude und Linienzeichnung nutzen dieselben `outline`-Polygone; Toolbar-SVG ebenfalls Hybrid wenn aktiv.
+
+**MVP-Grenzen:** nur `form === 'round'`; andere Bogenformen unverändert; Stoßfugen-X-Snap der Schulter noch grob (±rOuter); Zwei-Bänder-UI unberührt.
 
 ### Zwei Horizontal-Bänder (UI, v2.0.72)
 
@@ -81,12 +96,12 @@ Stil-Vorlagen / Stile kopieren-einfügen nehmen `claddingZones` mit dem Paneel-S
 | Stil-Vorlagen / Clipboard | nur `panel` | **fixiert** inkl. `claddingZones` |
 | `cloneWall` / Etage duplizieren | klont `claddingZones`; Paneel aus → Zonen weg | ok |
 | `FacadeSvgView`, Mörtel, Validierung | oft globales `wall.panel` | bewusst (UI/Optik); Layout 3D zonenbasiert |
-| Voussoir / taperedField Generatoren | Typen vorhanden | **offen** (nicht dieser Slice) |
+| Voussoir / taperedField Generatoren | Typen vorhanden; Hybrid-MVP v2.0.75 | teilweise |
 
 ## Was bewusst nicht „eine Formel“ ist
 
 - Beliebige Profilquerschnitte auf jedem Clip-Rest am Bogen
-- Automatische Naht Rechteckverband ↔ Radialkeile ohne eigenen Generator (`voussoir` / Übergang)
+- ~~Automatische Naht Rechteckverband ↔ Radialkeile ohne eigenen Generator~~ → **v2.0.75 MVP** für Rundbogen+Verband (andere Bogenformen / Streifen offen)
 - Lichtdichte allein über Bossen-Meshes ohne Schicht A
 
 ## Migration / UX

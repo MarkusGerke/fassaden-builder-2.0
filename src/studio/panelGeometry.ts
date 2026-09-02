@@ -3,6 +3,8 @@ import type { Opening, StudioPanelConfig, Wall } from '../types/facade'
 import {
   ARCH_MESH_SEGMENTS,
   archFanPolys,
+  archHybridCourseYs,
+  archHybridVoussoirPolysFromSpec,
   archJambHoleRects,
   archJambPolysFromSpec,
   archVoussoirCount,
@@ -12,10 +14,12 @@ import {
   clipPolysMinusArches,
   clipRectMinusBox,
   flushClipPartsToOpeningJambs,
+  hybridArchBayRect,
   mergeNarrowClipParts,
   minClipRemnantWidth,
   normalizeOpeningFill,
   openingArchGeom,
+  openingArchHybridMasonryEnabled,
   openingArchVoussoirsEnabled,
   openingClipRects,
   openingCutsWall,
@@ -34,7 +38,13 @@ import { STUDIO_MASONRY, panelKindForPattern, studioPlinthActive } from './const
 import { basementWindowEnabled } from './basementWindow'
 import { studioMiterLocalX } from './wallMiterX'
 import { WINDOW_RECESS, WALL_DEPTH } from '../constants/presets'
-import { layoutPanelTiles, visiblePanelRowRect, isCollinearDock, type PanelTile } from './panelLayout'
+import {
+  layoutPanelTiles,
+  visiblePanelRowRange,
+  visiblePanelRowRect,
+  isCollinearDock,
+  type PanelTile,
+} from './panelLayout'
 import { topBareBandForWall } from '../utils/wallLabel'
 import { pickTileColorIndex } from './tileColors'
 import {
@@ -2149,18 +2159,22 @@ function prepareStudioPanelParts(
   const holes = snapOpeningHolesToTileGrid(wall, panel, layoutTiles ?? tiles)
   const joint = panel.joint ?? 0.8
   const kind = panelKindForPattern(panel.pattern)
+  const { rowCuts } = visiblePanelRowRange(wall.height, panel)
 
-  // Raster läuft bis an die Öffnungsmaske. Bei Keilstein-Ring ist die Maske der Extrados.
+  // Hybrid: Clip am Intrados + Bogenband entfernen. Klassischer Ring: Extrados-Dock.
   let rects: OpeningPoly[] = clipPolysMinusArches(
     tiles.flatMap((tile) => clipTileAgainstHoles(tile, holes)),
     wall.openings,
     PANEL_OPENING_CLEARANCE,
     panel.panelHeight,
-    { panelWidth: panel.panelWidth, joint },
+    { panelWidth: panel.panelWidth, joint, panelPattern: panel.pattern },
   )
   rects = mergeNarrowClipParts(rects, minClipRemnantWidth(panel.panelWidth))
   rects = flushClipPartsToOpeningJambs(rects, wall.openings, PANEL_OPENING_CLEARANCE)
-  const voussoirWork: { spec: NonNullable<ReturnType<typeof buildSemicircularArchSpec>> }[] = []
+  const voussoirWork: {
+    spec: NonNullable<ReturnType<typeof buildSemicircularArchSpec>>
+    hybrid: boolean
+  }[] = []
   for (const opening of wall.openings) {
     if (opening.hidden || !openingCutsWall(opening)) continue
     if (!openingArchVoussoirsEnabled(opening)) continue
@@ -2171,7 +2185,8 @@ function prepareStudioPanelParts(
       inflate: PANEL_OPENING_CLEARANCE,
     })
     if (!spec) continue
-    voussoirWork.push({ spec })
+    const hybrid = openingArchHybridMasonryEnabled(opening, panel.pattern)
+    voussoirWork.push({ spec, hybrid })
     if (spec.jambs) {
       for (const hole of archJambHoleRects(spec)) {
         rects = rects.flatMap((part) => clipRectMinusBox(part, hole))
@@ -2180,12 +2195,35 @@ function prepareStudioPanelParts(
   }
 
   const ringAndFan: OpeningPoly[] = []
-  for (const { spec } of voussoirWork) {
-    ringAndFan.push(...archVoussoirPolysFromSpec(spec))
+  for (const { spec, hybrid } of voussoirWork) {
+    if (hybrid) {
+      const courseYs = archHybridCourseYs(
+        rowCuts,
+        spec.cy,
+        spec.cy + spec.rOuter,
+        panel.panelHeight,
+      )
+      const hybridPolys = archHybridVoussoirPolysFromSpec(spec, courseYs, {
+        panelWidth: panel.panelWidth,
+      })
+      const bay = hybridArchBayRect(spec, hybridPolys)
+      rects = rects.flatMap((part) => clipRectMinusBox(part, bay))
+      // Clip-Splitter (bottomArc) im Bogenband entfernen — Hybrid füllt die Zone
+      rects = rects.filter((part) => {
+        if (!part.bottomArc?.length && !part.topArc?.length) return true
+        const py1 = part.y + part.height
+        const overlapY = part.y < bay.y + bay.height && py1 > bay.y
+        const overlapX = part.x < bay.x + bay.width && part.x + part.width > bay.x
+        return !(overlapY && overlapX)
+      })
+      ringAndFan.push(...hybridPolys)
+    } else {
+      ringAndFan.push(...archVoussoirPolysFromSpec(spec))
+    }
     if (spec.jambs) {
       ringAndFan.push(...archJambPolysFromSpec(spec))
     }
-    if (spec.spandrel === 'rect') {
+    if (spec.spandrel === 'rect' && !hybrid) {
       const y0 = spec.cy + spec.rOuter
       const y1 = wall.height
       if (y1 - y0 > 1) {
@@ -3621,7 +3659,7 @@ function clipFlatPanelTiles(
     wall.openings,
     PANEL_OPENING_CLEARANCE,
     panel.panelHeight,
-    { panelWidth: panel.panelWidth, joint },
+    { panelWidth: panel.panelWidth, joint, panelPattern: panel.pattern },
   )
   rects = mergeNarrowClipParts(rects, minClipRemnantWidth(panel.panelWidth))
   return flushClipPartsToOpeningJambs(rects, wall.openings, PANEL_OPENING_CLEARANCE)

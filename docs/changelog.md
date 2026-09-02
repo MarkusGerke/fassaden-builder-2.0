@@ -2,6 +2,10 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Hybrid-Übergang Bogen ↔ Verband (2026-09-02) — v2.0.75
+
+Erste Version der Naht **Rechteckverband ↔ Radialkeile**: bei Rundbogen + Keilstein + Mauerwerk/Läuferverband erzeugen `archHybridVoussoirPolysFromSpec` Hybrid-Polygone (Intrados radial, Extrados an Lagerfugen-Y, Schultern oft L-förmig). Kartesisches Raster wird im Bogenband entfernt (`hybridArchBayRect`), nicht gegen die Kurve geclippt — keine Dreiecks-Splitter. Aktiv über `openingArchHybridMasonryEnabled` (Voussoir an + Pattern ≠ strip/none). Streifen und Alt ohne Voussoir: alter Extrados-Clip. Dateien: `openingGeometry.ts`, `panelGeometry.ts`, `main.ts`, Tests, Docs.
+
 ### Drag-Snap beruhigt + Rundbogen-Voussoir-Default (2026-09-02) — v2.0.74
 
 Öffnungs-Drag: Kandidaten nur **Fugen-bündig** + Wandmitte (keine Stein-/Schichtmitten); Magnet `DRAG_SNAP_MAGNET_CM` (7 cm) — außerhalb freie Position. Nudge/`align` unverändert volles Raster. Rundbogen neu gewählt: `voussoirs: true` + Spandrille `rect` als UI-Default; Alt-Saves ohne/`false` bleiben. Dateien: `openingPanelSnap.ts`, `main.ts`, `openingGeometry.ts`, Tests, Docs.

@@ -2052,14 +2052,28 @@ export function clipPolysMinusArches(
   openings: Opening[],
   inflate = 0,
   panelHeight = 32,
-  options?: { dockCartesianAtExtrados?: boolean; panelWidth?: number; joint?: number },
+  options?: {
+    dockCartesianAtExtrados?: boolean
+    panelWidth?: number
+    joint?: number
+    /** Hybrid-Mauerwerk: Clip am Intrados; Bogenband wird separat mit Hybrid-Polys gefüllt. */
+    hybridArchMasonry?: boolean
+    panelPattern?: string | null
+  },
 ): OpeningPoly[] {
   const dockAtExtrados = options?.dockCartesianAtExtrados !== false
   let next = parts
   for (const opening of openings) {
     const voussoirsOn = openingArchVoussoirsEnabled(opening)
+    const hybridOn =
+      options?.hybridArchMasonry === true ||
+      Boolean(
+        options?.hybridArchMasonry !== false &&
+          options?.panelPattern &&
+          openingArchHybridMasonryEnabled(opening, options.panelPattern),
+      )
     let ring = 0
-    if (voussoirsOn && dockAtExtrados) {
+    if (voussoirsOn && dockAtExtrados && !hybridOn) {
       const arch = normalizeOpeningArch(opening.arch)
       ring =
         arch.ringThicknessCm != null
@@ -2068,10 +2082,17 @@ export function clipPolysMinusArches(
     }
     // Freiraum „leer“ mit Keilstein-Ring: Raster dockt am Extrados — sonst entsteht
     // ein zweiter leerer Bogenring um die Voussoirs. Nur „zulaufen“ bleibt außen.
+    // Hybrid: Clip am Intrados (Loch); Zwickel-Band wird in prepareStudioPanelParts entfernt.
     const clearance =
-      voussoirsOn && openingPanelClearanceFinish(opening) !== 'taper'
+      voussoirsOn && !hybridOn && openingPanelClearanceFinish(opening) !== 'taper'
         ? 0
         : openingPanelClearance(opening)
+    if (hybridOn) {
+      const jamb = openingArchGeom(opening, inflate + clearance)
+      if (!jamb) continue
+      next = next.flatMap((part) => clipRectMinusArch(part, jamb, jamb))
+      continue
+    }
     if (voussoirsOn && dockAtExtrados) {
       const jamb = openingArchGeom(opening, inflate)
       if (!jamb) continue
@@ -2465,6 +2486,193 @@ export function archVoussoirPolysFromSpec(spec: SemicircularArchSpec): OpeningPo
 }
 
 /**
+ * Hybrid-Übergang Rechteckverband ↔ Radialkeile (v2.0.75).
+ * Aktiv wenn Keilstein-Ring an, Rundbogen, und Paneel kein Streifen/none.
+ * Alt-Saves ohne `voussoirs` bleiben beim klassischen Extrados-Clip.
+ * Ohne `panelPattern` → false (Caller muss Verband setzen).
+ */
+export function openingArchHybridMasonryEnabled(
+  opening: Opening,
+  panelPattern?: string | null,
+): boolean {
+  if (!openingArchVoussoirsEnabled(opening)) return false
+  if (normalizeOpeningArch(opening.arch).form !== 'round') return false
+  if (panelPattern == null || panelPattern === '') return false
+  if (panelPattern === 'strip' || panelPattern === 'none') return false
+  return true
+}
+
+/** Lagerfugen-Y im Bogenband (Kämpfer → erste Fuge über Extrados-Scheitel). */
+export function archHybridCourseYs(
+  rowCuts: number[],
+  springY: number,
+  crownY: number,
+  panelHeight: number,
+): number[] {
+  const step = Math.max(4, panelHeight)
+  const top = crownY + step + 0.5
+  const ys = rowCuts.filter((y) => y >= springY - 0.5 && y <= top)
+  if (ys.length === 0) {
+    const out: number[] = []
+    for (let y = springY; y <= top + 1e-6; y += step) out.push(y)
+    out.push(Math.ceil((crownY - springY) / step) * step + springY)
+    return [...new Set(out.map((v) => Math.round(v * 100) / 100))].sort((a, b) => a - b)
+  }
+  const last = ys[ys.length - 1]!
+  if (last < crownY - 0.05) {
+    ys.push(last + step)
+  }
+  return [...new Set(ys.map((v) => Math.round(v * 100) / 100))].sort((a, b) => a - b)
+}
+
+function nextCourseAtOrAbove(courseYs: number[], y: number): number {
+  for (const c of courseYs) {
+    if (c >= y - 0.2) return c
+  }
+  return y
+}
+
+function rayHitHorizontal(
+  cx: number,
+  cy: number,
+  theta: number,
+  yTarget: number,
+  rMin: number,
+): { x: number; y: number; r: number } | null {
+  const s = Math.sin(theta)
+  if (s < 1e-4) return null
+  const r = (yTarget - cy) / s
+  if (r < rMin * 0.85) return null
+  return { x: cx + Math.cos(theta) * r, y: yTarget, r }
+}
+
+function pushOutlinePt(out: { x: number; y: number }[], p: { x: number; y: number }) {
+  const last = out[out.length - 1]
+  if (!last || Math.hypot(p.x - last.x, p.y - last.y) > 0.04) out.push(p)
+}
+
+/**
+ * Hybrid-Keilsteine: Intrados radial/rund, Extrados an Lagerfugen-Y (und Schulter
+ * oft L-förmig bis ±rOuter). Kein glatter Kreis-Extrados gegen Rechteckpaneele.
+ */
+export function archHybridVoussoirPolysFromSpec(
+  spec: SemicircularArchSpec,
+  courseYs: number[],
+  opts?: { panelWidth?: number },
+): OpeningPoly[] {
+  const segs = voussoirMeshSegments(spec.count)
+  const geom = specGeom(spec)
+  const panelW = Math.max(8, opts?.panelWidth ?? 32)
+  const rMax = Math.max(spec.rOuter * 1.4, spec.rOuter + panelW * 0.55)
+  const springY = spec.cy
+  const courses =
+    courseYs.length > 0
+      ? [...courseYs].sort((a, b) => a - b)
+      : archHybridCourseYs([], springY, springY + spec.rOuter, panelW)
+
+  const out: OpeningPoly[] = []
+  for (const { t0, t1 } of voussoirWedgeAngles(spec)) {
+    let yMax = -Infinity
+    for (let s = 0; s <= segs; s += 1) {
+      const t = t0 + ((t1 - t0) * s) / segs
+      yMax = Math.max(yMax, archPointAt(geom, t, spec.rOuter).y)
+    }
+    const dockY = Math.max(springY + 1, nextCourseAtOrAbove(courses, yMax))
+    const leftHit = rayHitHorizontal(spec.cx, spec.cy, t0, dockY, spec.rInner)
+    const rightHit = rayHitHorizontal(spec.cx, spec.cy, t1, dockY, spec.rInner)
+    const leftSpringer = t0 > Math.PI * 0.72
+    const rightSpringer = t1 < Math.PI * 0.28
+
+    const outline: { x: number; y: number }[] = []
+    for (let s = 0; s <= segs; s += 1) {
+      const t = t0 + ((t1 - t0) * s) / segs
+      pushOutlinePt(outline, archPointAt(geom, t, spec.rInner))
+    }
+
+    const leftOk = leftHit != null && leftHit.r <= rMax
+    const rightOk = rightHit != null && rightHit.r <= rMax
+    const simple = leftOk && rightOk && !leftSpringer && !rightSpringer
+
+    if (simple) {
+      pushOutlinePt(outline, { x: rightHit!.x, y: rightHit!.y })
+      pushOutlinePt(outline, { x: leftHit!.x, y: leftHit!.y })
+    } else if (rightSpringer) {
+      // Rechte Schulter: Bogen → radial → horizontal → vertikal am Extrados-X → Kämpfer
+      if (rightOk) pushOutlinePt(outline, { x: rightHit!.x, y: rightHit!.y })
+      else pushOutlinePt(outline, archPointAt(geom, t1, spec.rOuter))
+      const xOuter = spec.cx + spec.rOuter
+      pushOutlinePt(outline, { x: xOuter, y: dockY })
+      if (dockY > springY + 0.4) pushOutlinePt(outline, { x: xOuter, y: springY })
+      const start = archPointAt(geom, t0, spec.rInner)
+      if (Math.abs(outline[outline.length - 1]!.x - start.x) > 0.3) {
+        pushOutlinePt(outline, { x: start.x, y: springY })
+      }
+    } else if (leftSpringer) {
+      // Linke Schulter: Bogen → radial (t1) → horizontal nach außen → vertikal → Kämpfer
+      if (rightOk) pushOutlinePt(outline, { x: rightHit!.x, y: rightHit!.y })
+      else pushOutlinePt(outline, archPointAt(geom, t1, Math.min(rMax, spec.rOuter * 1.2)))
+      const xOuter = spec.cx - spec.rOuter
+      pushOutlinePt(outline, { x: xOuter, y: dockY })
+      if (dockY > springY + 0.4) pushOutlinePt(outline, { x: xOuter, y: springY })
+      const start = archPointAt(geom, t0, spec.rInner)
+      if (Math.abs(outline[outline.length - 1]!.x - start.x) > 0.3) {
+        pushOutlinePt(outline, { x: start.x, y: springY })
+      }
+    } else {
+      // Geclampter Mittelkeil
+      if (rightOk) pushOutlinePt(outline, { x: rightHit!.x, y: rightHit!.y })
+      else pushOutlinePt(outline, archPointAt(geom, t1, Math.min(rMax, spec.rOuter * 1.2)))
+      if (leftOk) pushOutlinePt(outline, { x: leftHit!.x, y: leftHit!.y })
+      else {
+        pushOutlinePt(outline, { x: archPointAt(geom, t0, Math.min(rMax, spec.rOuter * 1.2)).x, y: dockY })
+        pushOutlinePt(outline, archPointAt(geom, t0, Math.min(rMax, spec.rOuter * 1.2)))
+      }
+    }
+
+    if (outline.length < 3) continue
+    const b = outlineBounds(outline)
+    if (b.width < 1.2 || b.height < 1.2) continue
+    if (b.width * b.height < 8) continue
+
+    const poly: OpeningPoly = { ...b, outline }
+    if (simple && leftHit && rightHit) {
+      poly.polar = {
+        cx: spec.cx,
+        cy: spec.cy,
+        rInner: spec.rInner,
+        rOuter: Math.max(leftHit.r, rightHit.r),
+        t0,
+        t1,
+      }
+    }
+    out.push(poly)
+  }
+  return out
+}
+
+/** Bounding der Hybrid-Bogenkappe (Kämpfer → oberste Abschluss-Lagerfuge). */
+export function hybridArchBayRect(
+  spec: SemicircularArchSpec,
+  hybridPolys: OpeningPoly[],
+  pad = 0.08,
+): OpeningRect {
+  let x0 = spec.cx - spec.rOuter
+  let x1 = spec.cx + spec.rOuter
+  let y1 = spec.cy + spec.rOuter
+  for (const p of hybridPolys) {
+    x0 = Math.min(x0, p.x)
+    x1 = Math.max(x1, p.x + p.width)
+    y1 = Math.max(y1, p.y + p.height)
+  }
+  return {
+    x: x0 - pad,
+    y: spec.cy - pad,
+    width: x1 - x0 + pad * 2,
+    height: Math.max(0, y1 - spec.cy) + pad * 2,
+  }
+}
+
+/**
  * Bounding-Box der Bogenkappe (Kämpfer → Scheitel).
  * 3D stanzt diese Box nicht mehr — das Raster clippt am Extrados (`clipPolysMinusArches`).
  */
@@ -2668,9 +2876,13 @@ function wedgeArcSvgPath(
 
 /**
  * SVG-Markup für Toolbar-Vorschau: Keilsteine + Intrados/Extrados + radiale Fugen.
+ * Mit `hybrid`/`courseYs`: Hybrid-Polygone (Lagerfugen-Extrados) statt Kreisring.
  * Koordinaten in Wand-cm; SVG-y nach unten (Bogenscheitel oben).
  */
-export function archVoussoirSvg(spec: SemicircularArchSpec): {
+export function archVoussoirSvg(
+  spec: SemicircularArchSpec,
+  opts?: { hybrid?: boolean; courseYs?: number[]; panelWidth?: number },
+): {
   viewBox: string
   wedges: string[]
   radials: string[]
@@ -2680,28 +2892,62 @@ export function archVoussoirSvg(spec: SemicircularArchSpec): {
   extrados: string
   center: { x: number; y: number }
 } {
+  const hybridPolys =
+    opts?.hybrid === true
+      ? archHybridVoussoirPolysFromSpec(
+          spec,
+          opts.courseYs ??
+            archHybridCourseYs([], spec.cy, spec.cy + spec.rOuter, opts.panelWidth ?? 32),
+          { panelWidth: opts.panelWidth },
+        )
+      : null
+
+  let minX = spec.cx - spec.rOuter
+  let maxX = spec.cx + spec.rOuter
+  let maxWorldY = spec.cy + spec.rOuter
+  if (hybridPolys) {
+    for (const p of hybridPolys) {
+      minX = Math.min(minX, p.x)
+      maxX = Math.max(maxX, p.x + p.width)
+      maxWorldY = Math.max(maxWorldY, p.y + p.height)
+    }
+  }
   const pad = Math.max(4, spec.joint * 2)
-  const minX = spec.cx - spec.rOuter - pad
-  const maxX = spec.cx + spec.rOuter + pad
+  minX -= pad
+  maxX += pad
   const minY = (spec.jambs ? Math.min(spec.sillY, spec.cy) : spec.cy) - pad
-  const maxY = spec.cy + spec.rOuter + pad
+  const maxY = maxWorldY + pad
   const h = maxY - minY
   const toSvgY = (y: number) => maxY - y
   const viewBox = `${minX.toFixed(1)} 0 ${(maxX - minX).toFixed(1)} ${h.toFixed(1)}`
 
+  const outlinePath = (outline: { x: number; y: number }[]) => {
+    if (outline.length < 2) return ''
+    const [first, ...rest] = outline
+    return [
+      `M ${first!.x.toFixed(2)} ${toSvgY(first!.y).toFixed(2)}`,
+      ...rest.map((p) => `L ${p.x.toFixed(2)} ${toSvgY(p.y).toFixed(2)}`),
+      'Z',
+    ].join(' ')
+  }
+
   const angles = voussoirWedgeAngles(spec)
-  const wedges = angles.map(({ t0, t1 }) => wedgeArcSvgPath(spec, t0, t1, toSvgY))
+  const wedges = hybridPolys
+    ? hybridPolys.map((p) => outlinePath(p.outline ?? [])).filter(Boolean)
+    : angles.map(({ t0, t1 }) => wedgeArcSvgPath(spec, t0, t1, toSvgY))
 
   const jointThetas = [spec.thetaStart]
   for (let i = 1; i < spec.count; i += 1) {
     jointThetas.push(spec.thetaStart - ((spec.thetaStart - spec.thetaEnd) * i) / spec.count)
   }
   jointThetas.push(spec.thetaEnd)
-  const radials = jointThetas.map((t) => {
-    const inner = svgPt(spec, spec.rInner, t, toSvgY)
-    const outer = svgPt(spec, spec.rOuter, t, toSvgY)
-    return `M ${inner} L ${outer}`
-  })
+  const radials = hybridPolys
+    ? []
+    : jointThetas.map((t) => {
+        const inner = svgPt(spec, spec.rInner, t, toSvgY)
+        const outer = svgPt(spec, spec.rOuter, t, toSvgY)
+        return `M ${inner} L ${outer}`
+      })
 
   const jambs = archJambPolysFromSpec(spec).map((rect) => {
     const x = rect.x
@@ -2709,25 +2955,49 @@ export function archVoussoirSvg(spec: SemicircularArchSpec): {
     return `M ${x.toFixed(2)} ${y.toFixed(2)} h ${rect.width.toFixed(2)} v ${rect.height.toFixed(2)} h ${(-rect.width).toFixed(2)} Z`
   })
 
-  const spandrels = archSpandrelStripPolys(spec).map((poly) => {
-    const strip = poly.spandrelStrip
-    if (!strip || strip.inner.length < 2) return ''
-    const xO = strip.xOuter
-    const inner = [...strip.inner].sort((a, b) => a.y - b.y)
-    const first = inner[0]!
-    const last = inner[inner.length - 1]!
-    const pts = [
-      `M ${xO.toFixed(2)} ${toSvgY(first.y).toFixed(2)}`,
-      ...inner.map((p) => `L ${p.x.toFixed(2)} ${toSvgY(p.y).toFixed(2)}`),
-      `L ${xO.toFixed(2)} ${toSvgY(last.y).toFixed(2)}`,
-      'Z',
-    ]
-    return pts.join(' ')
-  }).filter(Boolean)
+  const spandrels = hybridPolys
+    ? []
+    : archSpandrelStripPolys(spec)
+        .map((poly) => {
+          const strip = poly.spandrelStrip
+          if (!strip || strip.inner.length < 2) return ''
+          const xO = strip.xOuter
+          const inner = [...strip.inner].sort((a, b) => a.y - b.y)
+          const first = inner[0]!
+          const last = inner[inner.length - 1]!
+          const pts = [
+            `M ${xO.toFixed(2)} ${toSvgY(first.y).toFixed(2)}`,
+            ...inner.map((p) => `L ${p.x.toFixed(2)} ${toSvgY(p.y).toFixed(2)}`),
+            `L ${xO.toFixed(2)} ${toSvgY(last.y).toFixed(2)}`,
+            'Z',
+          ]
+          return pts.join(' ')
+        })
+        .filter(Boolean)
 
   const arcPath = (r: number) => {
     const large = Math.abs(spec.thetaStart - spec.thetaEnd) > Math.PI ? 1 : 0
     return `M ${svgPt(spec, r, spec.thetaStart, toSvgY)} A ${r.toFixed(2)} ${r.toFixed(2)} 0 ${large} 1 ${svgPt(spec, r, spec.thetaEnd, toSvgY)}`
+  }
+
+  // Hybrid: „Extrados“ = obere Abschlusskanten der Hybrid-Polygone (gestuft)
+  let extrados = arcPath(spec.rOuter)
+  if (hybridPolys && hybridPolys.length > 0) {
+    const topEdge: { x: number; y: number }[] = []
+    for (const p of hybridPolys) {
+      const ol = p.outline
+      if (!ol) continue
+      for (const pt of ol) {
+        if (pt.y >= maxWorldY - 0.6) topEdge.push(pt)
+      }
+    }
+    topEdge.sort((a, b) => a.x - b.x)
+    if (topEdge.length >= 2) {
+      extrados = [
+        `M ${topEdge[0]!.x.toFixed(2)} ${toSvgY(topEdge[0]!.y).toFixed(2)}`,
+        ...topEdge.slice(1).map((p) => `L ${p.x.toFixed(2)} ${toSvgY(p.y).toFixed(2)}`),
+      ].join(' ')
+    }
   }
 
   return {
@@ -2737,7 +3007,7 @@ export function archVoussoirSvg(spec: SemicircularArchSpec): {
     jambs,
     spandrels,
     intrados: arcPath(spec.rInner),
-    extrados: arcPath(spec.rOuter),
+    extrados,
     center: { x: spec.cx, y: toSvgY(spec.cy) },
   }
 }

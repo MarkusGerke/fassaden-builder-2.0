@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.74'
+export const APP_VERSION = '2.0.75'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,16 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.75',
+    date: '2026-09-02',
+    title: 'Bogensteine als Hybrid am Verband',
+    changes: [
+      'Rundbogen mit Keilstein + Mauerwerk/Läuferverband: Steine am Bogen sind Hybridstücke — innen radial, außen an Lagerfugen des Wandverbands (keine Dreiecksreste)',
+      'Schultersteine greifen L-förmig ins Raster; oberhalb der Abschlusskante läuft der normale Verband weiter',
+      'Streifenpaneele und Alt-Projekte ohne Keilstein-Ring unverändert; andere Bogenformen wie bisher',
+    ],
+  },
   {
     version: '2.0.74',
     date: '2026-09-02',

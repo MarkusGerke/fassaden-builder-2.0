@@ -153,7 +153,9 @@ import {
   normalizePanelClearance,
   normalizeRevealFrame,
   openingArchGeom,
+  openingArchHybridMasonryEnabled,
   openingArchVoussoirsEnabled,
+  archHybridCourseYs,
   openingContainsPoint,
   openingGlazingArchForm,
   openingIsConch,
@@ -425,7 +427,7 @@ import {
 import { facadeOutward, facadeSunIsGrazing, wallsForYaw, type ElevationFilter } from './studio/elevation'
 import { lerpYawDeg, normalizeYawDeg, snapYawTo10, snapYawTo45, solarAzimuthToWallYaw, viewedFacadeYaw, wallCompassLabel, wallDockAxisFromFacadeYaw, yawFromCompassSvgPoint } from './studio/compass'
 import { computeOpeningGuidesForRefs, computeOpeningDistanceLinesForRefs } from './studio/openingGuides'
-import { panelCourseCount } from './studio/panelLayout'
+import { panelCourseCount, visiblePanelRowRange } from './studio/panelLayout'
 import {
   DEFAULT_STUDIO_PANEL,
   PLAN_GRID,
@@ -12744,7 +12746,16 @@ function drawOpeningArchPreview(sel: { wall: Wall; opening: Opening }) {
     joint: panel.joint ?? 0.8,
   })
   if (!spec) return
-  const svg = archVoussoirSvg(spec)
+  const hybrid = openingArchHybridMasonryEnabled(sel.opening, panel.pattern)
+  const { rowCuts } = visiblePanelRowRange(sel.wall.height, panel)
+  const courseYs = hybrid
+    ? archHybridCourseYs(rowCuts, spec.cy, spec.cy + spec.rOuter, panel.panelHeight)
+    : undefined
+  const svg = archVoussoirSvg(spec, {
+    hybrid,
+    courseYs,
+    panelWidth: panel.panelWidth,
+  })
   openingArchPreview.setAttribute('viewBox', svg.viewBox)
   const ns = 'http://www.w3.org/2000/svg'
   const cx = document.createElementNS(ns, 'circle')
