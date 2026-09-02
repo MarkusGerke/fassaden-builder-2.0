@@ -5,6 +5,7 @@ import type {
   OpeningEdge,
   OpeningMotion,
   OpeningPediment,
+  OpeningTaperedField,
   OpeningRef,
   OpeningSillInner,
   OpeningSillOuter,
@@ -30,6 +31,7 @@ import { STUDIO_MASONRY } from '../studio/constants'
 import { viewerSideToAlongSign } from '../studio/walls'
 import { defaultOpeningStairs, normalizeOpeningStairs, stairTopY } from '../studio/stairs'
 import { normalizeOpeningPediment } from '../studio/pediment'
+import { normalizeOpeningTaperedField } from '../studio/taperedField'
 import { normalizeOpeningRollerShutter } from '../studio/rollerShutter'
 import { blenderWindowName } from '../blender/windowModels'
 import {
@@ -511,6 +513,7 @@ export function inheritOpeningStyles(base: Opening, donor?: Opening): Opening {
     sillInner: donor.sillInner ? { ...donor.sillInner } : base.sillInner,
     sillOuter: donor.sillOuter ? { ...donor.sillOuter } : base.sillOuter,
     pediment: donor.pediment ? { ...donor.pediment } : base.pediment,
+    taperedField: donor.taperedField ? { ...donor.taperedField } : base.taperedField,
     stairs: donor.stairs ? { ...donor.stairs } : base.stairs,
     rollerShutter: donor.rollerShutter ? { ...donor.rollerShutter } : base.rollerShutter,
     basementWindow: donor.basementWindow ? { ...donor.basementWindow } : base.basementWindow,
@@ -1220,6 +1223,44 @@ export function updateOpeningPediment(
         return {
           ...opening,
           pediment: normalizeOpeningPediment(merged),
+        }
+      }),
+    }
+  })
+}
+
+export function updateOpeningTaperedField(
+  state: FacadeState,
+  targets: OpeningRef[],
+  patch: Partial<OpeningTaperedField>,
+): FacadeState {
+  if (targets.length === 0) return state
+  const byWall = new Map<string, Set<string>>()
+  for (const target of targets) {
+    const set = byWall.get(target.wallId) ?? new Set<string>()
+    set.add(target.openingId)
+    byWall.set(target.wallId, set)
+  }
+  return mapAllWalls(state, (wall) => {
+    const ids = byWall.get(wall.id)
+    if (!ids) return cloneWall(wall)
+    return {
+      ...cloneWall(wall),
+      openings: wall.openings.map((opening) => {
+        if (
+          !ids.has(opening.id) ||
+          (opening.type !== 'window' &&
+            opening.type !== 'door' &&
+            opening.type !== 'conch')
+        ) {
+          return opening
+        }
+        return {
+          ...opening,
+          taperedField: normalizeOpeningTaperedField({
+            ...opening.taperedField,
+            ...patch,
+          }),
         }
       }),
     }

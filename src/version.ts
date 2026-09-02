@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.76'
+export const APP_VERSION = '2.0.77'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,16 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.77',
+    date: '2026-09-02',
+    title: 'Trapez-Quaderfeld über der Öffnung',
+    changes: [
+      'Neues Quader-/Verdachungsfeld: mehrlagige Trapez-Quader über Fenster oder Tür — ohne Keilstein-Ring',
+      'Funktioniert bei eckiger Öffnung und bei Bogen (Feld sitzt über Scheitel bzw. Extrados)',
+      'Unter Verdachung: Checkbox „Trapez-Quaderfeld“ mit Lagen, Überstand, Verjüngung und Option „nach unten verjüngend“',
+    ],
+  },
   {
     version: '2.0.76',
     date: '2026-09-02',

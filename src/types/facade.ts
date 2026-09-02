@@ -343,6 +343,11 @@ export interface Opening {
   sillOuter?: OpeningSillOuter
   /** Verdachung über dem Sturz (Fenster/Tür). */
   pediment?: OpeningPediment
+  /**
+   * Mehrlagiges trapezförmiges Quader-/Verdachungsfeld über der Öffnung
+   * (`CladdingZoneKind: 'taperedField'`). Unabhängig vom Keilstein-Ring.
+   */
+  taperedField?: OpeningTaperedField
   /** Eingangstreppe vor der Tür. */
   stairs?: OpeningStairs
   /** Rollläden (nur Lamellen) vor Fenster/Tür. */
@@ -450,6 +455,33 @@ export interface OpeningPediment {
   /** Versatz senkrecht zur Wand (cm, Tiefe). Default 0. */
   offsetForward?: number
   consoles?: OpeningPedimentConsoles
+}
+
+/**
+ * Konisches Quader-/Bossenfeld über der Öffnung (Verdachungsfeld).
+ * Nicht zu verwechseln mit `panelClearance.finish: 'taper'` (radialer Freiraum-Fächer)
+ * oder Keilstein-Ring / Hybrid-Voussoir.
+ */
+export interface OpeningTaperedField {
+  enabled: boolean
+  /** Anzahl horizontaler Lagen. Default 3. */
+  courses?: number
+  /** Seitlicher Überstand an der breiten Kante (cm, 8er-Raster). Default 8. */
+  overhangCm?: number
+  /**
+   * Verhältnis schmale / breite Kante. Default 0.55.
+   * Ohne `invert`: obere Breite = untere × Ratio (nach oben verjüngend).
+   */
+  topWidthRatio?: number
+  /**
+   * `false` (Default): unten breit (Öffnung + Überstand), nach oben schmaler.
+   * `true`: nach unten verjüngend (unten schmal, oben breit mit Überstand).
+   */
+  invert?: boolean
+  /** Abstand über Sturz / Scheitel / Extrados (cm, 8er-Raster). Default 0. */
+  offsetUpCm?: number
+  /** Schichthöhe (cm); fehlt → `wall.panel.panelHeight`. */
+  courseHeightCm?: number
 }
 
 export interface OpeningStairs {
@@ -1212,6 +1244,7 @@ export function cloneWall(wall: Wall): Wall {
                 : undefined,
             }
           : undefined,
+        taperedField: migrated.taperedField ? { ...migrated.taperedField } : undefined,
         stairs: migrated.stairs ? { ...migrated.stairs } : undefined,
         basementWindow: migrated.basementWindow ? { ...migrated.basementWindow } : undefined,
         guard: migrated.guard ? { ...migrated.guard } : undefined,

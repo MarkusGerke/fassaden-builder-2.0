@@ -31,6 +31,10 @@ import {
   openingGlassConfig,
 } from './glassConfig'
 import { defaultOpeningPediment, normalizeOpeningPediment } from '../studio/pediment'
+import {
+  defaultOpeningTaperedField,
+  normalizeOpeningTaperedField,
+} from '../studio/taperedField'
 import { defaultOpeningStairs, syncStairsToDoorWidth } from '../studio/stairs'
 import { normalizeSceneLights } from '../scene/sceneLights'
 import { defaultOpeningRollerShutter, normalizeOpeningRollerShutter } from '../studio/rollerShutter'
@@ -233,6 +237,9 @@ export function hydrateOpening(
   if (next.type === 'window' || next.type === 'door') {
     next.motion = normalizeOpeningMotion(next.motion, next.type)
     next.pediment = normalizeOpeningPediment(next.pediment ?? defaultOpeningPediment())
+    next.taperedField = normalizeOpeningTaperedField(
+      next.taperedField ?? defaultOpeningTaperedField(),
+    )
     next.rollerShutter = normalizeOpeningRollerShutter(
       next.rollerShutter ?? defaultOpeningRollerShutter(),
     )
@@ -377,6 +384,7 @@ export function openingHasCanonicalFields(opening: Opening): boolean {
   if (opening.frameColor == null || opening.glassColor == null || opening.glassMode == null) return false
   if (opening.type === 'window' || opening.type === 'door') {
     if (!opening.pediment) return false
+    if (!opening.taperedField) return false
   }
   if (opening.type === 'door' && !opening.stairs) return false
   if (opening.type === 'window' && opening.y > 0 && (!opening.sillInner || !opening.sillOuter)) return false

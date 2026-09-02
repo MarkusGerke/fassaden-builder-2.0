@@ -1961,6 +1961,28 @@
                 <input id="pediment-console-wall-offset" type="number" min="0" max="96" step="8" value="0" title="Versatz der Konsolen entlang der Wandfläche" />
               </div>
             </div>
+            <div id="opening-tapered-field-section" class="settings-section toolbar-group" data-settings-section="taperedField" data-settings-label="Quaderfeld" data-settings-order="65">
+              <p class="settings-subheading">Quaderfeld über der Öffnung</p>
+              <label class="toolbar-check">
+                <input id="tapered-field-enabled" type="checkbox" />
+                <span>Trapez-Quaderfeld (Verdachungsfeld) anzeigen</span>
+              </label>
+              <div id="tapered-field-options" hidden>
+                <p class="toolbar-hint compact-hint">Mehrlagige Trapez-Quader über Sturz oder Bogenscheitel — ohne Keilstein-Ring. Unabhängig von der Verdachung (Profil).</p>
+                <div class="toolbar-row-2">
+                  <label>Lagen <input id="tapered-field-courses" type="number" min="1" max="12" step="1" value="3" title="Anzahl horizontaler Quaderlagen" /></label>
+                  <label>Überstand (cm) <input id="tapered-field-overhang" type="number" min="0" max="96" step="8" value="8" title="Seitlicher Überstand an der breiten Kante" /></label>
+                </div>
+                <div class="toolbar-row-2">
+                  <label>Verjüngung <input id="tapered-field-ratio" type="number" min="0.15" max="1" step="0.05" value="0.55" title="Verhältnis schmale/breite Kante (1 = Rechteck)" /></label>
+                  <label>Versatz oben (cm) <input id="tapered-field-offset-up" type="number" min="0" max="96" step="8" value="0" title="Abstand über Sturz / Scheitel / Extrados" /></label>
+                </div>
+                <label class="toolbar-check">
+                  <input id="tapered-field-invert" type="checkbox" />
+                  <span>Nach unten verjüngend (unten schmal, oben breit)</span>
+                </label>
+              </div>
+            </div>
             <div id="door-stairs-section" class="toolbar-group settings-section" data-settings-section="stairs" data-settings-label="Treppe" data-settings-order="80" hidden>
               <span class="toolbar-label">Eingangstreppe</span>
               <label class="toolbar-check">

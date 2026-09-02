@@ -14,6 +14,7 @@ import {
   cartesianPartOverlapsHybridSector,
   clipPolysMinusArches,
   clipRectMinusBox,
+  clipRectMinusTrapezoid,
   flushClipPartsToOpeningJambs,
   hybridSectorRMax,
   mergeNarrowClipParts,
@@ -35,6 +36,10 @@ import {
   type OpeningPoly,
 } from '../utils/openingGeometry'
 import { openingCutsShell } from './facadeLayers'
+import {
+  normalizeOpeningTaperedField,
+  taperedFieldPolysForOpening,
+} from './taperedField'
 import { STUDIO_MASONRY, panelKindForPattern, studioPlinthActive } from './constants'
 import { basementWindowEnabled } from './basementWindow'
 import { studioMiterLocalX } from './wallMiterX'
@@ -2260,6 +2265,17 @@ function prepareStudioPanelParts(
         ...archFanPolys(holeGeom, ringT, panel.panelHeight, panel.panelWidth, maxY, joint),
       )
     }
+  }
+
+  // Trapez-Quaderfeld über Öffnung (unabhängig von Voussoir / Freiraum-taper).
+  for (const opening of wall.openings) {
+    if (opening.hidden) continue
+    const field = normalizeOpeningTaperedField(opening.taperedField)
+    if (!field.enabled) continue
+    const built = taperedFieldPolysForOpening(opening, panel)
+    if (!built) continue
+    rects = rects.flatMap((part) => clipRectMinusTrapezoid(part, built.trap))
+    ringAndFan.push(...built.polys)
   }
 
   rects = flushClipPartsToOpeningJambs(rects, wall.openings, PANEL_OPENING_CLEARANCE)

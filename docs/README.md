@@ -83,6 +83,7 @@
 | Profile | `src/profiles/registry.ts`, [profiles.md](profiles.md) |
 | Eingangstreppe | `src/studio/stairs.ts`, [opening-features.md](opening-features.md) |
 | Fensterverdachung | `src/studio/pediment.ts`, [opening-features.md](opening-features.md) |
+| Quaderfeld (taperedField) | `src/studio/taperedField.ts`, [opening-features.md](opening-features.md), [facade-layers.md](facade-layers.md) |
 | Kellerfenster-Gitter | `src/studio/basementWindow.ts`, [opening-features.md](opening-features.md) |
 | Erker / Balkon / Loggia | `src/studio/bayWindow.ts`, [bay-windows.md](bay-windows.md) |
 | Edit-Scope (Element/Typ/Etage/Fassade) | `src/studio/editScope.ts` |

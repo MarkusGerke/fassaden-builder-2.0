@@ -2047,6 +2047,58 @@ export function clipRectMinusBox(
   )
 }
 
+/**
+ * Schneidet ein Trapez aus (untere/obere Breite, zentriert auf `cx`).
+ * Für taperedField: kartesisches Raster nur im echten Trapez entfernen (kein AABB-Loch).
+ */
+export function clipRectMinusTrapezoid(
+  rect: OpeningPoly,
+  trap: {
+    cx: number
+    y0: number
+    y1: number
+    widthBottom: number
+    widthTop: number
+  },
+  eps = 0.05,
+  minRemnant = MIN_ARCH_CLIP_REMNANT,
+): OpeningPoly[] {
+  const halfB = Math.max(0, trap.widthBottom) / 2
+  const halfT = Math.max(0, trap.widthTop) / 2
+  const maxHalf = Math.max(halfB, halfT)
+  if (maxHalf < eps || trap.y1 - trap.y0 < eps) return [rect]
+  const hx0 = trap.cx - maxHalf
+  const hx1 = trap.cx + maxHalf
+  const hy0 = trap.y0
+  const hy1 = trap.y1
+  const rx0 = rect.x
+  const rx1 = rect.x + rect.width
+  const ry0 = rect.y
+  const ry1 = rect.y + rect.height
+  if (rx1 <= hx0 + eps || rx0 >= hx1 - eps || ry1 <= hy0 + eps || ry0 >= hy1 - eps) {
+    return [rect]
+  }
+  const holeAt = (x: number): { y0: number; y1: number } | null => {
+    const dx = Math.abs(x - trap.cx)
+    if (dx >= maxHalf - 1e-9) return null
+    const minHalf = Math.min(halfB, halfT)
+    if (dx <= minHalf + 1e-9) return { y0: hy0, y1: hy1 }
+    // half(y) = halfB + (halfT-halfB)*t → t = (dx-halfB)/(halfT-halfB)
+    const denom = halfT - halfB
+    if (Math.abs(denom) < 1e-9) return { y0: hy0, y1: hy1 }
+    const t = (dx - halfB) / denom
+    const yEdge = hy0 + t * (hy1 - hy0)
+    if (halfT < halfB) {
+      // nach oben verjüngend: außen nur unterhalb der Flanke
+      return { y0: hy0, y1: Math.max(hy0, Math.min(hy1, yEdge)) }
+    }
+    // nach unten verjüngend: außen nur oberhalb der Flanke
+    return { y0: Math.max(hy0, Math.min(hy1, yEdge)), y1: hy1 }
+  }
+  const sampleXs = [rx0, rx1, hx0, hx1, trap.cx - halfB, trap.cx + halfB, trap.cx - halfT, trap.cx + halfT]
+  return clipPolyMinusColumnHole(rect, hx0, hx1, holeAt, hy0, hy1, sampleXs, eps, minRemnant)
+}
+
 export function clipPolysMinusArches(
   parts: OpeningPoly[],
   openings: Opening[],

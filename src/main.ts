@@ -128,6 +128,7 @@ import {
   updateOpeningStairs,
   updateOpeningRollerShutter,
   updateOpeningPediment,
+  updateOpeningTaperedField,
   updateOpeningTrim,
   resetOpenings,
   updateWindowFrameColorsForWalls,
@@ -460,6 +461,7 @@ import {
 import { buildingCentroid, canRotateBuildingGeometry, canRotateStudioBuilding, rotateBuildingByDeg, rotateStudioBuilding } from './studio/rotateBuilding'
 import { defaultOpeningStairs, normalizeOpeningStairs, snapStairMeasure, syncStairsToDoorWidth } from './studio/stairs'
 import { normalizeOpeningPediment, pedimentFormIsClosed } from './studio/pediment'
+import { normalizeOpeningTaperedField } from './studio/taperedField'
 import {
   normalizeOpeningRollerShutter,
   openingSupportsRollerShutter,
@@ -4394,6 +4396,13 @@ const pedimentOffsetForward = document.querySelector<HTMLInputElement>('#pedimen
 const pedimentColorSwatches = document.querySelector<HTMLDivElement>('#pediment-color-swatches')!
 const pedimentConsolesEnabled = document.querySelector<HTMLInputElement>('#pediment-consoles-enabled')!
 const pedimentConsoleWallOffset = document.querySelector<HTMLInputElement>('#pediment-console-wall-offset')!
+const taperedFieldEnabled = document.querySelector<HTMLInputElement>('#tapered-field-enabled')!
+const taperedFieldOptions = document.querySelector<HTMLDivElement>('#tapered-field-options')!
+const taperedFieldCourses = document.querySelector<HTMLInputElement>('#tapered-field-courses')!
+const taperedFieldOverhang = document.querySelector<HTMLInputElement>('#tapered-field-overhang')!
+const taperedFieldRatio = document.querySelector<HTMLInputElement>('#tapered-field-ratio')!
+const taperedFieldOffsetUp = document.querySelector<HTMLInputElement>('#tapered-field-offset-up')!
+const taperedFieldInvert = document.querySelector<HTMLInputElement>('#tapered-field-invert')!
 const openingWidthInput = document.querySelector<HTMLInputElement>('#opening-width')!
 const openingHeightInput = document.querySelector<HTMLInputElement>('#opening-height')!
 const openingFillMode = document.querySelector<HTMLSelectElement>('#opening-fill-mode')!
@@ -5448,6 +5457,14 @@ function commitOpeningPedimentPatch(
   const refs = scopedOpeningRefs()
   if (refs.length === 0) return
   commitState(updateOpeningPediment(state, refs, patch))
+}
+
+function commitOpeningTaperedFieldPatch(
+  patch: Parameters<typeof updateOpeningTaperedField>[2],
+) {
+  const refs = scopedOpeningRefs()
+  if (refs.length === 0) return
+  commitState(updateOpeningTaperedField(state, refs, patch))
 }
 
 
@@ -8787,6 +8804,7 @@ function renderUi(opts?: { skipLayerList?: boolean }) {
     syncWindowStyleSection()
     syncWindowSillControls()
     syncPedimentControls()
+    syncTaperedFieldControls()
     syncOpeningPositionControls()
     syncDoorStairsControls()
     syncRollerShutterControls()
@@ -8803,8 +8821,10 @@ function renderUi(opts?: { skipLayerList?: boolean }) {
     openingRollerShutterSection.hidden = true
     const pedimentSection = document.querySelector<HTMLElement>('#opening-pediment-section')
     const consolesSection = document.querySelector<HTMLElement>('#opening-consoles-section')
+    const taperedFieldSection = document.querySelector<HTMLElement>('#opening-tapered-field-section')
     if (pedimentSection) pedimentSection.hidden = true
     if (consolesSection) consolesSection.hidden = true
+    if (taperedFieldSection) taperedFieldSection.hidden = true
     const motionSection = document.querySelector<HTMLElement>('#opening-motion-section')
     if (motionSection) motionSection.hidden = true
     applyWallPartVisibility()
@@ -12615,6 +12635,29 @@ function syncPedimentControls() {
         : 'matte'
 }
 
+function syncTaperedFieldControls() {
+  const sel = selectedWindowOpening()
+  const supports = Boolean(sel && openingSupportsPediment(sel.opening))
+  if (!supports || !sel) return
+  const field = normalizeOpeningTaperedField(sel.opening.taperedField)
+  taperedFieldEnabled.checked = field.enabled
+  taperedFieldOptions.hidden = !field.enabled
+  taperedFieldCourses.value = String(field.courses ?? 3)
+  taperedFieldOverhang.value = String(field.overhangCm ?? 8)
+  taperedFieldRatio.value = String(field.topWidthRatio ?? 0.55)
+  taperedFieldOffsetUp.value = String(field.offsetUpCm ?? 0)
+  taperedFieldInvert.checked = Boolean(field.invert)
+  for (const el of [
+    taperedFieldCourses,
+    taperedFieldOverhang,
+    taperedFieldRatio,
+    taperedFieldOffsetUp,
+    taperedFieldInvert,
+  ]) {
+    el.disabled = !field.enabled
+  }
+}
+
 
 function syncOpeningPositionControls() {
   const sel = selectedWindowOpening()
@@ -13253,6 +13296,9 @@ function applyOpeningPartVisibility() {
 
   if (pedimentSection) pedimentSection.hidden = !supportsPediment || !showPediment
   if (consolesSection) consolesSection.hidden = !supportsPediment || !showConsoles
+
+  const taperedFieldSection = document.querySelector<HTMLElement>('#opening-tapered-field-section')
+  if (taperedFieldSection) taperedFieldSection.hidden = !supportsPediment || !showPediment
 
   if (!isDoor || !showStairs) doorStairsSection.hidden = true
   else doorStairsSection.hidden = false
@@ -15260,6 +15306,40 @@ sillOuterFlipForward.addEventListener('click', () => {
 pedimentEnabled.addEventListener('change', () => {
   commitOpeningPedimentPatch({ enabled: pedimentEnabled.checked })
   syncPedimentControls()
+})
+
+taperedFieldEnabled.addEventListener('change', () => {
+  commitOpeningTaperedFieldPatch({ enabled: taperedFieldEnabled.checked })
+  syncTaperedFieldControls()
+})
+taperedFieldCourses.addEventListener('change', () => {
+  commitOpeningTaperedFieldPatch({
+    courses: Math.max(1, Math.min(12, Math.round(Number(taperedFieldCourses.value) || 3))),
+  })
+  syncTaperedFieldControls()
+})
+taperedFieldOverhang.addEventListener('change', () => {
+  commitOpeningTaperedFieldPatch({
+    overhangCm: snapToGrid(Number(taperedFieldOverhang.value), STUDIO_MASONRY),
+  })
+  syncTaperedFieldControls()
+})
+taperedFieldRatio.addEventListener('change', () => {
+  const raw = Number(taperedFieldRatio.value)
+  commitOpeningTaperedFieldPatch({
+    topWidthRatio: Number.isFinite(raw) ? raw : 0.55,
+  })
+  syncTaperedFieldControls()
+})
+taperedFieldOffsetUp.addEventListener('change', () => {
+  commitOpeningTaperedFieldPatch({
+    offsetUpCm: snapToGrid(Number(taperedFieldOffsetUp.value), STUDIO_MASONRY),
+  })
+  syncTaperedFieldControls()
+})
+taperedFieldInvert.addEventListener('change', () => {
+  commitOpeningTaperedFieldPatch({ invert: taperedFieldInvert.checked })
+  syncTaperedFieldControls()
 })
 
 pedimentFormCards.addEventListener('click', (event) => {

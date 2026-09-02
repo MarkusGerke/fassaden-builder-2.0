@@ -99,6 +99,7 @@ export function applyTemplateDraft(base: Opening, draft: OpeningTemplateDraft): 
           consoles: draft.pediment.consoles ? { ...draft.pediment.consoles } : undefined,
         }
       : base.pediment,
+    taperedField: draft.taperedField ? { ...draft.taperedField } : base.taperedField,
     stairs: draft.stairs ? { ...draft.stairs } : base.stairs,
     basementWindow: draft.basementWindow
       ? { ...draft.basementWindow }

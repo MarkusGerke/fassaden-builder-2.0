@@ -56,6 +56,24 @@ Fenster und Türen, **nicht** Kellerfenster. Unabhängig von `wall.profiles`.
 
 UI: `#opening-pediment-section`, `#opening-consoles-section`. Normalize: `src/studio/pediment.ts`.
 
+## Quaderfeld / Verdachungsfeld (`Opening.taperedField`) — v2.0.77
+
+Mehrlagige trapezförmige Quader über der Öffnung (Gründerzeit-Verdachungsfeld / konische Staffelung). **Nicht** Keilstein-Ring und **nicht** `panelClearance.finish: 'taper'` (radialer Freiraum-Fächer).
+
+| Feld | Default | Bedeutung |
+|---|---|---|
+| `enabled` | aus | |
+| `courses` | 3 | horizontale Lagen |
+| `overhangCm` | 8 | Überstand an der breiten Kante |
+| `topWidthRatio` | 0.55 | Verhältnis schmale/breite Kante |
+| `invert` | false | false = unten breit → oben schmal; true = nach unten verjüngend |
+| `offsetUpCm` | 0 | Abstand über Sturz / Scheitel / Extrados |
+| `courseHeightCm` | — | sonst `wall.panel.panelHeight` |
+
+Basis-Y: bei Voussoir Extrados, sonst Bogenscheitel, sonst `opening.y + height`. Bossen nutzen `panel.taperDepth` (Frustum). Kartesisches Raster im Feld-AABB entfernt.
+
+UI: `#opening-tapered-field-section` (unter Verdachung; Optionen `hidden` wenn aus). Generator: `src/studio/taperedField.ts`; Einbindung `prepareStudioPanelParts`.
+
 ## Eingangstreppe (`Opening.stairs`)
 
 Nur bei **genau einer** gewählten Tür (`#door-stairs-section`). Optionen nur wenn an. Y der Öffnung gesperrt (Schwelle aus Treppe).

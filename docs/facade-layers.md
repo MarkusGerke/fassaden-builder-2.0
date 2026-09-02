@@ -47,7 +47,7 @@ Typ `CladdingZone` an `Wall.claddingZones` (optional). Fehlt/leer → Ableitung 
 | `strip` | Streifenpaneele | abgeleitet / aktiv |
 | `boss` | Bossen (Frustum-Front) | abgeleitet wenn `taperDepth > 0` |
 | `voussoir` | Keilstein-Ring am Bogen | Zone geplant; **heute** Öffnungs-Arch (`Opening.arch.voussoirs`). v2.0.74: UI-Default an bei neuem Rundbogen. **v2.0.75:** bei Verband Hybrid-Übergang statt Kreis-Extrados-Clip |
-| `taperedField` | konisch zulaufendes Quader-/Verdachungsfeld | geplant |
+| `taperedField` | konisch zulaufendes Quader-/Verdachungsfeld | **v2.0.77:** `Opening.taperedField` — mehrlagige Trapez-Quader über Sturz/Scheitel/Extrados; ohne Voussoir-Pflicht |
 | `none` | keine Verkleidung | abgeleitet |
 
 `front`: `flat` \| `frustum` \| `profile` (Profil-Front erst in Rechteckzonen vorgesehen).
@@ -78,6 +78,17 @@ Ziel (Referenz echter Steinbogen): keine Rechteck-Clip-Splitter an der Kurve und
 
 **MVP-Grenzen:** nur `form === 'round'`; Stoßfugen der Wand greifen noch nicht in die Keil-Außenkanten; Springer an flachen Winkeln genähert; keine echte L-Schulter wie im Naturstein-Foto über mehrere Module seitlich.
 
+### Trapez-Quaderfeld (`Opening.taperedField`, v2.0.77)
+
+Konisches Quader-/Bossenfeld **über** der Öffnung — unabhängig vom Keilstein-Ring:
+
+- Mehrere Lagen (`courses` × `panelHeight`), jede Lage ein Trapez-Polygon (`outline`)
+- Default: untere Breite = Öffnung + 2×`overhangCm`, oben schmaler (`topWidthRatio`); `invert` = nach unten verjüngend
+- Basis-Y: Extrados (mit Voussoir) → sonst Bogenscheitel → sonst Sturz
+- Kartesisches Raster im Feld-AABB entfernt; Extrude über `ringAndFan`
+- UI: `#tapered-field-enabled` unter Verdachung; Optionen ausgeblendet wenn aus
+- Generator: `src/studio/taperedField.ts`
+
 ### Zwei Horizontal-Bänder (UI, v2.0.72)
 
 Unter **Paneele**: Checkbox **„Verkleidung in zwei Bänder teilen“** (`#studio-cladding-two-bands`).
@@ -103,7 +114,7 @@ Stil-Vorlagen / Stile kopieren-einfügen nehmen `claddingZones` mit dem Paneel-S
 | Stil-Vorlagen / Clipboard | nur `panel` | **fixiert** inkl. `claddingZones` |
 | `cloneWall` / Etage duplizieren | klont `claddingZones`; Paneel aus → Zonen weg | ok |
 | `FacadeSvgView`, Mörtel, Validierung | oft globales `wall.panel` | bewusst (UI/Optik); Layout 3D zonenbasiert |
-| Voussoir / taperedField Generatoren | Typen vorhanden; Hybrid-MVP v2.0.75 | teilweise |
+| Voussoir / taperedField Generatoren | Voussoir Hybrid MVP; **taperedField v2.0.77** (`Opening.taperedField`) | teilweise / taperedField ok |
 
 ## Was bewusst nicht „eine Formel“ ist
 
@@ -128,7 +139,8 @@ Stil-Vorlagen / Stile kopieren-einfügen nehmen `claddingZones` mit dem Paneel-S
 | `src/utils/openingPanelSnap.ts` | Y-bewusstes Modul bei Multi-Zone |
 | `src/utils/styleTemplates.ts` | Vorlagen inkl. `claddingZones` |
 | `src/studio/panelGeometry.ts` | Shell-Mesh, Shadow-Tunnel, Cladding-Extrude |
+| `src/studio/taperedField.ts` | Trapez-Quaderfeld über Öffnung (`Opening.taperedField`) |
 | `src/FacadeController.ts` | Mesh-Aufbau inkl. Zonen-Tiles |
-| `index.html` / `src/main.ts` | UI Zwei-Bänder, Stil-Zwischenablage |
+| `index.html` / `src/main.ts` | UI Zwei-Bänder, Stil-Zwischenablage, Quaderfeld |
 
 Verwandt: [panel-geometry.md](panel-geometry.md), [opening-features.md](opening-features.md), [shadows.md](shadows.md), [architecture.md](architecture.md).
