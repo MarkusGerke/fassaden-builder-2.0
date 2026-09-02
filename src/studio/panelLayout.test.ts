@@ -69,6 +69,55 @@ describe('hide panel rows', () => {
     const band = visiblePanelRowRect(wall, panel)
     expect(band).toEqual({ x: 0, y: 32, width: 384, height: 64 })
   })
+
+  it('zwei persistierte Zonen: 48 unten / 24 oben per rect', () => {
+    const lower = {
+      ...DEFAULT_STUDIO_PANEL,
+      plinthEnabled: false,
+      plinthHeight: 0,
+      panelWidth: 48,
+      panelHeight: 32,
+      pattern: 'runningBond' as const,
+    }
+    const upper = {
+      ...DEFAULT_STUDIO_PANEL,
+      plinthEnabled: false,
+      plinthHeight: 0,
+      panelWidth: 24,
+      panelHeight: 32,
+      pattern: 'runningBond' as const,
+    }
+    const wall = studioWall({
+      id: 'multi-zone',
+      height: 256,
+      width: 384,
+      panel: lower,
+      claddingZones: [
+        {
+          id: 'lo',
+          kind: 'bond',
+          front: 'flat',
+          rect: { x: 0, y: 0, width: 384, height: 128 },
+          panel: lower,
+        },
+        {
+          id: 'hi',
+          kind: 'bond',
+          front: 'flat',
+          rect: { x: 0, y: 128, width: 384, height: 128 },
+          panel: upper,
+        },
+      ],
+    })
+    const tiles = layoutPanelTiles(wall, lower, [wall])
+    const lo = tiles.filter((t) => t.y + t.height <= 128 + 1e-6)
+    const hi = tiles.filter((t) => t.y >= 128 - 1e-6)
+    expect(lo.length).toBeGreaterThan(0)
+    expect(hi.length).toBeGreaterThan(0)
+    expect(Math.max(...lo.map((t) => t.width))).toBeGreaterThan(40)
+    expect(Math.max(...hi.map((t) => t.width))).toBeLessThan(30)
+    expect(Math.min(...hi.map((t) => t.y))).toBeGreaterThanOrEqual(128 - 1)
+  })
 })
 
 function tilesStayInWall(tiles: { x: number; width: number }[], wall: { width: number }) {

@@ -381,16 +381,12 @@ export function openingHasRoundMask(opening: Pick<Opening, 'type' | 'cutoutShape
 
 /** True wenn Glas/Flügel-Mesh gezeichnet wird. */
 export function openingShowsGlazing(opening: Opening): boolean {
-  if (openingLacksWindowChrome(opening)) return false
-  if (openingIsEmbeddedFake(opening)) return false
-  return openingFillMode(opening) === 'opening'
+  return resolveOpeningLayerContract(opening).showsGlazing
 }
 
 /** True wenn Wandkörper/Paneele ein Loch bekommen (Schicht A — dichte Schale). */
 export function openingCutsWall(opening: Opening): boolean {
-  if (opening.hidden) return false
-  if (openingIsEmbeddedFake(opening)) return false
-  return openingFillMode(opening) !== 'flush'
+  return resolveOpeningLayerContract(opening).cutsShell
 }
 
 export function openingRevealEmbed(opening: Opening): number {
@@ -420,13 +416,70 @@ export function normalizePanelClearance(
   return out
 }
 
+/** Rolle der Öffnung gegenüber Shell (A) / Verkleidung (B) / Anbauteile (C). */
+export interface OpeningLayerContract {
+  fillMode: OpeningFill['mode']
+  embeddedFake: boolean
+  cutsShell: boolean
+  showsGlazing: boolean
+  showsWindowChrome: boolean
+  attachmentsAllowed: boolean
+  /** Immer 0 — Freiraum gehört nicht zum Mauerloch. */
+  shellMaskInflateCm: number
+  claddingMaskInflateCm: number
+  claddingClearanceFinish: 'none' | 'empty' | 'taper'
+  claddingClearanceDepthCm: number
+}
+
+/** Kanonische Öffnungsrolle — Single Source of Truth (docs/facade-layers.md). */
+export function resolveOpeningLayerContract(opening: Opening): OpeningLayerContract {
+  const fill = normalizeOpeningFill(opening.fill)
+  const embeddedFake = normalizeRevealFrame(opening.revealFrame).enabled
+  const clearance = normalizePanelClearance(opening.panelClearance)
+  const hidden = Boolean(opening.hidden)
+
+  const cutsShell = !hidden && !embeddedFake && fill.mode !== 'flush'
+  const showsGlazing =
+    !hidden &&
+    !embeddedFake &&
+    !openingLacksWindowChrome(opening) &&
+    fill.mode === 'opening'
+  const showsWindowChrome =
+    !hidden && !embeddedFake && openingHasWindowChrome(opening) && fill.mode === 'opening'
+  const attachmentsAllowed = !hidden && openingSupportsOpeningDecor(opening)
+  const claddingMaskInflateCm =
+    !hidden && clearance.enabled ? Math.max(0, clearance.cm ?? 0) : 0
+  let claddingClearanceFinish: OpeningLayerContract['claddingClearanceFinish'] = 'none'
+  if (claddingMaskInflateCm > 0) {
+    claddingClearanceFinish = clearance.finish === 'taper' ? 'taper' : 'empty'
+  }
+  const claddingClearanceDepthCm =
+    claddingMaskInflateCm > 0
+      ? clearance.depthCm != null && Number.isFinite(clearance.depthCm)
+        ? clearance.depthCm
+        : DEFAULT_PANEL_CLEARANCE_DEPTH_CM
+      : 0
+
+  return {
+    fillMode: fill.mode,
+    embeddedFake,
+    cutsShell,
+    showsGlazing,
+    showsWindowChrome,
+    attachmentsAllowed,
+    shellMaskInflateCm: 0,
+    claddingMaskInflateCm,
+    claddingClearanceFinish,
+    claddingClearanceDepthCm,
+  }
+}
+
 /**
  * Extra-Ausschnitt nur für Paneele/Ziegel/Mörtel — das Mauerloch bleibt unverändert.
- * Schicht B (Verkleidung); kanonisch auch `openingCladdingInflateCm` / `resolveOpeningLayerContract`.
+ * Schicht B; = `resolveOpeningLayerContract(...).claddingMaskInflateCm`.
  */
 export function openingPanelClearance(opening: Opening): number {
-  const gap = normalizePanelClearance(opening.panelClearance)
-  return gap.enabled ? (gap.cm ?? DEFAULT_PANEL_CLEARANCE_CM) : 0
+  return resolveOpeningLayerContract(opening).claddingMaskInflateCm
 }
 
 /**
@@ -434,7 +487,8 @@ export function openingPanelClearance(opening: Opening): number {
  * Default `empty`.
  */
 export function openingPanelClearanceFinish(opening: Opening): 'empty' | 'taper' {
-  return normalizePanelClearance(opening.panelClearance).finish === 'taper' ? 'taper' : 'empty'
+  const finish = resolveOpeningLayerContract(opening).claddingClearanceFinish
+  return finish === 'taper' ? 'taper' : 'empty'
 }
 
 /**
@@ -445,8 +499,9 @@ export function openingPanelClearanceDepthCm(
   opening: Opening,
   fallback = DEFAULT_PANEL_CLEARANCE_DEPTH_CM,
 ): number {
+  const c = resolveOpeningLayerContract(opening)
+  if (c.claddingMaskInflateCm <= 0) return 0
   const gap = normalizePanelClearance(opening.panelClearance)
-  if (!gap.enabled) return 0
   if (gap.depthCm != null && Number.isFinite(gap.depthCm)) return gap.depthCm
   return fallback
 }

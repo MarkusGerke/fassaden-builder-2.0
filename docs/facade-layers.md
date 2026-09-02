@@ -18,7 +18,7 @@ Ziel: skalierbare Kombination aus **Öffnungen** (eckig/Bogen, individuelle Maß
 
 ## Öffnungs-Vertrag
 
-Kanonisch: `resolveOpeningLayerContract` in [`src/studio/facadeLayers.ts`](../src/studio/facadeLayers.ts).
+Kanonisch: `resolveOpeningLayerContract` in [`src/utils/openingGeometry.ts`](../src/utils/openingGeometry.ts) (Re-Export aus [`facadeLayers.ts`](../src/studio/facadeLayers.ts)).
 
 | Situation | Shell-Loch | Glas | Freiraum (B) | Dekor C |
 |---|---|---|---|---|
@@ -52,7 +52,9 @@ Typ `CladdingZone` an `Wall.claddingZones` (optional). Fehlt/leer → Ableitung 
 
 `front`: `flat` \| `frustum` \| `profile` (Profil-Front erst in Rechteckzonen vorgesehen).
 
-Mehrere Zonen mit `rect` ermöglichen später z. B. 24er oben / 48er unten ohne globales Dehnen.
+Mehrere Zonen mit `rect` ermöglichen z. B. 24er oben / 48er unten ohne globales Dehnen (`layoutPanelTiles` iteriert persistierte `claddingZones`). Ohne persistierte Zonen bleibt der klassische Ein-Panel-Pfad (`Aufruf-panel` maßgeblich; Ableitung liefert nur `kind`/`front`).
+
+`openingCladdingMaskInflateForLayout`: Freiraum-Inflate für Feld-Layout/Siegel; bei Keilstein-Ring ohne taper-Freiraum = 0.
 
 ## Was bewusst nicht „eine Formel“ ist
 
@@ -70,9 +72,10 @@ Mehrere Zonen mit `rect` ermöglichen später z. B. 24er oben / 48er unten ohn
 
 | Datei | Rolle |
 |---|---|
-| `src/studio/facadeLayers.ts` | Vertrag, Zonen-Ableitung |
+| `src/utils/openingGeometry.ts` | Öffnungsvertrag, Maske, Normalize, Legacy-API |
+| `src/studio/facadeLayers.ts` | Zonen-Ableitung, Inflate-Helfer, Re-Exports |
 | `src/types/facade.ts` | `CladdingZone*`, `Wall.claddingZones` |
-| `src/utils/openingGeometry.ts` | Maske, Normalize, Legacy-API |
+| `src/studio/panelLayout.ts` | Zone-Aware `layoutPanelTiles` |
 | `src/studio/panelGeometry.ts` | Shell-Mesh, Shadow-Tunnel, Cladding-Extrude |
 
 Verwandt: [panel-geometry.md](panel-geometry.md), [opening-features.md](opening-features.md), [shadows.md](shadows.md), [architecture.md](architecture.md).

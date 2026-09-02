@@ -2,6 +2,10 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Zone-Aware Verkleidung + Contract-Verdrahtung (2026-09-02) — v2.0.71
+
+`layoutPanelTiles` mit persistierten `claddingZones` (pro Zone Panel + `rect`-Clip); ohne Zonen weiterhin Ein-Panel-Pfad. Cladding-Inflate/Siegel über `openingCladdingMaskInflateForLayout` (Freiraum/Keilstein). Vertrag bleibt in `openingGeometry`. Docs: [facade-layers.md](facade-layers.md).
+
 ### Fassaden-Schichten-Vertrag (2026-09-02) — v2.0.70
 
 Grundlage für skalierbare Öffnungen/Verkleidung/Profile: Schichten **A Shell** (lichtdicht) / **B Cladding** (Zonen) / **C Attachments**. `resolveOpeningLayerContract` klärt Freiraum (nur B), Einbettung (kein Shell-Loch), flush/niche/opening. Optional `Wall.claddingZones`; sonst Ableitung aus `panel`. Shadow-Tunnel nutzt `openingCutsShell`. Docs: [facade-layers.md](facade-layers.md). Dateien: `facadeLayers.ts`, `facade.ts`, Tests.

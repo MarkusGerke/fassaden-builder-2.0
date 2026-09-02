@@ -13,13 +13,16 @@ import {
   maskXSpanAtY,
   openingArchGeom,
   openingArchSpringY,
-  openingArchVoussoirsEnabled,
   openingCutsWall,
   openingMasonryRect,
-  openingPanelClearance,
-  openingPanelClearanceFinish,
   openingStadiumGeom,
 } from '../utils/openingGeometry'
+import {
+  claddingZonesForWall,
+  clipTilesToZoneRect,
+  effectivePanelForZone,
+  openingCladdingMaskInflateForLayout,
+} from './facadeLayers'
 
 export interface PanelTile {
   x: number
@@ -1227,9 +1230,31 @@ export function layoutPanelTiles(
   allWalls: Wall[] = [],
 ): PanelTile[] {
   if (!wall || !Number.isFinite(wall.width) || !Number.isFinite(wall.height)) return []
+  const stored = wall.claddingZones
+  // Ohne persistierte Zonen: klassischer Ein-Panel-Pfad (Aufruf-`panel` ist maßgeblich).
+  if (!stored || stored.length === 0) {
+    return layoutPanelTilesForPanel(wall, panel, allWalls)
+  }
+  const out: PanelTile[] = []
+  for (const zone of claddingZonesForWall(wall)) {
+    if (zone.kind === 'none') continue
+    const zPanel = effectivePanelForZone(wall, zone, panel)
+    let tiles = layoutPanelTilesForPanel(wall, zPanel, allWalls)
+    tiles = clipTilesToZoneRect(tiles, zone)
+    out.push(...tiles)
+  }
+  return out
+}
+
+/** Eine Zone / ein Panel — interne Implementierung. */
+function layoutPanelTilesForPanel(
+  wall: Wall,
+  panel: StudioPanelConfig,
+  allWalls: Wall[],
+): PanelTile[] {
   panel = normalizeStudioPanel(panel)
   const { panelWidth, joint, pattern } = panel
-  if (pattern === 'none') return []
+  if (panel.enabled === false || pattern === 'none') return []
   const tiles: PanelTile[] = []
   const { firstVisibleRow, lastVisibleRow, rowCuts } = visiblePanelRowRange(wall.height, panel)
   const lastRow = rowCuts.length - 2
@@ -1358,10 +1383,7 @@ function openingJambSealHoles(wall: Wall): JambHole[] {
   return wall.openings
     .filter((opening) => !opening.hidden && openingCutsWall(opening))
     .map((opening) => {
-      const clearance =
-        openingArchVoussoirsEnabled(opening) && openingPanelClearanceFinish(opening) !== 'taper'
-          ? 0
-          : openingPanelClearance(opening)
+      const clearance = openingCladdingMaskInflateForLayout(opening)
       const rect = openingMasonryRect(opening, clearance)
       const geom = openingArchGeom(opening, clearance)
       const stadium = openingStadiumGeom(opening, clearance)
@@ -1493,7 +1515,7 @@ export function mergeNarrowPanelGaps(
     const blocked = rowOpenings
       .filter((o) => openingCutsWall(o))
       .map((o) => {
-        const clearance = openingPanelClearance(o)
+        const clearance = openingCladdingMaskInflateForLayout(o)
         const span = maskXSpanAtY(o, midY, clearance)
         if (!span) return null
         return { x0: span.x0, x1: span.x1 }

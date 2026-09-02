@@ -5,6 +5,7 @@ import { DEFAULT_STUDIO_PANEL } from './constants'
 import { WALL_DEPTH } from '../constants/presets'
 import {
   claddingZonesForWall,
+  clipTilesToZoneRect,
   deriveCladdingZonesFromPanel,
   openingCladdingInflateCm,
   openingCutsShell,
@@ -131,5 +132,21 @@ describe('claddingZones', () => {
     })
     expect(claddingZonesForWall(wall)).toHaveLength(1)
     expect(claddingZonesForWall(wall)[0]!.kind).toBe('taperedField')
+  })
+
+  it('clippt Kacheln auf Zonen-Rechteck', () => {
+    const tiles = [
+      { x: 0, y: 0, width: 100, height: 32 },
+      { x: 0, y: 100, width: 100, height: 32 },
+    ]
+    const clipped = clipTilesToZoneRect(tiles, {
+      id: 'z',
+      kind: 'bond',
+      front: 'flat',
+      rect: { x: 0, y: 80, width: 384, height: 80 },
+    })
+    expect(clipped).toHaveLength(1)
+    expect(clipped[0]!.y).toBe(100)
+    expect(clipped[0]!.height).toBe(32)
   })
 })

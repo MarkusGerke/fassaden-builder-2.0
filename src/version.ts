@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.70'
+export const APP_VERSION = '2.0.71'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,16 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.71',
+    date: '2026-09-02',
+    title: 'Verkleidung: Zonen-Layout verdrahtet',
+    changes: [
+      'Mehrere Verkleidungszonen mit eigenem Modul und Rechteck (z. B. 48 cm unten, 24 cm oben) — Layout clippt je Zone',
+      'Freiraum und Keilstein-Ring steuern einheitlich den Verkleidungs-Ausschnitt; Shell-Loch bleibt am Öffnungsmaß',
+      'Ohne gespeicherte Zonen unverändert: ein Paneel-Raster wie bisher',
+    ],
+  },
   {
     version: '2.0.70',
     date: '2026-09-02',
