@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Wall } from '../types/facade'
 import { emptyNeighbors } from '../types/facade'
 import { DEFAULT_STUDIO_PANEL, PLAN_DIAGONAL_STEP, WALL_DEPTH } from '../studio/constants'
+import { applyTwoHorizontalCladdingZones } from '../studio/facadeLayers'
 import {
   alignOpeningToMasonry,
   commonMasonrySnapStepCm,
@@ -211,5 +212,68 @@ describe('gemeinsames Raster 24er + 48er Etagen', () => {
     const xs = openingMasonryJambXs(only, [only])
     expect(xs).toContain(12)
     expect(xs).toContain(24)
+  })
+})
+
+describe('Multi-Zone Snap (48 unten / 24 oben)', () => {
+  it('Cuts unten vs. oben folgen dem Zonen-Modul', () => {
+    const base = studioWall({
+      id: 'bands',
+      width: 384,
+      height: 256,
+      panel: {
+        ...DEFAULT_STUDIO_PANEL,
+        pattern: 'runningBond',
+        panelWidth: 48,
+        panelHeight: 8,
+        plinthEnabled: false,
+        plinthHeight: 0,
+      },
+    })
+    const wall = applyTwoHorizontalCladdingZones(base, {
+      splitYCm: 128,
+      lowerPanelWidth: 48,
+      upperPanelWidth: 24,
+    })
+
+    const lowerY = 64 // Mitte unteres Band
+    const upperY = 192 // Mitte oberes Band
+    const xsLower = openingMasonryJambXs(wall, [wall], lowerY)
+    const xsUpper = openingMasonryJambXs(wall, [wall], upperY)
+
+    expect(xsLower).toContain(48)
+    expect(xsLower).toContain(24) // Halbstein der 48er-Lage
+    expect(xsLower).not.toContain(12)
+
+    expect(xsUpper).toContain(24)
+    expect(xsUpper).toContain(12) // Halbstein der 24er-Lage
+
+    const candLower = openingPlacementCandidateXs(wall, [wall], 96, lowerY)
+    const candUpper = openingPlacementCandidateXs(wall, [wall], 96, upperY)
+    // Unteres Modul: Fuge 48 ist Kandidat; oberes Raster hat feinere Schritte
+    expect(candLower).toContain(48)
+    expect(candUpper.some((x) => Math.abs(x - 12) < 0.05)).toBe(true)
+  })
+
+  it('ohne atY bleibt Verhalten wie wall.panel (unteres Modul)', () => {
+    const wall = applyTwoHorizontalCladdingZones(
+      studioWall({
+        id: 'bands2',
+        width: 384,
+        height: 256,
+        panel: {
+          ...DEFAULT_STUDIO_PANEL,
+          pattern: 'runningBond',
+          panelWidth: 48,
+          panelHeight: 8,
+          plinthEnabled: false,
+          plinthHeight: 0,
+        },
+      }),
+      { splitYCm: 128, lowerPanelWidth: 48, upperPanelWidth: 24 },
+    )
+    const xs = openingMasonryJambXs(wall, [wall])
+    expect(xs).toContain(48)
+    expect(xs).not.toContain(12)
   })
 })

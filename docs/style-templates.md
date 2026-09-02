@@ -8,7 +8,7 @@ Neben **Stile kopieren** / **Stile einfügen…** können Wand-Stile dauerhaft a
 2. Name eingeben → **Speichern**
 3. Auf Ziel-Wand oder Öffnung → Rechtsklick → **Stil-Vorlage anwenden** → Vorlage wählen
 
-Die Vorlage übernimmt alles auf einmal (Paneele, Farben, Gesims, Sockel, Außenseite, Rahmenprofil, Verdachung, Bänke der ersten Öffnung) — ohne den Einfüge-Dialog.
+Die Vorlage übernimmt alles auf einmal (Paneele inkl. **Zwei-Bänder/`claddingZones`**, Farben, Gesims, Sockel, Außenseite, Rahmenprofil, Verdachung, Bänke der ersten Öffnung) — ohne den Einfüge-Dialog.
 
 ## Persistenz
 
@@ -16,11 +16,13 @@ Die Vorlage übernimmt alles auf einmal (Paneele, Farben, Gesims, Sockel, Außen
 |---|---|
 | `fassaden-builder-style-templates-v1` | JSON-Array von `{ id, name, draft }` |
 
+`draft` enthält u. a. `panel`, optional `claddingZones` (ab v2.0.73), Farben, Gesims, Öffnungs-Dekor.
+
 ## Betroffene Dateien
 
 | Datei | Rolle |
 |---|---|
-| `src/utils/styleTemplates.ts` | Laden/Speichern, Normalisierung, `draftFromWallStyle` |
+| `src/utils/styleTemplates.ts` | Laden/Speichern, Normalisierung, `draftFromWallStyle`, `applyPanelStyleToWall` |
 | `src/main.ts` | Dialog, Kontextmenü, `applyStyleClipboardDirect` |
 | `index.html` | `#style-template-dialog` |
 

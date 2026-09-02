@@ -509,7 +509,7 @@ Beim **Verschieben oder Platzieren** von Wänden und Öffnungen erscheint ein **
 - **Wand aus Bibliothek / Wand verschieben:** blaues Gitter auf dem **Boden** der Ziel-Etage (Oben, 2D, 3D).
 - **Öffnung verschieben:** Gitter auf der **Zielwand** (Außenfläche).
 - Nach **Ablegen** oder Abbruch wird das Raster ausgeblendet (`clearPlacementGridOverlay`).
-- Öffnungs-**Position** (Drag, Nudge, Zahlenfelder): bei Modulverband an **Fuge / Steinmitte / Wandmitte** (`openingPanelSnap.ts`); sonst **8 cm**. Schrift-Position bleibt 32 cm.
+- Öffnungs-**Position** (Drag, Nudge, Zahlenfelder): bei Modulverband an **Fuge / Steinmitte / Wandmitte** (`openingPanelSnap.ts`); bei Zwei-Bändern je Zone Y-bewusst; sonst **8 cm**. Schrift-Position bleibt 32 cm.
 
 ### Öffnungen (`src/studio/openingGuides.ts`)
 

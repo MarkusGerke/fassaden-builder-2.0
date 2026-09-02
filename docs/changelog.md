@@ -2,6 +2,10 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Multi-Zone Snap + Stil-Vorlagen mit claddingZones (2026-09-02) — v2.0.73
+
+Öffnungs-Snap bei Zwei-Bändern (48/24): Cuts/Kandidaten aus dem Modul der Zone an Öffnungsmitte-Y (`effectivePanelAtY`). Stil-Vorlagen und Stile kopieren/einfügen übernehmen `claddingZones`. Audit in [facade-layers.md](facade-layers.md). Dateien: `facadeLayers.ts`, `openingPanelSnap.ts`, `styleTemplates.ts`, `main.ts`, Tests.
+
 ### Zwei Verkleidungs-Bänder UI + Renderer (2026-09-02) — v2.0.72
 
 Sichtbare Fortsetzung der Schichten-Architektur: Checkbox **Verkleidung in zwei Bänder teilen** (Höhe + Modulbreite unten/oben) persistiert `claddingZones` (`band-lower`/`band-upper`). Aus → Zonen weg, Fallback `wall.panel`. Renderer nutzt Zone-Tiles auch im Low-LOD (kein Ein-Platten-Ersatz). Docs: [facade-layers.md](facade-layers.md).

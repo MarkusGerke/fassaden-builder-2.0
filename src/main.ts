@@ -15,6 +15,7 @@ import {
   type OpeningTemplateDraft,
 } from './utils/openingTemplates'
 import {
+  applyPanelStyleToWall,
   createStyleTemplate,
   draftFromWallStyle,
   loadStyleTemplates,
@@ -4014,6 +4015,7 @@ let activeLibraryAssetDrag: LibraryAsset | null = null
 
 type StyleClipboard = {
   panel?: Wall['panel']
+  claddingZones?: Wall['claddingZones']
   wallColor?: string
   interiorColor?: string
   claddingColor?: string
@@ -8977,21 +8979,27 @@ function copyStylesFromWall(wallId: string, keys?: string[]) {
   const wall = getWall(state, wallId)
   if (!wall) return
   const first = wall.openings[0]
-  styleClipboard = {
-    panel: wall.panel ? { ...wall.panel } : undefined,
-    wallColor: wall.wallColor,
-    interiorColor: wall.interiorColor,
-    claddingColor: wall.claddingColor,
-    profileColor: wall.profileColor,
-    wallFinish: wall.wallFinish,
-    claddingFinish: wall.claddingFinish,
-    profileFinish: wall.profileFinish,
-    cornice: wall.cornice ? { ...wall.cornice } : undefined,
-    panelFlip: wall.panelFlip,
-    opening: first ? { ...first } : undefined,
-    frameProfileId: first
+  const draft = draftFromWallStyle(
+    wall,
+    first,
+    first
       ? wall.profiles.find((profile) => profile.openingId === first.id)?.profileId ?? null
       : null,
+  )
+  styleClipboard = {
+    panel: draft.panel,
+    claddingZones: draft.claddingZones,
+    wallColor: draft.wallColor,
+    interiorColor: draft.interiorColor,
+    claddingColor: draft.claddingColor,
+    profileColor: draft.profileColor,
+    wallFinish: draft.wallFinish,
+    claddingFinish: draft.claddingFinish,
+    profileFinish: draft.profileFinish,
+    cornice: draft.cornice,
+    panelFlip: draft.panelFlip,
+    opening: first ? { ...first } : undefined,
+    frameProfileId: draft.frameProfileId ?? null,
   }
   styleClipboardKeys = keys && keys.length > 0 ? [...keys] : null
   const label = !keys || keys.length === 0 ? 'Stile' : keys.length === 1 ? 'Eigenschaft' : 'Eigenschaften'
@@ -9054,6 +9062,7 @@ function applyStyleTemplateDraft(
 ) {
   styleClipboard = {
     panel: draft.panel ? { ...draft.panel } : undefined,
+    claddingZones: draft.claddingZones,
     wallColor: draft.wallColor,
     interiorColor: draft.interiorColor,
     claddingColor: draft.claddingColor,
@@ -9079,7 +9088,12 @@ function applyStyleClipboardDirect(target: NonNullable<typeof stylePasteTarget>)
       walls: activeBuilding(next).walls.map((wall) => {
         if (!target.ids.includes(wall.id)) return wall
         let updated = { ...wall }
-        if (clip.panel) updated = { ...updated, panel: { ...clip.panel } }
+        if (clip.panel) {
+          updated = applyPanelStyleToWall(updated, {
+            panel: clip.panel,
+            claddingZones: clip.claddingZones,
+          })
+        }
         updated = {
           ...updated,
           wallColor: clip.wallColor,
@@ -9162,8 +9176,12 @@ function applyStylePasteFromDialog() {
       walls: activeBuilding(next).walls.map((wall) => {
         if (!target.ids.includes(wall.id)) return wall
         let updated = { ...wall }
-        if (checked('panel') && clip.panel) updated = { ...updated, panel: { ...clip.panel } }
-        else if (checked('plinth') && clip.panel && updated.panel) {
+        if (checked('panel') && clip.panel) {
+          updated = applyPanelStyleToWall(updated, {
+            panel: clip.panel,
+            claddingZones: clip.claddingZones,
+          })
+        } else if (checked('plinth') && clip.panel && updated.panel) {
           updated = {
             ...updated,
             panel: {

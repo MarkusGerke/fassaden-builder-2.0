@@ -14,7 +14,9 @@ import {
   buildTwoHorizontalCladdingZones,
   clearPersistedCladdingZones,
   clampCladdingSplitY,
+  claddingZoneAtY,
   defaultUpperBandWidth,
+  effectivePanelAtY,
   isTwoHorizontalBandCladding,
   readTwoHorizontalBandOptions,
 } from './facadeLayers'
@@ -210,5 +212,22 @@ describe('claddingZones', () => {
       lowerPanelWidth: 32,
       upperPanelWidth: 16,
     })).toHaveLength(2)
+  })
+
+  it('claddingZoneAtY / effectivePanelAtY wählt das Band', () => {
+    const withBands = applyTwoHorizontalCladdingZones(
+      studioWall({
+        height: 256,
+        width: 384,
+        panel: { ...DEFAULT_STUDIO_PANEL, pattern: 'runningBond', panelWidth: 48, plinthEnabled: false },
+      }),
+      { splitYCm: 128, lowerPanelWidth: 48, upperPanelWidth: 24 },
+    )
+    expect(claddingZoneAtY(withBands, 40)?.id).toBe('band-lower')
+    expect(claddingZoneAtY(withBands, 200)?.id).toBe('band-upper')
+    expect(effectivePanelAtY(withBands, 40).panelWidth).toBe(48)
+    expect(effectivePanelAtY(withBands, 200).panelWidth).toBe(24)
+    const plain = studioWall({ panel: { ...DEFAULT_STUDIO_PANEL, panelWidth: 32 } })
+    expect(effectivePanelAtY(plain, 100).panelWidth).toBe(32)
   })
 })

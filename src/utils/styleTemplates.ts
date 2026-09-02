@@ -1,5 +1,6 @@
 import type { Opening, Wall } from '../types/facade'
 import { createId } from './id'
+import { cloneCladdingZones } from '../studio/facadeLayers'
 
 const STORAGE_KEY = 'fassaden-builder-style-templates-v1'
 
@@ -12,6 +13,8 @@ export interface StyleTemplate {
 
 export interface StyleTemplateDraft {
   panel?: Wall['panel']
+  /** Zwei-Bänder / Multi-Zone — gehört zum Paneel-Stil. */
+  claddingZones?: Wall['claddingZones']
   wallColor?: string
   interiorColor?: string
   claddingColor?: string
@@ -77,6 +80,7 @@ export function draftFromWallStyle(
   const { id: _id, x: _x, ...openingRest } = opening ?? ({} as Opening)
   return {
     panel: wall.panel ? { ...wall.panel } : undefined,
+    claddingZones: cloneCladdingZones(wall.claddingZones),
     wallColor: wall.wallColor,
     interiorColor: wall.interiorColor,
     claddingColor: wall.claddingColor,
@@ -89,4 +93,18 @@ export function draftFromWallStyle(
     opening: opening ? (openingRest as StyleTemplateDraft['opening']) : undefined,
     frameProfileId: frameProfileId ?? null,
   }
+}
+
+/** Paneel + Zonen aus Vorlage/Zwischenablage auf eine Wand legen. */
+export function applyPanelStyleToWall(
+  wall: Wall,
+  draft: Pick<StyleTemplateDraft, 'panel' | 'claddingZones'>,
+): Wall {
+  let next = wall
+  if (draft.panel) next = { ...next, panel: { ...draft.panel } }
+  next = {
+    ...next,
+    claddingZones: cloneCladdingZones(draft.claddingZones),
+  }
+  return next
 }

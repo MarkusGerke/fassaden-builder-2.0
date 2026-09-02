@@ -8,6 +8,7 @@
  *
  * Drag: nächster Absolut-Kandidat. Nudge: nächster/vorheriger Kandidat.
  * Gestapelte Etagen mit unterschiedlichem Modul: gemeinsame Cuts (LCM), sonst echte Lagen-Cuts.
+ * Multi-Zone (`claddingZones` mit rect): Cuts aus dem Modul der Zone an Öffnungs-Mitte-Y.
  */
 import type { Opening, Wall } from '../types/facade'
 import {
@@ -15,6 +16,7 @@ import {
   normalizeStudioPanel,
   STUDIO_MASONRY,
 } from '../studio/constants'
+import { effectivePanelAtY } from '../studio/facadeLayers'
 import {
   masonryPatternCuts,
   patternModuleUnit,
@@ -83,10 +85,18 @@ export function wallUsesOpeningMasonrySnap(wall: Wall): boolean {
   return patternModuleUnit(panel.pattern, panel.panelWidth, header) != null
 }
 
-/** Feinste Vertikal-Fugen-Einheit der Wand (cm), z. B. ½ Läufer. */
-export function wallMasonryModuleUnitCm(wall: Wall): number | null {
+/** Paneel für Snap-Cuts: bei Zonen-Rects am `atY`, sonst `wall.panel`. */
+function snapPanelForWall(wall: Wall, atY?: number) {
+  if (atY != null && Number.isFinite(atY)) {
+    return effectivePanelAtY(wall, atY)
+  }
+  return normalizeStudioPanel(wall.panel ?? DEFAULT_STUDIO_PANEL)
+}
+
+/** Feinste Vertikal-Fugen-Einheit der Wand (cm), z. B. ½ Läufer. Optional Y-bewusst. */
+export function wallMasonryModuleUnitCm(wall: Wall, atY?: number): number | null {
   if (!wallUsesOpeningMasonrySnap(wall)) return null
-  const panel = normalizeStudioPanel(wall.panel ?? DEFAULT_STUDIO_PANEL)
+  const panel = snapPanelForWall(wall, atY)
   const header = headerSize(panel.panelWidth)
   const unit = patternModuleUnit(panel.pattern, panel.panelWidth, header)
   return unit != null && unit > EPS ? unit : null
@@ -136,34 +146,45 @@ function regularJambCuts(length: number, step: number): number[] {
   return uniqueSortedCuts(cuts, length)
 }
 
-function wallOwnJambCuts(wall: Wall, allWalls: Wall[]): number[] {
-  const panel = normalizeStudioPanel(wall.panel ?? DEFAULT_STUDIO_PANEL)
+function wallOwnJambCuts(wall: Wall, allWalls: Wall[], atY?: number): number[] {
+  const panel = snapPanelForWall(wall, atY)
   const even = masonryPatternCuts(wall, panel, allWalls, 0)
   const odd = masonryPatternCuts(wall, panel, allWalls, 1)
   return uniqueSortedCuts([...even, ...odd], wall.width)
 }
 
-/** Vertikale Fugen (Cuts) als Basis für Laibungs-/Mitten-Kandidaten. */
-export function openingMasonryJambXs(wall: Wall, allWalls: Wall[] = [wall]): number[] {
+/**
+ * Vertikale Fugen (Cuts) als Basis für Laibungs-/Mitten-Kandidaten.
+ * `atY`: Öffnungsmitte (oder Laibungsband) — bei Multi-Zone das Modul dieser Höhe.
+ */
+export function openingMasonryJambXs(
+  wall: Wall,
+  allWalls: Wall[] = [wall],
+  atY?: number,
+): number[] {
   const stack = masonryFacadeStack(wall, allWalls)
-  const own = wallOwnJambCuts(wall, allWalls)
+  const own = wallOwnJambCuts(wall, allWalls, atY)
   if (stack.length <= 1) return own
 
   const units = stack
-    .map((w) => wallMasonryModuleUnitCm(w))
+    .map((w) => wallMasonryModuleUnitCm(w, w.id === wall.id ? atY : undefined))
     .filter((u): u is number => u != null)
     .map((u) => Math.round(u))
   const distinct = new Set(units)
   if (distinct.size <= 1) return own
 
-  const step = commonMasonrySnapStepCm(stack)
+  let step: number | null = null
+  for (const ui of units) {
+    const n = Math.max(1, ui)
+    step = step == null ? n : lcmInt(step, n)
+  }
   if (step == null || step <= EPS) return own
   return regularJambCuts(wall.width, step)
 }
 
-/** Horizontale Schichtgrenzen. */
-export function openingMasonryCourseYs(wall: Wall): number[] {
-  const panel = normalizeStudioPanel(wall.panel ?? DEFAULT_STUDIO_PANEL)
+/** Horizontale Schichtgrenzen. Optional Y-bewusst (Zonen-`panelHeight`). */
+export function openingMasonryCourseYs(wall: Wall, atY?: number): number[] {
+  const panel = snapPanelForWall(wall, atY ?? wall.height / 2)
   const { rowCuts } = visiblePanelRowRange(wall.height, panel)
   return uniqueSortedCuts(rowCuts, wall.height)
 }
@@ -176,9 +197,10 @@ export function openingPlacementCandidateXs(
   wall: Wall,
   allWalls: Wall[],
   width: number,
+  atY?: number,
 ): number[] {
   const maxX = Math.max(0, wall.width - width)
-  const cuts = openingMasonryJambXs(wall, allWalls)
+  const cuts = openingMasonryJambXs(wall, allWalls, atY)
   const xs: number[] = []
 
   // 1) Bündig an Fuge (linke Laibung auf Cut)
@@ -209,9 +231,10 @@ export function openingPlacementCandidateXs(
 export function openingPlacementCandidateYs(
   wall: Wall,
   height: number,
+  atY?: number,
 ): number[] {
   const maxY = Math.max(0, wall.height - height)
-  const cuts = openingMasonryCourseYs(wall)
+  const cuts = openingMasonryCourseYs(wall, atY)
   const ys: number[] = []
   for (const c of cuts) {
     if (c >= -EPS && c <= maxY + EPS) ys.push(c)
@@ -227,6 +250,15 @@ export function openingPlacementCandidateYs(
   const wallCenterY = wall.height / 2 - height / 2
   if (wallCenterY >= -EPS && wallCenterY <= maxY + EPS) ys.push(wallCenterY)
   return uniqueSorted(ys)
+}
+
+/** Öffnungsmitte Y für Zonen-Auswahl (Fallback: Wandmitte). */
+function openingCenterY(
+  opening: Pick<Opening, 'y' | 'height'>,
+  proposedY?: number,
+): number {
+  const y = proposedY != null && Number.isFinite(proposedY) ? proposedY : opening.y
+  return y + opening.height / 2
 }
 
 function nearestValue(values: number[], target: number): number {
@@ -283,9 +315,10 @@ export function snapOpeningWidthToMasonryJambs(
   allWalls: Wall[],
   x: number,
   width: number,
+  atY?: number,
 ): number {
   if (!wallUsesOpeningMasonrySnap(wall)) return width
-  const cuts = openingMasonryJambXs(wall, allWalls)
+  const cuts = openingMasonryJambXs(wall, allWalls, atY)
   const left = nearestValue(cuts, x)
   const right = nearestValue(cuts, left + width)
   const next = Math.max(STUDIO_MASONRY, right - left)
@@ -327,7 +360,8 @@ export function snapOpeningMoveToMasonry(
     return { x, y, width, height }
   }
 
-  const xs = openingPlacementCandidateXs(wall, allWalls, width)
+  const atY = openingCenterY(opening, proposedY)
+  const xs = openingPlacementCandidateXs(wall, allWalls, width, atY)
   if (xs.length > 0) {
     if (mode === 'nudge' && Math.abs(dx) > EPS) {
       x = adjacentValue(xs, opening.x, dx > 0 ? 1 : -1)
@@ -340,7 +374,7 @@ export function snapOpeningMoveToMasonry(
 
   const lockY = opening.type === 'door' && Boolean(opening.stairs?.enabled)
   if (!lockY) {
-    const ys = openingPlacementCandidateYs(wall, height)
+    const ys = openingPlacementCandidateYs(wall, height, atY)
     if (ys.length > 0) {
       if (mode === 'nudge' && Math.abs(dy) > EPS) {
         y = adjacentValue(ys, opening.y, dy > 0 ? 1 : -1)
@@ -367,22 +401,23 @@ export function alignOpeningToMasonry(
     return { x, y, width, height }
   }
 
+  const atY = openingCenterY(opening)
   if (opts?.snapWidth !== false) {
     // Breite zuerst an Fugen, dann Position an Kandidaten
-    const xsFlush = openingMasonryJambXs(wall, allWalls)
+    const xsFlush = openingMasonryJambXs(wall, allWalls, atY)
     if (xsFlush.length >= 2) {
       const left = nearestValue(xsFlush, x)
-      width = snapOpeningWidthToMasonryJambs(wall, allWalls, left, width)
+      width = snapOpeningWidthToMasonryJambs(wall, allWalls, left, width, atY)
     }
   }
 
-  const xs = openingPlacementCandidateXs(wall, allWalls, width)
+  const xs = openingPlacementCandidateXs(wall, allWalls, width, atY)
   if (xs.length > 0) x = nearestPlacementX(xs, x, width, wall.width)
 
   const lockY = opening.type === 'door' && Boolean(opening.stairs?.enabled)
   if (!lockY) {
     if (opts?.snapHeight !== false) {
-      const ysCuts = openingMasonryCourseYs(wall)
+      const ysCuts = openingMasonryCourseYs(wall, atY)
       if (ysCuts.length >= 2) {
         const top = nearestValue(ysCuts, y)
         const bottom = nearestValue(ysCuts, top + height)
@@ -393,7 +428,7 @@ export function alignOpeningToMasonry(
         }
       }
     }
-    const ys = openingPlacementCandidateYs(wall, height)
+    const ys = openingPlacementCandidateYs(wall, height, atY)
     if (ys.length > 0) y = nearestValue(ys, y)
   }
 

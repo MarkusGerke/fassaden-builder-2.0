@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.72'
+export const APP_VERSION = '2.0.73'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,16 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.73',
+    date: '2026-09-02',
+    title: 'Öffnungen rasten am richtigen Band; Stil mit zwei Bändern',
+    changes: [
+      'Bei Verkleidung in zwei Bändern (z. B. 48 cm unten / 24 cm oben) rastet die Öffnung am Modul der Höhe, in der sie liegt',
+      'Stil-Vorlagen und Stile kopieren/einfügen übernehmen die Zwei-Bänder-Einstellung mit',
+      'Ohne geteilte Bänder unverändertes Snap-Verhalten',
+    ],
+  },
   {
     version: '2.0.72',
     date: '2026-09-02',

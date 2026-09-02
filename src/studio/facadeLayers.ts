@@ -84,6 +84,82 @@ export function effectiveStudioPanelForWall(
   return effectivePanelForZone(wall, primary, panelHint)
 }
 
+const ZONE_Y_EPS = 0.05
+
+/** Persistierte Zonen mit Rechteck (Multi-Band / freie Felder). */
+export function wallHasCladdingZoneRects(wall: Wall): boolean {
+  const zones = wall.claddingZones
+  if (!zones || zones.length === 0) return false
+  return zones.some((z) => z.rect != null && z.kind !== 'none')
+}
+
+/**
+ * Zone, die Höhe `y` (Wand-Lokal, cm von unten) trifft.
+ * Bei Überlappung: größte Schnittfläche in Y; sonst nächste Zone-Mitte.
+ * Ohne Rects → erste nicht-`none`-Zone bzw. `null`.
+ */
+export function claddingZoneAtY(wall: Wall, y: number): CladdingZone | null {
+  const zones = claddingZonesForWall(wall).filter((z) => z.kind !== 'none')
+  if (zones.length === 0) return claddingZonesForWall(wall)[0] ?? null
+
+  const withRect = zones.filter((z) => z.rect != null)
+  if (withRect.length === 0) return zones[0] ?? null
+
+  const yClamped = Number.isFinite(y) ? y : 0
+  let bestHit: CladdingZone | null = null
+  let bestOverlap = -1
+  for (const z of withRect) {
+    const r = z.rect!
+    const y0 = r.y
+    const y1 = r.y + r.height
+    const overlap = Math.min(y1, yClamped + ZONE_Y_EPS) - Math.max(y0, yClamped - ZONE_Y_EPS)
+    if (overlap > bestOverlap && yClamped >= y0 - ZONE_Y_EPS && yClamped <= y1 + ZONE_Y_EPS) {
+      bestOverlap = overlap
+      bestHit = z
+    }
+  }
+  if (bestHit) return bestHit
+
+  let nearest = withRect[0]!
+  let nearestD = Infinity
+  for (const z of withRect) {
+    const r = z.rect!
+    const mid = r.y + r.height / 2
+    const d = Math.abs(mid - yClamped)
+    if (d < nearestD) {
+      nearestD = d
+      nearest = z
+    }
+  }
+  return nearest
+}
+
+/** Effektives Paneel an Höhe `y` (Öffnungsmitte / Laibungsband). */
+export function effectivePanelAtY(
+  wall: Wall,
+  y: number,
+  panelHint?: StudioPanelConfig,
+): StudioPanelConfig {
+  if (!wallHasCladdingZoneRects(wall)) {
+    return normalizeStudioPanel(panelHint ?? wall.panel ?? DEFAULT_STUDIO_PANEL)
+  }
+  const zone = claddingZoneAtY(wall, y)
+  if (!zone) return normalizeStudioPanel(panelHint ?? wall.panel ?? DEFAULT_STUDIO_PANEL)
+  return effectivePanelForZone(wall, zone, panelHint)
+}
+
+/** Tiefe Kopie der Zonen (Stil-Zwischenablage / Vorlagen). */
+export function cloneCladdingZones(
+  zones: CladdingZone[] | undefined,
+): CladdingZone[] | undefined {
+  if (!zones) return undefined
+  return zones.map((zone) => ({
+    ...zone,
+    rect: zone.rect ? { ...zone.rect } : undefined,
+    panel: zone.panel ? { ...zone.panel } : undefined,
+  }))
+}
+
 /**
  * Leitet eine Standard-Zone aus dem heutigen `wall.panel` ab.
  */

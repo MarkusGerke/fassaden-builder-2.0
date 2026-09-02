@@ -66,6 +66,23 @@ Unter **Paneele**: Checkbox **„Verkleidung in zwei Bänder teilen“** (`#stud
 - Helfer: `buildTwoHorizontalCladdingZones`, `applyTwoHorizontalCladdingZones`, `updateTwoHorizontalCladdingBands` (`facadeLayers.ts` / `walls.ts`).
 - Renderer: `FacadeController` legt bei persistierten Zonen auch im Low-LOD das echte Kachel-Mesh (nicht die Ein-Platten-LOD), damit die zwei Module sichtbar sind.
 
+### Y-bewusstes Öffnungs-Snap + Stil-Vorlagen (v2.0.73)
+
+Bei persistierten Zonen mit `rect` nutzt der Öffnungs-Snap das Paneel der Zone an der **Öffnungsmitte-Y** (`claddingZoneAtY` / `effectivePanelAtY` → Cuts über `masonryPatternCuts`). Ohne Zonen-Rects unverändert `wall.panel`. Gestapelte Etagen: weiterhin kgV der Modul-Einheiten (Fokus-Wand Y-bewusst, Nachbar-Etagen über deren `wall.panel`).
+
+Stil-Vorlagen / Stile kopieren-einfügen nehmen `claddingZones` mit dem Paneel-Stil mit (`draftFromWallStyle`, `applyPanelStyleToWall`).
+
+### Call-Site-Audit (v2.0.73)
+
+| Stelle | `wall.panel` vs. Zonen | Status |
+|---|---|---|
+| `panelLayout.layoutPanelTiles` | iteriert `claddingZones` | ok (v2.0.71) |
+| `openingPanelSnap` | Cuts/Kandidaten | **fixiert** Y-bewusst |
+| Stil-Vorlagen / Clipboard | nur `panel` | **fixiert** inkl. `claddingZones` |
+| `cloneWall` / Etage duplizieren | klont `claddingZones`; Paneel aus → Zonen weg | ok |
+| `FacadeSvgView`, Mörtel, Validierung | oft globales `wall.panel` | bewusst (UI/Optik); Layout 3D zonenbasiert |
+| Voussoir / taperedField Generatoren | Typen vorhanden | **offen** (nicht dieser Slice) |
+
 ## Was bewusst nicht „eine Formel“ ist
 
 - Beliebige Profilquerschnitte auf jedem Clip-Rest am Bogen
@@ -83,11 +100,13 @@ Unter **Paneele**: Checkbox **„Verkleidung in zwei Bänder teilen“** (`#stud
 | Datei | Rolle |
 |---|---|
 | `src/utils/openingGeometry.ts` | Öffnungsvertrag, Maske, Normalize, Legacy-API |
-| `src/studio/facadeLayers.ts` | Zonen-Ableitung, Zwei-Bänder-Helfer, Inflate, Re-Exports |
+| `src/studio/facadeLayers.ts` | Zonen-Ableitung, Zwei-Bänder-Helfer, `claddingZoneAtY` / `effectivePanelAtY`, Inflate, Re-Exports |
 | `src/types/facade.ts` | `CladdingZone*`, `Wall.claddingZones` |
 | `src/studio/panelLayout.ts` | Zone-Aware `layoutPanelTiles` |
+| `src/utils/openingPanelSnap.ts` | Y-bewusstes Modul bei Multi-Zone |
+| `src/utils/styleTemplates.ts` | Vorlagen inkl. `claddingZones` |
 | `src/studio/panelGeometry.ts` | Shell-Mesh, Shadow-Tunnel, Cladding-Extrude |
 | `src/FacadeController.ts` | Mesh-Aufbau inkl. Zonen-Tiles |
-| `index.html` / `src/main.ts` | UI Zwei-Bänder |
+| `index.html` / `src/main.ts` | UI Zwei-Bänder, Stil-Zwischenablage |
 
 Verwandt: [panel-geometry.md](panel-geometry.md), [opening-features.md](opening-features.md), [shadows.md](shadows.md), [architecture.md](architecture.md).
