@@ -46,6 +46,11 @@ import { clampOuterSillDepth, defaultOuterSillDepth, hydrateOpening } from './hy
 export { defaultOuterSillDepth, clampOuterSillDepth }
 import { normalizeOpeningMotion } from './openingMotion'
 import {
+  alignOpeningToMasonry,
+  snapOpeningMoveToMasonry,
+  wallUsesOpeningMasonrySnap,
+} from './openingPanelSnap'
+import {
   clampOpeningToWall,
   OPENING_MIN_GAP,
   openingsTooClose,
@@ -524,13 +529,24 @@ export function addOpening(
   opening: Opening,
 ): FacadeState {
   return mapWall(state, wallId, (wall) => {
-    const houseWalls = getAllWalls(state).filter(
+    const allWalls = getAllWalls(state)
+    const houseWalls = allWalls.filter(
       (item) => item.buildingId === wall.buildingId && item.id !== wall.id,
     )
     const donor = donorOpeningForStyle(wall, opening.type, houseWalls)
     const cloned = cloneWall(wall)
     delete cloned.presetId
-    cloned.openings = [...wall.openings, clampOpeningToWall(opening, wall, openingGridForWall(wall))]
+    const useMasonry = wallUsesOpeningMasonrySnap(wall)
+    let placed = opening
+    if (useMasonry) {
+      placed = { ...opening, ...alignOpeningToMasonry(wall, allWalls, opening) }
+    }
+    cloned.openings = [
+      ...wall.openings,
+      clampOpeningToWall(placed, wall, openingGridForWall(wall), {
+        snapToGrid: !useMasonry,
+      }),
+    ]
     if (donor && wall.openings.some((item) => item.id === donor.id)) {
       const extras = wall.profiles
         .filter((profile) => profile.openingId === donor.id)
@@ -747,6 +763,7 @@ export function updateOpening(
   id: string,
   patch: Partial<Opening>,
 ): FacadeState {
+  const allWalls = getAllWalls(state)
   return mapWall(state, wallId, (wall) => ({
     ...cloneWall(wall),
     openings: wall.openings.map((opening) => {
@@ -762,7 +779,21 @@ export function updateOpening(
       if (patch.type != null && patch.type !== opening.type) {
         merged = hydrateOpening(merged, wall)
       }
-      return clampOpeningToWall(merged, wall, grid)
+      const useMasonry = wallUsesOpeningMasonrySnap(wall)
+      if (
+        useMasonry &&
+        (patch.x !== undefined ||
+          patch.y !== undefined ||
+          patch.width !== undefined ||
+          patch.height !== undefined)
+      ) {
+        const aligned = alignOpeningToMasonry(wall, allWalls, merged, {
+          snapWidth: patch.width !== undefined || patch.x !== undefined,
+          snapHeight: patch.height !== undefined || patch.y !== undefined,
+        })
+        merged = { ...merged, ...aligned }
+      }
+      return clampOpeningToWall(merged, wall, grid, { snapToGrid: !useMasonry })
     }),
   }))
 }
@@ -1433,20 +1464,44 @@ export function moveOpening(
   dy: number,
 ): FacadeState {
   const MIN_GAP = OPENING_MIN_GAP
+  const allWalls = getAllWalls(state)
   return mapWall(state, wallId, (wall) => {
     const step = openingPositionStep(wall)
     const grid = openingGridForWall(wall)
     const others = wall.openings.filter((o) => o.id !== openingId)
+    const useMasonry = wallUsesOpeningMasonrySnap(wall)
     return {
       ...cloneWall(wall),
       openings: wall.openings.map((opening) => {
         if (opening.id !== openingId) return opening
-        const newX = Math.round((opening.x + dx) / step) * step
-        const newY =
+        let newX = Math.round((opening.x + dx) / step) * step
+        let newY =
           opening.type === 'door' && opening.stairs?.enabled
             ? stairTopY(normalizeOpeningStairs(opening.stairs, opening))
             : Math.round((opening.y + dy) / step) * step
-        const clamped = clampOpeningToWall({ ...opening, x: newX, y: newY }, wall, grid)
+        let newWidth = opening.width
+        let newHeight = opening.height
+        if (useMasonry) {
+          const snapped = snapOpeningMoveToMasonry(
+            wall,
+            allWalls,
+            opening,
+            newX,
+            newY,
+            dx,
+            dy,
+          )
+          newX = snapped.x
+          newY = snapped.y
+          newWidth = snapped.width
+          newHeight = snapped.height
+        }
+        const clamped = clampOpeningToWall(
+          { ...opening, x: newX, y: newY, width: newWidth, height: newHeight },
+          wall,
+          grid,
+          { snapToGrid: !useMasonry },
+        )
         // Mindestabstand zu Nachbarn: wenn Konflikt, Position beibehalten
         const hasConflict = others.some((o) => openingsTooClose(clamped, o, MIN_GAP))
         return hasConflict ? opening : clamped

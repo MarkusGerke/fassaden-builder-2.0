@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.64'
+export const APP_VERSION = '2.0.66'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,25 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.66',
+    date: '2026-09-02',
+    title: 'Öffnungen schließen an Mauerwerksfugen ab',
+    changes: [
+      'Studio mit Läufer-/Modulverband: Drag, Pfeile und Positionsfeld rasten Laibungen an echte Steinfugen (gerade + versetzte Lage)',
+      'Höhe an Ziegelschichten; Maße ändern richtet beide Laibungen bzw. Ober-/Unterkante mit aus',
+      'Streifen/Wildverband/ohne Paneele: weiterhin 8-cm-Raster — Verband-Logik unverändert',
+    ],
+  },
+  {
+    version: '2.0.65',
+    date: '2026-09-02',
+    title: 'Auswahl-Toolbar rechts: volle Höhe, Paneele scrollbar',
+    changes: [
+      'Rechte Auswahl-Leiste (`#selection-toolbar`) füllt die Spalte bis unten — kein Deckel mehr bei 520 px / 52 vh',
+      'Register (`#selection-right-tabs`) und Panelbereich strecken sich mit; Paneele-Inhalt vertikal scrollbar',
+    ],
+  },
   {
     version: '2.0.64',
     date: '2026-09-02',

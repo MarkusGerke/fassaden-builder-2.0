@@ -38,15 +38,21 @@ export function clampOpeningToWall(
   opening: Opening,
   wall: WallDimensions,
   grid?: number,
+  opts?: { snapToGrid?: boolean },
 ): Opening {
+  const doSnap = opts?.snapToGrid !== false
   const gridSize = grid ?? GRID_SIZE
   const posGrid = grid === STUDIO_MASONRY ? STUDIO_MASONRY / 2 : gridSize
   const snapped = {
     ...opening,
-    x: snapToGrid(opening.x, posGrid),
-    y: snapToGrid(opening.y, gridSize),
-    width: Math.max(gridSize, snapToGrid(opening.width, gridSize)),
-    height: Math.max(gridSize, snapToGrid(opening.height, gridSize)),
+    x: doSnap ? snapToGrid(opening.x, posGrid) : opening.x,
+    y: doSnap ? snapToGrid(opening.y, gridSize) : opening.y,
+    width: doSnap
+      ? Math.max(gridSize, snapToGrid(opening.width, gridSize))
+      : Math.max(gridSize, opening.width),
+    height: doSnap
+      ? Math.max(gridSize, snapToGrid(opening.height, gridSize))
+      : Math.max(gridSize, opening.height),
   }
   const minSize = 8
   const width = Math.max(minSize, Math.min(snapped.width, wall.width))
@@ -107,17 +113,27 @@ export function validateOpeningPlacement(opening: Opening, wall: Wall): Validati
 
   if (wall.kind === 'studio') {
     const step = STUDIO_MASONRY
-    if (opening.width % step !== 0 || opening.height % step !== 0) {
-      return {
-        valid: false,
-        message: `Maße müssen Vielfache von ${step} cm sein.`,
+    // Bei Mauerwerk-Fugen-Snap dürfen X/Breite auf echten Cuts liegen (nicht nur 4/8-cm).
+    // Höhe/Y bleiben am Schichtraster; Prüfung entfällt ebenfalls, wenn Snap aktiv ist.
+    const masonrySnap =
+      wall.panel != null &&
+      wall.panel.enabled !== false &&
+      wall.panel.pattern !== 'none' &&
+      wall.panel.pattern !== 'strip' &&
+      wall.panel.pattern !== 'wildBond'
+    if (!masonrySnap) {
+      if (opening.width % step !== 0 || opening.height % step !== 0) {
+        return {
+          valid: false,
+          message: `Maße müssen Vielfache von ${step} cm sein.`,
+        }
       }
-    }
-    const posStep = step / 2
-    if (opening.x % posStep !== 0 || opening.y % step !== 0) {
-      return {
-        valid: false,
-        message: `Position muss am ${posStep}-cm-Raster ausgerichtet sein.`,
+      const posStep = step / 2
+      if (opening.x % posStep !== 0 || opening.y % step !== 0) {
+        return {
+          valid: false,
+          message: `Position muss am ${posStep}-cm-Raster ausgerichtet sein.`,
+        }
       }
     }
   }

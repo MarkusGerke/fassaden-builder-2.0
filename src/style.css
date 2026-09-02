@@ -439,12 +439,12 @@ body {
 }
 
 #selection-toolbar:not([hidden]) {
-  flex: 0 1 45%;
+  /* Volle Höhe der rechten Spalte (Szene-Accordion ist dann ausgeblendet). */
+  flex: 1 1 auto;
   min-height: 0;
-  max-height: min(52vh, 520px);
+  max-height: none;
   overflow: hidden;
   display: flex;
-  flex-direction: column;
 }
 
 #ui-right-main > #lighting-accordion {
@@ -469,6 +469,9 @@ body {
 #selection-toolbar-panels {
   flex: 1 1 auto;
   min-height: 0;
+  height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 #ui-right > .sidebar-accordion,
@@ -516,14 +519,17 @@ body {
 #ui-right #selection-toolbar.right-selection-toolbar {
   flex: 1 1 auto;
   min-height: 0;
+  max-height: none;
   height: 100%;
   align-self: stretch;
 }
 
 #ui-right #selection-right-tabs {
+  flex: 0 0 2.35rem;
   align-self: stretch;
   min-height: 100%;
   height: auto;
+  max-height: none;
 }
 
 #lighting-accordion .scene-toolbar .selection-toolbar-panels .settings-section .toolbar-group:first-child {
@@ -562,7 +568,9 @@ body {
   position: sticky;
   top: 0;
   align-self: stretch;
-  max-height: 100%;
+  height: auto;
+  min-height: 100%;
+  max-height: none;
   overflow-y: auto;
 }
 
@@ -610,9 +618,10 @@ body {
 }
 
 .selection-toolbar-panels {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
+  align-self: stretch;
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;

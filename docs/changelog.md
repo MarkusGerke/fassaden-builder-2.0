@@ -2,6 +2,14 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Öffnungen an Mauerwerksfugen (2026-09-02) — v2.0.66
+
+Studio-Öffnungen mit Modulverband rasten wieder an **echten** Paneel-Cuts (Referenzlagen ohne Öffnungs-Blocker), nicht nur am 8-cm-Raster: `masonryPatternCuts` + `openingPanelSnap.ts`. Drag/Nudge/`moveOpening`, Maße/`updateOpening`, `addOpening`. Clamp/Validierung ohne Zwangs-4/8-cm-Rundung, wenn Snap aktiv. Streifen/Wild/none: 8 cm. Verband-Pipeline unverändert. Dateien: `panelLayout.ts`, `openingPanelSnap.ts`, `openings.ts`, `validation.ts`, Docs.
+
+### Auswahl-Toolbar volle Höhe + Scroll (2026-09-02) — v2.0.65
+
+`#selection-toolbar:not([hidden])` war auf `max-height: min(52vh, 520px)` / `flex: 0 1 45%` begrenzt — Register und Paneele endeten mittig. **Jetzt:** volle Höhe von `#ui-right-main`; Tabs und Panels strecken sich; `#selection-toolbar-panels` mit `overflow-y: auto`. Datei: `style.css`.
+
 ### Läuferverband: echtes 0,5∶1 an 45°-Ecken (2026-09-02) — v2.0.64
 
 `diagonalBondEndWidth` hat `snapMasonryCm(headerSize(24))` = `snapMasonryCm(12)` → **16** cm geliefert. Gerade/ungerade Lagen starteten mit 16 bzw. 24 cm (Differenz 8 ≈ ⅓ Stein) und hatten unterschiedliche Feldsummen → Fugen drifteten über die Wand. **Fix:** Halbstein = exakt ½ des gerasterten Läufers; Bossen-Flush-Laibungen über volle Öffnungshöhe. Dateien: `panelLayout.ts`, `panelGeometry.ts`, Tests.

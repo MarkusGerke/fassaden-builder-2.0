@@ -370,7 +370,7 @@ UI-Felder und Konstanten: [profiles.md](profiles.md) / [opening-features.md](ope
 Bei Wand-, Öffnungs-, Studio-, Dach- oder Decken-Auswahl:
 
 - **Unten** (`#opening-library` / `#library-mode`): immer die **Element-Bibliothek** (Wände / Fenster / Türen / **Paneele**). Tabs horizontal **über** den Karten (`flex-direction: column`, Tabs `order: 0`, Items darunter; aktiver Inset `inset 0 -3px`), Text **waagerecht** lesbar; kein Titel „Bibliothek“.
-- **Rechts** (`#selection-toolbar`): Werte, Farben, ±, Löschen. Register (`#selection-right-tabs` / `.selection-toolbar-tabs`) **vertikal** gestapelt mit `writing-mode: vertical-rl`; Toolbar `flex-direction: row`. **v0.7.56:** Szene- und Auswahl-Tab-Leiste strecken sich über die volle rechte Spaltenhöhe bis zum unteren Fensterrand (`#ui-right` / `#lighting-accordion` mit `flex: 1`).
+- **Rechts** (`#selection-toolbar`): Werte, Farben, ±, Löschen. Register (`#selection-right-tabs` / `.selection-toolbar-tabs`) **vertikal** gestapelt mit `writing-mode: vertical-rl`; Toolbar `flex-direction: row`. **v0.7.56:** Szene- und Auswahl-Tab-Leiste strecken sich über die volle rechte Spaltenhöhe bis zum unteren Fensterrand (`#ui-right` / `#lighting-accordion` mit `flex: 1`). **v2.0.65:** Auswahl-Toolbar ohne Höhen-Deckel (früher `max-height: min(52vh, 520px)`); `#selection-toolbar-panels` füllt die Restfläche und scrollt vertikal.
 - Ohne Auswahl: rechts **immer** die Szeneneinstellungen (`#lighting-accordion`, Geschwister von `#selection-toolbar` unter `#ui-right` — nicht darin verschachtelt, sonst verschwindet die Szene mit `[hidden]` der Auswahl-Toolbar).
 - **`data-settings-inline-all`**: kein eigener Reiter, im aktiven rechten Panel mit sichtbar (Modell/Aktionen).
 - Tab-Wechsel filtert per CSS-Klasse `selection-tab-filtered-out` — bestehende `hidden`-Logik bleibt maßgeblich.
@@ -509,7 +509,7 @@ Beim **Verschieben oder Platzieren** von Wänden und Öffnungen erscheint ein **
 - **Wand aus Bibliothek / Wand verschieben:** blaues Gitter auf dem **Boden** der Ziel-Etage (Oben, 2D, 3D).
 - **Öffnung verschieben:** Gitter auf der **Zielwand** (Außenfläche).
 - Nach **Ablegen** oder Abbruch wird das Raster ausgeblendet (`clearPlacementGridOverlay`).
-- Öffnungs-**Position** (Drag, Nudge, Zahlenfelder) rasten auf **8 cm** (`STUDIO_MASONRY`); Schrift-Position bleibt 32 cm. Öffnungs-**Maße** bleiben am 8-cm-Mauerwerksraster.
+- Öffnungs-**Position** (Drag, Nudge, Zahlenfelder): bei Modulverband an **echten Steinfugen**/Schichten (`openingPanelSnap.ts`); sonst **8 cm** (`STUDIO_MASONRY`). Schrift-Position bleibt 32 cm. Öffnungs-**Maße** am Verband bzw. 8-cm-Mauerwerksraster.
 
 ### Öffnungen (`src/studio/openingGuides.ts`)
 
@@ -596,7 +596,7 @@ Neue Elemente: Wand, Paneele, Profile, Rahmen, Türen → `#ffffff`. Neue Fenste
 
 ## Fenster verschieben
 
-Studio-Öffnungen: **Position** rastet in **8 cm** (`STUDIO_MASONRY`); **Breite/Höhe** und Normalisierung ebenfalls **8 cm**. Pfeiltasten, Toolbar ←→↑↓ und Positionsfelder 8 cm. **Kein Randabstand** zur Wandkante (v0.7.188) — Öffnungen dürfen bündig an den Rand (`clampOpeningToWall` inset 0). Abstand **zwischen** Öffnungen bleibt 32 cm (`OPENING_MIN_GAP`).
+Studio-Öffnungen: **Position** bei Modulverband an **Mauerwerksfugen** (Laibung bündig mit Cut aus `masonryPatternCuts`, Höhe an `visiblePanelRowRange`); sonst **8 cm** (`STUDIO_MASONRY`). **Breite/Höhe** richten sich beim Ändern mit an Fugen/Schichten. Pfeiltasten und Toolbar springen zur **nächsten** Fuge/Schicht. **Kein Randabstand** zur Wandkante (v0.7.188) — Öffnungen dürfen bündig an den Rand (`clampOpeningToWall` inset 0). Abstand **zwischen** Öffnungen bleibt 32 cm (`OPENING_MIN_GAP`).
 
 ---
 

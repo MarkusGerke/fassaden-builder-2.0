@@ -996,6 +996,25 @@ function computeRowColCuts(
   return colCuts
 }
 
+/**
+ * Wandweites Vertikal-Fugenraster einer Lage **ohne** Öffnungs-Blocker.
+ * Für Öffnungs-Snap an echte Steinfugen (Laibung bündig mit Cut), nicht am Ideal-8-cm.
+ */
+export function masonryPatternCuts(
+  wall: Wall,
+  panel: StudioPanelConfig,
+  allWalls: Wall[],
+  rowIndex: number,
+): number[] {
+  panel = normalizeStudioPanel(panel)
+  const projectDepth = panel.projectDepth ?? DEFAULT_STUDIO_PANEL.projectDepth
+  const bondCornerW = Math.max(
+    STUDIO_MASONRY,
+    Math.round(projectDepth / STUDIO_MASONRY) * STUDIO_MASONRY,
+  )
+  return computeRowColCuts(wall, panel, rowIndex, allWalls, bondCornerW, [])
+}
+
 /** Laibungskörper, die die Zeile `y…yEnd` treffen, als Plan-X-Spannen. */
 function rowJambBlockers(holes: JambHole[], y: number, yEnd: number): JambHole[] {
   return holes.filter(
