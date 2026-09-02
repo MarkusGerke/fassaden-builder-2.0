@@ -10,6 +10,13 @@ import {
   openingCladdingInflateCm,
   openingCutsShell,
   resolveOpeningLayerContract,
+  applyTwoHorizontalCladdingZones,
+  buildTwoHorizontalCladdingZones,
+  clearPersistedCladdingZones,
+  clampCladdingSplitY,
+  defaultUpperBandWidth,
+  isTwoHorizontalBandCladding,
+  readTwoHorizontalBandOptions,
 } from './facadeLayers'
 import {
   openingCutsWall,
@@ -148,5 +155,60 @@ describe('claddingZones', () => {
     expect(clipped).toHaveLength(1)
     expect(clipped[0]!.y).toBe(100)
     expect(clipped[0]!.height).toBe(32)
+  })
+
+  it('baut zwei Horizontal-Bänder und liest sie zurück', () => {
+    const wall = studioWall({
+      height: 256,
+      width: 384,
+      panel: { ...DEFAULT_STUDIO_PANEL, pattern: 'runningBond', panelWidth: 48, plinthEnabled: false },
+    })
+    const withBands = applyTwoHorizontalCladdingZones(wall, {
+      splitYCm: 128,
+      lowerPanelWidth: 48,
+      upperPanelWidth: 24,
+    })
+    expect(isTwoHorizontalBandCladding(withBands)).toBe(true)
+    const zones = claddingZonesForWall(withBands)
+    expect(zones).toHaveLength(2)
+    expect(zones[0]!.id).toBe('band-lower')
+    expect(zones[0]!.rect).toEqual({ x: 0, y: 0, width: 384, height: 128 })
+    expect(zones[0]!.panel?.panelWidth).toBe(48)
+    expect(zones[1]!.rect).toEqual({ x: 0, y: 128, width: 384, height: 128 })
+    expect(zones[1]!.panel?.panelWidth).toBe(24)
+    expect(readTwoHorizontalBandOptions(withBands)).toEqual({
+      splitYCm: 128,
+      lowerPanelWidth: 48,
+      upperPanelWidth: 24,
+    })
+    expect(clearPersistedCladdingZones(withBands).claddingZones).toBeUndefined()
+  })
+
+  it('passt Band-Rects nach Wandhöhen-Änderung an', () => {
+    const base = applyTwoHorizontalCladdingZones(
+      studioWall({
+        height: 256,
+        width: 200,
+        panel: { ...DEFAULT_STUDIO_PANEL, pattern: 'runningBond', panelWidth: 48 },
+      }),
+      { splitYCm: 128, lowerPanelWidth: 48, upperPanelWidth: 24 },
+    )
+    const taller = { ...base, height: 320, width: 240 }
+    const zones = claddingZonesForWall(taller)
+    expect(zones[0]!.rect?.width).toBe(240)
+    expect(zones[0]!.rect?.height).toBe(128)
+    expect(zones[1]!.rect?.y).toBe(128)
+    expect(zones[1]!.rect?.height).toBe(192)
+  })
+
+  it('klammert Split und Default-Oberbreite', () => {
+    expect(clampCladdingSplitY(3, 256)).toBe(8)
+    expect(clampCladdingSplitY(250, 256)).toBe(248)
+    expect(defaultUpperBandWidth(48)).toBe(24)
+    expect(buildTwoHorizontalCladdingZones(studioWall({ height: 200 }), {
+      splitYCm: 100,
+      lowerPanelWidth: 32,
+      upperPanelWidth: 16,
+    })).toHaveLength(2)
   })
 })

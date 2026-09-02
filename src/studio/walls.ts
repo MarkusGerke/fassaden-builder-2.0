@@ -1,5 +1,5 @@
 import { WALL_DEPTH, WINDOW_RECESS, WINDOW_TRIM_DEFAULT_OFFSET_FORWARD } from '../constants/presets'
-import type { FacadeState, Opening, StudioPanelConfig, Wall } from '../types/facade'
+import type { CladdingZone, FacadeState, Opening, StudioPanelConfig, Wall } from '../types/facade'
 import { cloneWall, emptyNeighbors } from '../types/facade'
 import {
   findBuildingForWall,
@@ -42,6 +42,13 @@ import {
   normalizeStudioPanel,
   studioPlinthActive,
 } from './constants'
+import {
+  applyTwoHorizontalCladdingZones,
+  clearPersistedCladdingZones,
+  isTwoHorizontalBandCladding,
+  readTwoHorizontalBandOptions,
+  type TwoHorizontalBandOptions,
+} from './facadeLayers'
 
 export function isStudioWall(wall: Wall): boolean {
   return wall.kind === 'studio'
@@ -986,7 +993,52 @@ export function updateStudioPanel(
   return mapAllWalls(state, (wall) => {
     if (!ids.has(wall.id) || !isStudioWall(wall)) return cloneWall(wall)
     const panel = normalizeStudioPanel({ ...(wall.panel ?? DEFAULT_STUDIO_PANEL), ...patch })
-    return { ...cloneWall(wall), panel }
+    let next: Wall = { ...cloneWall(wall), panel }
+    // Paneele aus → persistierte Zonen verwerfen (Fallback auf wall.panel).
+    if (panel.enabled === false || panel.pattern === 'none') {
+      next = { ...next, claddingZones: undefined }
+      return next
+    }
+    // Zwei Horizontal-Bänder: Zone-Panels an Wand-Panel anbinden (unteres Modul = panelWidth).
+    if (isTwoHorizontalBandCladding(next)) {
+      const bands = readTwoHorizontalBandOptions(next)
+      next = applyTwoHorizontalCladdingZones(next, {
+        ...bands,
+        lowerPanelWidth: panel.panelWidth,
+      })
+    }
+    return next
+  })
+}
+
+/** Persistierte Verkleidungszonen setzen oder löschen. */
+export function updateWallCladdingZones(
+  state: FacadeState,
+  wallIds: string[],
+  zones: CladdingZone[] | undefined,
+): FacadeState {
+  const ids = new Set(wallIds)
+  return mapAllWalls(state, (wall) => {
+    if (!ids.has(wall.id) || !isStudioWall(wall)) return cloneWall(wall)
+    if (!zones || zones.length === 0) {
+      return { ...cloneWall(wall), claddingZones: undefined }
+    }
+    return { ...cloneWall(wall), claddingZones: zones.map((z) => ({ ...z, rect: z.rect ? { ...z.rect } : undefined, panel: z.panel ? { ...z.panel } : undefined })) }
+  })
+}
+
+/** Zwei Horizontal-Bänder an/aus bzw. Maße setzen. */
+export function updateTwoHorizontalCladdingBands(
+  state: FacadeState,
+  wallIds: string[],
+  options: TwoHorizontalBandOptions | null,
+): FacadeState {
+  const ids = new Set(wallIds)
+  return mapAllWalls(state, (wall) => {
+    if (!ids.has(wall.id) || !isStudioWall(wall)) return cloneWall(wall)
+    const cloned = cloneWall(wall)
+    if (!options) return clearPersistedCladdingZones(cloned)
+    return applyTwoHorizontalCladdingZones(cloned, options)
   })
 }
 

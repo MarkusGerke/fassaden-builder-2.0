@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.71'
+export const APP_VERSION = '2.0.72'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,16 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.72',
+    date: '2026-09-02',
+    title: 'Zwei Verkleidungs-Bänder mit eigener Modulbreite',
+    changes: [
+      'Unter Paneele: „Verkleidung in zwei Bänder teilen“ — Höhe der Teilung sowie Modulbreite unten und oben (z. B. 48 cm / 24 cm)',
+      'Im 3D sichtbar unterschiedliche Steine oben und unten; ausgeschaltet wieder ein einheitliches Raster',
+      'Einstellung bleibt in der Fassade gespeichert (keine Schema-Migration nötig)',
+    ],
+  },
   {
     version: '2.0.71',
     date: '2026-09-02',

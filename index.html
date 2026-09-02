@@ -894,13 +894,34 @@
                   <option value="bond">Mauerverband</option>
                 </select>
               </div>
-              <div class="toolbar-group">
+              <div id="studio-panel-width-row" class="toolbar-group">
                 <span class="toolbar-label">Breite (cm, 8er-Raster)</span>
                 <input id="studio-panel-width" type="number" min="8" step="8" value="32" />
               </div>
               <div class="toolbar-group">
                 <span class="toolbar-label">Höhe (cm, 8er-Raster)</span>
                 <input id="studio-panel-height" type="number" min="8" step="8" value="32" />
+              </div>
+              <div class="toolbar-group">
+                <label class="toolbar-check">
+                  <input id="studio-cladding-two-bands" type="checkbox" />
+                  Verkleidung in zwei Bänder teilen
+                </label>
+                <p class="toolbar-hint compact-hint">Unteres und oberes Band mit eigener Modulbreite (z. B. 48 cm unten, 24 cm oben).</p>
+              </div>
+              <div id="studio-cladding-two-bands-options" hidden>
+                <div class="toolbar-group">
+                  <span class="toolbar-label">Höhe unteres Band (cm)</span>
+                  <input id="studio-cladding-split-y" type="number" min="8" step="8" value="128" />
+                </div>
+                <div class="toolbar-group">
+                  <span class="toolbar-label">Modulbreite unten (cm)</span>
+                  <input id="studio-cladding-width-lower" type="number" min="8" step="8" value="48" />
+                </div>
+                <div class="toolbar-group">
+                  <span class="toolbar-label">Modulbreite oben (cm)</span>
+                  <input id="studio-cladding-width-upper" type="number" min="8" step="8" value="24" />
+                </div>
               </div>
               <div class="toolbar-group">
                 <span class="toolbar-label">Reihen unten ausblenden</span>

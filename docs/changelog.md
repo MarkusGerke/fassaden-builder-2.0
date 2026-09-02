@@ -2,6 +2,10 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Zwei Verkleidungs-Bänder UI + Renderer (2026-09-02) — v2.0.72
+
+Sichtbare Fortsetzung der Schichten-Architektur: Checkbox **Verkleidung in zwei Bänder teilen** (Höhe + Modulbreite unten/oben) persistiert `claddingZones` (`band-lower`/`band-upper`). Aus → Zonen weg, Fallback `wall.panel`. Renderer nutzt Zone-Tiles auch im Low-LOD (kein Ein-Platten-Ersatz). Docs: [facade-layers.md](facade-layers.md).
+
 ### Zone-Aware Verkleidung + Contract-Verdrahtung (2026-09-02) — v2.0.71
 
 `layoutPanelTiles` mit persistierten `claddingZones` (pro Zone Panel + `rect`-Clip); ohne Zonen weiterhin Ein-Panel-Pfad. Cladding-Inflate/Siegel über `openingCladdingMaskInflateForLayout` (Freiraum/Keilstein). Vertrag bleibt in `openingGeometry`. Docs: [facade-layers.md](facade-layers.md).

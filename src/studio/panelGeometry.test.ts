@@ -727,3 +727,60 @@ describe('createStudioOpeningRevealGeometry — Konche', () => {
     geo!.dispose()
   })
 })
+
+describe('Multi-Zone Verkleidung Geometrie', () => {
+  it('erzeugt Mesh mit unterschiedlichen Modulbreiten unten/oben', () => {
+    const lower = {
+      ...DEFAULT_STUDIO_PANEL,
+      plinthEnabled: false,
+      plinthHeight: 0,
+      panelWidth: 48,
+      panelHeight: 32,
+      pattern: 'runningBond' as const,
+      projectDepth: 4,
+      joint: 0.8,
+    }
+    const upper = { ...lower, panelWidth: 24 }
+    const wall: Wall = {
+      id: 'mz',
+      kind: 'studio',
+      x: 0,
+      y: 0,
+      width: 384,
+      height: 256,
+      depth: WALL_DEPTH,
+      originX: 0,
+      originZ: 0,
+      yawDeg: 0,
+      openings: [],
+      profiles: [],
+      neighbors: {},
+      panel: lower,
+      claddingZones: [
+        {
+          id: 'band-lower',
+          kind: 'bond',
+          front: 'flat',
+          rect: { x: 0, y: 0, width: 384, height: 128 },
+          panel: lower,
+        },
+        {
+          id: 'band-upper',
+          kind: 'bond',
+          front: 'flat',
+          rect: { x: 0, y: 128, width: 384, height: 128 },
+          panel: upper,
+        },
+      ],
+    }
+    const tiles = layoutPanelTiles(wall, lower, [wall])
+    const lo = tiles.filter((t) => t.y + t.height <= 128 + 1e-6)
+    const hi = tiles.filter((t) => t.y >= 128 - 1e-6)
+    expect(Math.max(...lo.map((t) => t.width))).toBeGreaterThan(40)
+    expect(Math.max(...hi.map((t) => t.width))).toBeLessThan(30)
+    const geo = createStudioPanelGeometry(wall, lower, [wall], tiles)
+    const pos = geo.getAttribute('position')
+    expect(pos.count).toBeGreaterThan(100)
+    geo.dispose()
+  })
+})

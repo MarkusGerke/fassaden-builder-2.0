@@ -938,6 +938,7 @@ function applyStoreyCopyStyle(cloned: Wall, copy: StoreyCopyOptions): Wall {
   if (!copy.panel) {
     next = {
       ...next,
+      claddingZones: undefined,
       panel: {
         ...DEFAULT_STUDIO_PANEL,
         enabled: false,

@@ -365,7 +365,14 @@ import { createStudioWall, isStudioWall, stretchStudioFacade, studioWallTransfor
   unselectedLinkedDiagonalWalls,
   frontMoveStepCm,
   expandCollinearPlanLinkedIds,
+  updateTwoHorizontalCladdingBands,
 } from './studio/walls'
+import {
+  defaultUpperBandWidth,
+  isTwoHorizontalBandCladding,
+  readTwoHorizontalBandOptions,
+  clampCladdingSplitY,
+} from './studio/facadeLayers'
 import {
   applyWallPresetToSegment,
   inferWallSegmentLayout,
@@ -4776,7 +4783,13 @@ const studioEndBossStartJoin = document.querySelector<HTMLSelectElement>('#studi
 const studioEndBossEndJoin = document.querySelector<HTMLSelectElement>('#studio-end-boss-end-join')!
 const studioJointInput = document.querySelector<HTMLInputElement>('#studio-joint')!
 const studioPanelWidthInput = document.querySelector<HTMLInputElement>('#studio-panel-width')!
+const studioPanelWidthRow = document.querySelector<HTMLDivElement>('#studio-panel-width-row')!
 const studioPanelHeightInput = document.querySelector<HTMLInputElement>('#studio-panel-height')!
+const studioCladdingTwoBands = document.querySelector<HTMLInputElement>('#studio-cladding-two-bands')!
+const studioCladdingTwoBandsOptions = document.querySelector<HTMLDivElement>('#studio-cladding-two-bands-options')!
+const studioCladdingSplitY = document.querySelector<HTMLInputElement>('#studio-cladding-split-y')!
+const studioCladdingWidthLower = document.querySelector<HTMLInputElement>('#studio-cladding-width-lower')!
+const studioCladdingWidthUpper = document.querySelector<HTMLInputElement>('#studio-cladding-width-upper')!
 const studioHideRowsBottomInput = document.querySelector<HTMLInputElement>('#studio-hide-rows-bottom')!
 const studioHideRowsTopInput = document.querySelector<HTMLInputElement>('#studio-hide-rows-top')!
 const studioProjectDepthInput = document.querySelector<HTMLInputElement>('#studio-project-depth')!
@@ -6028,6 +6041,7 @@ function generateWallsFromFloorPlan(): boolean {
 function syncStudioPanelVisibility(
   panel: NonNullable<Wall['panel']>,
   corniceEnabled: boolean,
+  wall?: Wall,
 ) {
   const panelsOn = panel.enabled !== false && panel.pattern !== 'none'
   // Muster-Karten bleiben immer sichtbar — sonst wirken Paneele/Mauerwerk „entfernt“,
@@ -6047,6 +6061,10 @@ function syncStudioPanelVisibility(
   studioTaperSection.hidden = !panelsOn || alternateOn
   studioTileColorSection.hidden = !panelsOn
   studioTileVarietyRow.hidden = !panelsOn || (panel.tileColorVariance ?? 0) <= 0
+  const twoBands = Boolean(wall && isTwoHorizontalBandCladding(wall))
+  studioCladdingTwoBands.disabled = !panelsOn
+  studioCladdingTwoBandsOptions.hidden = !panelsOn || !twoBands
+  studioPanelWidthRow.hidden = !panelsOn || twoBands
 }
 
 function syncStudioToolbar(wall: Wall) {
@@ -6109,7 +6127,32 @@ function syncStudioToolbar(wall: Wall) {
   syncCorniceControls(wall)
   syncTrimBandsControls(wall)
   syncLabelControls(wall)
-  syncStudioPanelVisibility(panel, Boolean(wallCornice(wall).enabled))
+  syncCladdingTwoBandsControls(wall)
+  syncStudioPanelVisibility(panel, Boolean(wallCornice(wall).enabled), wall)
+}
+
+function syncCladdingTwoBandsControls(wall: Wall) {
+  const twoBands = isTwoHorizontalBandCladding(wall)
+  studioCladdingTwoBands.checked = twoBands
+  const opts = twoBands
+    ? readTwoHorizontalBandOptions(wall)
+    : {
+        splitYCm: clampCladdingSplitY(wall.height * 0.5, wall.height),
+        lowerPanelWidth: wall.panel?.panelWidth ?? DEFAULT_STUDIO_PANEL.panelWidth,
+        upperPanelWidth: defaultUpperBandWidth(wall.panel?.panelWidth ?? DEFAULT_STUDIO_PANEL.panelWidth),
+      }
+  studioCladdingSplitY.min = String(STUDIO_MASONRY)
+  studioCladdingSplitY.max = String(Math.max(STUDIO_MASONRY, wall.height - STUDIO_MASONRY))
+  studioCladdingSplitY.step = String(STUDIO_MASONRY)
+  studioCladdingSplitY.value = String(opts.splitYCm)
+  studioCladdingWidthLower.min = String(STUDIO_PANEL_MIN)
+  studioCladdingWidthLower.max = String(STUDIO_PANEL_SOFT_MAX)
+  studioCladdingWidthLower.step = String(STUDIO_PANEL_STEP)
+  studioCladdingWidthLower.value = String(opts.lowerPanelWidth)
+  studioCladdingWidthUpper.min = String(STUDIO_PANEL_MIN)
+  studioCladdingWidthUpper.max = String(STUDIO_PANEL_SOFT_MAX)
+  studioCladdingWidthUpper.step = String(STUDIO_PANEL_STEP)
+  studioCladdingWidthUpper.value = String(opts.upperPanelWidth)
 }
 
 function labelPreviewSampleText(): string {
@@ -6205,7 +6248,7 @@ function syncLabelControls(wall: Wall) {
 function refreshStudioPanelVisibility() {
   const wall = getWall(state, editor.selectedWallIds[0])
   if (!wall?.panel) return
-  syncStudioPanelVisibility(wall.panel, Boolean(wallCornice(wall).enabled))
+  syncStudioPanelVisibility(wall.panel, Boolean(wallCornice(wall).enabled), wall)
 }
 
 function syncTrimBandsControls(wall: Wall) {
@@ -18841,6 +18884,62 @@ studioPanelHeightInput.addEventListener('change', () => {
   const panelHeight = clampStudioPanelSize(Number(studioPanelHeightInput.value))
   studioPanelHeightInput.value = String(panelHeight)
   commitStudioPanelPatch({ panelHeight })
+})
+
+function commitTwoHorizontalBands(options: {
+  splitYCm: number
+  lowerPanelWidth: number
+  upperPanelWidth: number
+} | null) {
+  if (!canEditActiveBuildingNow()) return
+  const ids = scopedWallIds().filter((id) => canEditWallNow(id))
+  if (ids.length === 0) return
+  commitState(updateTwoHorizontalCladdingBands(state, ids, options))
+  const anchor = anchorWall()
+  if (anchor) syncStudioToolbar(anchor)
+  else refreshStudioPanelVisibility()
+}
+
+studioCladdingTwoBands.addEventListener('change', () => {
+  const wall = anchorWall()
+  if (!wall?.panel) return
+  if (!studioCladdingTwoBands.checked) {
+    commitTwoHorizontalBands(null)
+    return
+  }
+  const lower = clampStudioPanelSize(wall.panel.panelWidth)
+  commitTwoHorizontalBands({
+    splitYCm: clampCladdingSplitY(wall.height * 0.5, wall.height),
+    lowerPanelWidth: lower,
+    upperPanelWidth: defaultUpperBandWidth(lower),
+  })
+})
+
+studioCladdingSplitY.addEventListener('change', () => {
+  const wall = anchorWall()
+  if (!wall || !isTwoHorizontalBandCladding(wall)) return
+  const bands = readTwoHorizontalBandOptions(wall)
+  const splitYCm = clampCladdingSplitY(Number(studioCladdingSplitY.value), wall.height)
+  studioCladdingSplitY.value = String(splitYCm)
+  commitTwoHorizontalBands({ ...bands, splitYCm })
+})
+
+studioCladdingWidthLower.addEventListener('change', () => {
+  const wall = anchorWall()
+  if (!wall || !isTwoHorizontalBandCladding(wall)) return
+  const bands = readTwoHorizontalBandOptions(wall)
+  const lowerPanelWidth = clampStudioPanelSize(Number(studioCladdingWidthLower.value))
+  studioCladdingWidthLower.value = String(lowerPanelWidth)
+  commitTwoHorizontalBands({ ...bands, lowerPanelWidth })
+})
+
+studioCladdingWidthUpper.addEventListener('change', () => {
+  const wall = anchorWall()
+  if (!wall || !isTwoHorizontalBandCladding(wall)) return
+  const bands = readTwoHorizontalBandOptions(wall)
+  const upperPanelWidth = clampStudioPanelSize(Number(studioCladdingWidthUpper.value))
+  studioCladdingWidthUpper.value = String(upperPanelWidth)
+  commitTwoHorizontalBands({ ...bands, upperPanelWidth })
 })
 
 function commitHideRowsPatch(side: 'bottom' | 'top', rawValue: number) {

@@ -56,6 +56,16 @@ Mehrere Zonen mit `rect` ermöglichen z. B. 24er oben / 48er unten ohne global
 
 `openingCladdingMaskInflateForLayout`: Freiraum-Inflate für Feld-Layout/Siegel; bei Keilstein-Ring ohne taper-Freiraum = 0.
 
+### Zwei Horizontal-Bänder (UI, v2.0.72)
+
+Unter **Paneele**: Checkbox **„Verkleidung in zwei Bänder teilen“** (`#studio-cladding-two-bands`).
+
+- An → persistiert `claddingZones` mit IDs `band-lower` / `band-upper`, Höhe der Teilung (`#studio-cladding-split-y`), Modulbreite unten/oben.
+- Aus → `claddingZones` entfernt; Raster folgt wieder nur `wall.panel`.
+- Inaktive Felder: `#studio-cladding-two-bands-options` und ggf. die einfache Breitenzeile per `hidden`.
+- Helfer: `buildTwoHorizontalCladdingZones`, `applyTwoHorizontalCladdingZones`, `updateTwoHorizontalCladdingBands` (`facadeLayers.ts` / `walls.ts`).
+- Renderer: `FacadeController` legt bei persistierten Zonen auch im Low-LOD das echte Kachel-Mesh (nicht die Ein-Platten-LOD), damit die zwei Module sichtbar sind.
+
 ## Was bewusst nicht „eine Formel“ ist
 
 - Beliebige Profilquerschnitte auf jedem Clip-Rest am Bogen
@@ -65,17 +75,19 @@ Mehrere Zonen mit `rect` ermöglichen z. B. 24er oben / 48er unten ohne global
 ## Migration / UX
 
 - Kein Schema-Bump nötig: `claddingZones` optional; Alt-Saves verhalten sich wie bisher über `panel`.
-- UI für Zonen folgt später; Vertrag und Ableitung sind die Grundlage.
-- Renderer-Umbau schrittweise: neue Pfade sollen `resolveOpeningLayerContract` / `claddingZonesForWall` nutzen.
+- Hydrate: Zonen bleiben über `cloneWall` erhalten; leeres/fehlendes Feld = Ableitung.
+- Renderer: `layoutPanelTiles` → Paneel-/Mörtel-/Atlas-Pfade mit denselben Tiles; bei Zonen kein Low-LOD-Ersatz ohne Raster.
 
 ## Dateien
 
 | Datei | Rolle |
 |---|---|
 | `src/utils/openingGeometry.ts` | Öffnungsvertrag, Maske, Normalize, Legacy-API |
-| `src/studio/facadeLayers.ts` | Zonen-Ableitung, Inflate-Helfer, Re-Exports |
+| `src/studio/facadeLayers.ts` | Zonen-Ableitung, Zwei-Bänder-Helfer, Inflate, Re-Exports |
 | `src/types/facade.ts` | `CladdingZone*`, `Wall.claddingZones` |
 | `src/studio/panelLayout.ts` | Zone-Aware `layoutPanelTiles` |
 | `src/studio/panelGeometry.ts` | Shell-Mesh, Shadow-Tunnel, Cladding-Extrude |
+| `src/FacadeController.ts` | Mesh-Aufbau inkl. Zonen-Tiles |
+| `index.html` / `src/main.ts` | UI Zwei-Bänder |
 
 Verwandt: [panel-geometry.md](panel-geometry.md), [opening-features.md](opening-features.md), [shadows.md](shadows.md), [architecture.md](architecture.md).

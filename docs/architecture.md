@@ -22,7 +22,7 @@ src/
 
 Feature-Docs und Index: [README.md](README.md). Historie: [changelog.md](changelog.md).
 
-**Schichten-Vertrag (v2.0.70+):** dichte Wandschale (A) / Verkleidungszonen (B) / Anbauteile (C); eine Öffnungsmaske; Freiraum nur B; Einbettung ohne Shell-Loch — [facade-layers.md](facade-layers.md).
+**Schichten-Vertrag (v2.0.70+):** dichte Wandschale (A) / Verkleidungszonen (B) / Anbauteile (C); eine Öffnungsmaske; Freiraum nur B; Einbettung ohne Shell-Loch — [facade-layers.md](facade-layers.md). **v2.0.72:** UI für zwei Horizontal-Bänder mit eigener Modulbreite.
 
 ---
 

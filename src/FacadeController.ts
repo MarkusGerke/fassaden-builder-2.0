@@ -3108,7 +3108,11 @@ export class FacadeController {
                     : [
                         {
                           stageIndex: 0,
-                          geometry: createStudioPanelLowGeometry(geomWall, panel, neighborWalls),
+                          // Bei persistierten Zonen echtes Raster (sonst eine Platte ohne Modulwechsel).
+                          geometry:
+                            geomWall.claddingZones && geomWall.claddingZones.length > 0
+                              ? createStudioPanelGeometry(geomWall, panel, neighborWalls, tiles)
+                              : createStudioPanelLowGeometry(geomWall, panel, neighborWalls),
                         },
                       ]
               for (const { stageIndex, geometry } of geos) {

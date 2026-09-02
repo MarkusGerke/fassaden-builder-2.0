@@ -11,7 +11,13 @@ import type {
   StudioPanelConfig,
   Wall,
 } from '../types/facade'
-import { DEFAULT_STUDIO_PANEL, normalizeStudioPanel, panelKindForPattern } from './constants'
+import {
+  clampStudioPanelSize,
+  DEFAULT_STUDIO_PANEL,
+  normalizeStudioPanel,
+  panelKindForPattern,
+  STUDIO_MASONRY,
+} from './constants'
 import {
   openingArchVoussoirsEnabled,
   openingCutsWall,
@@ -109,8 +115,122 @@ export function deriveCladdingZonesFromPanel(wall: Wall): CladdingZone[] {
 
 export function claddingZonesForWall(wall: Wall): CladdingZone[] {
   const stored = wall.claddingZones
-  if (stored && stored.length > 0) return stored
-  return deriveCladdingZonesFromPanel(wall)
+  if (!stored || stored.length === 0) return deriveCladdingZonesFromPanel(wall)
+  // Zwei Horizontal-Bänder: Rects an aktuelle Wandbreite/-höhe anpassen (nach Resize).
+  if (isTwoHorizontalBandCladding(wall)) {
+    return buildTwoHorizontalCladdingZones(wall, readTwoHorizontalBandOptions(wall))
+  }
+  return stored
+}
+
+/** Persistierte Zwei-Bänder-UI (`band-lower` / `band-upper`). */
+export function isTwoHorizontalBandCladding(wall: Wall): boolean {
+  const zones = wall.claddingZones
+  if (!zones || zones.length !== 2) return false
+  const ids = new Set(zones.map((z) => z.id))
+  return ids.has('band-lower') && ids.has('band-upper')
+}
+
+/** Teilungshöhe (cm von unten), 8-cm-Raster, mind. eine Schicht Rand. */
+export function clampCladdingSplitY(splitYCm: number, wallHeight: number): number {
+  const min = STUDIO_MASONRY
+  const max = Math.max(min, Math.round((wallHeight - STUDIO_MASONRY) / STUDIO_MASONRY) * STUDIO_MASONRY)
+  if (!Number.isFinite(splitYCm)) {
+    return clampCladdingSplitY(wallHeight / 2, wallHeight)
+  }
+  const snapped = Math.round(splitYCm / STUDIO_MASONRY) * STUDIO_MASONRY
+  return Math.min(max, Math.max(min, snapped))
+}
+
+export interface TwoHorizontalBandOptions {
+  splitYCm: number
+  lowerPanelWidth: number
+  upperPanelWidth: number
+}
+
+/** Liest Split + Modulbreiten aus persistierten Bändern (Fallback: Wand-Panel). */
+export function readTwoHorizontalBandOptions(wall: Wall): TwoHorizontalBandOptions {
+  const base = normalizeStudioPanel(wall.panel ?? DEFAULT_STUDIO_PANEL)
+  const zones = wall.claddingZones ?? []
+  const lower = zones.find((z) => z.id === 'band-lower')
+  const upper = zones.find((z) => z.id === 'band-upper')
+  const splitYCm = clampCladdingSplitY(
+    lower?.rect?.height ?? wall.height * 0.5,
+    wall.height,
+  )
+  const lowerPanelWidth = clampStudioPanelSize(
+    lower?.panel?.panelWidth ?? base.panelWidth,
+  )
+  const upperPanelWidth = clampStudioPanelSize(
+    upper?.panel?.panelWidth ?? defaultUpperBandWidth(lowerPanelWidth),
+  )
+  return { splitYCm, lowerPanelWidth, upperPanelWidth }
+}
+
+/** Default oberes Modul: Hälfte der unteren Breite (mind. 8 cm). */
+export function defaultUpperBandWidth(lowerPanelWidth: number): number {
+  return clampStudioPanelSize(Math.max(STUDIO_MASONRY, lowerPanelWidth / 2))
+}
+
+/**
+ * Zwei horizontale Verkleidungszonen (unten/oben) mit eigenem Modulmaß.
+ * Basis-Optik kommt aus `wall.panel`; nur `panelWidth` weicht je Band ab.
+ */
+export function buildTwoHorizontalCladdingZones(
+  wall: Wall,
+  options: TwoHorizontalBandOptions,
+): CladdingZone[] {
+  const base = normalizeStudioPanel(wall.panel ?? DEFAULT_STUDIO_PANEL)
+  const splitY = clampCladdingSplitY(options.splitYCm, wall.height)
+  const lowerW = clampStudioPanelSize(options.lowerPanelWidth)
+  const upperW = clampStudioPanelSize(options.upperPanelWidth)
+  const kind: CladdingZoneKind =
+    base.pattern === 'strip'
+      ? 'strip'
+      : (base.taperDepth ?? 0) > 0.05
+        ? 'boss'
+        : panelKindForPattern(base.pattern) === 'masonry' || base.pattern === 'runningBond'
+          ? 'bond'
+          : 'bond'
+  const front: CladdingFrontKind = (base.taperDepth ?? 0) > 0.05 ? 'frustum' : 'flat'
+  const upperH = Math.max(STUDIO_MASONRY, wall.height - splitY)
+  return [
+    {
+      id: 'band-lower',
+      kind,
+      front,
+      rect: { x: 0, y: 0, width: wall.width, height: splitY },
+      panel: { ...base, panelWidth: lowerW, enabled: true },
+    },
+    {
+      id: 'band-upper',
+      kind,
+      front,
+      rect: { x: 0, y: splitY, width: wall.width, height: upperH },
+      panel: { ...base, panelWidth: upperW, enabled: true },
+    },
+  ]
+}
+
+/** Wand mit Zwei-Bänder-Zonen; `wall.panel.panelWidth` = unteres Modul. */
+export function applyTwoHorizontalCladdingZones(
+  wall: Wall,
+  options: TwoHorizontalBandOptions,
+): Wall {
+  const zones = buildTwoHorizontalCladdingZones(wall, options)
+  const lowerW = clampStudioPanelSize(options.lowerPanelWidth)
+  const panel = normalizeStudioPanel({
+    ...(wall.panel ?? DEFAULT_STUDIO_PANEL),
+    panelWidth: lowerW,
+    enabled: true,
+  })
+  return { ...wall, panel, claddingZones: zones }
+}
+
+/** Zwei-Bänder entfernen → klassisches Ein-Panel. */
+export function clearPersistedCladdingZones(wall: Wall): Wall {
+  if (!wall.claddingZones) return wall
+  return { ...wall, claddingZones: undefined }
 }
 
 /** Kacheln einer Zone auf deren `rect` schneiden (falls gesetzt). */

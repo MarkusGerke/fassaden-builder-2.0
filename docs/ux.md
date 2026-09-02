@@ -574,6 +574,8 @@ Struktur bei Wandauswahl: Wand → Sockel → Gesims → Fenstertiefe → Paneel
 
 UI: `#studio-pattern-panel-cards` (Streifen, Läuferverband) und `#studio-pattern-masonry-cards` (Blockverband, Kopfverband, Kreuzverband, Wilde/Gotische/Märkische/Holländische/Schlesische/Flämische Verbände, Läufer-Varianten). Jede Kachel zeigt eine SVG-Kontur-Vorschau (`drawPatternPreviewSvg`), gebaut erst wenn die Studio- bzw. Dach-Toolbar sichtbar ist (nicht beim App-Start). Layout: `src/studio/panelLayout.ts`, Typen in `StudioPanelPattern`. **v0.7.280:** wie 73dbdc9 an der Außenkante (Fit folgt der Planrichtung). **v0.7.279:** Verknüpfte Wände mit Innen-Origin werden beim Laden auf die Außenkante gelegt — sonst fehlen an 90°-Ecken 32–40 cm Vertikalfugen (Gehrung). **v0.7.278:** Raster auf der Außenfront inkl. Keilzone (`wallX` darf < 0); 0,5/1 von der Außenecke. **v0.7.270:** Paneele gehren an andockenden Wänden. **v0.7.269:** 45°-Endsteine 0,5/1 auf der Front, dazwischen Läuferverband. **v0.7.296:** 0,5/1 an 45°-Ecken bleibt nach Etage duplizieren / Stile kopieren gleich (nicht mehr per neuer Wand-ID gekippt).
 
+**v2.0.72 — Zwei Bänder:** Checkbox `#studio-cladding-two-bands` teilt die Verkleidung horizontal (`claddingZones` `band-lower`/`band-upper`). Felder Höhe/Modulbreiten in `#studio-cladding-two-bands-options` nur sichtbar wenn an; einfache `#studio-panel-width-row` dann ausgeblendet. Details: [facade-layers.md](facade-layers.md).
+
 ---
 
 ## Fensterflügel
