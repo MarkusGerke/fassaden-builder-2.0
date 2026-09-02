@@ -15600,7 +15600,6 @@ function commitOpeningArchPatch(patch?: {
   // Bogenform/-höhe: Gültigkeitsbereich (Auswahl = nur markierte Fenster/Türen).
   const refs = editArchOpeningTargets(state, editor, editScope, editFacadeYawFilter)
   if (refs.length === 0) return
-  const voussoirs = patch?.voussoirs ?? openingArchVoussoirs.checked
   let next = state
   for (const ref of refs) {
     const wall = getWall(state, ref.wallId)
@@ -15610,17 +15609,35 @@ function commitOpeningArchPatch(patch?: {
     if (patch?.form != null) form = patch.form
     else if (patch?.enabled === true && form === 'rect') form = 'round'
     else if (patch?.enabled === false) form = 'rect'
-    const formChanged = patch?.form != null && form !== (prev.form ?? 'rect')
+    const prevForm = prev.form ?? 'rect'
+    const formChanged = patch?.form != null && form !== prevForm
+    const switchedToRound =
+      form === 'round' &&
+      (formChanged || (patch?.enabled === true && prevForm === 'rect'))
+    // Rundbogen neu gewählt → Keilstein-Ring an (Mauerwerk-Zwickel); explizit false bleibt.
+    // Alt-Saves ohne Feld: Normalize lässt voussoirs false — hier nur UI-Wechsel.
+    const voussoirs =
+      form !== 'round'
+        ? false
+        : patch?.voussoirs != null
+          ? patch.voussoirs
+          : switchedToRound
+            ? true
+            : openingArchVoussoirs.checked
     const nextArch: Parameters<typeof normalizeOpeningArch>[0] = {
       enabled: form !== 'rect',
       form,
-      voussoirs: form === 'round' ? voussoirs : false,
-      keystones: form === 'round' ? voussoirs : false,
+      voussoirs,
+      keystones: voussoirs,
       thetaStartDeg: patch?.thetaStartDeg ?? (Number(openingArchThetaStart.value) || 180),
       thetaEndDeg: patch?.thetaEndDeg ?? (Number(openingArchThetaEnd.value) || 0),
       spandrel:
         patch?.spandrel ??
-        (openingArchSpandrel.value === 'rect' ? 'rect' : 'bond'),
+        (switchedToRound && voussoirs
+          ? 'rect'
+          : openingArchSpandrel.value === 'rect'
+            ? 'rect'
+            : 'bond'),
       jambs: form === 'round' ? (patch?.jambs ?? openingArchJambs.checked) : false,
     }
     if (form === 'rect') {

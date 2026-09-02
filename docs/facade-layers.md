@@ -46,7 +46,7 @@ Typ `CladdingZone` an `Wall.claddingZones` (optional). Fehlt/leer → Ableitung 
 | `bond` | Läufer-/Mauerwerksverband | abgeleitet / aktiv |
 | `strip` | Streifenpaneele | abgeleitet / aktiv |
 | `boss` | Bossen (Frustum-Front) | abgeleitet wenn `taperDepth > 0` |
-| `voussoir` | Keilstein-Ring am Bogen | geplant (heute noch Öffnungs-Arch-Pfad) |
+| `voussoir` | Keilstein-Ring am Bogen | geplant als Zone; **heute** Öffnungs-Arch (`Opening.arch.voussoirs`). v2.0.74: UI-Default an bei neuem Rundbogen |
 | `taperedField` | konisch zulaufendes Quader-/Verdachungsfeld | geplant |
 | `none` | keine Verkleidung | abgeleitet |
 

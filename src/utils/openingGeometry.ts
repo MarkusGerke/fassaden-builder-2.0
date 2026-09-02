@@ -160,6 +160,8 @@ export function archJambCountAuto(clearHeight: number, panelHeight: number): num
 }
 
 export function normalizeOpeningArch(raw?: Partial<OpeningArch> | null): OpeningArch {
+  // Fehlendes `voussoirs` bleibt false — Alt-Saves ohne Feld behalten Raster-Clip ohne Ring.
+  // UI-Default „Rund → Keilstein an“ setzt das Feld explizit (commitOpeningArchPatch).
   const voussoirs = Boolean(raw?.voussoirs ?? raw?.keystones)
   let form: ArchFormId
   if (raw?.form != null) {

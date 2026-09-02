@@ -509,7 +509,7 @@ Beim **Verschieben oder Platzieren** von Wänden und Öffnungen erscheint ein **
 - **Wand aus Bibliothek / Wand verschieben:** blaues Gitter auf dem **Boden** der Ziel-Etage (Oben, 2D, 3D).
 - **Öffnung verschieben:** Gitter auf der **Zielwand** (Außenfläche).
 - Nach **Ablegen** oder Abbruch wird das Raster ausgeblendet (`clearPlacementGridOverlay`).
-- Öffnungs-**Position** (Drag, Nudge, Zahlenfelder): bei Modulverband an **Fuge / Steinmitte / Wandmitte** (`openingPanelSnap.ts`); bei Zwei-Bändern je Zone Y-bewusst; sonst **8 cm**. Schrift-Position bleibt 32 cm.
+- Öffnungs-**Position** (Drag, Nudge, Zahlenfelder): bei Modulverband Drag = Fuge + Wandmitte (Magnet 7 cm); Nudge = Fuge / Steinmitte / Wandmitte (`openingPanelSnap.ts`); bei Zwei-Bändern je Zone Y-bewusst; sonst **8 cm**. Schrift-Position bleibt 32 cm.
 
 ### Öffnungen (`src/studio/openingGuides.ts`)
 
@@ -598,7 +598,7 @@ Neue Elemente: Wand, Paneele, Profile, Rahmen, Türen → `#ffffff`. Neue Fenste
 
 ## Fenster verschieben
 
-Studio-Öffnungen: rastet an **Fuge**, **Stein-/Paneelmitte** oder **Wandmitte** (`openingPlacementCandidateXs`) — kein festes 8-cm-Schrittmaß. **Ziehen:** nächster Absolut-Kandidat. **Pfeile:** nächster Kandidat. 45°-Wände: Wandmitte mit Magnet ±8 cm. Streifen/ohne Modul: 8 cm. Abstand **zwischen** Öffnungen 32 cm.
+Studio-Öffnungen: rastet an **Fuge**, **Stein-/Paneelmitte** oder **Wandmitte** (`openingPlacementCandidateXs`) — kein festes 8-cm-Schrittmaß. **Ziehen (v2.0.74):** nur Fugen-bündig + Wandmitte; Magnet `DRAG_SNAP_MAGNET_CM` (7 cm), außerhalb freie Position — kein Springen über Steinmitten. **Pfeile:** nächster Kandidat inkl. Steinmitte. 45°-Wände: Wandmitte mit Magnet ±8 cm. Streifen/ohne Modul: 8 cm. Abstand **zwischen** Öffnungen 32 cm.
 
 ---
 

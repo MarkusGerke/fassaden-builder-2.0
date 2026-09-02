@@ -6,7 +6,11 @@
  * 2. Zentriert auf Stein — Fenstermitte auf Steinmitte (Mitte zwischen zwei Cuts)
  * 3. Wandmitte — `x` = wall.width/2 − width/2 (wichtig bei 45°-Längen)
  *
- * Drag: nächster Absolut-Kandidat. Nudge: nächster/vorheriger Kandidat.
+ * Drag: nur Fugen-bündig + Wandmitte-Magnet; Stein-/Schichtmitten entfallen.
+ *       Magnet-Radius: nur snappen wenn |Vorschlag − Kandidat| ≤ DRAG_SNAP_MAGNET_CM,
+ *       sonst freie Position (kein Frame-Springen zwischen dichten Kandidaten).
+ * Nudge: volles Raster (Fuge + Steinmitte + Wandmitte).
+ *
  * Gestapelte Etagen mit unterschiedlichem Modul: gemeinsame Cuts (LCM), sonst echte Lagen-Cuts.
  * Multi-Zone (`claddingZones` mit rect): Cuts aus dem Modul der Zone an Öffnungs-Mitte-Y.
  */
@@ -27,6 +31,11 @@ const EPS = 0.05
 const STACK_EPS = 1.5
 /** Magnet: Vorschlag nahe Wandmitte → bevorzugt exakt zentrieren (45°-Längen). */
 const WALL_CENTER_MAGNET_CM = STUDIO_MASONRY
+/**
+ * Drag-Magnet: nur einrasten wenn der Vorschlag so nah am Kandidaten liegt.
+ * Größer als typischer Pointer-Jitter, kleiner als halber Modul-Schritt → kein Springen.
+ */
+export const DRAG_SNAP_MAGNET_CM = 7
 
 function headerSize(stretcher: number): number {
   return Math.max(STUDIO_MASONRY, stretcher / 2)
@@ -189,8 +198,12 @@ export function openingMasonryCourseYs(wall: Wall, atY?: number): number[] {
   return uniqueSortedCuts(rowCuts, wall.height)
 }
 
+export type OpeningPlacementCandidateKind = 'full' | 'drag'
+
 /**
- * Erlaubte linke Laibungs-X: Fugen-bündig, auf Steinmitte zentriert, Wandmitte.
+ * Erlaubte linke Laibungs-X.
+ * - `full` (Nudge/Align): Fugen-bündig, auf Steinmitte zentriert, Wandmitte
+ * - `drag`: nur Fugen-bündig + Wandmitte (keine Steinmitten — weniger Springen)
  * Nur Positionen, bei denen die Öffnung vollständig auf der Wand liegt.
  */
 export function openingPlacementCandidateXs(
@@ -198,6 +211,7 @@ export function openingPlacementCandidateXs(
   allWalls: Wall[],
   width: number,
   atY?: number,
+  kind: OpeningPlacementCandidateKind = 'full',
 ): number[] {
   const maxX = Math.max(0, wall.width - width)
   const cuts = openingMasonryJambXs(wall, allWalls, atY)
@@ -208,14 +222,16 @@ export function openingPlacementCandidateXs(
     if (c >= -EPS && c <= maxX + EPS) xs.push(c)
   }
 
-  // 2) Zentriert auf Stein/Paneel (Fenstermitte = Steinmitte)
-  for (let i = 0; i < cuts.length - 1; i += 1) {
-    const a = cuts[i]!
-    const b = cuts[i + 1]!
-    if (b - a <= EPS) continue
-    const mid = (a + b) / 2
-    const x = mid - width / 2
-    if (x >= -EPS && x <= maxX + EPS) xs.push(x)
+  // 2) Zentriert auf Stein/Paneel — nur Nudge/Align
+  if (kind === 'full') {
+    for (let i = 0; i < cuts.length - 1; i += 1) {
+      const a = cuts[i]!
+      const b = cuts[i + 1]!
+      if (b - a <= EPS) continue
+      const mid = (a + b) / 2
+      const x = mid - width / 2
+      if (x >= -EPS && x <= maxX + EPS) xs.push(x)
+    }
   }
 
   // 3) Wandmitte (auch wenn nicht auf dem Fugenraster — 45°-Längen)
@@ -227,11 +243,16 @@ export function openingPlacementCandidateXs(
   return uniqueSorted(xs)
 }
 
-/** Y-Kandidaten: Schicht-bündig und Wand-vertikal-Mitte. */
+/**
+ * Y-Kandidaten.
+ * - `full`: Schicht-bündig, Schichtmitte, Wand-vertikal-Mitte
+ * - `drag`: nur Schicht-bündig + Wandmitte (keine Schichtmitten)
+ */
 export function openingPlacementCandidateYs(
   wall: Wall,
   height: number,
   atY?: number,
+  kind: OpeningPlacementCandidateKind = 'full',
 ): number[] {
   const maxY = Math.max(0, wall.height - height)
   const cuts = openingMasonryCourseYs(wall, atY)
@@ -239,13 +260,15 @@ export function openingPlacementCandidateYs(
   for (const c of cuts) {
     if (c >= -EPS && c <= maxY + EPS) ys.push(c)
   }
-  for (let i = 0; i < cuts.length - 1; i += 1) {
-    const a = cuts[i]!
-    const b = cuts[i + 1]!
-    if (b - a <= EPS) continue
-    const mid = (a + b) / 2
-    const y = mid - height / 2
-    if (y >= -EPS && y <= maxY + EPS) ys.push(y)
+  if (kind === 'full') {
+    for (let i = 0; i < cuts.length - 1; i += 1) {
+      const a = cuts[i]!
+      const b = cuts[i + 1]!
+      if (b - a <= EPS) continue
+      const mid = (a + b) / 2
+      const y = mid - height / 2
+      if (y >= -EPS && y <= maxY + EPS) ys.push(y)
+    }
   }
   const wallCenterY = wall.height / 2 - height / 2
   if (wallCenterY >= -EPS && wallCenterY <= maxY + EPS) ys.push(wallCenterY)
@@ -275,6 +298,14 @@ function nearestValue(values: number[], target: number): number {
   return best
 }
 
+/** Nächster Kandidat nur innerhalb des Magnet-Radius; sonst freie Position. */
+function magnetNearest(values: number[], target: number, magnetCm: number): number {
+  if (values.length === 0) return target
+  const best = nearestValue(values, target)
+  if (Math.abs(best - target) <= magnetCm + EPS) return best
+  return target
+}
+
 function adjacentValue(values: number[], current: number, dir: 1 | -1): number {
   if (values.length === 0) return current
   if (dir > 0) {
@@ -290,12 +321,16 @@ function adjacentValue(values: number[], current: number, dir: 1 | -1): number {
   return current
 }
 
-/** Nächster X-Kandidat; nahe Wandmitte mit Magnet auf exakte Zentrierung. */
+/**
+ * Nächster X-Kandidat; nahe Wandmitte mit Magnet auf exakte Zentrierung.
+ * `magnetCm`: wenn gesetzt (Drag), nur innerhalb Radius einrasten — sonst freie Position.
+ */
 function nearestPlacementX(
   candidates: number[],
   proposedX: number,
   width: number,
   wallWidth: number,
+  magnetCm?: number,
 ): number {
   const wallCenterX = wallWidth / 2 - width / 2
   const proposedCenter = proposedX + width / 2
@@ -305,6 +340,9 @@ function nearestPlacementX(
     Math.abs(proposedCenter - wallWidth / 2) <= WALL_CENTER_MAGNET_CM
   ) {
     return wallCenterX
+  }
+  if (magnetCm != null) {
+    return magnetNearest(candidates, proposedX, magnetCm)
   }
   return nearestValue(candidates, proposedX)
 }
@@ -336,8 +374,8 @@ export type OpeningMasonryMoveMode = 'drag' | 'nudge'
 
 /**
  * Position an Kandidaten (Fuge / Steinmitte / Wandmitte).
- * - `drag`: nächster Absolut-Kandidat zur vorgeschlagenen Position
- * - `nudge`: nächster/vorheriger Kandidat
+ * - `drag`: Fugen-bündig + Wandmitte, Magnet `DRAG_SNAP_MAGNET_CM` — sonst frei
+ * - `nudge`: nächster/vorheriger Kandidat aus dem vollen Raster
  */
 export function snapOpeningMoveToMasonry(
   wall: Wall,
@@ -361,27 +399,35 @@ export function snapOpeningMoveToMasonry(
   }
 
   const atY = openingCenterY(opening, proposedY)
-  const xs = openingPlacementCandidateXs(wall, allWalls, width, atY)
+  const kind: OpeningPlacementCandidateKind = mode === 'drag' ? 'drag' : 'full'
+  const magnetCm = mode === 'drag' ? DRAG_SNAP_MAGNET_CM : undefined
+  const xs = openingPlacementCandidateXs(wall, allWalls, width, atY, kind)
   if (xs.length > 0) {
     if (mode === 'nudge' && Math.abs(dx) > EPS) {
       x = adjacentValue(xs, opening.x, dx > 0 ? 1 : -1)
     } else if (Math.abs(dx) > EPS || Math.abs(proposedX - opening.x) > EPS) {
-      x = nearestPlacementX(xs, proposedX, width, wall.width)
+      x = nearestPlacementX(xs, proposedX, width, wall.width, magnetCm)
     } else {
-      x = nearestPlacementX(xs, opening.x, width, wall.width)
+      x = nearestPlacementX(xs, opening.x, width, wall.width, magnetCm)
     }
   }
 
   const lockY = opening.type === 'door' && Boolean(opening.stairs?.enabled)
   if (!lockY) {
-    const ys = openingPlacementCandidateYs(wall, height, atY)
+    const ys = openingPlacementCandidateYs(wall, height, atY, kind)
     if (ys.length > 0) {
       if (mode === 'nudge' && Math.abs(dy) > EPS) {
         y = adjacentValue(ys, opening.y, dy > 0 ? 1 : -1)
       } else if (Math.abs(dy) > EPS || Math.abs(proposedY - opening.y) > EPS) {
-        y = nearestValue(ys, proposedY)
+        y =
+          magnetCm != null
+            ? magnetNearest(ys, proposedY, magnetCm)
+            : nearestValue(ys, proposedY)
       } else {
-        y = nearestValue(ys, opening.y)
+        y =
+          magnetCm != null
+            ? magnetNearest(ys, opening.y, magnetCm)
+            : nearestValue(ys, opening.y)
       }
     }
   }
@@ -411,7 +457,7 @@ export function alignOpeningToMasonry(
     }
   }
 
-  const xs = openingPlacementCandidateXs(wall, allWalls, width, atY)
+  const xs = openingPlacementCandidateXs(wall, allWalls, width, atY, 'full')
   if (xs.length > 0) x = nearestPlacementX(xs, x, width, wall.width)
 
   const lockY = opening.type === 'door' && Boolean(opening.stairs?.enabled)
@@ -428,7 +474,7 @@ export function alignOpeningToMasonry(
         }
       }
     }
-    const ys = openingPlacementCandidateYs(wall, height, atY)
+    const ys = openingPlacementCandidateYs(wall, height, atY, 'full')
     if (ys.length > 0) y = nearestValue(ys, y)
   }
 

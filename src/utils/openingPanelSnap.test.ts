@@ -6,6 +6,7 @@ import { applyTwoHorizontalCladdingZones } from '../studio/facadeLayers'
 import {
   alignOpeningToMasonry,
   commonMasonrySnapStepCm,
+  DRAG_SNAP_MAGNET_CM,
   masonryFacadeStack,
   openingMasonryJambXs,
   openingPlacementCandidateXs,
@@ -109,7 +110,7 @@ describe('openingPanelSnap', () => {
     expect(Math.abs(snapped.x + width / 2 - wallW / 2)).toBeLessThan(0.05)
   })
 
-  it('Nudge springt zum nächsten Kandidaten; Drag snapt absolut', () => {
+  it('Nudge springt zum nächsten Kandidaten; Drag nur Fuge + Magnet', () => {
     const wall = studioWall({ id: 'w', width: 384 })
     const opening = {
       x: 48,
@@ -118,13 +119,31 @@ describe('openingPanelSnap', () => {
       height: 96,
       type: 'window' as const,
     }
-    const candidates = openingPlacementCandidateXs(wall, [wall], 96)
-    const after48 = candidates.find((c) => c > 48 + 0.05)!
+    const full = openingPlacementCandidateXs(wall, [wall], 96, undefined, 'full')
+    const after48 = full.find((c) => c > 48 + 0.05)!
     const nudged = snapOpeningMoveToMasonry(wall, [wall], opening, 56, 32, 8, 0, 'nudge')
     expect(nudged.x).toBe(after48)
 
-    const dragged = snapOpeningMoveToMasonry(wall, [wall], opening, 56, 32, 8, 0, 'drag')
-    expect(dragged.x).toBe(nearestIn(candidates, 56))
+    // Nahe Fuge 48 (≤ Magnet) → rastet
+    const nearFlush = snapOpeningMoveToMasonry(wall, [wall], opening, 48 + 4, 32, 4, 0, 'drag')
+    expect(nearFlush.x).toBe(48)
+
+    // Außerhalb Magnet → freie Position (kein Springen zur nächsten Fuge)
+    const freeX = 48 + DRAG_SNAP_MAGNET_CM + 2
+    const free = snapOpeningMoveToMasonry(wall, [wall], opening, freeX, 32, freeX - 48, 0, 'drag')
+    expect(free.x).toBe(freeX)
+  })
+
+  it('Drag-Kandidaten ohne Steinmitten; Nudge behält Steinmitte', () => {
+    const wall = studioWall({ id: 'w', width: 384 })
+    const width = 96
+    const dragXs = openingPlacementCandidateXs(wall, [wall], width, undefined, 'drag')
+    const fullXs = openingPlacementCandidateXs(wall, [wall], width, undefined, 'full')
+    // Steinmitte 48–72 → mid 60 → x = 12
+    expect(fullXs.some((x) => Math.abs(x - 12) < 0.05)).toBe(true)
+    expect(dragXs.some((x) => Math.abs(x - 12) < 0.05)).toBe(false)
+    expect(dragXs).toContain(48)
+    expect(dragXs.some((x) => Math.abs(x - (384 / 2 - width / 2)) < 0.05)).toBe(true)
   })
 
   it('richtet Laibungen beidseitig auf Fugen aus wenn Breite snappt', () => {
@@ -141,19 +160,6 @@ describe('openingPanelSnap', () => {
     expect(xs.some((c) => Math.abs(c - (aligned.x + aligned.width)) < 0.05)).toBe(true)
   })
 })
-
-function nearestIn(values: number[], target: number): number {
-  let best = values[0]!
-  let bestD = Math.abs(best - target)
-  for (const v of values) {
-    const d = Math.abs(v - target)
-    if (d < bestD) {
-      best = v
-      bestD = d
-    }
-  }
-  return best
-}
 
 describe('gemeinsames Raster 24er + 48er Etagen', () => {
   const panel24 = {

@@ -18,13 +18,13 @@ Toolbar **Maße** (Auszug):
 
 | Steuerung | Verhalten |
 |---|---|
-| Breite / Höhe / Position | Modulverband: Snap an **Fuge**, **Steinmitte** oder **Wandmitte** (45° inkl.); bei Zwei-Bändern Modul der Zone an Öffnungsmitte-Y; Nudge = nächster Kandidat. Sonst 8-cm-Raster. Abstand zwischen Öffnungen 32 cm; kein Pflicht-Randabstand zur Wandkante |
+| Breite / Höhe / Position | Modulverband: **Ziehen** rastet an Fuge (+ Wandmitte-Magnet ±8 cm), Magnet-Radius 7 cm — sonst frei; **Pfeile** Fuge / Steinmitte / Wandmitte. Bei Zwei-Bändern Modul der Zone an Öffnungsmitte-Y. Sonst 8-cm-Raster. Abstand zwischen Öffnungen 32 cm; kein Pflicht-Randabstand zur Wandkante |
 | Fenstertiefe | UI **Frontlage (cm von Außenkante)** unter Maße; speichert `Opening.depthOffset` pro Öffnung (Gültigkeitsbereich). Fehlt → `Building.windowDepthOffset`. Standard 24 cm Laibung + Offset |
 | Öffnungsart | Fenster/Tür: durchgehend · Wandfläche (bündig) · Nische. Cutout: Durchbruch oder Nische (+ Tiefe). Konche: immer Kalotte, Tiefe steuerbar |
 | In Wand eingebettet | `revealFrame.enabled` → kein Wandloch, kein Rahmen/Glas; Bänke/Profile/Bogen/Verdachung bleiben. Nicht bei Cutouts |
 | Freiraum | `panelClearance`: Abstand in ganzen cm, Tiefe +/−/0; optional `finish: 'taper'` nur mit Paneelen |
 | Bogenform | Karten `#opening-arch-form-cards`: eckig, Rund, Spitz, Stich, Lanzett, Ellipse, Tudor. Legacy `basket` → Ellipse. Stichmaß `#opening-arch-rise-row` (8er-Raster, **Auto** löscht `riseCm`). Form/Stichmaß scoped über `editArchOpeningTargets` (Fenster **und** Türen) |
-| Keilstein-Ring | Nur Rundbogen; aus → Felder/Vorschau `hidden`. Optional Schenkel bis Sohlbank |
+| Keilstein-Ring | Nur Rundbogen; aus → Felder/Vorschau `hidden`. **Neu Rundbogen wählen:** Ring standardmäßig an (Spandrille `rect`); Alt-Projekte ohne/`voussoirs: false` bleiben aus. Optional Schenkel bis Sohlbank |
 | Glasbogen | Folgt immer `Opening.arch.form` / `riseCm` — keine separate Checkbox (`glazingArch` Legacy, ignoriert) |
 
 Kern: `src/utils/archForms.ts`, `openingGeometry.ts`. Schichten-Vertrag (Shell/Freiraum/Einbettung): [facade-layers.md](facade-layers.md), `resolveOpeningLayerContract`. Aktionen: `#duplicate-opening`, `#reset-opening`, `#delete-opening`.
@@ -92,3 +92,4 @@ Dateien: `src/studio/basementWindow.ts`, FacadeController / SvgView / main.
 - Verdachungs-UI ≠ Profil-ID `fensterverdachung` im allgemeinen Picker.
 - Keilstein-UI ausblenden wenn Ring aus (nicht nur disabled).
 - Fake-Einbettung: Profile folgen weiter der Bogenform, obwohl kein Loch.
+- Ohne Keilstein-Ring clippt das Mauerwerk am Intrados — Zwickel über dem Bogen können fragmentiert wirken; Ring + Extrados-Dock glättet das.

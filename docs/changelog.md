@@ -2,6 +2,10 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Drag-Snap beruhigt + Rundbogen-Voussoir-Default (2026-09-02) — v2.0.74
+
+Öffnungs-Drag: Kandidaten nur **Fugen-bündig** + Wandmitte (keine Stein-/Schichtmitten); Magnet `DRAG_SNAP_MAGNET_CM` (7 cm) — außerhalb freie Position. Nudge/`align` unverändert volles Raster. Rundbogen neu gewählt: `voussoirs: true` + Spandrille `rect` als UI-Default; Alt-Saves ohne/`false` bleiben. Dateien: `openingPanelSnap.ts`, `main.ts`, `openingGeometry.ts`, Tests, Docs.
+
 ### Multi-Zone Snap + Stil-Vorlagen mit claddingZones (2026-09-02) — v2.0.73
 
 Öffnungs-Snap bei Zwei-Bändern (48/24): Cuts/Kandidaten aus dem Modul der Zone an Öffnungsmitte-Y (`effectivePanelAtY`). Stil-Vorlagen und Stile kopieren/einfügen übernehmen `claddingZones`. Audit in [facade-layers.md](facade-layers.md). Dateien: `facadeLayers.ts`, `openingPanelSnap.ts`, `styleTemplates.ts`, `main.ts`, Tests.

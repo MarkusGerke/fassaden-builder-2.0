@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.73'
+export const APP_VERSION = '2.0.74'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,16 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.74',
+    date: '2026-09-02',
+    title: 'Öffnungs-Ziehen ruhiger; Rundbogen mit Keilstein',
+    changes: [
+      'Ziehen einer Öffnung rastet nur noch an Fugen (plus Wandmitte) — kein Springen zwischen Steinmitten mehr; Magnet ±7 cm',
+      'Pfeiltasten behalten Fuge, Steinmitte und Wandmitte wie bisher',
+      'Rundbogen neu gewählt: Keilstein-Ring standardmäßig an (Alt-Projekte ohne Ring bleiben ohne)',
+    ],
+  },
   {
     version: '2.0.73',
     date: '2026-09-02',
