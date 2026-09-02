@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.77'
+export const APP_VERSION = '2.0.78'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,16 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.78',
+    date: '2026-09-02',
+    title: 'Radiale Rustika-Lagen am Rundbogen',
+    changes: [
+      'Bei Strip oder Mauerwerksverband umschließen die Wandlagen den Rundbogen jetzt radial: horizontale Fugen knicken nahe der Laibung zum Bogenmittelpunkt ab (trapez-/keilförmige Quader)',
+      'Funktioniert ohne Keilstein-Ring; mit Ring bleibt ein Scheitel-Keilstein. Unter dem Kämpfer unverändertes Raster',
+      'Das optionale „Separates Trapezfeld“ unter Verdachung ist ein anderes Feature (Default aus) — nicht die Rustika am Bogen',
+    ],
+  },
   {
     version: '2.0.77',
     date: '2026-09-02',

@@ -2110,6 +2110,11 @@ export function clipPolysMinusArches(
     joint?: number
     /** Hybrid-Mauerwerk: Clip am Intrados; Bogenband wird separat mit Hybrid-Polys gefüllt. */
     hybridArchMasonry?: boolean
+    /**
+     * Radiale Rustika-Lagen (v2.0.78): Clip am Intrados; Spandrille wird separat
+     * mit `archRusticatedCoursePolys` gefüllt. Hat Vorrang vor Hybrid.
+     */
+    archRustication?: boolean
     panelPattern?: string | null
   },
 ): OpeningPoly[] {
@@ -2117,15 +2122,17 @@ export function clipPolysMinusArches(
   let next = parts
   for (const opening of openings) {
     const voussoirsOn = openingArchVoussoirsEnabled(opening)
+    const rusticationOn = options?.archRustication === true
     const hybridOn =
-      options?.hybridArchMasonry === true ||
-      Boolean(
-        options?.hybridArchMasonry !== false &&
-          options?.panelPattern &&
-          openingArchHybridMasonryEnabled(opening, options.panelPattern),
-      )
+      !rusticationOn &&
+      (options?.hybridArchMasonry === true ||
+        Boolean(
+          options?.hybridArchMasonry !== false &&
+            options?.panelPattern &&
+            openingArchHybridMasonryEnabled(opening, options.panelPattern),
+        ))
     let ring = 0
-    if (voussoirsOn && dockAtExtrados && !hybridOn) {
+    if (voussoirsOn && dockAtExtrados && !hybridOn && !rusticationOn) {
       const arch = normalizeOpeningArch(opening.arch)
       ring =
         arch.ringThicknessCm != null
@@ -2134,12 +2141,12 @@ export function clipPolysMinusArches(
     }
     // Freiraum „leer“ mit Keilstein-Ring: Raster dockt am Extrados — sonst entsteht
     // ein zweiter leerer Bogenring um die Voussoirs. Nur „zulaufen“ bleibt außen.
-    // Hybrid: Clip am Intrados (Loch); Zwickel-Band wird in prepareStudioPanelParts entfernt.
+    // Hybrid / Rustika: Clip am Intrados (Loch); Zwickel-Band wird in prepareStudioPanelParts entfernt.
     const clearance =
-      voussoirsOn && !hybridOn && openingPanelClearanceFinish(opening) !== 'taper'
+      voussoirsOn && !hybridOn && !rusticationOn && openingPanelClearanceFinish(opening) !== 'taper'
         ? 0
         : openingPanelClearance(opening)
-    if (hybridOn) {
+    if (hybridOn || rusticationOn) {
       const jamb = openingArchGeom(opening, inflate + clearance)
       if (!jamb) continue
       next = next.flatMap((part) => clipRectMinusArch(part, jamb, jamb))

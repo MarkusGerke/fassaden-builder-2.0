@@ -46,8 +46,8 @@ Typ `CladdingZone` an `Wall.claddingZones` (optional). Fehlt/leer → Ableitung 
 | `bond` | Läufer-/Mauerwerksverband | abgeleitet / aktiv |
 | `strip` | Streifenpaneele | abgeleitet / aktiv |
 | `boss` | Bossen (Frustum-Front) | abgeleitet wenn `taperDepth > 0` |
-| `voussoir` | Keilstein-Ring am Bogen | Zone geplant; **heute** Öffnungs-Arch (`Opening.arch.voussoirs`). v2.0.74: UI-Default an bei neuem Rundbogen. **v2.0.75:** bei Verband Hybrid-Übergang statt Kreis-Extrados-Clip |
-| `taperedField` | konisch zulaufendes Quader-/Verdachungsfeld | **v2.0.77:** `Opening.taperedField` — mehrlagige Trapez-Quader über Sturz/Scheitel/Extrados; ohne Voussoir-Pflicht |
+| `voussoir` | Keilstein-Ring am Bogen | Zone geplant; **heute** Öffnungs-Arch (`Opening.arch.voussoirs`). v2.0.74: UI-Default an bei neuem Rundbogen. **v2.0.75:** bei Verband Hybrid-Übergang statt Kreis-Extrados-Clip. **v2.0.78:** bei Strip/Verband greifen primär radiale Rustika-Lagen (auch ohne Ring) |
+| `taperedField` | separates Trapez-/Verdachungsfeld über der Öffnung | **v2.0.77** eingeführt; **v2.0.78:** klar als optionales Giebelfeld gekennzeichnet (Default aus) — **nicht** die Rustika am Bogen |
 | `none` | keine Verkleidung | abgeleitet |
 
 `front`: `flat` \| `frustum` \| `profile` (Profil-Front erst in Rechteckzonen vorgesehen).
@@ -66,7 +66,7 @@ Ziel (Referenz echter Steinbogen): keine Rechteck-Clip-Splitter an der Kurve und
 - Über der obersten Hybrid-Abschlusskante: Verband setzt normal fort
 - **v2.0.76:** Steine sind **schichtweise** (Sektor × Lagerfugenband), nicht ein Keil bis zu einer Dock-Y. Kartesisches Raster wird nur im **Winkelsektor** entfernt (kein AABB-Loch ~30 % leer).
 
-**Wann aktiv:** `openingArchHybridMasonryEnabled` = Rundbogen + `voussoirs` an + Paneel-Pattern weder `strip` noch `none` (also Läufer-/Mauerwerksverbände). Streifenpaneele und Alt-Saves ohne Voussoir → bisheriger Extrados-Clip.
+**Wann aktiv:** `openingArchHybridMasonryEnabled` = Rundbogen + `voussoirs` an + Paneel-Pattern weder `strip` noch `none` (also Läufer-/Mauerwerksverbände) **und** keine Rustika (v2.0.78 hat Vorrang bei Strip/Verband). Streifenpaneele und Alt-Saves ohne Voussoir → Rustika bzw. Extrados-Clip.
 
 **Generator:** `archHybridVoussoirPolysFromSpec` / `archHybridCourseYs` / `cartesianPartOverlapsHybridSector` in `openingGeometry.ts`; Einbindung in `prepareStudioPanelParts` (`panelGeometry.ts`).
 
@@ -78,15 +78,28 @@ Ziel (Referenz echter Steinbogen): keine Rechteck-Clip-Splitter an der Kurve und
 
 **MVP-Grenzen:** nur `form === 'round'`; Stoßfugen der Wand greifen noch nicht in die Keil-Außenkanten; Springer an flachen Winkeln genähert; keine echte L-Schulter wie im Naturstein-Foto über mehrere Module seitlich.
 
-### Trapez-Quaderfeld (`Opening.taperedField`, v2.0.77)
+### Radiale Rustika-Lagen am Rundbogen (v2.0.78)
 
-Konisches Quader-/Bossenfeld **über** der Öffnung — unabhängig vom Keilstein-Ring:
+**Das ist das geforderte Verhalten** (Referenzfoto): horizontale Strip-/Verband-Lagen knicken nahe der Laibung radial zum Bogenmittelpunkt ab → trapez-/keilförmige Quader, die den Bogen umschließen. Kein schwebendes Trapez über dem Scheitel.
+
+- Unter Kämpfer: normales Raster
+- Im Bogenband (Kämpfer → Scheitel + Puffer): pro Schichtband links/rechts ein Poly mit vertikaler Knickkante (~ Laibung ± `knuckleOffsetCm`), radialen Lagerfugen und Bogen-Innenkante
+- Scheitel: immer ein schließender Keilstein; bei `voussoirs` an ebenfalls (Default 1)
+- **Ohne Voussoir-Pflicht**; aktiv bei Pattern `strip` und allen Verbänden (`openingArchRusticationEnabled`)
+- Primär Rundbogen; greift auch bei Tudor/Stich o. Ä. (Kronen-Polyline + Kämpferzentrum), damit Strip-Fassaden nicht mit Clip-Resten enden
+- Generator: `src/studio/archRustication.ts`; Clip am Intrados (Rund) bzw. Outline + kartesische Spandrillen-Reste entfernt in `prepareStudioPanelParts`
+- Parameter: Knick-Abstand Default aus `panelHeight`/`panelWidth` (mind. 8 cm)
+
+Hat Vorrang vor Hybrid (v2.0.75) für dieselben Öffnungen.
+
+### Separates Trapez-Verdachungsfeld (`Opening.taperedField`, v2.0.77 / klargestellt v2.0.78)
+
+Optionales **Giebel-/Verdachungs-Trapez über** der Öffnung — **anderes Feature** als die Rustika am Bogen:
 
 - Mehrere Lagen (`courses` × `panelHeight`), jede Lage ein Trapez-Polygon (`outline`)
-- Default: untere Breite = Öffnung + 2×`overhangCm`, oben schmaler (`topWidthRatio`); `invert` = nach unten verjüngend
+- Default: **aus**; untere Breite = Öffnung + 2×`overhangCm`, oben schmaler (`topWidthRatio`); `invert` = nach unten verjüngend
 - Basis-Y: Extrados (mit Voussoir) → sonst Bogenscheitel → sonst Sturz
-- Kartesisches Raster im Feld-AABB entfernt; Extrude über `ringAndFan`
-- UI: `#tapered-field-enabled` unter Verdachung; Optionen ausgeblendet wenn aus
+- UI: `#opening-tapered-field-section` unter Verdachung, Label „Separates Trapezfeld…“; Optionen `hidden` wenn aus
 - Generator: `src/studio/taperedField.ts`
 
 ### Zwei Horizontal-Bänder (UI, v2.0.72)
@@ -114,7 +127,7 @@ Stil-Vorlagen / Stile kopieren-einfügen nehmen `claddingZones` mit dem Paneel-S
 | Stil-Vorlagen / Clipboard | nur `panel` | **fixiert** inkl. `claddingZones` |
 | `cloneWall` / Etage duplizieren | klont `claddingZones`; Paneel aus → Zonen weg | ok |
 | `FacadeSvgView`, Mörtel, Validierung | oft globales `wall.panel` | bewusst (UI/Optik); Layout 3D zonenbasiert |
-| Voussoir / taperedField Generatoren | Voussoir Hybrid MVP; **taperedField v2.0.77** (`Opening.taperedField`) | teilweise / taperedField ok |
+| Voussoir / Rustika / taperedField | **Rustika v2.0.78** (`archRustication.ts`); Hybrid MVP; taperedField optional | Rustika ok; Hybrid Fallback |
 
 ## Was bewusst nicht „eine Formel“ ist
 
@@ -139,7 +152,8 @@ Stil-Vorlagen / Stile kopieren-einfügen nehmen `claddingZones` mit dem Paneel-S
 | `src/utils/openingPanelSnap.ts` | Y-bewusstes Modul bei Multi-Zone |
 | `src/utils/styleTemplates.ts` | Vorlagen inkl. `claddingZones` |
 | `src/studio/panelGeometry.ts` | Shell-Mesh, Shadow-Tunnel, Cladding-Extrude |
-| `src/studio/taperedField.ts` | Trapez-Quaderfeld über Öffnung (`Opening.taperedField`) |
+| `src/studio/archRustication.ts` | Radiale Rustika-Lagen am Rundbogen (v2.0.78) |
+| `src/studio/taperedField.ts` | Optionales separates Trapez-Verdachungsfeld (`Opening.taperedField`) |
 | `src/FacadeController.ts` | Mesh-Aufbau inkl. Zonen-Tiles |
 | `index.html` / `src/main.ts` | UI Zwei-Bänder, Stil-Zwischenablage, Quaderfeld |
 

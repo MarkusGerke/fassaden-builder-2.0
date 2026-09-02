@@ -56,9 +56,13 @@ Fenster und Türen, **nicht** Kellerfenster. Unabhängig von `wall.profiles`.
 
 UI: `#opening-pediment-section`, `#opening-consoles-section`. Normalize: `src/studio/pediment.ts`.
 
-## Quaderfeld / Verdachungsfeld (`Opening.taperedField`) — v2.0.77
+## Radiale Rustika am Rundbogen (v2.0.78)
 
-Mehrlagige trapezförmige Quader über der Öffnung (Gründerzeit-Verdachungsfeld / konische Staffelung). **Nicht** Keilstein-Ring und **nicht** `panelClearance.finish: 'taper'` (radialer Freiraum-Fächer).
+Bei Paneel **Strip** oder **Verband** und Öffnung mit **Rundbogen** staffeln die Wandlagen den Bogen radial (auch **ohne** Keilstein-Ring). Horizontale Fugen knicken nahe der Laibung zum Bogenmittelpunkt ab → trapez-/keilförmige Quader. Generator: `src/studio/archRustication.ts`. Details: [facade-layers.md](facade-layers.md).
+
+## Separates Trapez-Verdachungsfeld (`Opening.taperedField`) — v2.0.77 / klargestellt v2.0.78
+
+Optionales **Giebelfeld über** der Öffnung — **nicht** die Rustika am Bogen und **nicht** `panelClearance.finish: 'taper'`. Default **aus**.
 
 | Feld | Default | Bedeutung |
 |---|---|---|
@@ -72,7 +76,7 @@ Mehrlagige trapezförmige Quader über der Öffnung (Gründerzeit-Verdachungsfel
 
 Basis-Y: bei Voussoir Extrados, sonst Bogenscheitel, sonst `opening.y + height`. Bossen nutzen `panel.taperDepth` (Frustum). Kartesisches Raster im Feld-AABB entfernt.
 
-UI: `#opening-tapered-field-section` (unter Verdachung; Optionen `hidden` wenn aus). Generator: `src/studio/taperedField.ts`; Einbindung `prepareStudioPanelParts`.
+UI: `#opening-tapered-field-section` (Label „Separates Trapezfeld…“; Optionen `hidden` wenn aus). Generator: `src/studio/taperedField.ts`; Einbindung `prepareStudioPanelParts`.
 
 ## Eingangstreppe (`Opening.stairs`)
 

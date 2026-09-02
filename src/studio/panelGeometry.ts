@@ -40,6 +40,16 @@ import {
   normalizeOpeningTaperedField,
   taperedFieldPolysForOpening,
 } from './taperedField'
+import {
+  archRusticatedCoursePolys,
+  archRusticationKnuckles,
+  buildRusticationGeom,
+  cartesianPartOverlapsRusticationZone,
+  defaultKnuckleOffsetCm,
+  openingArchRusticationEnabled,
+  openingArchRusticationUsesCircleClip,
+  rusticationSectorRMax,
+} from './archRustication'
 import { STUDIO_MASONRY, panelKindForPattern, studioPlinthActive } from './constants'
 import { basementWindowEnabled } from './basementWindow'
 import { studioMiterLocalX } from './wallMiterX'
@@ -2167,22 +2177,86 @@ function prepareStudioPanelParts(
   const kind = panelKindForPattern(panel.pattern)
   const { rowCuts } = visiblePanelRowRange(wall.height, panel)
 
-  // Hybrid: Clip am Intrados + Bogenband entfernen. Klassischer Ring: Extrados-Dock.
+  // Rustika (v2.0.78) oder Hybrid: Clip am Intrados + Bogenband ersetzen.
+  // Klassischer Ring: Extrados-Dock.
+  // Kreis-Intrados-Clip nur wenn mind. eine Rundbogen-Rustika (sonst Outline-Clip).
+  const anyCircleRustication = wall.openings.some(
+    (o) =>
+      !o.hidden &&
+      openingCutsWall(o) &&
+      openingArchRusticationEnabled(o, panel.pattern) &&
+      openingArchRusticationUsesCircleClip(o),
+  )
   let rects: OpeningPoly[] = clipPolysMinusArches(
     tiles.flatMap((tile) => clipTileAgainstHoles(tile, holes)),
     wall.openings,
     PANEL_OPENING_CLEARANCE,
     panel.panelHeight,
-    { panelWidth: panel.panelWidth, joint, panelPattern: panel.pattern },
+    {
+      panelWidth: panel.panelWidth,
+      joint,
+      panelPattern: panel.pattern,
+      archRustication: anyCircleRustication,
+    },
   )
   rects = mergeNarrowClipParts(rects, minClipRemnantWidth(panel.panelWidth))
   rects = flushClipPartsToOpeningJambs(rects, wall.openings, PANEL_OPENING_CLEARANCE)
+
+  const ringAndFan: OpeningPoly[] = []
+  const rusticatedOpenings = new Set<string>()
+
+  // Primär: radiale Rustika-Lagen (Strip + Verband, mit/ohne Voussoir).
+  for (const opening of wall.openings) {
+    if (opening.hidden || !openingCutsWall(opening)) continue
+    if (!openingArchRusticationEnabled(opening, panel.pattern)) continue
+    const geom = buildRusticationGeom(opening, PANEL_OPENING_CLEARANCE)
+    if (!geom) continue
+    const knuckleOff = defaultKnuckleOffsetCm(panel)
+    const knuckle = archRusticationKnuckles(geom, knuckleOff)
+    const courseYs = archHybridCourseYs(
+      rowCuts,
+      geom.springY,
+      geom.apexY,
+      panel.panelHeight,
+    )
+    const rustPolys = archRusticatedCoursePolys(opening, courseYs, {
+      panelHeight: panel.panelHeight,
+      panelWidth: panel.panelWidth,
+      joint,
+      knuckleOffsetCm: knuckleOff,
+      crownKeystones: openingArchVoussoirsEnabled(opening) ? 1 : 1,
+    })
+    const rMax = rusticationSectorRMax(geom, rustPolys)
+    rects = rects.filter(
+      (part) => !cartesianPartOverlapsRusticationZone(part, geom, knuckle, rMax),
+    )
+    ringAndFan.push(...rustPolys)
+    rusticatedOpenings.add(opening.id)
+    if (openingArchVoussoirsEnabled(opening)) {
+      const spec = buildSemicircularArchSpec(opening, {
+        panelWidth: panel.panelWidth,
+        panelHeight: panel.panelHeight,
+        joint,
+        inflate: PANEL_OPENING_CLEARANCE,
+      })
+      if (spec?.jambs) {
+        for (const hole of archJambHoleRects(spec)) {
+          rects = rects.flatMap((part) => clipRectMinusBox(part, hole))
+        }
+        ringAndFan.push(...archJambPolysFromSpec(spec))
+      }
+    }
+  }
+
+  // Klassischer Keilstein-Ring / Hybrid nur wenn keine Rustika greift.
   const voussoirWork: {
     spec: NonNullable<ReturnType<typeof buildSemicircularArchSpec>>
     hybrid: boolean
+    opening: (typeof wall.openings)[number]
   }[] = []
   for (const opening of wall.openings) {
     if (opening.hidden || !openingCutsWall(opening)) continue
+    if (rusticatedOpenings.has(opening.id)) continue
     if (!openingArchVoussoirsEnabled(opening)) continue
     const spec = buildSemicircularArchSpec(opening, {
       panelWidth: panel.panelWidth,
@@ -2192,7 +2266,7 @@ function prepareStudioPanelParts(
     })
     if (!spec) continue
     const hybrid = openingArchHybridMasonryEnabled(opening, panel.pattern)
-    voussoirWork.push({ spec, hybrid })
+    voussoirWork.push({ spec, hybrid, opening })
     if (spec.jambs) {
       for (const hole of archJambHoleRects(spec)) {
         rects = rects.flatMap((part) => clipRectMinusBox(part, hole))
@@ -2200,7 +2274,6 @@ function prepareStudioPanelParts(
     }
   }
 
-  const ringAndFan: OpeningPoly[] = []
   for (const { spec, hybrid } of voussoirWork) {
     if (hybrid) {
       const courseYs = archHybridCourseYs(
@@ -2240,6 +2313,7 @@ function prepareStudioPanelParts(
 
   for (const opening of wall.openings) {
     if (opening.hidden || !openingCutsWall(opening)) continue
+    if (rusticatedOpenings.has(opening.id)) continue
     const holeGeom = openingArchGeom(opening, PANEL_OPENING_CLEARANCE)
     if (!holeGeom) continue
 
@@ -2267,7 +2341,7 @@ function prepareStudioPanelParts(
     }
   }
 
-  // Trapez-Quaderfeld über Öffnung (unabhängig von Voussoir / Freiraum-taper).
+  // Trapez-Verdachungsfeld (optional, Default aus) — anderes Feature als Rustika-am-Bogen.
   for (const opening of wall.openings) {
     if (opening.hidden) continue
     const field = normalizeOpeningTaperedField(opening.taperedField)
@@ -3662,17 +3736,9 @@ function clipFlatPanelTiles(
   tiles: PanelTile[],
   layoutTiles?: PanelTile[],
 ): OpeningPoly[] {
-  const joint = Math.max(0, panel.joint ?? 0.8)
-  const holes = snapOpeningHolesToTileGrid(wall, panel, layoutTiles ?? tiles)
-  let rects: OpeningPoly[] = clipPolysMinusArches(
-    tiles.flatMap((tile) => clipTileAgainstHoles(tile, holes)),
-    wall.openings,
-    PANEL_OPENING_CLEARANCE,
-    panel.panelHeight,
-    { panelWidth: panel.panelWidth, joint, panelPattern: panel.pattern },
-  )
-  rects = mergeNarrowClipParts(rects, minClipRemnantWidth(panel.panelWidth))
-  return flushClipPartsToOpeningJambs(rects, wall.openings, PANEL_OPENING_CLEARANCE)
+  // Gleiche Pipeline wie High-LOD inkl. Rustika / Hybrid / taperedField.
+  const parts = prepareStudioPanelParts(wall, panel, tiles, layoutTiles)
+  return [...parts.rects, ...parts.ringAndFan]
 }
 
 function buildStudioPanelFlatTileGeometry(

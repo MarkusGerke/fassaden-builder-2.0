@@ -258,6 +258,7 @@ Zwischen zwei Öffnungen (oder Öffnung und Wandende) darf kein sichtbarer Rest 
 - **Keil-Bossen (v0.7.83):** `extrudePolarFrustum` mit begrenztem Chamfer (~22 % Ringstärke / 18 % Winkel), Radial-Quads statt Fächer; Körper-Front entfällt wenn Polar-Boss die Front übernimmt (kein „Paneel im Keil“).
 - **3D-Flackern (v0.7.87):** Selektion ruft `applyRenderStyle` nicht mehr auf (Linien blieben sonst neu gebaut). Orbit-Lite ändert Pixelratio/Linien/Bloom nicht mehr.
 - **Hybrid-Übergang (v2.0.75/76):** Bei Rundbogen + Voussoir + Mauerwerk/Läuferverband (`openingArchHybridMasonryEnabled`) liefern `archHybridVoussoirPolysFromSpec` **schichtweise** Sektor×Lagerfuge-Polygone; kartesisches Raster nur im Winkelsektor entfernt (`cartesianPartOverlapsHybridSector`). Details/Maße: [facade-layers.md](facade-layers.md).
+- **Radiale Rustika (v2.0.78):** Bei Strip oder Verband + Rundbogen (auch ohne Voussoir) ersetzen `archRusticatedCoursePolys` die kaputten Clip-Reste am Bogen: Knick ~ Laibung ± Überstand, radiale Lagerfugen, Scheitelstein. Hat Vorrang vor Hybrid. Optionales `taperedField` bleibt separates Verdachungs-Trapez.
 
 ### Modul-GLB-Verkleidung vs. Fassadenbogen (v0.7.37)
 

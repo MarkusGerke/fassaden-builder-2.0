@@ -344,8 +344,9 @@ export interface Opening {
   /** Verdachung über dem Sturz (Fenster/Tür). */
   pediment?: OpeningPediment
   /**
-   * Mehrlagiges trapezförmiges Quader-/Verdachungsfeld über der Öffnung
-   * (`CladdingZoneKind: 'taperedField'`). Unabhängig vom Keilstein-Ring.
+   * Optionales separates Trapez-/Verdachungsfeld über der Öffnung
+   * (`CladdingZoneKind: 'taperedField'`). Nicht die radialen Rustika-Lagen am Bogen
+   * (v2.0.78) — Default aus; UI unter Verdachung.
    */
   taperedField?: OpeningTaperedField
   /** Eingangstreppe vor der Tür. */
