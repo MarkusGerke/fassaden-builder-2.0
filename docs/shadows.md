@@ -137,7 +137,7 @@ State-Änderung / Sonnen-Slider
 | `PCSS_NEAR_PLANE` | 0,002 | Blocker-Suchradius (Shadow-Tiefenraum) |
 | `MIN_SUN_DISTANCE` | 900 cm | Untergrenze Licht→Ziel |
 | `SHADOW_MAP_SIZE` | 4096 | Shadow-Map (große Sites) |
-| `SHADOW_MAP_SIZE_HIGH` | 8192 | Shadow-Map wenn Site-Spanne ≤ 2200 cm (v0.7.346) |
+| `SHADOW_MAP_SIZE_HIGH` | 8192 | Shadow-Map wenn Site-Spanne ≤ 4800 cm (v2.0.114; früher 2200) |
 | `PCSS_NUM_SAMPLES` | 32 | PCSS-Filter-/Blocker-Taps (v0.7.346; vorher 17) |
 | `INDOOR_SLAB_THICKNESS` | 8 cm | Extrusionsdicke Etagen-Trennfläche |
 | `SHADOW_BIAS` | −0.0002 | Tiefen-Bias |
@@ -166,6 +166,7 @@ Glas: dunkles Klarglas, CubeCamera-EnvMap der Szene von außerhalb. `transmissio
 - **Render + schwebender Schatten (v0.7.333):** Umbra am Kontakt hart; NormalBias 0; Cast-Shadow ohne polygonOffset (`customDepthMaterial`).
 - **Render + schwebender Schatten (v0.7.332):** Mindest-Filter und hoher NormalBias wirkten am Kontakt wie Peter-Panning. Contact-Hardening + PCSS-NormalBias ≤ 0,12 cm.
 - **Render + „gepunktet“ / pixelig (v0.7.346):** Zu wenige PCSS-Samples (17) ließen das Poisson-Muster sichtbar werden. Jetzt **32 Samples**; kleine Sites zusätzlich **8192** Shadow-Map. Weichheit-Slider unverändert (0,8…28 cm).
+- **Wand anfügen → Schatten zerstört (v2.0.114):** `mapSize` wurde nach `fitDirectionalShadowCamera` gesetzt und bei Wechsel 8192↔4096 ohne Dispose — RT und Texel-Snap passten nicht. Reihenfolge: `ensureDirectionalShadowMapSize` → Fit → Bake. Live-Preview ruft `applySunLighting({ live: true })`. 8192 bis Spanne 4800 cm.
 - **Render + fransig / langsam (Scale 24 / Softness 5):** zu großer Filterradius. Default Softness 2,5 + Scale 8.
 - **Render + gemischt weich / kantiger Außenrand (v2.0.99):** Blocker-Suche war kleiner als der PCSS-Filter → weiche Umbra, harte Texel-Silhouette. Suche nutzt jetzt dieselbe `PCSS_PENUMBRA_SCALE`. Boden sampled `getShadow` nicht mehr ein zweites Mal (ein Pfad).
 - **Render + stotternde Navigation (v2.0.98):** Bei Punktlicht setzte `renderLitSceneFrame` jedes Frame `shadowMap.needsUpdate` — teurer Full-Bake. Nur noch bei Geometrie/Licht über `scheduleSunShadowMapUpdate`.

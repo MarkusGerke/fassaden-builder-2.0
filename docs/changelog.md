@@ -2,6 +2,10 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Sonnen-Schatten nach Wand-Erweiterung (2026-09-03) — v2.0.114
+
+Shadow-Map-Größe wurde **nach** dem Frustum-Fit geändert und bei Größenwechsel nicht disposed — Schatten wirkten zerstört/pixelig, neue Flügel ohne Schatten. Jetzt: Größe setzen (+ Dispose) → Fit → Bake; Live-Preview aktualisiert Frustum mit. 8192 bis 4800 cm Spanne. Dateien: `main.ts`, `sunLighting.ts`. Docs: [shadows.md](shadows.md).
+
 ### Wand löschen ohne Phantom-Meshes (2026-09-03) — v2.0.113
 
 Partial-Rebuild entfernte nur Meshes noch existierender Wände — gelöschte Wandkörper/Sockel blieben stehen, Paneele (per Gebäude-ID geleert) nicht. `removeBuildingRenderables` räumt jetzt auch Orphans. Datei: `FacadeController.ts`. Docs: [architecture.md](architecture.md).

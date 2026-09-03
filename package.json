@@ -1,7 +1,7 @@
 {
   "name": "fassaden-builder-2.0",
   "private": true,
-  "version": "2.0.113",
+  "version": "2.0.114",
   "type": "module",
   "scripts": {
     "dev": "vite",

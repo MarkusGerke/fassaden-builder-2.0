@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.113'
+export const APP_VERSION = '2.0.114'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,16 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.114',
+    date: '2026-09-03',
+    title: 'Schatten nach Wand-Erweiterung repariert',
+    changes: [
+      'Sonnen-Schatten bleiben korrekt, wenn du weitere Wände anfügst',
+      'Neue Wandflügel werfen und empfangen wieder Schatten',
+      'Bitte hart neu laden, bis v2.0.114 in der Titelleiste steht',
+    ],
+  },
   {
     version: '2.0.113',
     date: '2026-09-03',

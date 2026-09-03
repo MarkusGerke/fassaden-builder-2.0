@@ -3828,6 +3828,13 @@ function disposeDirectionalShadowMap(light: THREE.DirectionalLight) {
   light.shadow.map = null
 }
 
+/** Map-Größe setzen; bei Wechsel alte RT verwerfen — sonst zerstörte/pixelige Schatten. */
+function ensureDirectionalShadowMapSize(light: THREE.DirectionalLight, size: number): void {
+  if (light.shadow.mapSize.x === size && light.shadow.mapSize.y === size) return
+  disposeDirectionalShadowMap(light)
+  light.shadow.mapSize.set(size, size)
+}
+
 function syncPresentationModeUi() {
   const draftBtn = document.querySelector<HTMLButtonElement>('#light-presentation-btn')
   const previewBtn = document.querySelector<HTMLButtonElement>('#edit-presentation-btn')
@@ -8574,7 +8581,14 @@ function applySunLighting(opts?: { updateShadowMap?: boolean; live?: boolean }) 
     dirLightIndoor.visible = false
   }
   dirLightIndoor.castShadow = false
+
+  // Zuerst Map-Größe (ggf. dispose), dann Frustum — sonst Texel-Snap/RT falsch und Schatten „zerstört“.
+  const siteSpan = Math.max(box.max.x - box.min.x, box.max.z - box.min.z, 400)
+  const shadowSize = shadowMapSizeForSiteSpan(siteSpan)
+  ensureDirectionalShadowMapSize(dirLight, shadowSize)
+  dirLight.shadow.camera.layers.set(SHADOW_LAYER_EXTERIOR)
   fitDirectionalShadowCamera(dirLight, shadowBox)
+
   if (!presentationUsesWorkLikeShading(presentationMode)) {
     updatePcssShadowParameters(sunSettings.shadowSoftness, shadowFrustumWidthCm(dirLight), scene)
   }
@@ -8583,10 +8597,6 @@ function applySunLighting(opts?: { updateShadowMap?: boolean; live?: boolean }) 
     dirLight.shadow.normalBias = SHADOW_NORMAL_BIAS_MIN
     dirLight.shadow.bias = SHADOW_BIAS
   }
-  const siteSpan = Math.max(box.max.x - box.min.x, box.max.z - box.min.z, 400)
-  const shadowSize = shadowMapSizeForSiteSpan(siteSpan)
-  dirLight.shadow.mapSize.set(shadowSize, shadowSize)
-  dirLight.shadow.camera.layers.set(SHADOW_LAYER_EXTERIOR)
   syncSceneLightRuntime()
   const live = opts?.live === true
   if (opts?.updateShadowMap === true) {
@@ -8758,6 +8768,9 @@ function flushLiveGeometryPreview() {
   facade.setEditor(editor)
   reapplyOpeningMotionPlayback()
   reapplyRollerShutterPlayback()
+  syncSiteTransform()
+  // Frustum an neue Wand-Ausdehnung anpassen — sonst fehlen Schatten an neuen Flügeln.
+  applySunLighting({ live: true })
   updateWallLibraryGizmos()
   markViewportDirty()
 }

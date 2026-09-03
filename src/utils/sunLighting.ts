@@ -105,10 +105,14 @@ export const DEFAULT_SUN_SETTINGS: SunSettings = {
 /** Mindestabstand Licht→Ziel (cm). Wird bei großen Baukörpern angehoben, damit nichts hinter der Shadow-Camera liegt. */
 export const MIN_SUN_DISTANCE = 900
 export const SHADOW_MAP_SIZE = 4096
-/** Kleine Sites: feinere Texel → weniger Treppenstufen in der Penumbra. */
+/** Kleine/mittlere Sites: feinere Texel → weniger Treppenstufen in der Penumbra. */
 export const SHADOW_MAP_SIZE_HIGH = 8192
-/** Site-Spanne (cm), ab der 8192 keinen spürbaren Gewinn mehr bringt. */
-export const SHADOW_MAP_HIGH_SPAN_CM = 2200
+/**
+ * Site-Spanne (max XZ, cm), bis zu der 8192 genutzt wird.
+ * Darüber 4096 — bei Wachstum der Fassade muss Map-Größe **vor** Frustum-Fit
+ * und mit Dispose gewechselt werden (`ensureDirectionalShadowMapSize`).
+ */
+export const SHADOW_MAP_HIGH_SPAN_CM = 4800
 
 /** Site-Spanne → Shadow-Map-Auflösung (4096 oder 8192). */
 export function shadowMapSizeForSiteSpan(span: number): number {
