@@ -621,6 +621,9 @@ export class FacadeController {
     }
     for (const mesh of this.revealMeshes) {
       mesh.castShadow = true
+      // Wie Sockel: bei Raum-Okklusion Cube-Shadows empfangen, sonst Innenlicht-Leak.
+      const sealed = mesh.userData.sealedNiche === true
+      mesh.receiveShadow = enable || sealed
       if (enable) {
         mesh.customDistanceMaterial = this.shadowDistanceMaterial
       } else if (mesh.customDistanceMaterial === this.shadowDistanceMaterial) {
@@ -2833,8 +2836,11 @@ export class FacadeController {
             : exteriorMaterial
         const mesh = new THREE.Mesh(geometry, materials)
         mesh.castShadow = true
-        // Nische/Konche empfängt Cube-Schatten der Kappen — sonst leuchtet der Hohlraum.
-        mesh.receiveShadow = opening.type === 'conch' || openingFillMode(opening) === 'niche'
+        // Sonne: Empfang aus (Moiré). Punktlicht-Okklusion: an — sonst leuchtet Innenlicht die Laibung an.
+        mesh.receiveShadow =
+          this.pointLightOccludersEnabled ||
+          opening.type === 'conch' ||
+          openingFillMode(opening) === 'niche'
         mesh.renderOrder = 2
         exteriorMaterial.polygonOffset = true
         exteriorMaterial.polygonOffsetFactor = -2

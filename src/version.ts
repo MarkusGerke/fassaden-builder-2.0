@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.104'
+export const APP_VERSION = '2.0.105'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,15 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.105',
+    date: '2026-09-03',
+    title: 'Laibung ohne Innenlicht-Leak',
+    changes: [
+      'Punktlicht hinter der Wand erhellt die Laibung nicht mehr — Wandschatten greifen an der Laibung',
+      'Bitte hart neu laden, bis v2.0.105 in der Titelleiste steht',
+    ],
+  },
   {
     version: '2.0.104',
     date: '2026-09-03',
