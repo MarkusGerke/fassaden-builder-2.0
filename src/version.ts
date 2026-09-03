@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.114'
+export const APP_VERSION = '2.0.115'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,15 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.115',
+    date: '2026-09-03',
+    title: 'Laibung hinter Freiraum',
+    changes: [
+      'Mit „Freiraum um die Öffnung“ endet die Laibung wieder hinter der Freiraum-Front — nicht mehr minimal davor',
+      'Bitte hart neu laden, bis v2.0.115 in der Titelleiste steht',
+    ],
+  },
   {
     version: '2.0.114',
     date: '2026-09-03',

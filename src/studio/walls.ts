@@ -1174,7 +1174,11 @@ export function studioOpeningRevealOuterZ(wall: Wall, opening?: Opening): number
   const flip = wall.panelFlip ?? true
   const facadeZ = studioFacadeOutwardLocalZ(wall)
   const recessZ = opening ? studioClearanceRecessZ(wall, opening) : null
-  if (recessZ != null) return recessZ
+  const inset = studioWindowDepthForwardSign(wall) * REVEAL_OUTER_INSET_CM
+  if (recessZ != null) {
+    // Freiraum-Front besitzt die Kante; Laibung knapp dahinter (sonst vor der Vertiefung).
+    return recessZ - inset
+  }
   if (!opening) return facadeZ
   const hasOpeningProfile = wall.profiles.some((profile) => profile.openingId === opening.id)
   let outer = facadeZ
@@ -1185,7 +1189,7 @@ export function studioOpeningRevealOuterZ(wall: Wall, opening?: Opening): number
   }
   // Paneel besitzt die Frontkante; Laibung startet knapp dahinter (kein Z-Fight).
   if (wallHasPanels(wall)) {
-    return outer - studioWindowDepthForwardSign(wall) * REVEAL_OUTER_INSET_CM
+    return outer - inset
   }
   return outer
 }

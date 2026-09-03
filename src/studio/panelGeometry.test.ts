@@ -21,6 +21,9 @@ import {
   createStudioWall,
   panelMiterEnds,
   plinthMiterEnds,
+  REVEAL_OUTER_INSET_CM,
+  studioClearanceRecessZ,
+  studioOpeningRevealOuterZ,
   studioPanelFaceLocalZ,
   studioWallOuterLocalZ,
   studioWallTransform,
@@ -815,6 +818,31 @@ describe('createStudioOpeningRevealGeometry', () => {
     expect(topCount).toBeGreaterThanOrEqual(4)
     expect(pos.count).toBe(32)
     geometry!.dispose()
+  })
+
+  it('mit Freiraum endet die Laibung hinter der Vertiefungsfront (Inset)', () => {
+    const opening = {
+      id: 'o1',
+      type: 'window' as const,
+      x: 48,
+      y: 128,
+      width: 96,
+      height: 128,
+      panelClearance: { enabled: true, cm: 8, depthCm: 4, finish: 'empty' as const },
+    }
+    const wall: Wall = {
+      ...studioWall({ ...DEFAULT_STUDIO_PANEL, projectDepth: 8, enabled: true }),
+      kind: 'studio',
+      panelFlip: true,
+      depth: 32,
+      openings: [opening],
+    }
+    const recessZ = studioClearanceRecessZ(wall, opening)
+    expect(recessZ).not.toBeNull()
+    const outerZ = studioOpeningRevealOuterZ(wall, opening)
+    // panelFlip: außen −Z → Laibung weiter innen = größerer Z als Freiraum-Front
+    expect(outerZ).toBeCloseTo(recessZ! + REVEAL_OUTER_INSET_CM, 5)
+    expect(outerZ).toBeGreaterThan(recessZ!)
   })
 })
 

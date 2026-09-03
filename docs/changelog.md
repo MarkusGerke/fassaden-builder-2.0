@@ -2,6 +2,10 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Laibung hinter Freiraum-Front (2026-09-03) — v2.0.115
+
+Mit aktivem Freiraum endete `studioOpeningRevealOuterZ` exakt an `studioClearanceRecessZ` — ohne das Paneel-Inset. Die Laibung stand minimal vor der Freiraum-Front. Jetzt wie bei Paneelen: `REVEAL_OUTER_INSET_CM` (0,6 cm) dahinter. Datei: `walls.ts`. Docs: [panel-geometry.md](panel-geometry.md), [ux.md](ux.md).
+
 ### Sonnen-Schatten nach Wand-Erweiterung (2026-09-03) — v2.0.114
 
 Shadow-Map-Größe wurde **nach** dem Frustum-Fit geändert und bei Größenwechsel nicht disposed — Schatten wirkten zerstört/pixelig, neue Flügel ohne Schatten. Jetzt: Größe setzen (+ Dispose) → Fit → Bake; Live-Preview aktualisiert Frustum mit. 8192 bis 4800 cm Spanne. Dateien: `main.ts`, `sunLighting.ts`. Docs: [shadows.md](shadows.md).
