@@ -103,10 +103,12 @@ export const RELEASES: ReleaseNote[] = [
   {
     version: '2.0.133',
     date: '2026-09-03',
-    title: 'Tiefe Nischen mit Schatten',
+    title: 'Tiefe Nischen mit Schatten, Bühne lädt wieder + Bloom',
     changes: [
       'Nischen tiefer als die Wanddicke empfangen wieder Sonne/Punktlicht-Schatten',
       'Shadow-Tunnel geht bis hinter die Rückwand — keine Kappe mitten in der Nische',
+      'Bühnenmodus (?stage=1) startet wieder — 3D-Umschaltung war zu früh',
+      'Bloom ist im Bühnenmodus standardmäßig an',
       'Bitte hart neu laden, bis v2.0.133 in der Titelleiste steht',
     ],
   },

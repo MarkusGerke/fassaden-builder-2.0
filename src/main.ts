@@ -14878,8 +14878,14 @@ syncLodUi()
 const facade = new FacadeController(scene, state)
 facadeReady = true
 if (STAGE_VIEW_MODE) {
-  // Bühne: 3D-Zeichenfläche fürs Handy
-  setView('3d')
+  // Nach Modul-Init (exportStage & Co.): 3D + Bloom — sonst TDZ auf exportStage.
+  queueMicrotask(() => {
+    setView('3d')
+    bloomSettings = normalizeBloomSettings({ ...bloomSettings, enabled: true })
+    applyBloomRenderer()
+    syncBloomFogUi()
+    markViewportDirty()
+  })
 }
 syncCladdingReceiveShadows()
 sceneReflectionHideRoots.push(

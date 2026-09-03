@@ -535,9 +535,9 @@ Unter **Szene → Animation** (v2.0.130):
 
 Der frühere einmalige **Tagesverlauf abspielen** (Himmelsrichtung/Uhrzeit-Kanäle) ist entfernt.
 
-### Bühnenmodus (v2.0.132)
+### Bühnenmodus (v2.0.132 / v2.0.133)
 
-URL-Parameter **`?stage=1`** (oder `?view=stage`): nur die 3D-Zeichenfläche, der **Tageszeit**-Slider und **Animationen pausieren** — fürs Handy im lokalen Netz. Start: `npm run dev:lan`, dann `http://<LAN-IP>:5173/?stage=1`.
+URL-Parameter **`?stage=1`** (oder `?view=stage`): nur die 3D-Zeichenfläche, der **Tageszeit**-Slider und **Animationen pausieren** — fürs Handy im lokalen Netz. Bloom ist an. Start: `npm run dev:lan`, dann `http://<LAN-IP>:5173/?stage=1`.
 
 ---
 
