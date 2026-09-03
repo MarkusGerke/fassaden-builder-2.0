@@ -2,6 +2,10 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Punktlicht-Schatten 2D weniger pixelig (2026-09-03) — v2.0.111
+
+Ortho-Front: Cube-Shadow-Map 4096, stärkerer Soft-Filter (17 Taps, Radius-Scale 2,25). Dateien: `pcssShadows.ts`, `sceneLightRuntime.ts`, `main.ts`. Docs: [scene-lights.md](scene-lights.md), [shadows.md](shadows.md).
+
 ### Bloom unter Licht + Bibliotheks-Tabs (2026-09-03) — v2.0.110
 
 „Bloom an“ (+ Optionen) von Szene-Farben nach Szene → Licht unter „Lichtpunkte anzeigen“. Bibliotheks-Tabs in `#library-dock` oberhalb von `#opening-library`. Dateien: `index.html`, `style.css`. Docs: [ux.md](ux.md).

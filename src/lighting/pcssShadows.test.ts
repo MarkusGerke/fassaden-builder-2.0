@@ -26,10 +26,11 @@ describe('pcssShadows', () => {
   })
 
   it('mappt Weichheit auf Punktlicht-Cube-Shadow-Radius', () => {
-    expect(pointShadowRadiusFromSoftness(0.5)).toBeCloseTo(1, 5)
-    expect(pointShadowRadiusFromSoftness(8)).toBeCloseTo(18, 5)
-    expect(pointShadowRadiusFromSoftness(2.5)).toBeGreaterThan(1)
-    expect(pointShadowRadiusFromSoftness(2.5)).toBeLessThan(18)
+    expect(pointShadowRadiusFromSoftness(0.5)).toBeCloseTo(3, 5)
+    expect(pointShadowRadiusFromSoftness(8)).toBeCloseTo(32, 5)
+    expect(pointShadowRadiusFromSoftness(2.5)).toBeGreaterThan(3)
+    expect(pointShadowRadiusFromSoftness(2.5)).toBeLessThan(32)
+    expect(pointShadowRadiusFromSoftness(2.5, 2)).toBeCloseTo(pointShadowRadiusFromSoftness(2.5) * 2, 5)
   })
 
   it('berechnet LIGHT_SIZE_UV aus Frustum-Breite', () => {
@@ -50,7 +51,7 @@ describe('pcssShadows', () => {
     expect(THREE.ShaderChunk.shadowmap_pars_fragment).not.toContain(
       'pcssLightSizeUv * PCSS_NEAR_PLANE / zReceiver',
     )
-    expect(THREE.ShaderChunk.shadowmap_pars_fragment).toContain('sum / 9.0')
+    expect(THREE.ShaderChunk.shadowmap_pars_fragment).toContain('sum / 17.0')
     expect(THREE.ShaderChunk.shadowmap_pars_fragment).not.toContain(
       'float depth = textureCube( shadowMap, bd3D ).r;',
     )

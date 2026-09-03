@@ -19,8 +19,13 @@ import { SHADOW_LAYER_EXTERIOR, SHADOW_LAYER_INTERIOR, SHADOW_LAYER_OCCLUDER } f
 const MARKER_RADIUS_CM = 40
 const PICK_RADIUS_CM = 64
 const POINT_SHADOW_MAP = 2048
+/** Ortho-2D vergrößert Cube-Texel — höhere Map gegen Treppchen. */
+export const POINT_SHADOW_MAP_FRONT = 4096
 const POINT_SHADOW_NEAR_CM = 8
 const POINT_SHADOW_FAR_DEFAULT_CM = 2400
+
+/** Extra-Weichheit für Ortho-Front (Cube-Schatten sonst pixelig). */
+export const POINT_SHADOW_RADIUS_SCALE_FRONT = 2.25
 
 interface LightEntry {
   light: THREE.PointLight
@@ -38,6 +43,13 @@ export interface SceneLightRuntimeSyncOptions {
   shadowFarCm?: number
   /** Sonnen-Weichheit-Slider → Punktlicht shadow.radius. */
   shadowSoftness?: number
+  /**
+   * Extra-Weichheit für Ortho-2D (Cube-Schatten wirken sonst pixelig).
+   * 1 = normal, ~2 in Front-Ansicht.
+   */
+  pointShadowRadiusScale?: number
+  /** Cube-Shadow-Map-Kantenlänge; Front oft höher. */
+  pointShadowMapSize?: number
   /** Globale Anzeige der Editor-Kugeln (Bibliothek → Licht). */
   showMarkers?: boolean
   /** Bloom aktiv — HDR-Kern für Glühbirnen-Effekt. */
@@ -132,7 +144,18 @@ export class SceneLightRuntime {
     entry.light.decay = spec.decay ?? 2
     entry.light.castShadow =
       spec.enabled && spec.castShadow !== false && options.roomOcclusion !== false
-    entry.light.shadow.radius = pointShadowRadiusFromSoftness(options.shadowSoftness ?? 2.5)
+    entry.light.shadow.radius = pointShadowRadiusFromSoftness(
+      options.shadowSoftness ?? 2.5,
+      options.pointShadowRadiusScale ?? 1,
+    )
+    const mapSize = options.pointShadowMapSize ?? POINT_SHADOW_MAP
+    if (entry.light.shadow.mapSize.x !== mapSize) {
+      entry.light.shadow.mapSize.setScalar(mapSize)
+      if (entry.light.shadow.map) {
+        entry.light.shadow.map.dispose()
+        entry.light.shadow.map = null
+      }
+    }
     const shadowFar = options.shadowFarCm ?? POINT_SHADOW_FAR_DEFAULT_CM
     if (entry.light.shadow.camera.far !== shadowFar) {
       entry.light.shadow.camera.far = shadowFar

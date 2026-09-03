@@ -545,7 +545,7 @@ import {
   type PresentationMode,
 } from './lighting/editPresentation'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
-import { SceneLightRuntime } from './lighting/sceneLightRuntime'
+import { SceneLightRuntime, POINT_SHADOW_MAP_FRONT, POINT_SHADOW_RADIUS_SCALE_FRONT } from './lighting/sceneLightRuntime'
 import { normalizePowerWatts } from './lighting/sceneLightUnits'
 import {
   addSceneLight,
@@ -8373,11 +8373,14 @@ function sceneLightsActive(): boolean {
 function syncSceneLightRuntime(): void {
   const roomOcclusion = sceneLightRoomOcclusionActive()
   const lightsActive = sceneLightsActive()
+  const frontView = currentView === 'front'
   sceneLightRuntime.sync(normalizeSceneLights(state.sceneLights), {
     roomOcclusion,
     selectedId: editor.selectedSceneLightId,
     shadowFarCm: sceneLightShadowFarCm(),
     shadowSoftness: sunSettings.shadowSoftness,
+    pointShadowRadiusScale: frontView ? POINT_SHADOW_RADIUS_SCALE_FRONT : 1,
+    pointShadowMapSize: frontView ? POINT_SHADOW_MAP_FRONT : 2048,
     showMarkers: state.viewOptions?.showLightMarkers !== false,
     bloomActive: bloomIsActive(),
   })

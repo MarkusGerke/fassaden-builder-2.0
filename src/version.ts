@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.110'
+export const APP_VERSION = '2.0.111'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,15 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.111',
+    date: '2026-09-03',
+    title: 'Weichere Punktlicht-Schatten in 2D',
+    changes: [
+      'Punktlicht-Schatten in der 2D-Ansicht sind weniger pixelig (höhere Shadow-Map, weicherer Filter)',
+      'Bitte hart neu laden, bis v2.0.111 in der Titelleiste steht',
+    ],
+  },
   {
     version: '2.0.110',
     date: '2026-09-03',

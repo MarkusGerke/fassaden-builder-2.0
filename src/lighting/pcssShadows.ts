@@ -168,7 +168,10 @@ const BASIC_GET_POINT_SHADOW_MARKER = `float getPointShadow( samplerCube shadowM
 		return mix( 1.0, shadow, shadowIntensity );
 	}`
 
-/** Soft Basic getPointShadow — nutzt shadowRadius (Weichheit-Slider) trotz BasicShadowMap/PCSS-Sonne. */
+/**
+ * Soft Basic getPointShadow — 17 Disk-Taps.
+ * Ortho-2D vergrößert Cube-Texel stark; deshalb mind. ~3 Texel Weichheit und größerer Radius-Bereich.
+ */
 const BASIC_GET_POINT_SHADOW_SOFT = `float getPointShadow( samplerCube shadowMap, vec2 shadowMapSize, float shadowIntensity, float shadowBias, float shadowRadius, vec4 shadowCoord, float shadowCameraNear, float shadowCameraFar ) {
 		float shadow = 1.0;
 		vec3 lightToPosition = shadowCoord.xyz;
@@ -178,13 +181,13 @@ const BASIC_GET_POINT_SHADOW_SOFT = `float getPointShadow( samplerCube shadowMap
 			float dp = ( shadowCameraFar * ( viewSpaceZ - shadowCameraNear ) ) / ( viewSpaceZ * ( shadowCameraFar - shadowCameraNear ) );
 			dp += shadowBias;
 			vec3 bd3D = normalize( lightToPosition );
-			float texelSize = max( shadowRadius, 1.0 ) / shadowMapSize.x;
+			float texelSize = max( shadowRadius, 3.0 ) / shadowMapSize.x;
 			vec3 absDir = abs( bd3D );
 			vec3 tangent = absDir.x > absDir.z ? vec3( 0.0, 1.0, 0.0 ) : vec3( 1.0, 0.0, 0.0 );
 			tangent = normalize( cross( bd3D, tangent ) );
 			vec3 bitangent = cross( bd3D, tangent );
 			float sum = 0.0;
-			vec2 offs[9];
+			vec2 offs[17];
 			offs[0] = vec2( 0.0, 0.0 );
 			offs[1] = vec2( 1.0, 0.0 );
 			offs[2] = vec2( -1.0, 0.0 );
@@ -194,7 +197,15 @@ const BASIC_GET_POINT_SHADOW_SOFT = `float getPointShadow( samplerCube shadowMap
 			offs[6] = vec2( -0.7071, 0.7071 );
 			offs[7] = vec2( 0.7071, -0.7071 );
 			offs[8] = vec2( -0.7071, -0.7071 );
-			for ( int i = 0; i < 9; i ++ ) {
+			offs[9] = vec2( 1.5, 0.0 );
+			offs[10] = vec2( -1.5, 0.0 );
+			offs[11] = vec2( 0.0, 1.5 );
+			offs[12] = vec2( 0.0, -1.5 );
+			offs[13] = vec2( 1.0607, 1.0607 );
+			offs[14] = vec2( -1.0607, 1.0607 );
+			offs[15] = vec2( 1.0607, -1.0607 );
+			offs[16] = vec2( -1.0607, -1.0607 );
+			for ( int i = 0; i < 17; i ++ ) {
 				vec3 dir = normalize( bd3D + ( tangent * offs[ i ].x + bitangent * offs[ i ].y ) * texelSize );
 				float depth = textureCube( shadowMap, dir ).r;
 				#ifdef USE_REVERSED_DEPTH_BUFFER
@@ -202,7 +213,7 @@ const BASIC_GET_POINT_SHADOW_SOFT = `float getPointShadow( samplerCube shadowMap
 				#endif
 				sum += step( dp, depth );
 			}
-			shadow = sum / 9.0;
+			shadow = sum / 17.0;
 		}
 		return mix( 1.0, shadow, shadowIntensity );
 	}`
@@ -221,10 +232,11 @@ export function pcssLightWorldSizeFromSoftness(softness: number): number {
 /**
  * Punktlicht-Cube-Shadow-Radius aus dem Weichheit-Slider (BasicShadowMap nutzt das
  * sonst nicht — Soft-Taps in BASIC_GET_POINT_SHADOW_SOFT).
+ * @param scale Extra-Faktor (z. B. 2 in Ortho-2D, wo Cube-Texel stark vergrößert werden).
  */
-export function pointShadowRadiusFromSoftness(softness: number): number {
+export function pointShadowRadiusFromSoftness(softness: number, scale = 1): number {
   const t = THREE.MathUtils.clamp((softness - 0.5) / 7.5, 0, 1)
-  return THREE.MathUtils.lerp(1, 18, t)
+  return THREE.MathUtils.lerp(3, 32, t) * Math.max(0.5, scale)
 }
 
 /** Lichtgröße in UV-Raum relativ zur Ortho-Frustum-Breite (cm). */

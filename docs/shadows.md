@@ -78,6 +78,8 @@ planFacesWithHoles(plan)
 | Wandkörper (Studio) | ja | ja (**v0.7.237** / **v0.7.285**; immer, nicht nur bei Schrift) |
 | Öffnungs-Tunnel (unsichtbar) | ja | nein (nur Shadow-Map; bis Fassadenfront inkl. Paneeltiefe, v0.7.192) |
 | Punktlicht-Raum-Okkluder (Außenring, Layer 3) | ja (nur Punktlicht-Cube-Map, `customDistanceMaterial`; **v2.0.107:** 100 cm + Stoß 160 cm) | nein — unsichtbar für Kamera und Sonne |
+
+**Punktlicht-Cube-Map (v2.0.111):** 3D **2048**, 2D-Front **4096**; Soft-Filter 17 Taps; Front zusätzlich `pointShadowRadiusScale` 2,25 — sonst wirken Schattenkanten in der Ortho-Ansicht stark pixelig.
 | Paneele / Mörtel | ja | **2D-Front: ja** (v0.7.285 Werfschatten); **3D/Oben: nein** (v0.7.183 / v0.7.140 — Empfang = Schraffur) |
 | Laibung | ja | **nein** (v0.7.140) |
 | Dach | ja | ja |
