@@ -18,6 +18,7 @@ import {
   findBuildingForWall,
   findWall,
   getActiveBuilding,
+  getAllWalls,
   getVisibleWalls,
   wallWithoutOpenings,
 } from './utils/buildings'
@@ -2429,14 +2430,22 @@ export class FacadeController {
   }
 
   private removeBuildingRenderables(buildingId: string) {
-    const wallIds = new Set(
+    const currentWallIds = new Set(
       getVisibleWalls(this.state)
         .filter((w) => w.buildingId === buildingId)
         .map((w) => w.id),
     )
+    // Alle Wand-IDs im Projekt — gelöschte Wände sind Orphans und müssen mit weg.
+    const allWallIds = new Set(getAllWalls(this.state).map((w) => w.id))
 
-    for (const [id, mesh] of this.meshes) {
-      if (!wallIds.has(id)) continue
+    const wallMeshShouldRemove = (wallId: string, meshBuildingId?: string) =>
+      meshBuildingId === buildingId ||
+      currentWallIds.has(wallId) ||
+      !allWallIds.has(wallId)
+
+    for (const [id, mesh] of [...this.meshes.entries()]) {
+      const meshBuildingId = mesh.userData.buildingId as string | undefined
+      if (!wallMeshShouldRemove(id, meshBuildingId)) continue
       this.wallGroup.remove(mesh)
       mesh.geometry.dispose()
       this.meshes.delete(id)
@@ -2461,7 +2470,12 @@ export class FacadeController {
       for (let i = list.length - 1; i >= 0; i -= 1) {
         const mesh = list[i]
         const wallId = mesh.userData.wallId as string | undefined
-        if (!wallId || !wallIds.has(wallId)) continue
+        const meshBuildingId = mesh.userData.buildingId as string | undefined
+        if (wallId) {
+          if (!wallMeshShouldRemove(wallId, meshBuildingId)) continue
+        } else if (meshBuildingId !== buildingId) {
+          continue
+        }
         group.remove(mesh)
         disposePlinthOpeningDiscard(mesh.geometry)
         mesh.customDepthMaterial?.dispose()
@@ -2476,15 +2490,31 @@ export class FacadeController {
     filterMeshList(this.pedimentMeshes, this.profileGroup)
     filterMeshList(this.stairMeshes, this.claddingGroup)
 
+    for (let i = this.wallLabelMeshes.length - 1; i >= 0; i -= 1) {
+      const mesh = this.wallLabelMeshes[i]!
+      const wallId = mesh.userData.wallId as string | undefined
+      const meshBuildingId = mesh.userData.buildingId as string | undefined
+      if (!wallId || !wallMeshShouldRemove(wallId, meshBuildingId)) continue
+      this.claddingGroup.remove(mesh)
+      this.profileGroup.remove(mesh)
+      mesh.geometry.dispose()
+      this.disposeLabelMaterial(mesh)
+      this.wallLabelMeshes.splice(i, 1)
+    }
+
     for (let i = this.casingInstances.length - 1; i >= 0; i -= 1) {
       const obj = this.casingInstances[i]
-      if (!wallIds.has(obj.userData.wallId as string)) continue
+      const wallId = obj.userData.wallId as string | undefined
+      const meshBuildingId = obj.userData.buildingId as string | undefined
+      if (!wallId || !wallMeshShouldRemove(wallId, meshBuildingId)) continue
       this.casingGroup.remove(obj)
       this.casingInstances.splice(i, 1)
     }
     for (let i = this.claddingInstances.length - 1; i >= 0; i -= 1) {
       const obj = this.claddingInstances[i]
-      if (!wallIds.has(obj.userData.wallId as string)) continue
+      const wallId = obj.userData.wallId as string | undefined
+      const meshBuildingId = obj.userData.buildingId as string | undefined
+      if (!wallId || !wallMeshShouldRemove(wallId, meshBuildingId)) continue
       this.claddingGroup.remove(obj)
       this.claddingInstances.splice(i, 1)
     }
@@ -2519,6 +2549,7 @@ export class FacadeController {
       this.lodLevelByBuilding.set(buildingId, 'high')
       this.highDetailBuilt.add(buildingId)
       this.applyLodVisibility()
+      this.refreshWallLabels()
       return
     }
 
@@ -2538,11 +2569,13 @@ export class FacadeController {
       this.highDetailBuilt.add(buildingId)
       this.lodLevelByBuilding.set(buildingId, 'high')
       this.applyLodVisibility()
+      this.refreshWallLabels()
       return
     }
     this.rebuildWindowsForWalls(walls, 'low')
     this.lodLevelByBuilding.set(buildingId, 'high')
     this.ensureBuildingHighDetail(buildingId)
+    this.refreshWallLabels()
   }
 
   private ensureBuildingHighDetail(buildingId: string) {
@@ -3707,6 +3740,24 @@ export class FacadeController {
         mesh.geometry.dispose()
       }
       this.profileMeshes.length = 0
+    } else {
+      // Partial: Reste der Etage / gelöschte Wände entfernen (Sockel, Gesims, …).
+      for (let i = this.profileMeshes.length - 1; i >= 0; i -= 1) {
+        const mesh = this.profileMeshes[i]!
+        const wallId = mesh.userData.wallId as string | undefined
+        const wall = wallId ? findWall(this.state, wallId) : undefined
+        const meshBuildingId = mesh.userData.buildingId as string | undefined
+        const drop =
+          meshBuildingId === buildingId ||
+          wall?.buildingId === buildingId ||
+          (wallId != null && !wall)
+        if (!drop) continue
+        this.profileGroup.remove(mesh)
+        disposePlinthOpeningDiscard(mesh.geometry)
+        mesh.customDepthMaterial?.dispose()
+        mesh.geometry.dispose()
+        this.profileMeshes.splice(i, 1)
+      }
     }
 
     for (const path of buildProfilePaths(this.state)) {

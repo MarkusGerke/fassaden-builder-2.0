@@ -2,6 +2,10 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Wand löschen ohne Phantom-Meshes (2026-09-03) — v2.0.113
+
+Partial-Rebuild entfernte nur Meshes noch existierender Wände — gelöschte Wandkörper/Sockel blieben stehen, Paneele (per Gebäude-ID geleert) nicht. `removeBuildingRenderables` räumt jetzt auch Orphans. Datei: `FacadeController.ts`. Docs: [architecture.md](architecture.md).
+
 ### Licht-Drag horizontal wieder (2026-09-03) — v2.0.112
 
 Ohne Shift traf der Ray bei flachem Blick / 2D-Front die Boden-Ebene nicht (parallel). Horizontal-Drag nutzt dann die vertikale Bildebene. Datei: `main.ts`. Docs: [scene-lights.md](scene-lights.md).

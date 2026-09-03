@@ -22,6 +22,8 @@ src/
 
 Feature-Docs und Index: [README.md](README.md). Historie: [changelog.md](changelog.md).
 
+**Partial-Rebuild (v2.0.113):** `FacadeController.setState({ rebuildBuildingIds })` → `removeBuildingRenderables` muss **auch Meshes gelöschter Wände** entfernen (Orphans), nicht nur noch existierende `wallId`s. Sonst bleiben Wandkörper/Sockel als Phantom, während Paneele (Gebäude-ID-Clear) verschwinden.
+
 **Schichten-Vertrag (v2.0.70+):** dichte Wandschale (A) / Verkleidungszonen (B) / Anbauteile (C); eine Öffnungsmaske; Freiraum nur B; Einbettung ohne Shell-Loch — [facade-layers.md](facade-layers.md). **v2.0.72:** UI für zwei Horizontal-Bänder mit eigener Modulbreite. **v2.0.73:** Öffnungs-Snap Y-bewusst an Zonen-Modul; Stil-Vorlagen inkl. `claddingZones`.
 
 ---
