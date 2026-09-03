@@ -4,12 +4,14 @@ import {
   disablePcssShadows,
   enablePcssShadows,
   getPcssLightSizeUv,
+  isPcssLiteMode,
   isPcssShadowsEnabled,
   PCSS_NUM_SAMPLES,
   PCSS_PENUMBRA_SCALE,
   pcssLightSizeUvFromSoftness,
   pcssLightWorldSizeFromSoftness,
   pointShadowRadiusFromSoftness,
+  setPcssLiteMode,
   updatePcssShadowParameters,
 } from './pcssShadows'
 
@@ -92,6 +94,43 @@ describe('pcssShadows', () => {
 
   it('nutzt ausreichend PCSS-Samples gegen sichtbares Poisson-Raster', () => {
     expect(PCSS_NUM_SAMPLES).toBeGreaterThanOrEqual(25)
+  })
+
+  it('Poisson-Disk als const-Array, keine Laufzeit-Initialisierung (v2.0.120: ~15× schneller)', () => {
+    enablePcssShadows()
+    const chunk = THREE.ShaderChunk.shadowmap_pars_fragment
+    expect(chunk).toContain(`const vec2 pcssDisk[ ${PCSS_NUM_SAMPLES} ] = vec2[ ${PCSS_NUM_SAMPLES} ](`)
+    expect(chunk).not.toContain('pcssInitPoissonSamples')
+    expect(chunk).not.toContain('vec2 pcssPoissonDisk[')
+    // Alle Tap-Schleifen mit Literal-Grenzen, damit Three.js sie entrollt (kein dynamischer Array-Index).
+    const loops = chunk.match(/#pragma unroll_loop_start\s+for \( int i = 0; i < (\d+); i \+\+ \)/g) ?? []
+    expect(loops.length).toBe(2)
+    expect(chunk).not.toMatch(/for \( int i = 0; i < PCSS_[A-Z_]+; i ?\+\+ \)/)
+    disablePcssShadows()
+  })
+
+  it('Orbit-Lite: 1-Tap-Schatten per Uniform, ohne Chunk-Rebuild', () => {
+    enablePcssShadows()
+    const chunk = THREE.ShaderChunk.shadowmap_pars_fragment
+    expect(chunk).toContain('uniform float pcssLite')
+    expect(chunk).toContain('if ( pcssLite > 0.5 )')
+    expect(isPcssLiteMode()).toBe(false)
+    setPcssLiteMode(true)
+    expect(isPcssLiteMode()).toBe(true)
+    expect(THREE.ShaderChunk.shadowmap_pars_fragment).toBe(chunk)
+    const mat = new THREE.MeshStandardMaterial()
+    const scene = new THREE.Scene()
+    scene.add(new THREE.Mesh(new THREE.BoxGeometry(), mat))
+    updatePcssShadowParameters(4, 2000, scene)
+    const uniforms: Record<string, { value: unknown }> = {}
+    mat.onBeforeCompile(
+      { uniforms, vertexShader: '', fragmentShader: '' } as THREE.WebGLProgramParametersWithUniforms,
+      {} as THREE.WebGLRenderer,
+    )
+    expect(uniforms.pcssLite?.value).toBe(1)
+    setPcssLiteMode(false)
+    expect(uniforms.pcssLite?.value).toBe(0)
+    disablePcssShadows()
   })
 
   it('hat Ortho-Penumbra-Skala für sichtbaren Weichheit-Slider', () => {

@@ -103,7 +103,7 @@ planFacesWithHoles(plan)
 | `src/studio/floorPlan.ts` | `planFacesWithHoles`, `pointInPolygonXZ`, `polygonAreaXZ` |
 | `src/FacadeController.ts` | Indoor-Platten mit Holes, Decken casten |
 | `src/studio/roof.ts` | `topRoofFaceWorld`, Firstkappe mit Löchern |
-| `src/lighting/pcssShadows.ts` | PCSS-ShaderChunk (Blocker-Suche + variable Penumbra), Lichtgröße aus Weichheit |
+| `src/lighting/pcssShadows.ts` | PCSS-ShaderChunk (Blocker-Suche + variable Penumbra, `const`-Poisson-Disk + `mat2`-Rotation, entrollte Taps), Lichtgröße aus Weichheit, `pcssLite`-Uniform (1 Tap beim Navigieren) |
 | `src/utils/sunLighting.ts` | Weichheit aus Elevation, Shadow-Camera, Kelvin |
 | `src/utils/lightingMood.ts` | Schichten-Intensitäten aus Sonne + Szenenfarben |
 | `src/lighting/groundMood.ts` | Boden-Fill (`ground-mood-v6`, Albedo × Sonnen-Ambient; Schatten nur Standard-PCSS) |
@@ -139,6 +139,7 @@ State-Änderung / Sonnen-Slider
 | `SHADOW_MAP_SIZE` | 4096 | Shadow-Map (große Sites) |
 | `SHADOW_MAP_SIZE_HIGH` | 8192 | Shadow-Map wenn Site-Spanne ≤ 4800 cm (v2.0.114; früher 2200) |
 | `PCSS_NUM_SAMPLES` | 32 | PCSS-Filter-/Blocker-Taps (v0.7.346; vorher 17) |
+| `PCSS_LITE_SLOW_FRAME_MS` / `PCSS_LITE_SLOW_FRAMES` | 30 ms / 4 | `main.ts`: ab so vielen langsamen Orbit-Frames navigiert die Sonne mit 1 Tap (Uniform `pcssLite`, sitzungsweit; v2.0.120) |
 | `INDOOR_SLAB_THICKNESS` | 8 cm | Extrusionsdicke Etagen-Trennfläche |
 | `SHADOW_BIAS` | −0.0002 | Tiefen-Bias |
 | `SHADOW_NORMAL_BIAS_MIN/MAX` | 0,05 / 0,22 cm | `normalBias` aus Texelgröße (niedrig gegen Lichtspalten an Laibung, v2.0.117) |
@@ -184,5 +185,6 @@ Glas: dunkles Klarglas, CubeCamera-EnvMap der Szene von außerhalb. `transmissio
 - **Türfüllung / Treppe (v0.7.191):** gleiches Muster — Empfang aus, Cast an; sonst Schraffur auf großen ebenen Flächen.
 - **normalBias zu groß:** erzeugt helle Spalten an Laibung/Sockel (Peter-Panning); Max 0,22 cm (v2.0.117).
 - **Helle Rest-Steine an Öffnungen (v2.0.119):** Umriss-Reste (Bogen, Freiraum, Laibung, Keilstein, Bossen-First) wurden per Earcut immer CCW (+z, in die Wand) trianguliert, Feldsteine per `addQuad` −z. Mit `shadowSide: FrontSide` fielen diese Steine aus der Shadow-Map: kein Schattenwurf (Lichtkanten an der Laibung) und kein Selbstschatten — sie wirkten glatt und heller als das Feld, das das PCSS-/Hard-Shadow-Korn trägt. Fix: `triangulateOutlineRing(…, { front: true })` dreht Front-Dreiecke, Ringe werden vor Seitenquads CCW normiert (`panelGeometry.ts`, siehe [panel-geometry.md](panel-geometry.md)). Diagnose über Normalen-Karte je Sample (nz-Vorzeichen) — nicht Farbe/Material.
+- **Navigieren ruckelt im Render (v2.0.120):** ~4 Bilder/s beim Drehen/Schwenken (M1 Max) — der PCSS-Shader füllte pro Fragment ein globales `vec2[32]` (32 × sin/cos/pow) und indizierte es in nicht entrollten Schleifen dynamisch; auf Metal kostete das ~200 ms/Frame (1-Tap-Referenz 14 ms), unabhängig von der Map-Größe. Jetzt `const vec2 pcssDisk[32]` (Formel des Three.js-Beispiels, in JS berechnet), Zufallsrotation als `mat2`, Literal-Schleifen (`#pragma unroll_loop_start` entrollt nur Literale, keine `#define`s), `step()` statt `if`. Bild unverändert, volles PCSS im Orbit bei Vsync. Zusätzlich adaptiv `pcssLite` (1 Tap) bei anhaltend > 30 ms — Details in [performance.md](performance.md). **Shader-Test-Fallstrick:** `disablePcssShadows()` + `needsUpdate` kompiliert **nicht** neu — der Programm-Cache-Key enthält den Chunk-Text nicht; zum Vergleich `customProgramCacheKey` ändern.
 - **Feld-Korn (offen):** Der planare Selbstschatten-Anteil (Blocker-Suche über Lichtgröße × `PCSS_PENUMBRA_SCALE` trifft die eigene, schräg beleuchtete Fläche) dunkelt große Frontflächen leicht und körnig ab; `normalBias`/`bias` (0,4-cm-Texel, ~0,7 cm Tiefen-Bias) reichen dafür nicht. Kandidat: Receiver-Plane-Depth-Bias in `pcssFindBlocker`/`pcssFilter`.
 - **Freiraum-Lichtkante (v2.0.117):** Freiraum-Kappe ohne `receiveShadow` blieb im Schatten hell; Sync filterte sie über `openingPart` aus. Jetzt `clearanceCap`-Flag + Empfang wie Paneele. Laibung nur Mini-Inset (0,12 cm) an der Freiraum-Front.

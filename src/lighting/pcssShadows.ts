@@ -26,70 +26,83 @@ export const PCSS_NUM_RINGS = 14
 const PCSS_NUM_SAMPLES_INTERNAL = PCSS_NUM_SAMPLES
 const PCSS_NUM_RINGS_INTERNAL = PCSS_NUM_RINGS
 
+/**
+ * Poisson-Disk einmal in JS berechnen (gleiche Formel wie das Three.js-Beispiel, Startwinkel 0).
+ * Im Shader steht sie als `const`-Array; die Zufallsrotation pro Fragment ist eine `mat2`.
+ * Vorher: globales `vec2[32]`, pro Fragment mit 32× sin/cos/pow gefüllt und dynamisch indiziert —
+ * das kostete auf Metal Register/Occupancy so stark, dass ein Frame ~200 ms brauchte (v2.0.120).
+ */
+function buildPcssDiskGlsl(numSamples: number, numRings: number): string {
+  const angleStep = (Math.PI * 2 * numRings) / numSamples
+  const inv = 1 / numSamples
+  let angle = 0
+  let radius = inv
+  const items: string[] = []
+  for (let i = 0; i < numSamples; i += 1) {
+    const r = Math.pow(radius, 0.75)
+    items.push(`vec2( ${(Math.cos(angle) * r).toFixed(6)}, ${(Math.sin(angle) * r).toFixed(6)} )`)
+    radius += inv
+    angle += angleStep
+  }
+  return `const vec2 pcssDisk[ ${numSamples} ] = vec2[ ${numSamples} ]( ${items.join(', ')} );`
+}
+
+/** Schleifen mit Literal-Grenzen — nur so entrollt Three.js (`#pragma unroll_loop_start`). */
 const PCSS_GLSL_HELPERS = `
-#define PCSS_NUM_SAMPLES ${PCSS_NUM_SAMPLES_INTERNAL}
-#define PCSS_NUM_RINGS ${PCSS_NUM_RINGS_INTERNAL}
-#define PCSS_BLOCKER_SEARCH_NUM_SAMPLES PCSS_NUM_SAMPLES
+${buildPcssDiskGlsl(PCSS_NUM_SAMPLES_INTERNAL, PCSS_NUM_RINGS_INTERNAL)}
 
-vec2 pcssPoissonDisk[PCSS_NUM_SAMPLES];
-
-void pcssInitPoissonSamples( const in vec2 randomSeed ) {
-	float ANGLE_STEP = PI2 * float( PCSS_NUM_RINGS ) / float( PCSS_NUM_SAMPLES );
-	float INV_NUM_SAMPLES = 1.0 / float( PCSS_NUM_SAMPLES );
-	float angle = rand( randomSeed ) * PI2;
-	float radius = INV_NUM_SAMPLES;
-	float radiusStep = radius;
-	for ( int i = 0; i < PCSS_NUM_SAMPLES; i ++ ) {
-		pcssPoissonDisk[ i ] = vec2( cos( angle ), sin( angle ) ) * pow( radius, 0.75 );
-		radius += radiusStep;
-		angle += ANGLE_STEP;
-	}
+mat2 pcssRotation( const in vec2 randomSeed ) {
+	float a = rand( randomSeed ) * PI2;
+	float c = cos( a );
+	float s = sin( a );
+	return mat2( c, s, -s, c );
 }
 
 float pcssPenumbraSize( const in float zReceiver, const in float zBlocker ) {
 	return ( zReceiver - zBlocker ) / zBlocker;
 }
 
-float pcssFindBlocker( sampler2D shadowMap, const in vec2 uv, const in float zReceiver ) {
+float pcssFindBlocker( sampler2D shadowMap, const in vec2 uv, const in float zReceiver, const in mat2 rot ) {
 	// Gleiche Skala wie der Filter — sonst weiche Umbra innen, harte Texel-Kante außen.
 	float searchRadius = pcssLightSizeUv * PCSS_PENUMBRA_SCALE * ( zReceiver - PCSS_NEAR_PLANE ) / zReceiver;
 	float blockerDepthSum = 0.0;
-	int numBlockers = 0;
-	for ( int i = 0; i < PCSS_BLOCKER_SEARCH_NUM_SAMPLES; i++ ) {
-		float shadowMapDepth = texture2D( shadowMap, uv + pcssPoissonDisk[ i ] * searchRadius ).r;
-		#ifdef USE_REVERSED_DEPTH_BUFFER
-		if ( shadowMapDepth > zReceiver ) {
-		#else
-		if ( shadowMapDepth < zReceiver ) {
-		#endif
-			blockerDepthSum += shadowMapDepth;
-			numBlockers ++;
-		}
-	}
-	if ( numBlockers == 0 ) return -1.0;
-	return blockerDepthSum / float( numBlockers );
-}
-
-float pcssFilter( sampler2D shadowMap, vec2 uv, float zReceiver, float filterRadius ) {
-	float sum = 0.0;
+	float numBlockers = 0.0;
 	float depth;
+	float isBlocker;
 	#pragma unroll_loop_start
 	for ( int i = 0; i < ${PCSS_NUM_SAMPLES_INTERNAL}; i ++ ) {
-		depth = texture2D( shadowMap, uv + pcssPoissonDisk[ i ] * filterRadius ).r;
+		depth = texture2D( shadowMap, uv + ( rot * pcssDisk[ i ] ) * searchRadius ).r;
 		#ifdef USE_REVERSED_DEPTH_BUFFER
-		if ( zReceiver >= depth ) sum += 1.0;
+		isBlocker = step( zReceiver, depth );
 		#else
-		if ( zReceiver <= depth ) sum += 1.0;
+		isBlocker = 1.0 - step( zReceiver, depth );
 		#endif
+		blockerDepthSum += depth * isBlocker;
+		numBlockers += isBlocker;
 	}
 	#pragma unroll_loop_end
+	if ( numBlockers < 0.5 ) return -1.0;
+	return blockerDepthSum / numBlockers;
+}
+
+float pcssFilter( sampler2D shadowMap, vec2 uv, float zReceiver, float filterRadius, const in mat2 rot ) {
+	float sum = 0.0;
+	float depth;
+	vec2 offset;
 	#pragma unroll_loop_start
 	for ( int i = 0; i < ${PCSS_NUM_SAMPLES_INTERNAL}; i ++ ) {
-		depth = texture2D( shadowMap, uv + -pcssPoissonDisk[ i ].yx * filterRadius ).r;
+		offset = ( rot * pcssDisk[ i ] ) * filterRadius;
+		depth = texture2D( shadowMap, uv + offset ).r;
 		#ifdef USE_REVERSED_DEPTH_BUFFER
-		if ( zReceiver >= depth ) sum += 1.0;
+		sum += step( depth, zReceiver );
 		#else
-		if ( zReceiver <= depth ) sum += 1.0;
+		sum += step( zReceiver, depth );
+		#endif
+		depth = texture2D( shadowMap, uv - offset.yx ).r;
+		#ifdef USE_REVERSED_DEPTH_BUFFER
+		sum += step( depth, zReceiver );
+		#else
+		sum += step( zReceiver, depth );
 		#endif
 	}
 	#pragma unroll_loop_end
@@ -99,12 +112,12 @@ float pcssFilter( sampler2D shadowMap, vec2 uv, float zReceiver, float filterRad
 float pcssGetShadow( sampler2D shadowMap, vec4 coords ) {
 	vec2 uv = coords.xy;
 	float zReceiver = coords.z;
-	pcssInitPoissonSamples( uv );
-	float avgBlockerDepth = pcssFindBlocker( shadowMap, uv, zReceiver );
+	mat2 rot = pcssRotation( uv );
+	float avgBlockerDepth = pcssFindBlocker( shadowMap, uv, zReceiver, rot );
 	if ( avgBlockerDepth == -1.0 ) return 1.0;
 	float penumbraRatio = pcssPenumbraSize( zReceiver, avgBlockerDepth );
 	float filterRadius = penumbraRatio * pcssLightSizeUv * PCSS_PENUMBRA_SCALE;
-	return pcssFilter( shadowMap, uv, zReceiver, filterRadius );
+	return pcssFilter( shadowMap, uv, zReceiver, filterRadius, rot );
 }
 `
 
@@ -120,7 +133,17 @@ const PCSS_BASIC_GET_SHADOW = `#else
 			bool inFrustum = shadowCoord.x >= 0.0 && shadowCoord.x <= 1.0 && shadowCoord.y >= 0.0 && shadowCoord.y <= 1.0;
 			bool frustumTest = inFrustum && shadowCoord.z <= 1.0;
 			if ( frustumTest ) {
-				shadow = pcssGetShadow( shadowMap, shadowCoord );
+				if ( pcssLite > 0.5 ) {
+					// Navigation (Orbit-Lite): 1 Tap statt PCSS — Uniform-Branch, kein Shader-Rebuild.
+					float depth = texture2D( shadowMap, shadowCoord.xy ).r;
+					#ifdef USE_REVERSED_DEPTH_BUFFER
+						shadow = step( depth, shadowCoord.z );
+					#else
+						shadow = step( shadowCoord.z, depth );
+					#endif
+				} else {
+					shadow = pcssGetShadow( shadowMap, shadowCoord );
+				}
 			}
 			return mix( 1.0, shadow, shadowIntensity );
 		}
@@ -153,6 +176,21 @@ let originalShadowmapParsFragment: string | undefined
 let pcssEnabled = false
 let pcssChunkApplied = false
 const pcssLightSizeUvUniform = { value: 0.002 }
+/**
+ * 1 = Lite (1 Tap, harter Schatten) während Orbit/Zoom/Pan; 0 = volles PCSS.
+ * Geteilte Uniform über alle Materialien — Umschalten kostet keinen Shader-Rebuild.
+ * Grund: PCSS (96 Taps/Fragment) kostete beim Navigieren ~200 ms/Frame (v2.0.120).
+ */
+const pcssLiteUniform = { value: 0 }
+
+/** Orbit-Lite: harter 1-Tap-Schatten statt PCSS (nur Uniform, kein Rebuild). */
+export function setPcssLiteMode(on: boolean): void {
+  pcssLiteUniform.value = on ? 1 : 0
+}
+
+export function isPcssLiteMode(): boolean {
+  return pcssLiteUniform.value > 0.5
+}
 
 /** Nutzer-Slider 0,5…8 → Lichtfläche in cm (Penumbra-Breite). */
 export function pcssLightWorldSizeFromSoftness(softness: number): number {
@@ -183,6 +221,7 @@ function buildPcssShadowmapParsFragment(): string {
   const base = originalShadowmapParsFragment ?? THREE.ShaderChunk.shadowmap_pars_fragment
   const defines = `
 uniform float pcssLightSizeUv;
+uniform float pcssLite;
 #define PCSS_NEAR_PLANE ${PCSS_NEAR_PLANE.toFixed(8)}
 #define PCSS_PENUMBRA_SCALE ${PCSS_PENUMBRA_SCALE.toFixed(4)}
 `
@@ -208,6 +247,7 @@ function bindPcssLightSizeUniform(material: THREE.Material): boolean {
   material.onBeforeCompile = (shader, renderer) => {
     prev(shader, renderer)
     shader.uniforms.pcssLightSizeUv = pcssLightSizeUvUniform
+    shader.uniforms.pcssLite = pcssLiteUniform
   }
   material.needsUpdate = true
   return true

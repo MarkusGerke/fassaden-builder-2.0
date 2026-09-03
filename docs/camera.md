@@ -61,7 +61,7 @@ Mausschwenk mit ⌘/Ctrl+⇧ nutzt bewusst dieselbe Skala wie die Pfeiltasten �
 
 ## Performance (Orbit-Lite)
 
-Während Navigation (`nav3d`, OrbitControls `start`/`change`, Pfeiltasten): `orbitLite = true` → Pixelratio max. 1, LOD pausiert. Bloom bleibt an (v0.7.184+). Nach Loslassen: `ORBIT_LITE_HOLD_MS` (320 ms), dann wieder volles Pixelratio.
+Während Navigation (`nav3d`, OrbitControls `start`/`change`, Pfeiltasten): `orbitLite = true` → Pixelratio max. 1, LOD pausiert, Bloom und EnvMap-Bake pausiert (v2.0.100), Sonnenschatten adaptiv 1 Tap bei langsamer GPU (v2.0.120). Nach Loslassen: `ORBIT_LITE_HOLD_MS` (320 ms), dann wieder volles Pixelratio. Details: [performance.md](performance.md).
 
 ---
 

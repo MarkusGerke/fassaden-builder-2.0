@@ -524,6 +524,7 @@ import {
   disablePcssShadows,
   enablePcssShadows,
   invalidateShadowMaterials,
+  setPcssLiteMode,
   shadowFrustumWidthCm,
   updatePcssShadowParameters,
 } from './lighting/pcssShadows'
@@ -613,6 +614,38 @@ let orbitLite = false
 let orbitLiteTimer: ReturnType<typeof setTimeout> | null = null
 /** true zwischen OrbitControls start und end (Mausrad: beides im selben Tick). */
 let orbitLitePointer = false
+
+/**
+ * PCSS-Lite während Orbit nur bei Bedarf: Frames im Orbit werden gemessen; liegen anhaltend
+ * ≥ PCSS_LITE_SLOW_FRAMES Frames über PCSS_LITE_SLOW_FRAME_MS, schaltet die Sonne für den Rest
+ * der Sitzung beim Navigieren auf 1 Tap (Uniform, kein Shader-Rebuild). Auf schneller GPU bleibt
+ * der weiche Schatten auch beim Drehen — kein Pop am Gestenende.
+ */
+const PCSS_LITE_SLOW_FRAME_MS = 30
+const PCSS_LITE_SLOW_FRAMES = 4
+let pcssLiteSticky = false
+let orbitProbeLastAt = 0
+let orbitProbeSlowCount = 0
+
+function orbitProbeReset() {
+  orbitProbeLastAt = 0
+  orbitProbeSlowCount = 0
+}
+
+/** Nach jedem gerenderten Orbit-Frame aufrufen (Frame-Abstand = Render-Kosten bei Dirty-Loop). */
+function orbitProbeFrame(now: number) {
+  if (!orbitLite || pcssLiteSticky) return
+  if (orbitProbeLastAt > 0) {
+    const dt = now - orbitProbeLastAt
+    if (dt > PCSS_LITE_SLOW_FRAME_MS) orbitProbeSlowCount += 1
+    else orbitProbeSlowCount = Math.max(0, orbitProbeSlowCount - 1)
+    if (orbitProbeSlowCount >= PCSS_LITE_SLOW_FRAMES) {
+      pcssLiteSticky = true
+      setPcssLiteMode(true)
+    }
+  }
+  orbitProbeLastAt = now
+}
 
 function applyRendererPixelRatio() {
   const cap = orbitLite ? 1 : MAX_PIXEL_RATIO
@@ -731,6 +764,8 @@ function setOrbitLite(active: boolean) {
     clearOrbitLiteTimer()
     if (!orbitLite) {
       orbitLite = true
+      orbitProbeReset()
+      setPcssLiteMode(pcssLiteSticky)
       applyRendererPixelRatio()
     }
     markViewportDirty()
@@ -739,6 +774,8 @@ function setOrbitLite(active: boolean) {
   clearOrbitLiteTimer()
   if (!orbitLite) return
   orbitLite = false
+  orbitProbeReset()
+  setPcssLiteMode(false)
   applyRendererPixelRatio()
   markSceneReflectionsDirty()
   if (currentView === 'top') {
@@ -18874,6 +18911,8 @@ function animate() {
       !openingMotionPlayback &&
       !rollerShutterPlayback
     ) {
+      // Kein Frame gerendert (Pause im Drag) — Abstand zum nächsten Frame ist keine Render-Zeit.
+      orbitProbeReset()
       return
     }
     viewportDirty = false
@@ -18882,6 +18921,7 @@ function animate() {
       facade.updatePerformanceLod(camera, viewportRenderHeight())
     }
     render3dFrame()
+    if (orbitLite) orbitProbeFrame(performance.now())
     perfRendered = true
     updateViewCompass()
     // Gizmos während Orbit nur bei Bedarf — spart Traverse pro Frame.

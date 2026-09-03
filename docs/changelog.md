@@ -2,6 +2,10 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Flüssiges Navigieren in 3D — PCSS-Shader (2026-09-03) — v2.0.120
+
+Drehen/Schwenken im Render-Modus lief mit ~4 Bilder/s. Nicht die Shadow-Map (8192) oder die Tap-Zahl war schuld, sondern der PCSS-Shader: globales `vec2 pcssPoissonDisk[32]`, pro Fragment gefüllt und dynamisch indiziert (Metal: Register/Occupancy). Jetzt `const`-Disk + `mat2`-Rotation, Literal-Schleifen entrollt, `step()` — pixelgleiches Bild, Orbit bei Vsync. Neu: Uniform `pcssLite` (1 Tap ohne Rebuild), adaptiv nach 4 Orbit-Frames > 30 ms (sitzungsweit). Dateien: `pcssShadows.ts`, `main.ts`. Docs: [performance.md](performance.md), [shadows.md](shadows.md).
+
 ### Rest-Steine an Öffnungen mit Front nach außen (2026-09-03) — v2.0.119
 
 Umriss-Reste (Bogen, Freiraum, Laibung, Keilstein, Bossen-First) wurden per Earcut CCW (+z, in die Wand) trianguliert, Feldsteine per `addQuad` −z. Mit `shadowSide: FrontSide` fielen sie aus der Shadow-Map — kein Schattenwurf, kein Selbstschatten, heller als das Feld (Render und Vorschau). `triangulateOutlineRing(…, { front: true })` + `ringCcw` vor Seitenquads. Datei: `panelGeometry.ts`. Docs: [panel-geometry.md](panel-geometry.md), [shadows.md](shadows.md).
