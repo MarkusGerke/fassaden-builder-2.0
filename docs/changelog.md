@@ -2,6 +2,12 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Reload-Fenster stabil, Wandsegment herauslösen (2026-09-04) — v2.0.142
+
+**Fenster nach Reload versetzt:** `loadInitialState` ließ den eigenen Live-`#f=`-Hash gegen localStorage gewinnen; der Hash trug keine `schemaVersion` und lief bei jedem Reload durch alle Migrationen ab v7 — `align-masonry-openings` (13→14) zog alle Öffnungen um 4 cm (nicht idempotent gegen das 4-cm-Clamp). Außerdem Race 350 ms (localStorage) vs. 1200 ms (Hash) und veralteter Hash bei > 12 000 Zeichen. Fix: `SharePayload.schemaVersion` + Export-`schemaVersion`; Marker `fassaden-builder-live-hash` → eigener Hash lädt nicht, localStorage gewinnt; zu langer Hash wird aus der URL entfernt. Test `facadeLoad.idempotent.test.ts`. Dateien: `share.ts`, `main.ts`, Docs ([ux.md](ux.md), [migration.md](migration.md)).
+
+**Wandsegment herauslösen:** Neues Modul `src/studio/wallSplit.ts` (`wallSplitRangeAt`, `splitStudioWallRange`, `wallSplitStack`, `splitWallStackRange`) auf Basis `splitStudioWallAt`. `main.ts`: `wallSplitModeActive`, Hover-Ghost in `wallDockGhostGroup`, Klick in `pointerdown` vor der Wandauswahl. `WALL_LENGTH_PRESETS` + 48/144/288. Docs: [ux.md](ux.md#wandsegment-herauslösen-srcstudiowallsplitts-v20142).
+
 ### Lichter schnell (2026-09-04) — v2.0.141
 
 Licht hinzufügen/ausblenden/löschen backte fälschlich die ganze Fassade: `syncFloorPlansFromWalls` vergab neue Node-/Edge-UUIDs → `buildingIdsNeedingRebuild` → voller Rebuild + Indoor + Sonne + EnvMap. Fix: `stabilizeFloorPlanIds`; Licht-only-Pfad ohne `applySunLighting`/`updateGroundPlane`; Occluder nur bei Okklusion-Toggle; Shadow-Far an Site statt 50 000 cm; Auswahl backt keine Maps mehr. Dateien: `floorPlan.ts`, `main.ts`, `FacadeController.ts`, Docs.

@@ -249,6 +249,7 @@ import {
   loadFacadeFromFile,
   readFacadeFromLocationHash,
   scheduleFacadeHashWrite,
+  isOwnLiveFacadeHash,
 } from './utils/share'
 import { facadeHasNeedsReview } from './utils/schemaMigrations'
 import {
@@ -374,6 +375,7 @@ import { createStudioWall, isStudioWall, stretchStudioFacade, studioWallTransfor
   expandCollinearPlanLinkedIds,
   updateTwoHorizontalCladdingBands,
 } from './studio/walls'
+import { splitWallStackRange, wallSplitRangeAt, wallSplitStack } from './studio/wallSplit'
 import {
   defaultUpperBandWidth,
   isTwoHorizontalBandCladding,
@@ -1147,6 +1149,8 @@ let uiMode: UiMode = loadUiMode()
 let libraryTab: LibraryTab = 'walls'
 /** Bibliotheks-Wand, die nach Klick bei Wandauswahl links/rechts/oben gesetzt wird. */
 let armedLibraryWallPresetId: string | null = null
+/** Hover-Segment im Modus „Wandsegment herauslösen“ (Wände-Tab, Breite gewählt, nichts markiert). */
+let wallSplitHover: { wallId: string; startCm: number; endCm: number } | null = null
 
 function syncUiModeChrome() {
   document.documentElement.dataset.uiMode = uiMode
@@ -1181,7 +1185,10 @@ function syncLibraryTabs() {
 }
 
 function setLibraryTab(tab: LibraryTab) {
-  if (tab !== 'walls') armedLibraryWallPresetId = null
+  if (tab !== 'walls') {
+    armedLibraryWallPresetId = null
+    if (wallSplitHover) clearWallSplitHover()
+  }
   libraryTab = tab
   syncLibraryTabs()
   initOpeningLibrary()
@@ -2623,7 +2630,7 @@ function armLibraryWallPreset(presetId: string) {
   }
   planStatus.textContent = hasWall
     ? 'Bibliotheks-Wand gewählt — +/− an der markierten Wand setzen oder entfernen'
-    : 'Bibliotheks-Wand gewählt — Wand markieren oder per Ziehen platzieren'
+    : 'Breite gewählt — über eine Wand fahren und klicken: Segment herauslösen (alle Etagen); oder per Ziehen platzieren'
 }
 
 function onWallLibraryCardClick(presetId: string) {
@@ -2637,6 +2644,7 @@ function onWallLibraryCardClick(presetId: string) {
 
 function disarmLibraryWallPreset() {
   armedLibraryWallPresetId = null
+  clearWallSplitHover()
   updateWallLibraryGizmos()
   syncLibraryAppliedOutline()
 }
@@ -2718,6 +2726,141 @@ function trySwapDraftWallSegmentAtClick(event: PointerEvent): boolean {
   planStatus.textContent = preset
     ? `Segment ${segmentIndex + 1}: ${preset.label}`
     : `Segment ${segmentIndex + 1}: reine Wand ${Math.round(band.lengthCm)} cm`
+  return true
+}
+
+// ---------------------------------------------------------------------------
+// Wandsegment herauslösen: Tab „Wände“ + Breite gewählt + nichts markiert →
+// Hover zeigt orange Segment auf bestehender Wand (alle Etagen), Klick teilt.
+// ---------------------------------------------------------------------------
+
+/** Gewählte Segmentbreite (nur reine Längen-Presets / Wand+Öffnung, kein Endstück). */
+function armedWallSplitSegmentCm(): number | null {
+  if (!armedLibraryWallPresetId || libraryTab !== 'walls') return null
+  if (endPieceHandFromPresetId(armedLibraryWallPresetId)) return null
+  const len = wallPresetLengthCm(armedLibraryWallPresetId)
+  return len != null && len > 0 ? len : null
+}
+
+function wallSplitModeActive(): boolean {
+  if (currentView !== '3d' && currentView !== 'front') return false
+  if (armedWallSplitSegmentCm() == null) return false
+  if (editor.selectedWallIds.length > 0 || editor.selectedOpenings.length > 0) return false
+  if (editor.selectedSceneLightId || (editor.selectedSceneLightIds?.length ?? 0) > 0) return false
+  return canEditActiveBuildingNow()
+}
+
+function clearWallSplitHover() {
+  if (!wallSplitHover) return
+  wallSplitHover = null
+  clearWallDockSceneGhost()
+  markViewportDirty()
+  if (currentView === '3d') render3dFrame()
+}
+
+/** Orange Segment-Marker auf jeder Etage des Stapels (wandlokal, volle Höhe). */
+function drawWallSplitGhost(stack: Wall[], range: { startCm: number; endCm: number }) {
+  clearWallDockSceneGhost()
+  const fillMat = new THREE.MeshBasicMaterial({
+    color: 0xff8800,
+    transparent: true,
+    opacity: 0.45,
+    depthTest: false,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  })
+  const cutMat = dockHighlightMaterial(true)
+  for (const wall of stack) {
+    const start = Math.min(range.startCm, wall.width)
+    const end = Math.min(range.endCm, wall.width)
+    const len = end - start
+    if (len < 1) continue
+    const transform = studioWallTransform(wall)
+    const group = new THREE.Group()
+    group.position.set(transform.position.x, transform.position.y, transform.position.z)
+    group.rotation.y = transform.rotationY
+    group.renderOrder = 20
+    const depth = wall.depth ?? WALL_DEPTH
+    const centerX = -wall.width / 2 + (start + end) / 2
+    const fill = new THREE.Mesh(new THREE.BoxGeometry(len, wall.height + 2, depth + 6), fillMat)
+    fill.position.set(centerX, 0, depth / 2)
+    fill.renderOrder = 20
+    group.add(fill)
+    for (const cutX of [start, end]) {
+      if (cutX <= 0.5 || cutX >= wall.width - 0.5) continue
+      const cut = new THREE.Mesh(new THREE.BoxGeometry(4, wall.height + 4, depth + 8), cutMat)
+      cut.position.set(-wall.width / 2 + cutX, 0, depth / 2)
+      cut.renderOrder = 21
+      group.add(cut)
+    }
+    wallDockGhostGroup.add(group)
+  }
+  markViewportDirty()
+  if (currentView === '3d') render3dFrame()
+}
+
+function resolveWallSplitTarget(event: { clientX: number; clientY: number }): {
+  wall: Wall
+  range: { startCm: number; endCm: number }
+} | null {
+  const segmentCm = armedWallSplitSegmentCm()
+  if (segmentCm == null) return null
+  const target = resolveWallLocalXForSegmentSwap(event)
+  if (!target) return null
+  const wall = getWall(state, target.wallId)
+  if (!wall || !isStudioWall(wall) || wall.endPieceParentId) return null
+  if (!canEditWallNow(wall.id)) return null
+  const range = wallSplitRangeAt(wall, target.localX, segmentCm)
+  if (!range) return null
+  return { wall, range }
+}
+
+function updateWallSplitHover(event: { clientX: number; clientY: number }) {
+  const target = resolveWallSplitTarget(event)
+  if (!target) {
+    clearWallSplitHover()
+    return
+  }
+  const { wall, range } = target
+  if (
+    wallSplitHover &&
+    wallSplitHover.wallId === wall.id &&
+    Math.abs(wallSplitHover.startCm - range.startCm) < 0.5 &&
+    Math.abs(wallSplitHover.endCm - range.endCm) < 0.5
+  ) {
+    return
+  }
+  wallSplitHover = { wallId: wall.id, startCm: range.startCm, endCm: range.endCm }
+  const building = findBuildingForWall(state, wall.id) ?? activeBuilding()
+  const stack = wallSplitStack(wall, building.walls, building.wallHeight)
+  drawWallSplitGhost(stack, range)
+  const wholeWall = range.startCm <= 0.5 && wall.width - range.endCm <= 0.5
+  planStatus.textContent = wholeWall
+    ? `Wand ist bereits ${Math.round(wall.width)} cm — nichts zu teilen`
+    : `Klick: Segment ${Math.round(range.endCm - range.startCm)} cm herauslösen (${stack.length} Etage${stack.length === 1 ? '' : 'n'})`
+}
+
+/** Klick im Segment-Modus: Wand (alle Etagen) teilen und Mittelstück auswählen. */
+function tryWallSplitAtEvent(event: { clientX: number; clientY: number }): boolean {
+  if (!wallSplitModeActive()) return false
+  const target = resolveWallSplitTarget(event)
+  if (!target) return false
+  const result = splitWallStackRange(state, target.wall.id, target.range)
+  clearWallSplitHover()
+  if (!result) {
+    planStatus.textContent =
+      target.range.startCm <= 0.5 && target.wall.width - target.range.endCm <= 0.5
+        ? `Wand ist bereits ${Math.round(target.wall.width)} cm — nichts zu teilen`
+        : 'Segment lässt sich hier nicht herauslösen (Erker/Endstück oder Rest < 48 cm)'
+    return true
+  }
+  commitState(finalizeStudioGeometry(result.state), {
+    ...createDefaultEditorState(),
+    selectedWallIds: [result.middleId],
+  })
+  rebuildFloorPlanOverlay()
+  const widthCm = Math.round(target.range.endCm - target.range.startCm)
+  planStatus.textContent = `Segment ${widthCm} cm herausgelöst (${result.middleIds.length} Etage${result.middleIds.length === 1 ? '' : 'n'}) — Links/Rechts ± verlängert, Paneele/Farben wirken nur auf dieses Stück`
   return true
 }
 
@@ -4098,7 +4241,11 @@ function render3dFrame() {
 
 async function loadInitialState(): Promise<void> {
   const hash = readFacadeFromLocationHash()
-  if (hash) {
+  // Eigener Live-Hash (von dieser App geschrieben): localStorage ist der frischere Stand
+  // (350 ms vs. 1200 ms Debounce) — sonst lädt ein Reload zwischendrin einen alten Hash
+  // und alle Öffnungen/Wände „springen“. Nur fremde/eingefügte Links laden aus dem Hash.
+  const persistedFirst = hash && isOwnLiveFacadeHash(hash) ? loadPersistedState() : null
+  if (hash && !persistedFirst) {
     const fromHash = await decodeFacadeHash(hash)
     if (fromHash) {
       state = fromHash.facade
@@ -4118,7 +4265,7 @@ async function loadInitialState(): Promise<void> {
     }
   }
 
-  const persisted = loadPersistedState()
+  const persisted = persistedFirst ?? loadPersistedState()
   if (persisted) {
     state = persisted.facade
     editor = persisted.editor
@@ -17259,6 +17406,11 @@ canvas.addEventListener('pointerdown', (event) => {
     selectCeiling(hit.ceiling.buildingId, hit.ceiling.floorIndex)
     return
   }
+  // Segment-Modus (Wände-Tab, Breite gewählt, nichts markiert): Klick teilt statt zu wählen.
+  if (hit?.wallId && wallSplitModeActive() && tryWallSplitAtEvent(event)) {
+    if (currentView === '3d') controls.enabled = true
+    return
+  }
   if (hit?.openingId && hit.wallId) {
     const wall = getWall(state, hit.wallId)
     const opening = wall?.openings.find(o => o.id === hit.openingId)
@@ -17377,6 +17529,15 @@ canvas.addEventListener('pointermove', (event) => {
 
   if (currentView === '3d' && moveNav3d(event)) return
   if (currentView === 'top' && moveNav3d(event)) return
+
+  // Segment-Modus: Hover-Marker (nur ohne gedrückte Taste / laufenden Drag).
+  if (wallSplitHover || wallSplitModeActive()) {
+    if (event.buttons === 0 && wallSplitModeActive() && !activeWallDragPresetId) {
+      updateWallSplitHover(event)
+      return
+    }
+    clearWallSplitHover()
+  }
 
   if (isSceneEditView() && drag3dSceneLight) {
     const light = sceneLightById(state, drag3dSceneLight.lightId)
@@ -17764,7 +17925,12 @@ canvas.addEventListener('pointerup', (event) => {
   }
 })
 
+canvas.addEventListener('pointerleave', () => {
+  clearWallSplitHover()
+})
+
 canvas.addEventListener('pointercancel', (event) => {
+  clearWallSplitHover()
   if (currentView === '3d') {
     endNav3d(event)
     return

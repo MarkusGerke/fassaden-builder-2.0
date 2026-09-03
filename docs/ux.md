@@ -76,12 +76,15 @@ Nach `commitState` (nicht bei Drag-`previewState`) schreibt `scheduleShareHashWr
 | Feld | Typ | Inhalt |
 |---|---|---|
 | `facade` | `FacadeState` | Gebäude, Wände, Öffnungen (wie bisher) |
+| `schemaVersion` | `number` | **v2.0.142:** Schema-Stand (`FACADE_SCHEMA_VERSION`). Ohne Feld (alte Links) startet der Import bei `FACADE_SCHEMA_IMPORT_BASE` = 7 und spielt alle Migrationen erneut |
 | `scene` | `SceneAppearance` | Hintergrund, Bodenfarbe, Himmelsfarbe, Strichstärke (optional) |
 | `viewYaw` | `number` | Kompass-/Seitenansicht in Grad, 45°-Raster (optional) |
 
-Alte Links ohne Wrapper (`{ facade }`) oder nur mit reiner `FacadeState`-JSON werden weiter gelesen; fehlende `scene`/`viewYaw` → Defaults (`DEFAULT_SCENE_APPEARANCE`, Nord/0°).
+Alte Links ohne Wrapper (`{ facade }`) oder nur mit reiner `FacadeState`-JSON werden weiter gelesen; fehlende `scene`/`viewYaw` → Defaults (`DEFAULT_SCENE_APPEARANCE`, Nord/0°). Datei-Export (`downloadFacadeJson`) schreibt `schemaVersion` neben die Fassade; Import (`loadFacadeFromFile`) liest sie und streift sie ab.
 
-Reload: Hash `#f=` hat Vorrang vor localStorage.
+**Reload (v2.0.142):** Ein **fremder/eingefügter** `#f=`-Link hat Vorrang vor localStorage. Der **eigene Live-Hash** (von dieser App geschrieben, Marker `fassaden-builder-live-hash` in localStorage = zuletzt geschriebener Hash) **nicht** — dann lädt localStorage (350 ms Debounce, frischer als der 1200-ms-Hash). Übersteigt der Hash `MAX_LIVE_HASH_CHARS` (12 000), wird ein bestehender `#f=` aus der URL **entfernt** statt veraltet stehen zu bleiben.
+
+**Fallstrick (behoben v2.0.142 — „Fenster nach Reload versetzt“):** Vorher gewann der eigene Hash und lief ohne `schemaVersion` bei jedem Reload durch alle Migrationen ab v7 — u. a. `align-masonry-openings` (13→14), das **alle** Öffnungen auf Läufer-Fugen zog (± 4 cm gegen das 4-cm-Clamp). Zusätzlich konnte ein Reload zwischen 350 ms und 1200 ms bzw. bei zu langem Hash einen **alten** Stand laden. Regressionstest: `src/utils/facadeLoad.idempotent.test.ts`.
 
 ---
 
@@ -486,7 +489,7 @@ Tabs in `#opening-library`: **Wände** | **Fenster** | **Türen** | **Nischen** 
 
 | Tab | Inhalt | Ablegen |
 |---|---|---|
-| Wände | `WALL_LENGTH_PRESETS` (96 / 192 / 384 / 576 cm), Endstücke, Wände mit Öffnung; erste Kachel **Keines** | Drag (`application/x-wall-preset`) in die Bühne. **Mit Wandauswahl:** +/− links/rechts/oben an der Wand (folgen der Wand beim Orbit). + links/rechts/oben: bei gefüllter Wand-Zwischenablage **Einfügen** in diese Richtung, sonst **Duplizieren** (bzw. Etage darüber). **Ohne Auswahl:** Klick legt im Grundriss ab. |
+| Wände | `WALL_LENGTH_PRESETS` (**v2.0.142:** 48 / 96 / 144 / 192 / 288 / 384 / 576 cm), Endstücke, Wände mit Öffnung; erste Kachel **Keines** | Drag (`application/x-wall-preset`) in die Bühne. **Mit Wandauswahl:** +/− links/rechts/oben an der Wand (folgen der Wand beim Orbit). + links/rechts/oben: bei gefüllter Wand-Zwischenablage **Einfügen** in diese Richtung, sonst **Duplizieren** (bzw. Etage darüber). **Ohne Auswahl (v2.0.142):** Breite anklicken → über eine bestehende Wand fahren zeigt ein **oranges Segment** (alle Etagen), Klick löst es als eigene Wand heraus — siehe [Wandsegment herauslösen](#wandsegment-herauslösen-srcstudiowallsplitts-v20142). |
 | Fenster | Fenster-Presets (`WALL_OPENING_PRESETS`: u. a. 48×96, 48×192, 96×128/192/264, 144×192, 192×192, 396×196, Keller 48×64) + Vorlagen + „Neue Vorlage“ | auf Wand droppen / bei Wandauswahl klicken |
 | Türen | Tür-Presets (96/144/288/480×320) + Vorlagen + „Neue Vorlage“ | wie Fenster |
 | Nischen | Cutout-Presets (eckig/rund, Regenrohr, Durchbruch) plus **Konche** (Kalotte, Presets 96×128 / 64×96) | auf Wand droppen / bei Wandauswahl klicken; kein Glas, kein Blendrahmen; Konche: Rundbogen-Loch + Halbzylinder/Viertelkugel |
@@ -569,6 +572,16 @@ Während Drag von Öffnungen:
 ### Wände (`src/studio/wallGuides.ts`, v0.7.156 / v2.0.140)
 
 Beim **Verschieben** und **Zeichnen/Abzweigen** von Studio-Wänden: Hilfslinien für **Start-, End- und Mittelpunkt** (Plan X/Z), Ausrichtung an anderen Wänden derselben Etage (Toleranz `WALL_GUIDE_SNAP_CM` = 4 cm). Abzweig (Shift) und Bibliothek-Ghost: freies Ende snappt bündig (`snapPointToWallEdges` / `computeSegmentAlignGuides`). Grundriss: `floorPlanView.showWallMoveGuides`.
+
+### Wandsegment herauslösen (`src/studio/wallSplit.ts`, v2.0.142)
+
+**Nutzer:** Tab **Wände**, **nichts markiert**, eine Breite-Karte anklicken (48 … 576). In **3D** und **2D-Front** zeigt Hover über einer Studio-Wand ein **oranges Segment** dieser Breite (volle Höhe, mit Schnittkanten in `0xff5500`) — auf **allen Etagen** mit gleichem Fußabdruck (gleicher Ursprung + Richtung, `wallSplitStack` = `findVerticalAlignedWalls` ohne 180°-Gegenrichtung). Statuszeile: „Klick: Segment 96 cm herauslösen (2 Etagen)“. Klick teilt jede Etage in `links | Segment | rechts` (bis zu drei kollineare, `planLinked` Wände); das Mittelstück der getroffenen Etage ist danach **ausgewählt** → **Links/Rechts ±** verlängert es (Stapel folgt über `stretchStudioFacade`), Paneele/Farben/Gesims gelten nur für dieses Stück (andere Etagen per Shift dazu wählen oder Gültig-für „Etage/Fassade“).
+
+**Raster:** Segment liegt mittig unter dem Cursor, gerastet auf `wallWidthStepCm(yaw)` (48 cm, 45°: Diagonale) und in die Wand geklemmt (`wallSplitRangeAt`). Segment = ganze Wand → „nichts zu teilen“. Reststücke unter 48 cm, Erker- und Endstück-Wände (`isProtectedFromPoseReverse`) → kein Split, Hinweis in der Statuszeile. Schmalere Etagen, in die das Segment nicht passt, bleiben unverändert.
+
+**Öffnungen** bleiben in Weltlage: `splitStudioWallAt` partitioniert nach Mittelpunkt und rechnet `opening.x` auf das jeweilige Stück um; Profile folgen über `openingId`. Stil (`panel`, Farben, Gesims, `panelFlip`) wird per `cloneWall` geerbt; das linke Stück behält die alte Wand-ID (Mittelstück bei Segment am Wandanfang ebenfalls).
+
+**Modus** (`wallSplitModeActive` in `main.ts`): `libraryTab === 'walls'` ∧ `armedLibraryWallPresetId` mit Länge (kein Endstück) ∧ keine Wand-/Öffnungs-/Licht-Auswahl ∧ Ansicht 3D/Front ∧ Gebäude editierbar. Hover in `pointermove` (nur ohne gedrückte Taste, `updateWallSplitHover` → `wallDockGhostGroup`), Klick in `pointerdown` **vor** der normalen Wand-Auswahl (`tryWallSplitAtEvent` → `splitWallStackRange` → `finalizeStudioGeometry` → `commitState`). Marker verschwindet bei Auswahl, Tabwechsel, „Keines“, `pointerleave`. Draft-Modus „Segment tauschen“ (`trySwapDraftWallSegmentAtClick`) bleibt unverändert — der braucht eine bereits markierte Wand. Tests: `src/studio/wallSplit.test.ts`.
 
 ### Grundriss zeichnen (v0.7.240)
 

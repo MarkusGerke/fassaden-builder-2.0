@@ -84,7 +84,7 @@ Wenn ein Bug nur **neue** Elemente richtig macht, Bestandsprojekte aber falsch b
 
 **Profile / Gesims / Sockel:** Sweep entsteht zur Renderzeit aus Wandzustand. Nach Pose-/Gehrungs-Repair folgen sie von selbst. Nur wenn ein **gespeichertes** Profil-Feld falsch ist (z. B. alte ID), gehört das in einen Schema-Step.
 
-**Hash- und Datei-Import** starten bei `FACADE_SCHEMA_IMPORT_BASE` (7) und spielen alle Steps erneut. Schema-Steps müssen **idempotent** sein, sobald die Daten schon stimmen (sonst würde ein späterer Hash-Import Nutzer-Flips zurückdrehen).
+**Hash- und Datei-Import** tragen seit **v2.0.142** eine `schemaVersion` (`SharePayload.schemaVersion`, Export-JSON `schemaVersion` neben der Fassade) und starten dort. **Ohne** Feld (alte Links/Dateien) starten sie bei `FACADE_SCHEMA_IMPORT_BASE` (7) und spielen alle Steps erneut. Schema-Steps müssen daher **idempotent** sein, sobald die Daten schon stimmen — `align-masonry-openings` (13→14) ist es gegen das 4-cm-Clamp **nicht** exakt (Steinmitte-Kandidaten), weshalb der Mehrfachlauf die Fenster um 4 cm verschob. Der eigene Live-Hash lädt deshalb nicht mehr beim Reload (siehe [ux.md](ux.md#url-hash-live-srcutilssharets)); Regressionstest `src/utils/facadeLoad.idempotent.test.ts`.
 
 Idempotente Bestands-Repairs (z. B. invertierte Plan-Fugen) laufen in `applyFacadeLoadPipeline` **nach Clamp zusätzlich immer**, nicht nur im Schema-Step — sonst überspringt eine schon gespeicherte `schemaVersion` den Repair. Orientierung per BFS vom Samen aus (jede Wand höchstens einmal umkehren), damit eine Abzweig-Wand nicht zwischen zwei Fugen hin- und herkippt.
 

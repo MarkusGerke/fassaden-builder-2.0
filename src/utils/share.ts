@@ -6,12 +6,20 @@ import {
   normalizeSceneAppearance,
   type SceneAppearance,
 } from './persistence'
+import { FACADE_SCHEMA_IMPORT_BASE, FACADE_SCHEMA_VERSION } from './schemaMigrations'
 
 const HASH_PREFIX = '#f='
+/** localStorage-Schlüssel: zuletzt von dieser App selbst geschriebener Live-Hash. */
+const LIVE_HASH_KEY = 'fassaden-builder-live-hash'
 
 /** Inhalt eines Teilen-Links (Hash `#f=`). */
 export interface SharePayload {
   facade: FacadeState
+  /**
+   * Schema-Stand der Fassade. Ohne Angabe (alte Links) startet der Import bei
+   * `FACADE_SCHEMA_IMPORT_BASE` und spielt alle Migrationen erneut — mit Angabe nicht.
+   */
+  schemaVersion?: number
   /** Szene-Farben (Hintergrund, Boden, Himmel, Strichstärke). */
   scene?: SceneAppearance
   /** Kompass-/Seitenansicht in Grad (45°-Raster), nur bei `kind: 'yaw'`. */
@@ -68,12 +76,25 @@ function normalizeViewYaw(value: unknown): number | undefined {
   return snapYawTo45(n)
 }
 
+/** Gespeicherte `schemaVersion` eines Payloads/Exports; fehlt sie, Import-Basis (alle Migrationen). */
+export function readSchemaVersion(raw: unknown): number {
+  if (!isRecord(raw)) return FACADE_SCHEMA_IMPORT_BASE
+  const v = raw.schemaVersion
+  return typeof v === 'number' && Number.isFinite(v) ? v : FACADE_SCHEMA_IMPORT_BASE
+}
+
+/** Export-Dateien tragen `schemaVersion` neben der Fassade; beim Import wieder abstreifen. */
+function stripSchemaVersion(raw: FacadeState & { schemaVersion?: number }): FacadeState {
+  const { schemaVersion: _ignored, ...facade } = raw
+  return facade as FacadeState
+}
+
 function normalizeSharePayload(raw: unknown): DecodedSharePayload | null {
   if (isFacadeState(raw)) {
-    return { facade: applyFacadeLoadPipeline(raw).facade }
+    return { facade: applyFacadeLoadPipeline(stripSchemaVersion(raw), readSchemaVersion(raw)).facade }
   }
   if (!isRecord(raw) || !isFacadeState(raw.facade)) return null
-  const migrated = applyFacadeLoadPipeline(raw.facade as FacadeState)
+  const migrated = applyFacadeLoadPipeline(raw.facade as FacadeState, readSchemaVersion(raw))
   const scene = raw.scene != null ? normalizeSceneAppearance(raw.scene) : undefined
   const viewYaw = normalizeViewYaw(raw.viewYaw)
   return {
@@ -87,14 +108,16 @@ export function buildSharePayload(
   facade: FacadeState,
   extras?: { scene?: SceneAppearance; viewYaw?: number },
 ): SharePayload {
-  const payload: SharePayload = { facade }
+  const payload: SharePayload = { facade, schemaVersion: FACADE_SCHEMA_VERSION }
   if (extras?.scene) payload.scene = extras.scene
   if (extras?.viewYaw !== undefined) payload.viewYaw = snapYawTo45(extras.viewYaw)
   return payload
 }
 
 export async function encodeFacadeHash(payload: SharePayload | FacadeState): Promise<string> {
-  const share: SharePayload = isFacadeState(payload) ? { facade: payload } : payload
+  const share: SharePayload = isFacadeState(payload)
+    ? { facade: payload, schemaVersion: FACADE_SCHEMA_VERSION }
+    : { ...payload, schemaVersion: payload.schemaVersion ?? FACADE_SCHEMA_VERSION }
   const json = JSON.stringify(share)
   const compressed = await gzipBytes(json)
   if (compressed) return `${HASH_PREFIX}${bytesToBase64Url(compressed)}`
@@ -131,14 +154,51 @@ export function readFacadeFromLocationHash(): string {
   return window.location.hash
 }
 
+function readLiveHashMarker(): string | null {
+  try {
+    return localStorage.getItem(LIVE_HASH_KEY)
+  } catch {
+    return null
+  }
+}
+
+function writeLiveHashMarker(hash: string | null): void {
+  try {
+    if (hash) localStorage.setItem(LIVE_HASH_KEY, hash)
+    else localStorage.removeItem(LIVE_HASH_KEY)
+  } catch {
+    // localStorage voll / gesperrt — Marker ist optional.
+  }
+}
+
+/**
+ * `true`, wenn der aktuelle URL-Hash von dieser App selbst (Live-Schreiben / Link kopieren)
+ * gesetzt wurde. Dann ist localStorage der frischere Stand (350 ms vs. 1200 ms Debounce)
+ * und muss beim Start gewinnen; nur ein fremder/eingefügter Link lädt aus dem Hash.
+ */
+export function isOwnLiveFacadeHash(hash: string): boolean {
+  if (!hash.startsWith(HASH_PREFIX)) return false
+  return readLiveHashMarker() === hash
+}
+
 /** Obergrenze für Live-Hash in der Adresszeile (Zeichen). Darüber nur localStorage. */
 const MAX_LIVE_HASH_CHARS = 12000
 
 export function writeFacadeHash(hash: string): void {
-  if (hash.length > MAX_LIVE_HASH_CHARS) return
   const url = new URL(window.location.href)
+  if (hash.length > MAX_LIVE_HASH_CHARS) {
+    // Zu lang: Hash NICHT stehen lassen — ein veralteter `#f=` würde beim Reload
+    // gegen den frischen localStorage-Stand gewinnen (Fenster/Wände „springen“).
+    if (url.hash.startsWith(HASH_PREFIX)) {
+      url.hash = ''
+      window.history.replaceState(null, '', url)
+    }
+    writeLiveHashMarker(null)
+    return
+  }
   url.hash = hash
   window.history.replaceState(null, '', url)
+  writeLiveHashMarker(hash)
 }
 
 let facadeHashGeneration = 0
@@ -168,7 +228,8 @@ function facadeExportFilename(): string {
 }
 
 export function downloadFacadeJson(facade: FacadeState, filename = facadeExportFilename()): void {
-  const blob = new Blob([JSON.stringify(facade, null, 2)], { type: 'application/json' })
+  const exported = { ...facade, schemaVersion: FACADE_SCHEMA_VERSION }
+  const blob = new Blob([JSON.stringify(exported, null, 2)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
@@ -179,7 +240,8 @@ export function downloadFacadeJson(facade: FacadeState, filename = facadeExportF
 
 export async function loadFacadeFromFile(file: File): Promise<FacadeState> {
   const text = await file.text()
-  return applyFacadeLoadPipeline(JSON.parse(text) as FacadeState).facade
+  const raw = JSON.parse(text) as FacadeState & { schemaVersion?: number }
+  return applyFacadeLoadPipeline(stripSchemaVersion(raw), readSchemaVersion(raw)).facade
 }
 
 export async function copyFacadeLink(payload: SharePayload | FacadeState): Promise<string> {

@@ -79,7 +79,7 @@
 | Fassaden-Schriften (Katalog, Vorschau) | `src/studio/labelFonts.ts`, `src/studio/labelGeometry.ts`, `docs/fonts.md` |
 | 3D-Kamera, Orbit, Gesten | `src/main.ts`, `docs/camera.md` |
 | Kontextmenü | `src/ui/contextMenu.ts` |
-| URL-Hash / Teilen | `src/utils/share.ts` |
+| URL-Hash / Teilen (Live-Hash-Marker, `schemaVersion`) | `src/utils/share.ts`, [ux.md](ux.md#url-hash-live-srcutilssharets) |
 | Farben | `src/constants/colorPalettes.ts` |
 | Gesims / Zierbänder / Sockel | `src/utils/cornice.ts`, `trimBands.ts`, `profilePaths.ts`, [wall-decor.md](wall-decor.md) |
 | Profile | `src/profiles/registry.ts`, [profiles.md](profiles.md) |
@@ -92,4 +92,5 @@
 | Edit-Scope (Element/Typ/Etage/Fassade) | `src/studio/editScope.ts` |
 | Ausrichtungs-Hilfslinien (Öffnungen) | `src/studio/openingGuides.ts` |
 | Wand verbreitern / Front verschieben | `src/studio/walls.ts` (`stretchStudioFacade`, `attachAngledWallFromEnd`, `offsetStudioWallsAlongFront`) |
+| Wandsegment herauslösen (Hover/Klick, alle Etagen) | `src/studio/wallSplit.ts`, [ux.md](ux.md#wandsegment-herauslösen-srcstudiowallsplitts-v20142) |
 | Plan-Geometrie verschieben (Knoten/Kante → 3D) | `src/studio/planGeometry.ts` |

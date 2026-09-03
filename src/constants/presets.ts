@@ -14,8 +14,11 @@ export interface WallLengthPreset {
 }
 
 export const WALL_LENGTH_PRESETS: WallLengthPreset[] = [
+  { id: 'wall-48', label: 'Wand 48', lengthCm: 48 },
   { id: 'wall-96', label: 'Wand 96', lengthCm: 96 },
+  { id: 'wall-144', label: 'Wand 144', lengthCm: 144 },
   { id: 'wall-192', label: 'Wand 192', lengthCm: 192 },
+  { id: 'wall-288', label: 'Wand 288', lengthCm: 288 },
   { id: 'wall-384', label: 'Wand 384', lengthCm: 384 },
   { id: 'wall-576', label: 'Wand 576', lengthCm: 576 },
 ]
