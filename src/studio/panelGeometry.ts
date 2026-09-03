@@ -19,7 +19,6 @@ import {
   hybridSectorRMax,
   mergeNarrowClipParts,
   minClipRemnantWidth,
-  subdivideLargeTilesAtArchCaps,
   normalizeOpeningFill,
   openingArchGeom,
   openingArchHybridMasonryEnabled,
@@ -2025,7 +2024,11 @@ function prepareStudioPanelParts(
   const joint = panel.joint ?? 0.8
   const kind = panelKindForPattern(panel.pattern)
   const { rowCuts } = visiblePanelRowRange(wall.height, panel)
-  const clipTiles = subdivideLargeTilesAtArchCaps(tiles, wall.openings, panel.panelHeight)
+  // Keine Zwickel-Spalten mehr in der Bogenkappe (v2.0.81–2.0.87): Jeder Stein bleibt in
+  // Größe und Lage im Verband und wird vom Bogen nur maskiert — wie in der Reihe über dem
+  // Scheitel. Die 16-cm-Spalten plus Schnitt am Scheitel zerlegten Schulter- und
+  // Kellerfenster-Steine in Bruchstücke.
+  const clipTiles = tiles
 
   // Rustika (v2.0.78) oder Hybrid: Clip am Intrados + Bogenband ersetzen.
   // Klassischer Ring: Extrados-Dock.

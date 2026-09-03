@@ -23,8 +23,6 @@ import {
   openingContainsPoint,
   snapDrawingLocalX,
   studioDrawingBossFrontLocalZ,
-  subdivideLargeTilesAtArchCaps,
-  ARCH_ZWICKEL_MAX_WIDTH_CM,
 } from './openingGeometry'
 
 /**
@@ -1194,75 +1192,83 @@ describe('Läuferverband: Ecken und Laibungen im Render', () => {
     expect(shoulderVerts).toBeGreaterThan(8)
   })
 
-  it('große Paneele in der Bogenkappe werden Zwickel entlang der Kurve, kleine Ziegel nicht', () => {
-    const opening = {
-      id: 'a',
-      type: 'window' as const,
-      x: 200,
-      y: 80,
-      width: 192,
-      height: 240,
-      arch: { enabled: true, voussoirs: false, keystones: false },
+  it('Schulter- und Kellerfenster-Steine in der Bogenkappe bleiben ganze Steine (keine 16-cm-Spalten, kein Schnitt am Scheitel)', () => {
+    const run = (opening: { x: number; y: number; width: number; height: number }) => {
+      const op = { id: 'a', type: 'window' as const, ...opening, arch: { enabled: true, voussoirs: false, keystones: false } }
+      const wall = {
+        id: 'cap-whole',
+        kind: 'studio' as const,
+        x: 0,
+        z: 0,
+        y: 0,
+        width: 500,
+        height: 400,
+        depth: 24,
+        yawDeg: 0,
+        miterStart: 0,
+        miterEnd: 0,
+        openings: [op],
+        panel: normalizeStudioPanel({
+          enabled: true,
+          pattern: 'runningBond' as const,
+          panelWidth: 50,
+          panelHeight: 25,
+          joint: 0.8,
+          projectDepth: 3.8,
+          plinthEnabled: false,
+        }),
+      }
+      const panel = normalizeStudioPanel(wall.panel)
+      const geom = openingArchGeom(op as never, 0)!
+      const tiles = layoutPanelTiles(wall as never, panel, [])
+      const parts = flushClipPartsToOpeningJambs(
+        mergeNarrowClipParts(
+          clipPolysMinusArches(
+            tiles.map((t) => ({ ...t, sourceX: t.x, sourceY: t.y, sourceWidth: t.width, sourceHeight: t.height })),
+            wall.openings as never,
+            0,
+            panel.panelHeight,
+            { panelWidth: panel.panelWidth, joint: panel.joint, panelPattern: panel.pattern },
+          ),
+          minClipRemnantWidth(panel.panelWidth),
+        ),
+        wall.openings as never,
+        0,
+      )
+      const apexY = geom.cy + geom.r
+      const capParts = parts.filter(
+        (p) => p.y + p.height > geom.springY + 1 && p.y < apexY - 1 && p.x < geom.x1 + 1 && p.x + p.width > geom.x0 - 1,
+      )
+      expect(capParts.length).toBeGreaterThan(0)
+      for (const p of capParts) {
+        const src = tiles.find((t) => Math.abs(t.y - (p.sourceY ?? p.y)) < 0.2 && Math.abs(t.x - (p.sourceX ?? p.x)) < 0.2)
+        expect(src, 'Rest ohne Ursprungsstein').toBeTruthy()
+        // Keine waagerechte Teilung am Scheitel: Rest reicht bis zur Oberkante der Schicht.
+        expect(p.y + p.height).toBeCloseTo(src!.y + src!.height, 2)
+        // Keine Spalten: Rest beginnt am Ursprungsstein oder an der Laibung/Kurve, endet am Ursprungsstein oder an der Kurve.
+        const x0 = p.x
+        const x1 = p.x + p.width
+        const onSrc0 = Math.abs(x0 - src!.x) < 0.3
+        const onSrc1 = Math.abs(x1 - (src!.x + src!.width)) < 0.3
+        const onCurve = (x: number) => {
+          const dy = Math.max(0, Math.min(p.y + p.height, apexY) - geom.cy)
+          const xl = geom.cx - Math.sqrt(Math.max(0, geom.r * geom.r - dy * dy))
+          const xr = geom.cx + Math.sqrt(Math.max(0, geom.r * geom.r - dy * dy))
+          return (x >= xl - 1.5 && x <= geom.cx) || (x <= xr + 1.5 && x >= geom.cx) || Math.abs(x - geom.x0) < 0.5 || Math.abs(x - geom.x1) < 0.5
+        }
+        expect(onSrc0 || onCurve(x0), `linke Kante ${x0} weder Stein noch Bogen`).toBe(true)
+        expect(onSrc1 || onCurve(x1), `rechte Kante ${x1} weder Stein noch Bogen`).toBe(true)
+      }
+      // Ein Ursprungsstein liefert höchstens ein Stück je Seite der Kerbe (kein Spaltenraster).
+      const bySrc = new Map<string, number>()
+      for (const p of capParts) {
+        const k = `${p.sourceX}:${p.sourceY}`
+        bySrc.set(k, (bySrc.get(k) ?? 0) + 1)
+      }
+      for (const n of bySrc.values()) expect(n).toBeLessThanOrEqual(2)
     }
-    const geom = openingArchGeom(opening as never, 0)!
-    const small = [{ x: 180, y: geom.springY + 8, width: 24, height: 8 }]
-    expect(subdivideLargeTilesAtArchCaps(small, [opening] as never, 8)).toEqual(small)
-
-    const capTile = { x: geom.cx - 80, y: geom.springY + 8, width: 64, height: 32 }
-    const split = subdivideLargeTilesAtArchCaps([capTile], [opening] as never, 32)
-    expect(split.length).toBeGreaterThan(2)
-    const overArch = split.filter((t) => t.x < opening.x + opening.width - 1 && t.x + t.width > opening.x + 1)
-    expect(overArch.length).toBeGreaterThan(1)
-    expect(overArch.every((t) => t.width <= ARCH_ZWICKEL_MAX_WIDTH_CM + 0.6)).toBe(true)
-
-    const wall = {
-      id: 'zwickel-bond',
-      kind: 'studio' as const,
-      x: 0,
-      z: 0,
-      y: 0,
-      width: 640,
-      height: 400,
-      depth: 32,
-      yawDeg: 0,
-      miterStart: 0,
-      miterEnd: 0,
-      openings: [opening],
-      panel: normalizeStudioPanel({
-        enabled: true,
-        pattern: 'runningBond' as const,
-        panelWidth: 64,
-        panelHeight: 32,
-        joint: 0.8,
-        projectDepth: 3.8,
-        plinthEnabled: false,
-      }),
-    }
-    const panel = normalizeStudioPanel(wall.panel)
-    const tiles = subdivideLargeTilesAtArchCaps(
-      layoutPanelTiles(wall as never, panel, []),
-      wall.openings as never,
-      panel.panelHeight,
-    )
-    const parts = clipPolysMinusArches(tiles.map((t) => ({ ...t })), wall.openings as never, 0, panel.panelHeight, {
-      panelWidth: panel.panelWidth,
-      joint: panel.joint,
-    })
-    const capHits = parts.filter(
-      (p) =>
-        p.y + p.height > geom.springY + 6 &&
-        p.y < geom.cy + geom.r - 6 &&
-        p.x < geom.cx &&
-        p.x + p.width > geom.x0 + 2,
-    )
-    expect(capHits.length).toBeGreaterThan(3)
-    expect(capHits.every((p) => p.width <= ARCH_ZWICKEL_MAX_WIDTH_CM + 1.2)).toBe(true)
-    const withArc = capHits.filter((p) => (p.bottomArc?.length ?? 0) >= 2)
-    expect(withArc.length).toBeGreaterThan(0)
-    for (const p of withArc) {
-      const maxX = Math.max(...p.bottomArc!.map((pt) => pt.x))
-      expect(maxX).toBeGreaterThan(opening.x + 2)
-    }
+    run({ x: 175, y: 64, width: 150, height: 200 })
+    run({ x: 230, y: 20, width: 40, height: 60 })
   })
 
   it('Kappensteine über dem Rundbogen bleiben im Verband: nur maskiert, keine Schrägseiten', () => {

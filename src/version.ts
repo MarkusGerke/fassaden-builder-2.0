@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.87'
+export const APP_VERSION = '2.0.88'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,17 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.88',
+    date: '2026-09-02',
+    title: 'Bogenkappe: Schulter- und Kellerfenster-Steine bleiben ganze Steine',
+    changes: [
+      'Die Reihen zwischen Kämpfer und Scheitel verhalten sich jetzt wie die Reihe über dem Scheitel: Jeder Stein bleibt in Größe und Lage im Verband und wird vom Bogen nur maskiert',
+      'Keine 16-cm-Spalten und kein waagerechter Schnitt am Scheitel mehr — die „merkwürdig gebrochenen“ Steine an der Bogenschulter und über Kellerfenstern sind weg',
+      'Gilt für alle Paneelbreiten; Bossen-Fase folgt weiterhin jeder Kante der Restform',
+      'Bitte hart neu laden, bis v2.0.88 in der Titelleiste steht',
+    ],
+  },
   {
     version: '2.0.87',
     date: '2026-09-02',
