@@ -21,7 +21,7 @@ import {
   createStudioWall,
   panelMiterEnds,
   plinthMiterEnds,
-  REVEAL_OUTER_INSET_CM,
+  REVEAL_CLEARANCE_INSET_CM,
   studioClearanceRecessZ,
   studioOpeningRevealOuterZ,
   studioPanelFaceLocalZ,
@@ -841,8 +841,10 @@ describe('createStudioOpeningRevealGeometry', () => {
     expect(recessZ).not.toBeNull()
     const outerZ = studioOpeningRevealOuterZ(wall, opening)
     // panelFlip: außen −Z → Laibung weiter innen = größerer Z als Freiraum-Front
-    expect(outerZ).toBeCloseTo(recessZ! + REVEAL_OUTER_INSET_CM, 5)
+    expect(outerZ).toBeCloseTo(recessZ! + REVEAL_CLEARANCE_INSET_CM, 5)
     expect(outerZ).toBeGreaterThan(recessZ!)
+    // Kein großes Paneel-Inset — sonst Lichtspalte zwischen Freiraum und Laibung.
+    expect(Math.abs(outerZ - recessZ!)).toBeLessThan(0.2)
   })
 })
 

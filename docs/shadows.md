@@ -141,7 +141,7 @@ State-Änderung / Sonnen-Slider
 | `PCSS_NUM_SAMPLES` | 32 | PCSS-Filter-/Blocker-Taps (v0.7.346; vorher 17) |
 | `INDOOR_SLAB_THICKNESS` | 8 cm | Extrusionsdicke Etagen-Trennfläche |
 | `SHADOW_BIAS` | −0.0002 | Tiefen-Bias |
-| `SHADOW_NORMAL_BIAS_MIN/MAX` | 0,05 / 0,35 cm | `normalBias` aus Texelgröße (niedrig gegen Lichtspalten) |
+| `SHADOW_NORMAL_BIAS_MIN/MAX` | 0,05 / 0,22 cm | `normalBias` aus Texelgröße (niedrig gegen Lichtspalten an Laibung, v2.0.117) |
 | `SHADOW_FRUSTUM_PAD` | 120 cm | Rand um den Shadow-Kasten |
 | `SHADOW_FRUSTUM_DEPTH_PAD` | 80 cm | Extra near/far |
 | `SHADOW_GROUND_Y` | −0,5 cm | Bodenebene der Projektion |
@@ -182,4 +182,5 @@ Glas: dunkles Klarglas, CubeCamera-EnvMap der Szene von außerhalb. `transmissio
 - **Gegenlicht Seiten/Oberseiten (v0.7.202 / v0.7.203 / v0.7.256):** Wenn die Sonne hinter der Fassade steht, bleibt die Front über Lambert dunkel; Seiten und Oberseiten bekamen weiter Direct+Hemisphere. `applyFacadeShadeShader` dämpft Direct/Hemi auf Nicht-Frontflächen (`|n.z|` klein), die Front bleibt ohne Shadow-Map (keine Schraffur). **v0.7.203:** `normalMatrix` nur im Vertex — sonst kompiliert das Fragment nicht und die Wände verschwinden. **v0.7.256:** Patch wieder nach `lights_fragment_begin` (`facade-backlit-v9`) — v7/v8 nach `lights_fragment_end` mit Bounce/Innenblock ließen Wände in Farbe verschwinden. Schrift-Dim über Label-Uniforms bleibt. Datei: `src/utils/facadeShade.ts`.
 - **Schrift zu hell im Schatten (v0.7.252 / v0.7.254):** Der Wand-Shader dimmt die Front nicht (Lambert reicht). Glyphen sind Frontflächen + starkes Hemi; flache Schrift war `DoubleSide`/`transparent` (Rückseite voll Sonne); `receiveShadow` war aus, weil die Wand 1–2 cm hinter den Buchstaben die Shadow-Map fraß. Lösung: Label-Shade dimmt die ganze Glyphe stärker; `FrontSide` bei Flachschrift; Empfang mit `LABEL_SHADOW_COORD_Z_BIAS`. **v0.7.254:** Wand-Bounce/Hemi-Fill (0,82) nicht auf Schrift.
 - **Türfüllung / Treppe (v0.7.191):** gleiches Muster — Empfang aus, Cast an; sonst Schraffur auf großen ebenen Flächen.
-- **normalBias zu groß:** erzeugt helle Spalten an Laibung/Sockel (Peter-Panning); Max 0,35 cm.
+- **normalBias zu groß:** erzeugt helle Spalten an Laibung/Sockel (Peter-Panning); Max 0,22 cm (v2.0.117).
+- **Freiraum-Lichtkante (v2.0.117):** Freiraum-Kappe ohne `receiveShadow` blieb im Schatten hell; Sync filterte sie über `openingPart` aus. Jetzt `clearanceCap`-Flag + Empfang wie Paneele. Laibung nur Mini-Inset (0,12 cm) an der Freiraum-Front.

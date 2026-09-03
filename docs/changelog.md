@@ -2,6 +2,10 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Lichtkanten an Laibung/Freiraum (2026-09-03) — v2.0.117
+
+Freiraum-Kappe empfing keine Schatten (heller Rand an der Öffnung). Laibung-Inset an Freiraum von 0,6 cm auf 0,12 cm (Lichtspalte); `normalBias` Max 0,22 cm; Laibung-polygonOffset gemildert + Shadow-Depth ohne Offset. Dateien: `FacadeController.ts`, `walls.ts`, `sunLighting.ts`, `main.ts`. Docs: [shadows.md](shadows.md).
+
 ### Laibung/Sockel empfangen Sonnen-Schatten (2026-09-03) — v2.0.116
 
 Laibung und Sockel hatten `receiveShadow` nur bei Punktlicht-Okklusion (Sonnen-Moiré-Schutz) — bei verdeckter Sonne wirkten sie hell/strahlend. Empfang jetzt wie Paneele (`claddingReceiveShadows`) plus Punktlicht. Datei: `FacadeController.ts`. Docs: [shadows.md](shadows.md).

@@ -662,7 +662,7 @@ dirLight.shadow.camera.right = 600
 dirLight.shadow.camera.top = 600
 dirLight.shadow.camera.bottom = -600
 dirLight.shadow.bias = SHADOW_BIAS
-dirLight.shadow.normalBias = 0.28
+dirLight.shadow.normalBias = 0.18
 dirLight.shadow.camera.layers.set(SHADOW_LAYER_EXTERIOR)
 dirLight.target.position.set(192, 224, 0)
 let lastCelestialState = resolveCelestialState({ ...DEFAULT_SUN_SETTINGS })
@@ -962,7 +962,7 @@ dirLightIndoor.shadow.camera.right = 600
 dirLightIndoor.shadow.camera.top = 600
 dirLightIndoor.shadow.camera.bottom = -600
 dirLightIndoor.shadow.bias = SHADOW_BIAS
-dirLightIndoor.shadow.normalBias = 0.28
+dirLightIndoor.shadow.normalBias = 0.18
 // Indoor-Shadow-Camera sieht Hülle + Platten (WebGLShadowMap filtert primär über die Render-Kamera).
 dirLightIndoor.shadow.camera.layers.enable(SHADOW_LAYER_EXTERIOR)
 dirLightIndoor.shadow.camera.layers.enable(SHADOW_LAYER_INTERIOR)

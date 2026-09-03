@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.116'
+export const APP_VERSION = '2.0.117'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,15 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.117',
+    date: '2026-09-03',
+    title: 'Keine Lichtkanten an der Laibung',
+    changes: [
+      'Helle Blitzer an Freiraum- und Paneelkanten der Laibung sind weg — auch wenn die Sonne von einer Wand verdeckt wird',
+      'Bitte hart neu laden, bis v2.0.117 in der Titelleiste steht',
+    ],
+  },
   {
     version: '2.0.116',
     date: '2026-09-03',

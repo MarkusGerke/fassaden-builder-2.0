@@ -58,7 +58,7 @@ import {
   normalizeOpeningGuard,
   normalizeOpeningInteriorShade,
 } from './windows/openingExtras'
-import { applyMeshColor, applyOrthographicGlassSeeThrough, applyRenderExteriorSurfaceLook, applyRenderInteriorSurfaceLook, applySurfaceFinish, applyWorkModeSurfaceLook, createTintedMaterial, getGlassEnvironment, materialIsGlassLike } from './utils/threeColors'
+import { applyMeshColor, applyOrthographicGlassSeeThrough, applyRenderExteriorSurfaceLook, applyRenderInteriorSurfaceLook, applySurfaceFinish, applyWorkModeSurfaceLook, createTintedMaterial, ensureShadowDepthMaterial, getGlassEnvironment, materialIsGlassLike } from './utils/threeColors'
 import { applyFacadeShadeShader, facadeOutwardLocalZ } from './utils/facadeShade'
 import { openingGlassConfig } from './utils/glassConfig'
 import { DEFAULT_STUDIO_PANEL } from './studio/constants'
@@ -737,8 +737,12 @@ export class FacadeController {
     if (wallPart === 'plinth' || lodTier === 'plinth') {
       return this.plinthShouldReceiveShadow()
     }
+    // Freiraum-Kappe: sonst bleibt sie im Schatten hell → Lichtkante an der Laibung.
+    if (mesh.userData.clearanceCap === true) {
+      return this.claddingReceiveShadows || this.pointLightOccludersEnabled
+    }
     if (!this.claddingReceiveShadows && !this.isPerfPresentation()) return false
-    // Clearance-Kappen: openingPart gesetzt, kein wallPart cladding.
+    // Clearance-Kappen ohne Flag / andere openingPart: kein Empfang.
     if (mesh.userData.openingPart != null && wallPart !== 'cladding') return false
     return (
       wallPart === 'cladding' ||
@@ -2897,12 +2901,16 @@ export class FacadeController {
         // Sonne + Punktlicht: Empfang wie Paneele; Nische/Konche immer (Rückwand).
         mesh.receiveShadow = this.revealShouldReceiveShadow(mesh)
         mesh.renderOrder = 2
+        // Leichter Offset gegen Z-Fight mit Freiraum/Paneel — starker Offset (−2)
+        // zog die Laibungskante vor und erzeugte helle Silhouetten.
         exteriorMaterial.polygonOffset = true
-        exteriorMaterial.polygonOffsetFactor = -2
-        exteriorMaterial.polygonOffsetUnits = -2
+        exteriorMaterial.polygonOffsetFactor = -1
+        exteriorMaterial.polygonOffsetUnits = -1
         interiorMaterial.polygonOffset = true
-        interiorMaterial.polygonOffsetFactor = -2
-        interiorMaterial.polygonOffsetUnits = -2
+        interiorMaterial.polygonOffsetFactor = -1
+        interiorMaterial.polygonOffsetUnits = -1
+        ensureShadowDepthMaterial(exteriorMaterial)
+        if (geometry.groups.length >= 2) ensureShadowDepthMaterial(interiorMaterial)
         mesh.userData.originalMaterial = materials
         mesh.userData.wallId = wall.id
         // Zeichnung: Kanten wie Wandkörper bei Paneelen weglassen — Extrados besitzen
@@ -3517,7 +3525,8 @@ export class FacadeController {
           const capMaterial = createTintedMaterial(this.material, wallCapColor, wall.wallFinish)
           const capMesh = new THREE.Mesh(capGeometry, capMaterial)
           capMesh.castShadow = true
-          capMesh.receiveShadow = false
+          capMesh.userData.clearanceCap = true
+          capMesh.receiveShadow = this.claddingMeshShouldReceiveShadow(capMesh)
           capMesh.userData.lodTier = 'high'
           capMesh.userData.buildingId = buildingId
           capMesh.userData.wallId = wall.id

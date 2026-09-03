@@ -159,7 +159,7 @@ Vorzeichen wie Profile: `panelFlip ? -1 : 1`. Mesh-Rotation bleibt `yaw + π`; P
 Die 24 cm gelten nur für die **Fensterlage**. Die sichtbare Leibung (Seiten, Sturz, Sohlbank) ist eine **eigene Geometry** pro Öffnung (`createStudioOpeningRevealGeometry`), nicht mehr Teil des Wandmeshes:
 
 - Sie läuft von der **Innenwand** (`studioOpeningRevealInnerZ` → `studioWallInnerLocalZ`, panelFlip-sicher) bis zur **Profilebene** bzw. zur Paneelfront (`studioOpeningRevealOuterZ`). **v0.7.193:** Innenkante war bei normaler Ausrichtung fälschlich die Außenkante — Himmel-Streifen am Sturz. **v0.7.239:** nur noch der Tunnel (keine Front-Lippe, kein Soffit-Kasten in der Öffnung) — Sturz = Oberkante der Maske, ohne Extra-Linien.
-- Mit **Freiraum um die Öffnung**: äußeres Ende = Vertiefungskante (`studioClearanceRecessZ`) minus `REVEAL_OUTER_INSET_CM` — Laibung bündig hinter der Freiraum-Front (v2.0.115), vor der Wand bei positiver Tiefe, in der Wand bei negativer Tiefe.
+- Mit **Freiraum um die Öffnung**: äußeres Ende = Vertiefungskante (`studioClearanceRecessZ`) minus `REVEAL_CLEARANCE_INSET_CM` (0,12 cm, v2.0.117) — Freiraum-Kappe empfängt Schatten (keine Lichtkante).
 - **Farbe (v0.7.247):** Tunnel halbiert in Außen- und Innenhälfte — **Außenhälfte** = `wall.wallColor`, **Innenhälfte** = `wall.interiorColor` (jeweils `wallFinish`). Zwei Material-Gruppen in `createStudioOpeningRevealGeometry`. Pick als Öffnung (`openingPart: 'group'`).
 - Ohne Fensterprofil: Ende = äußerste Fassadenfläche (`projectDepth` + `taperDepth`).
 - Mit Profil: max/min zur Profilebene (`offsetForward`), nie kürzer als die Paneelfront.

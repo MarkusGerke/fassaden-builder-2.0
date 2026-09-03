@@ -1134,6 +1134,11 @@ export const PROFILE_BACK_CLEARANCE_CM = 1.2
 
 /** Laibung beginnt leicht hinter der Paneelfront — Steine besitzen die Lochkante. */
 export const REVEAL_OUTER_INSET_CM = 0.6
+/**
+ * Mit Freiraum: nur Mini-Inset gegen Z-Fight mit der Freiraum-Front.
+ * 0,6 cm ließ eine Lichtspalte zwischen Kappe und Laibung (helle Kante im Schatten).
+ */
+export const REVEAL_CLEARANCE_INSET_CM = 0.12
 
 export function studioProfileAnchorLocalZ(wall: Wall, offsetForward = 0): number {
   const face = wallHasPanels(wall) ? studioPanelFaceLocalZ(wall) : studioWallOuterLocalZ(wall)
@@ -1174,22 +1179,22 @@ export function studioOpeningRevealOuterZ(wall: Wall, opening?: Opening): number
   const flip = wall.panelFlip ?? true
   const facadeZ = studioFacadeOutwardLocalZ(wall)
   const recessZ = opening ? studioClearanceRecessZ(wall, opening) : null
-  const inset = studioWindowDepthForwardSign(wall) * REVEAL_OUTER_INSET_CM
+  const sign = studioWindowDepthForwardSign(wall)
   if (recessZ != null) {
-    // Freiraum-Front besitzt die Kante; Laibung knapp dahinter (sonst vor der Vertiefung).
-    return recessZ - inset
+    // Freiraum-Front besitzt die Kante; nur Mini-Inset (keine Lichtspalte).
+    return recessZ - sign * REVEAL_CLEARANCE_INSET_CM
   }
   if (!opening) return facadeZ
   const hasOpeningProfile = wall.profiles.some((profile) => profile.openingId === opening.id)
   let outer = facadeZ
   if (hasOpeningProfile) {
     const offset = opening.trim?.offsetForward ?? WINDOW_TRIM_DEFAULT_OFFSET_FORWARD
-    const profileZ = facadeZ + offset * studioWindowDepthForwardSign(wall)
+    const profileZ = facadeZ + offset * sign
     outer = flip ? Math.min(facadeZ, profileZ) : Math.max(facadeZ, profileZ)
   }
   // Paneel besitzt die Frontkante; Laibung startet knapp dahinter (kein Z-Fight).
   if (wallHasPanels(wall)) {
-    return outer - inset
+    return outer - sign * REVEAL_OUTER_INSET_CM
   }
   return outer
 }

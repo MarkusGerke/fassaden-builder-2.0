@@ -123,7 +123,7 @@ export const SHADOW_MAP_SIZE_INDOOR = 2048
 export const SHADOW_BIAS = -0.0002
 export const SHADOW_NORMAL_BIAS_MIN = 0.05
 /** Folgt der Texelgröße; zu groß → Lichtspalten (Peter-Panning) an Laibung/Sockel. */
-export const SHADOW_NORMAL_BIAS_MAX = 0.35
+export const SHADOW_NORMAL_BIAS_MAX = 0.22
 export const SHADOW_FRUSTUM_PAD = 120
 /** Extra near/far (cm), damit Boden-Treffer nicht aus der Tiefe fallen. */
 export const SHADOW_FRUSTUM_DEPTH_PAD = 80
@@ -656,7 +656,7 @@ export function fitDirectionalShadowCamera(
   const texel = Math.max(frustumW, frustumH) / mapSize
   dirLight.shadow.bias = SHADOW_BIAS
   dirLight.shadow.normalBias = THREE.MathUtils.clamp(
-    texel * 0.22,
+    texel * 0.14,
     SHADOW_NORMAL_BIAS_MIN,
     SHADOW_NORMAL_BIAS_MAX,
   )
