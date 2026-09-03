@@ -51,10 +51,11 @@ describe('pcssShadows', () => {
     expect(THREE.ShaderChunk.shadowmap_pars_fragment).not.toContain(
       'pcssLightSizeUv * PCSS_NEAR_PLANE / zReceiver',
     )
-    expect(THREE.ShaderChunk.shadowmap_pars_fragment).toContain('sum / 17.0')
-    expect(THREE.ShaderChunk.shadowmap_pars_fragment).not.toContain(
+    // Punktlicht: Hard-Cube (kein Soft-Würfel auf dem Boden, v2.0.118)
+    expect(THREE.ShaderChunk.shadowmap_pars_fragment).toContain(
       'float depth = textureCube( shadowMap, bd3D ).r;',
     )
+    expect(THREE.ShaderChunk.shadowmap_pars_fragment).not.toContain('sum / 17.0')
     disablePcssShadows()
     expect(isPcssShadowsEnabled()).toBe(false)
     expect(THREE.ShaderChunk.shadowmap_pars_fragment).toBe(original)

@@ -545,7 +545,7 @@ import {
   type PresentationMode,
 } from './lighting/editPresentation'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
-import { SceneLightRuntime, POINT_SHADOW_MAP_FRONT, POINT_SHADOW_RADIUS_SCALE_FRONT } from './lighting/sceneLightRuntime'
+import { SceneLightRuntime, POINT_SHADOW_MAP_FRONT } from './lighting/sceneLightRuntime'
 import { normalizePowerWatts } from './lighting/sceneLightUnits'
 import {
   addSceneLight,
@@ -8395,15 +8395,28 @@ function sceneLightRoomOcclusionActive(): boolean {
 }
 
 function sceneLightShadowFarCm(): number {
+  const lights = normalizeSceneLights(state.sceneLights).filter((item) => item.enabled)
+  let far = 0
+  for (const light of lights) {
+    const d = light.distance ?? 0
+    if (d <= 0) {
+      // Unbegrenzte Lichtreichweite: Far weit hinter der Szene — keine sichtbare Würfelkante.
+      far = Math.max(far, 50000)
+    } else {
+      far = Math.max(far, d * 1.05)
+    }
+  }
+  if (far <= 0) far = 2400
   const box = buildingWorldBox(getAllWalls(state))
-  if (box.isEmpty()) return 2400
-  const span = Math.max(
-    box.max.x - box.min.x,
-    box.max.y - box.min.y,
-    box.max.z - box.min.z,
-    400,
-  )
-  return Math.min(4800, span * 1.8 + 400)
+  if (!box.isEmpty()) {
+    const diagonal = Math.hypot(
+      box.max.x - box.min.x,
+      box.max.y - box.min.y,
+      box.max.z - box.min.z,
+    )
+    far = Math.max(far, diagonal + 1200)
+  }
+  return far
 }
 
 function sceneLightsActive(): boolean {
@@ -8419,7 +8432,6 @@ function syncSceneLightRuntime(): void {
     selectedId: editor.selectedSceneLightId,
     shadowFarCm: sceneLightShadowFarCm(),
     shadowSoftness: sunSettings.shadowSoftness,
-    pointShadowRadiusScale: frontView ? POINT_SHADOW_RADIUS_SCALE_FRONT : 1,
     pointShadowMapSize: frontView ? POINT_SHADOW_MAP_FRONT : 2048,
     showMarkers: state.viewOptions?.showLightMarkers !== false,
     bloomActive: bloomIsActive(),

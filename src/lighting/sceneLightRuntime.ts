@@ -24,8 +24,8 @@ export const POINT_SHADOW_MAP_FRONT = 4096
 const POINT_SHADOW_NEAR_CM = 8
 const POINT_SHADOW_FAR_DEFAULT_CM = 2400
 
-/** Extra-Weichheit für Ortho-Front (Cube-Schatten sonst pixelig). */
-export const POINT_SHADOW_RADIUS_SCALE_FRONT = 2.25
+/** Extra-Weichheit für Ortho-Front — seit v2.0.118 ungenutzt (Hard-Cube, kein Soft-Würfel). */
+export const POINT_SHADOW_RADIUS_SCALE_FRONT = 1
 
 interface LightEntry {
   light: THREE.PointLight
@@ -144,6 +144,7 @@ export class SceneLightRuntime {
     entry.light.decay = spec.decay ?? 2
     entry.light.castShadow =
       spec.enabled && spec.castShadow !== false && options.roomOcclusion !== false
+    // Radius bleibt gesetzt (API); Hard-Cube-Shader nutzt es nicht (kein Soft-Würfel mehr).
     entry.light.shadow.radius = pointShadowRadiusFromSoftness(
       options.shadowSoftness ?? 2.5,
       options.pointShadowRadiusScale ?? 1,
@@ -156,7 +157,11 @@ export class SceneLightRuntime {
         entry.light.shadow.map = null
       }
     }
-    const shadowFar = options.shadowFarCm ?? POINT_SHADOW_FAR_DEFAULT_CM
+    const lightDist = spec.distance ?? 0
+    const shadowFar =
+      lightDist > 0
+        ? Math.max(lightDist * 1.05, POINT_SHADOW_NEAR_CM * 4)
+        : (options.shadowFarCm ?? POINT_SHADOW_FAR_DEFAULT_CM)
     if (entry.light.shadow.camera.far !== shadowFar) {
       entry.light.shadow.camera.far = shadowFar
       entry.light.shadow.camera.updateProjectionMatrix()

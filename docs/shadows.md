@@ -79,7 +79,7 @@ planFacesWithHoles(plan)
 | Öffnungs-Tunnel (unsichtbar) | ja | nein (nur Shadow-Map; bis Fassadenfront inkl. Paneeltiefe, v0.7.192) |
 | Punktlicht-Raum-Okkluder (Außenring, Layer 3) | ja (nur Punktlicht-Cube-Map, `customDistanceMaterial`; **v2.0.107:** 100 cm + Stoß 160 cm) | nein — unsichtbar für Kamera und Sonne |
 
-**Punktlicht-Cube-Map (v2.0.111):** 3D **2048**, 2D-Front **4096**; Soft-Filter 17 Taps; Front zusätzlich `pointShadowRadiusScale` 2,25 — sonst wirken Schattenkanten in der Ortho-Ansicht stark pixelig.
+**Punktlicht-Cube-Map (v2.0.111 / v2.0.118):** 3D **2048**, 2D-Front **4096**. Soft-Disk-Taps entfernt (zeichneten die Far-Grenze als Würfel auf den Boden); Hard-Cube. Shadow-`far` folgt Lichtreichweite bzw. Site (unbegrenzt → 500 m), nicht mehr auf 48 m gekappt.
 | Paneele / Mörtel | ja | **2D-Front: ja** (v0.7.285 Werfschatten); **3D/Oben: nein** (v0.7.183 / v0.7.140 — Empfang = Schraffur) |
 | Laibung | ja | **ja** in Farbe/3D wie Paneele (`claddingReceiveShadows`); zusätzlich bei Punktlicht-Okklusion; Nische/Konche immer (v2.0.116; früher dauerhaft aus wegen Moiré) |
 | Dach | ja | ja |
