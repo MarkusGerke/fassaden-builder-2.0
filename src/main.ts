@@ -691,6 +691,26 @@ controls.target.set(192, 224, 0)
 controls.mouseButtons.RIGHT = THREE.MOUSE.PAN
 /** ⌘/Ctrl kann auf macOS beim Pointerdown fehlen — keydown/keyup als Fallback. */
 let modKeyHeld = false
+/** Numpad-/Zifferntaste 1–9 gehalten → Nudge-Schritt = 8·n cm (sonst 8). */
+let nudgeMultiplierHeld = 1
+
+function heldNudgeStepCm(): number {
+  return STUDIO_MASONRY * Math.max(1, Math.min(9, nudgeMultiplierHeld))
+}
+
+function nudgeMultiplierFromKey(key: string, code: string): number | null {
+  if (code.startsWith('Numpad') && code.length === 7) {
+    const n = Number(code.slice(6))
+    if (n >= 1 && n <= 9) return n
+  }
+  if (code.startsWith('Digit') && code.length === 6) {
+    const n = Number(code.slice(5))
+    if (n >= 1 && n <= 9) return n
+  }
+  // Fallback: event.key bei Numpad oft die Ziffer selbst
+  if (key.length === 1 && key >= '1' && key <= '9') return Number(key)
+  return null
+}
 
 function markViewportDirty() {
   viewportDirty = true
@@ -4353,6 +4373,11 @@ const profileSelectCards = document.querySelector<HTMLDivElement>('#profile-sele
 const windowSillSection = document.querySelector<HTMLDivElement>('#window-sill-section')!
 const windowBasementRow = document.querySelector<HTMLLabelElement>('#window-basement-row')!
 const windowBasementEnabled = document.querySelector<HTMLInputElement>('#window-basement-enabled')!
+const windowBasementGrilleOptions = document.querySelector<HTMLElement>('#window-basement-grille-options')!
+const windowBasementGrilleHeight = document.querySelector<HTMLInputElement>('#window-basement-grille-height')!
+const windowBasementGrilleHeightOut = document.querySelector<HTMLOutputElement>(
+  '#window-basement-grille-height-out',
+)!
 const sillOuterEnabled = document.querySelector<HTMLInputElement>('#sill-outer-enabled')!
 const sillInnerEnabled = document.querySelector<HTMLInputElement>('#sill-inner-enabled')!
 const sillInnerOverhang = document.querySelector<HTMLInputElement>('#sill-inner-overhang')!
@@ -8183,10 +8208,8 @@ function setSunAnimChannel(channel: 'time' | 'compass', enabled: boolean) {
 }
 
 /**
- * Paneel-/Mauerwerk-Shadow-Map nur im farbigen 2D-Aufriss, und nicht bei Streiflicht.
- * Zeichnung: immer aus (weiße Fläche + Acne = „kaputtes“ Mauerwerk).
- * Ost/West bei Südsonne: |N·L|≈0 → Shadow-Acne entlang jeder Steinkante.
- * Nord: Sonne frontal/gegen → Werfschatten von Gesims bleiben an.
+ * Paneel-/Mauerwerk-Shadow-Map: farbiger Aufriss und 3D; Zeichnung aus.
+ * Ost/West bei Südsonne im Aufriss: Streiflicht → Empfang aus (Acne).
  */
 let facadeReady = false
 function syncCladdingReceiveShadows() {
@@ -8196,7 +8219,15 @@ function syncCladdingReceiveShadows() {
     facade.setCladdingReceiveShadows(true)
     return
   }
-  if (currentView !== 'front' || currentRenderStyle === 'line') {
+  if (currentRenderStyle === 'line') {
+    facade.setCladdingReceiveShadows(false)
+    return
+  }
+  if (currentView === '3d') {
+    facade.setCladdingReceiveShadows(true)
+    return
+  }
+  if (currentView !== 'front') {
     facade.setCladdingReceiveShadows(false)
     return
   }
@@ -13204,7 +13235,7 @@ function applyOpeningPartVisibility() {
   const hideFrameChrome = lacksChrome || isConch
   const isBasement = Boolean(sel && isBasementWindowOpening(sel.opening))
   const focusPart = part !== 'group'
-  const showFrame = !isBasement && !hideFrameChrome && (part === 'group' || part === 'frame' || part === 'grille')
+  const showFrame = !hideFrameChrome && (part === 'group' || part === 'frame' || part === 'grille')
   const showTrim = !isBasement && !lacksChrome && (part === 'group' || part === 'trim')
   let showSillInner = !isBasement && (part === 'group' || part === 'sillInner')
   let showSillOuter = !isBasement && (part === 'group' || part === 'sillOuter')
@@ -13243,15 +13274,11 @@ function applyOpeningPartVisibility() {
 
   const showSills = isWindow && !isBasement && (showSillInner || showSillOuter)
 
-  if (!showFrame || isBasement || hideFrameChrome) {
+  if (!showFrame || hideFrameChrome) {
     windowStyleSection.hidden = true
     const styleAcc = document.querySelector<HTMLElement>('#window-style-accordion')
     if (styleAcc) styleAcc.hidden = true
-    if (isBasement) {
-      frameColorSection.hidden = false
-      glassColorSection.hidden = false
-      if (openingModelSelect.parentElement) openingModelSelect.parentElement.hidden = false
-    } else {
+    if (!isBasement) {
       frameColorSection.hidden = true
       glassColorSection.hidden = true
       if (openingModelSelect.parentElement) openingModelSelect.parentElement.hidden = true
@@ -13259,6 +13286,11 @@ function applyOpeningPartVisibility() {
   } else {
     const styleAcc = document.querySelector<HTMLElement>('#window-style-accordion')
     if (styleAcc && !windowStyleSection.hidden) styleAcc.hidden = false
+    if (isBasement) {
+      frameColorSection.hidden = false
+      glassColorSection.hidden = false
+      if (openingModelSelect.parentElement) openingModelSelect.parentElement.hidden = false
+    }
   }
 
   const profileAssign = document.querySelector<HTMLElement>('#profile-assign-section')
@@ -13312,8 +13344,10 @@ function applyOpeningPartVisibility() {
   const actionsSection = document.querySelector<HTMLElement>('#opening-actions-section')
   if (actionsSection) actionsSection.hidden = focusPart
 
-  // Kellerfenster-Checkbox nur wenn bereits Kellerfenster (nicht bei jedem EG-Fenster)
-  windowBasementRow.hidden = !isBasement
+  // Kellerfenster-Checkbox bei jedem Fenster; Gitterhöhe nur wenn aktiv
+  const showBasementToggle = isWindow && !lacksChrome && !isConch && (!focusPart || part === 'grille')
+  windowBasementRow.hidden = !showBasementToggle
+  windowBasementGrilleOptions.hidden = !showBasementToggle || !isBasement
 
   const revealSection = document.querySelector<HTMLElement>('#opening-reveal-frame-section')
   const archSection = document.querySelector<HTMLElement>('#opening-arch-section')
@@ -13334,6 +13368,7 @@ function applyOpeningPartVisibility() {
     doorStairsSection.hidden = true
     openingRollerShutterSection.hidden = true
     windowBasementRow.hidden = true
+    windowBasementGrilleOptions.hidden = true
     if (pedimentSection) pedimentSection.hidden = true
     if (consolesSection) consolesSection.hidden = true
   }
@@ -13777,6 +13812,8 @@ function syncBasementWindowStyleUi(isBasement: boolean) {
   const splitHSection = windowSplitHCountButtons[0]?.closest('.toolbar-group')
   if (splitVSection) splitVSection.hidden = isBasement
   if (splitHSection) splitHSection.hidden = isBasement
+  const guardSection = document.querySelector<HTMLElement>('#window-guard-section')
+  if (guardSection) guardSection.hidden = isBasement
   for (const opt of windowPresetSelect.options) {
     const preset = WINDOW_STYLE_PRESETS[opt.value as keyof typeof WINDOW_STYLE_PRESETS]
     opt.hidden =
@@ -13797,6 +13834,7 @@ function syncWindowStyleSection() {
   windowStyleSection.hidden = refs.length === 0
   if (accordion) accordion.hidden = refs.length === 0
   windowBasementRow.hidden = true
+  windowBasementGrilleOptions.hidden = true
   if (refs.length === 0) return
   const wall = getWall(state, refs[0].wallId)
   const opening = wall?.openings.find((item) => item.id === refs[0].openingId)
@@ -13806,16 +13844,23 @@ function syncWindowStyleSection() {
     return
   }
   const isBasement = isBasementWindowOpening(opening)
-  // Option nur bei bereits aktivem Kellerfenster (nicht bei jedem EG-Fenster)
-  windowBasementRow.hidden = !isBasement
+  // Bei jedem Fenster: Keller mit Stabgitter an-/ausschalten; Höhe nur wenn aktiv
+  windowBasementRow.hidden = opening.type !== 'window'
   windowBasementEnabled.checked = isBasement
+  windowBasementGrilleOptions.hidden = opening.type !== 'window' || !isBasement
+  if (isBasement) {
+    const pct = Math.round((opening.basementWindow?.grilleHeight ?? 0.5) * 100)
+    windowBasementGrilleHeight.value = String(pct)
+    windowBasementGrilleHeightOut.textContent = `${pct} %`
+  }
   syncBasementWindowStyleUi(isBasement)
   const config = gruenderzeitConfigForOpening(opening)
   const timber = resolveTimber(config.timber)
   const preset = detectWindowPreset(config)
   windowBoxInput.checked = Boolean(config.boxWindow)
   windowBoxOptions.hidden = !config.boxWindow
-  windowInnerFrameColor.value = config.innerFrameColor ?? opening.frameColor ?? '#4a4a4a'
+  windowInnerFrameColor.value =
+    config.innerFrameColor ?? opening.frameColor ?? defaultOpeningFrameColor(opening.type)
   windowProfiledBars.checked = Boolean(config.profiledBars)
   windowHardware.checked = Boolean(config.hardware)
   windowTimberBlend.value = String(timber.blend)
@@ -14293,6 +14338,7 @@ for (const group of [
   facade.roofGroup,
   facade.lineGroup,
   facade.guideGroup,
+  facade.openingDragGhostGroup,
 ]) {
   siteOffset.add(group)
 }
@@ -15473,12 +15519,38 @@ windowBasementEnabled.addEventListener('change', () => {
   }
   commitState(next)
   syncWindowStyleSection()
+  applyOpeningPartVisibility()
 })
 
-openingNudgeLeft.addEventListener('click', () => nudgeSelectedOpenings(-STUDIO_MASONRY, 0))
-openingNudgeRight.addEventListener('click', () => nudgeSelectedOpenings(STUDIO_MASONRY, 0))
-openingNudgeUp.addEventListener('click', () => nudgeSelectedOpenings(0, STUDIO_MASONRY))
-openingNudgeDown.addEventListener('click', () => nudgeSelectedOpenings(0, -STUDIO_MASONRY))
+function commitBasementGrilleHeight(ratio: number) {
+  const refs = [...editor.selectedOpenings]
+  if (refs.length === 0) return
+  const grilleHeight = Math.max(0.25, Math.min(0.85, ratio))
+  let next = state
+  for (const ref of refs) {
+    const wall = getWall(next, ref.wallId)
+    const opening = wall?.openings.find((item) => item.id === ref.openingId)
+    if (!wall || !opening || opening.type !== 'window') continue
+    if (!isBasementWindowOpening(opening)) continue
+    next = updateOpening(next, ref.wallId, ref.openingId, {
+      basementWindow: { enabled: true, grilleHeight },
+    })
+  }
+  commitState(next)
+}
+
+windowBasementGrilleHeight.addEventListener('input', () => {
+  const pct = Number(windowBasementGrilleHeight.value)
+  windowBasementGrilleHeightOut.textContent = `${pct} %`
+})
+windowBasementGrilleHeight.addEventListener('change', () => {
+  commitBasementGrilleHeight(Number(windowBasementGrilleHeight.value) / 100)
+})
+
+openingNudgeLeft.addEventListener('click', () => nudgeSelectedOpenings(-heldNudgeStepCm(), 0))
+openingNudgeRight.addEventListener('click', () => nudgeSelectedOpenings(heldNudgeStepCm(), 0))
+openingNudgeUp.addEventListener('click', () => nudgeSelectedOpenings(0, heldNudgeStepCm()))
+openingNudgeDown.addEventListener('click', () => nudgeSelectedOpenings(0, -heldNudgeStepCm()))
 openingPosX.addEventListener('change', () => {
   const sel = selectedWindowOpening()
   if (!sel) return
@@ -15705,16 +15777,13 @@ function commitOpeningArchPatch(patch?: {
     const switchedToRound =
       form === 'round' &&
       (formChanged || (patch?.enabled === true && prevForm === 'rect'))
-    // Rundbogen neu gewählt → Keilstein-Ring an (Mauerwerk-Zwickel); explizit false bleibt.
-    // Alt-Saves ohne Feld: Normalize lässt voussoirs false — hier nur UI-Wechsel.
+    // Keilstein-Ring nicht automatisch beim Rundbogen — nur wenn Checkbox / Patch an.
     const voussoirs =
       form !== 'round'
         ? false
         : patch?.voussoirs != null
           ? patch.voussoirs
-          : switchedToRound
-            ? true
-            : openingArchVoussoirs.checked
+          : openingArchVoussoirs.checked
     const nextArch: Parameters<typeof normalizeOpeningArch>[0] = {
       enabled: form !== 'rect',
       form,
@@ -16891,7 +16960,7 @@ canvas.addEventListener('pointermove', (event) => {
             facade.applyLiveOpeningOffsets(openingDragBase!, state, refs)
           })
           refreshOpeningGuides(drag3dOpening!.wallId, drag3dOpening!.openingId)
-          showWallFacePlacementGrid(placementGridGroup, wall)
+          showWallFacePlacementGrid(placementGridGroup, wall, getAllWalls(state))
         }
       }
     }
@@ -18426,6 +18495,10 @@ redoButton.addEventListener('click', () => {
 
 window.addEventListener('keydown', (event) => {
   if (event.key === 'Meta' || event.key === 'Control') modKeyHeld = true
+  if (!isTypingInInput()) {
+    const mult = nudgeMultiplierFromKey(event.key, event.code)
+    if (mult != null) nudgeMultiplierHeld = mult
+  }
 
   // Wand-Preset-Drag: R wechselt die Achse der Andock-Vorschau
   if (
@@ -18459,9 +18532,9 @@ window.addEventListener('keydown', (event) => {
 
   if (handle3dCameraArrowKeys(event)) return
 
-  // Pfeiltasten: Öffnungen in 8-cm-Schritten (ohne ⌘/Ctrl/⇧ — sonst Kamera)
+  // Pfeiltasten: Öffnungen in 8-cm-Schritten (Numpad 1–9 = Vielfaches; ohne ⌘/Ctrl/⇧)
   if (!mod && !event.shiftKey && isSceneEditView() && editor.selectedOpenings.length > 0) {
-    const MOVE = 8
+    const MOVE = heldNudgeStepCm()
     let dx = 0
     let dy = 0
     if (event.key === 'ArrowLeft') dx = -MOVE
@@ -18530,6 +18603,12 @@ window.addEventListener('keydown', (event) => {
 
 window.addEventListener('keyup', (event) => {
   if (event.key === 'Meta' || event.key === 'Control') modKeyHeld = false
+  if (nudgeMultiplierFromKey(event.key, event.code) != null) nudgeMultiplierHeld = 1
+})
+
+window.addEventListener('blur', () => {
+  modKeyHeld = false
+  nudgeMultiplierHeld = 1
 })
 
 function resizeCanvasView() {

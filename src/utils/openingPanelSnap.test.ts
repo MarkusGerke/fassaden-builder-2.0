@@ -63,6 +63,16 @@ describe('openingPanelSnap', () => {
     expect(xs).toContain(24)
   })
 
+  it('Nudge mit dx=48 cm läuft weiter als ein einzelner Kandidat-Schritt', () => {
+    const wall = studioWall({ id: 'w', width: 384 })
+    const opening = { x: 48, y: 64, width: 96, height: 96, type: 'window' as const }
+    const once = snapOpeningMoveToMasonry(wall, [wall], opening, opening.x + 8, opening.y, 8, 0, 'nudge')
+    expect(once.x).toBeGreaterThan(opening.x)
+    const far = snapOpeningMoveToMasonry(wall, [wall], opening, opening.x + 48, opening.y, 48, 0, 'nudge')
+    expect(far.x).toBeGreaterThan(once.x)
+    expect(far.x - opening.x).toBeGreaterThanOrEqual(48 - 0.1)
+  })
+
   it('Kandidaten: Fuge, Steinmitte und Wandmitte', () => {
     const wall = studioWall({ id: 'w', width: 384 })
     const width = 96

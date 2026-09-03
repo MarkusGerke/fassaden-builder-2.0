@@ -2043,14 +2043,20 @@ function refinePolyArcToCurve(
       const n = Math.max(8, Math.ceil(((span1 - span0) / Math.max(1, curveX1 - curveX0)) * ARCH_CURVE_SEGMENTS))
       for (let i = 0; i <= n; i += 1) extra.push(span0 + ((span1 - span0) * i) / n)
     }
-    const xs = uniqueSortedXs(
-      [...arc.map((p) => p.x), ...extra],
-      0.2,
-    )
+    // Originalpunkte der Polylinie exakt behalten — insbesondere die lotrechte
+    // Laibungsnaht (x = Laibung − JAMB_SEAM → x = Laibung). Ein Merge mit 0,2 cm
+    // ließ die Stufen-Ecke wegfallen: Sehne vom Steinboden bis zum Kämpfer (Diagonale).
+    const arcXs = arc.map((p) => p.x)
+    const extraXs = extra.filter((x) => !arcXs.some((ax) => Math.abs(ax - x) <= 0.2))
+    const samples: { x: number; y: number | null }[] = [
+      ...arc.map((p) => ({ x: p.x, y: p.y as number | null })),
+      ...extraXs.map((x) => ({ x, y: null as number | null })),
+    ].sort((a, b) => a.x - b.x)
     const out: { x: number; y: number }[] = []
-    for (const x of xs) {
+    for (const sample of samples) {
+      const x = sample.x
       if (x < x0 - 1e-6 || x > x1 + 1e-6) continue
-      let y = interpolatePolyArc(arc, x, flatY, 0.05)
+      let y = sample.y ?? interpolatePolyArc(arc, x, flatY, 0.05)
       if (x >= curveX0 - 0.05 && x <= curveX1 + 0.05) {
         const cy = curveY(x)
         if (kind === 'arch' && y > flatY + 0.4) y = Math.max(y, cy)

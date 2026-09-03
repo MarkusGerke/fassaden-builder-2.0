@@ -31,6 +31,7 @@ Verwandte Docs: [ux.md](ux.md), [opening-motion.md](opening-motion.md), [roller-
 ### Fenster-/Tür-Element (`gruenderzeit`)
 
 - Presets, 1–3 Flügel, Oberlicht, Primärteilung 1–5, Sprossen je Teil
+- **v2.0.90:** Default neu = 1 Flügel, kein Oberlicht, keine Sprossen (kein Mehrflügel-„Gitter“); Nutzer schaltet über Teilung zu
 - Kastenfenster inkl. **Innenfarbe** (`innerFrameColor`) und getrennte Innenwinkel
 - Brüstung bei Türen; Öffnungswinkel; Animation
 - **Holzmaße** (`timber`: Blend/Flügel/Sprosse/Kämpfer/Stulp)

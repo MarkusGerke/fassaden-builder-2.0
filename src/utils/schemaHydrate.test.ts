@@ -84,6 +84,9 @@ describe('hydrateOpening', () => {
     expect(hydrated.panelClearance?.enabled).toBe(false)
     expect(hydrated.arch?.enabled).toBe(false)
     expect(hydrated.basementWindow?.enabled).toBe(false)
+    expect(hydrated.frameColor).toBe('#ffffff')
+    expect(hydrated.gruenderzeit?.casements).toBe(1)
+    expect(hydrated.gruenderzeit?.transom).toBe(false)
     expect(hydrated.glassMode).toBe('tint')
     expect(hydrated.gruenderzeit).toBeDefined()
     expect(hydrated.trim).toBeDefined()
@@ -91,6 +94,16 @@ describe('hydrateOpening', () => {
     expect(hydrated.sillOuter).toBeDefined()
     expect(hydrated.motion?.open.keys.length).toBeGreaterThan(1)
     expect(hydrated.motion?.open.keys.some((key) => key.v > 1)).toBe(true)
+  })
+
+  it('ersetzt unveränderten alten Rahmen-Default #4a4a4a durch Weiß', () => {
+    const hydrated = hydrateOpening({ ...sparseWindow(), frameColor: '#4a4a4a' })
+    expect(hydrated.frameColor).toBe('#ffffff')
+  })
+
+  it('lässt abweichende Rahmenfarbe unverändert', () => {
+    const hydrated = hydrateOpening({ ...sparseWindow(), frameColor: '#6b4f3a' })
+    expect(hydrated.frameColor).toBe('#6b4f3a')
   })
 
   it('füllt Alt-Tür inkl. Treppe aus', () => {

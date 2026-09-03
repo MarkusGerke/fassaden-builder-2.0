@@ -1283,11 +1283,11 @@
                 <p id="opening-window-depth-hint" class="toolbar-hint compact-hint">Pro Öffnung. Standard-Laibung 24 cm; hier die effektive Frontlage.</p>
               </div>
               <div id="opening-position-section" class="toolbar-group">
-                <div class="preset-group">
-                  <button id="opening-nudge-left" class="preset-btn" type="button">←</button>
-                  <button id="opening-nudge-right" class="preset-btn" type="button">→</button>
-                  <button id="opening-nudge-up" class="preset-btn" type="button">↑</button>
-                  <button id="opening-nudge-down" class="preset-btn" type="button">↓</button>
+                <div class="preset-group" title="Verschieben in 8-cm-Schritten. Numpad-Ziffer 1–9 halten = Vielfaches (z. B. 3 → 24 cm).">
+                  <button id="opening-nudge-left" class="preset-btn" type="button" title="Nach links (8 cm; Numpad = Vielfaches)">←</button>
+                  <button id="opening-nudge-right" class="preset-btn" type="button" title="Nach rechts (8 cm; Numpad = Vielfaches)">→</button>
+                  <button id="opening-nudge-up" class="preset-btn" type="button" title="Nach oben (8 cm; Numpad = Vielfaches)">↑</button>
+                  <button id="opening-nudge-down" class="preset-btn" type="button" title="Nach unten (8 cm; Numpad = Vielfaches)">↓</button>
                 </div>
                 <span class="toolbar-label">Horizontal (cm, 8er-Raster)</span>
                 <input id="opening-pos-x" type="number" step="8" min="0" value="0" title="Position in 8-cm-Schritten" />
@@ -1503,10 +1503,26 @@
                 <label class="toolbar-check"><input id="window-door-handle" type="checkbox" checked /> Drücker</label>
                 <label class="toolbar-check"><input id="window-door-letter" type="checkbox" /> Briefschlitz</label>
               </div>
-              <label id="window-basement-row" class="toolbar-check" hidden>
-                <input id="window-basement-enabled" type="checkbox" />
-                Kellerfenster mit Gitter
-              </label>
+              <div id="window-basement-block">
+                <label id="window-basement-row" class="toolbar-check" hidden>
+                  <input id="window-basement-enabled" type="checkbox" />
+                  Kellerfenster mit Gitter
+                </label>
+                <div id="window-basement-grille-options" class="toolbar-group" hidden>
+                  <label>
+                    Gitterhöhe
+                    <input
+                      id="window-basement-grille-height"
+                      type="range"
+                      min="25"
+                      max="85"
+                      step="5"
+                      value="50"
+                    />
+                    <output id="window-basement-grille-height-out">50 %</output>
+                  </label>
+                </div>
+              </div>
               <div class="toolbar-group">
                 <span class="toolbar-label">Flügel</span>
                 <div id="window-casement-group" class="preset-group">

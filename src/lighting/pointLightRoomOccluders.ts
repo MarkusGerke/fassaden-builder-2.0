@@ -8,9 +8,8 @@ import { storeyFloorSurfaceY, storeyTopY } from '../utils/layers'
  * Unsichtbare Boden-/Deckenplatten auf dem **Außenring** (Wandaußenkante).
  * Nur für Punktlicht-Cube-Shadows (Layer 3) — Hauptkamera und Sonne sehen sie nicht.
  *
- * Sichtbare Indoor-Platten liegen auf der Innenkante; dazwischen ist die Wandstärke.
- * Durch diese Fuge lief Licht in Kellerfenster. Die Außenring-Platte schließt sie,
- * ohne im Bild als extra Boden/Decke zu erscheinen.
+ * Sichtbare Indoor-Platten liegen ebenfalls auf dem Außenring (v2.0.92). Die Okkluder
+ * bleiben als Backup, wenn Decke/Boden ausgeblendet sind (`showCeiling === false`).
  */
 export function buildPointLightRoomOccluders(
   buildings: Building[],

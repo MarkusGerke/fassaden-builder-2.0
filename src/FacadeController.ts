@@ -104,9 +104,8 @@ import {
   createPedimentConsoleGeometries,
   createPedimentSweepGeometry,
 } from './studio/pedimentGeometry'
-import { innerFaceRingWorld, planFacesWithHoles } from './studio/floorPlan'
-import { innerFaceRingFromWalls } from './studio/panelGeometry'
-import { floorIndex, storeyFloorSurfaceY, storeyTopY } from './utils/layers'
+import { planFacesWithHoles, planNodeWorld } from './studio/floorPlan'
+import { storeyFloorSurfaceY, storeyTopY } from './utils/layers'
 import { facadeOutward } from './studio/elevation'
 import { isStudioWall, leafOpenSignForWall, outerSillBoardPose, studioFacadeOutwardLocalZ, studioFacadeSelectionLocalZ, studioPanelFaceLocalZ, studioProfileAnchorLocalZ, studioWallOuterLocalZ, studioWallTransform, studioWindowOriginZ, wallAlongDelta, wallHasPanels, windowDepthForwardSign } from './studio/walls'
 import { buildMansardRoof } from './studio/roof'
@@ -139,8 +138,8 @@ export class FacadeController {
   public readonly casingGroup: THREE.Group = new THREE.Group()
   public readonly claddingGroup: THREE.Group = new THREE.Group()
   public readonly selectionGroup: THREE.Group = new THREE.Group()
-  /** Nur Öffnungs-Umriss beim Fensterziehen (Profile/Bänke aus). */
-  private readonly openingDragGhostGroup: THREE.Group = new THREE.Group()
+  /** Nur Öffnungs-Umriss beim Fensterziehen (Profile/Bänke aus) — unter siteOffset hängen. */
+  public readonly openingDragGhostGroup: THREE.Group = new THREE.Group()
   private readonly openingDragGhostFillMaterial: THREE.MeshBasicMaterial
   private readonly openingDragHiddenVis = new Map<string, boolean>()
   private readonly openingDragHiddenCast = new Map<string, boolean>()
@@ -175,7 +174,7 @@ export class FacadeController {
   private readonly claddingInstances: THREE.Object3D[] = []
   private readonly studioCladdingMeshes: THREE.Mesh[] = []
   private readonly wallLabelMeshes: THREE.Mesh[] = []
-  /** 2D-Front: Paneele/Mörtel empfangen Werfschatten; 3D aus (Moiré). */
+  /** 2D-Front / 3D Farbe: Paneele und Mörtel empfangen Werfschatten. */
   private claddingReceiveShadows = false
   /** 2D-Front: Glas als Alpha statt Physical-Transmission. */
   private orthoGlassSeeThrough = false
@@ -471,11 +470,8 @@ export class FacadeController {
 
   /**
    * Wandkörper empfängt immer (Innenraum v0.7.237 + Freistreifen).
-   * Paneele/Mörtel: Empfang nur in 2D-Front (`claddingReceiveShadows`) — sonst Zoom-Schraffur
-   * in 3D (v0.7.140); im Aufriss braucht die Nordfassade Werfschatten von Gesims/Vorstand,
-   * weil Lambert (N·L) dort bei typischem Tages-Azimut kaum schwankt.
-   * Gesims/Zierband casten immer (auch bei Schrift) — Schrift empfängt mit Z-Bias (v0.7.252).
-   * Früher: Cast bei Schrift aus → kein Gesims-Schatten auf dem Freistreifen.
+   * Paneele/Mörtel: Empfang wenn `claddingReceiveShadows` (2D-Front Farbe, 3D, Arbeit) —
+   * Zeichnung und Streiflicht-Ost/West aus (Acne). Gesims/Zierband casten immer.
    */
   private syncLabelShadowReceivers() {
     for (const [wallId, mesh] of this.meshes) {
@@ -517,7 +513,7 @@ export class FacadeController {
     return true
   }
 
-  /** Fensterrahmen/-füllung: Shadow-Map wenn Paneele empfangen (2D-Front). */
+  /** Fensterrahmen/-füllung: Shadow-Map wenn Paneele empfangen (2D/3D). */
   private syncOpeningReceiveShadows() {
     const enable = this.claddingReceiveShadows
     const apply = (root: THREE.Object3D) => {
@@ -594,9 +590,15 @@ export class FacadeController {
 
     for (const child of this.indoorFloorGroup.children) {
       if (!(child instanceof THREE.Mesh)) continue
-      child.castShadow = enable ? child.visible : (child.userData.indoorRole === 'ceiling' && child.visible)
+      // Sichtbare Platten immer casten wenn sichtbar — sonst Licht durch Geschossgrenzen.
+      child.castShadow = child.visible
       child.receiveShadow = child.visible
       child.layers.set(SHADOW_LAYER_INTERIOR)
+      if (enable && child.visible) {
+        child.customDistanceMaterial = this.shadowDistanceMaterial
+      } else if (child.customDistanceMaterial === this.shadowDistanceMaterial) {
+        child.customDistanceMaterial = undefined
+      }
       const mats = Array.isArray(child.material) ? child.material : [child.material]
       for (const mat of mats) {
         if (mat instanceof THREE.MeshStandardMaterial) bindSkipPointShadows(mat)
@@ -673,7 +675,7 @@ export class FacadeController {
 
   /**
    * Paneele/Mörtel empfangen Shadow-Map nur wenn `claddingReceiveShadows`
-   * (2D-Front oder Arbeitsmodus). Sockel und Freiraum-Kappen bleiben aus.
+   * (2D-Front Farbe, 3D oder Arbeitsmodus). Sockel und Freiraum-Kappen bleiben aus.
    */
   private claddingMeshShouldReceiveShadow(mesh: THREE.Mesh): boolean {
     if (!this.claddingReceiveShadows && !this.isPerfPresentation()) return false
@@ -724,14 +726,18 @@ export class FacadeController {
   }
 
   /**
-   * 2D-Aufriss oder Arbeitsmodus: Paneele empfangen Werfschatten.
-   * 3D/Oben ohne Arbeit: aus — vermeidet Zoom-Moiré auf großen Frontflächen.
+   * 2D-Aufriss, 3D und Arbeitsmodus: Paneele empfangen Werfschatten.
+   * Zeichnung: aus (Acne auf weißen Flächen).
    */
   setCladdingReceiveShadows(enabled: boolean) {
-    if (this.claddingReceiveShadows === enabled) return
-    this.claddingReceiveShadows = enabled
+    if (this.claddingReceiveShadows !== enabled) {
+      this.claddingReceiveShadows = enabled
+      this.syncLabelShadowReceivers()
+      this.wallLabelsNeedShadowUpdate = true
+      return
+    }
+    // Flag unverändert — nach Rebuild Paneele/Mörtel/Fenster trotzdem nachziehen.
     this.syncLabelShadowReceivers()
-    this.wallLabelsNeedShadowUpdate = true
   }
 
   /** 2D-Aufriss: Glas durchsichtig (kein Physical-Transmission, das in Ortho schwarz wird). */
@@ -1002,6 +1008,7 @@ export class FacadeController {
     }
 
     this.applyLodVisibility()
+    this.syncLabelShadowReceivers()
   }
 
   private rebuildWallBodiesForWallIds(wallIds: Set<string>) {
@@ -1042,9 +1049,46 @@ export class FacadeController {
   /**
    * Öffnungen während pointermove: nur Mesh-Translation, kein Rebuild.
    * Mauerwerk-Loch folgt erst beim Loslassen (`setState`).
+   * Ändert der Snap Breite/Höhe, wird der Ghost neu gebaut (sonst falsche orangene Fläche).
    */
   applyLiveOpeningOffsets(base: FacadeState, next: FacadeState, refs: OpeningRef[]) {
     this.state = next
+    const sizeChanged = refs.some((ref) => {
+      const fromWall = findWall(base, ref.wallId)
+      const toWall = findWall(next, ref.wallId)
+      const from = fromWall?.openings.find((o) => o.id === ref.openingId)
+      const to = toWall?.openings.find((o) => o.id === ref.openingId)
+      if (!from || !to) return false
+      return (
+        Math.abs(from.width - to.width) > 1e-4 || Math.abs(from.height - to.height) > 1e-4
+      )
+    })
+    if (sizeChanged) {
+      this.clearOpeningDragGhosts()
+      this.createOpeningDragGhosts(refs)
+      // Ghost sitzt schon auf `next`; Rest so setzen, dass rest + (next−base) = Position.
+      for (const ref of refs) {
+        const world = openingWorldDeltaFromStates(base, next, ref)
+        for (const obj of this.openingDragGhostGroup.children) {
+          if (
+            obj.userData.kind !== 'openingDragGhost' ||
+            obj.userData.wallId !== ref.wallId ||
+            obj.userData.openingId !== ref.openingId
+          ) {
+            continue
+          }
+          this.liveDragRest.set(
+            obj.uuid,
+            new THREE.Vector3(
+              obj.position.x - world.x,
+              obj.position.y - world.y,
+              obj.position.z - world.z,
+            ),
+          )
+        }
+      }
+      return
+    }
     for (const ref of refs) {
       const world = openingWorldDeltaFromStates(base, next, ref)
       this.offsetLiveRoots(
@@ -1338,24 +1382,21 @@ export class FacadeController {
       for (let fi = 0; fi < floors.length; fi++) {
         const plan = floors[fi]
         if (plan.hidden) continue
-        const wallDepth = building.wallDepth ?? WALL_DEPTH
-        const floorWalls = building.walls.filter(
-          (wall) => !wall.hidden && floorIndex(wall, building.wallHeight) === fi,
-        )
         const slabMat = slabMatFor(plan.ceilingColor ?? DEFAULT_CEILING_COLOR)
         const faces = planFacesWithHoles(plan)
         for (const face of faces) {
-          const inner = innerFaceRingFromWalls(face.outer, floorWalls, wallDepth)
-          if (inner.length < 3) continue
-          const shape = ringToShapeXY(inner)
+          // Bis zur Fassaden-Außenkante (Plan-Ring) — schließt die Wandstärke lichtdicht.
+          const outer = face.outer.map(planNodeWorld)
+          if (outer.length < 3) continue
+          const shape = ringToShapeXY(outer)
           if (!shape) continue
           for (const holeNodes of face.holes) {
-            const holeInner = innerFaceRingWorld(holeNodes, wallDepth)
-            if (holeInner.length < 3) continue
+            const holeOuter = holeNodes.map(planNodeWorld)
+            if (holeOuter.length < 3) continue
             const path = new THREE.Path()
-            path.moveTo(holeInner[0].x, -holeInner[0].z)
-            for (let i = holeInner.length - 1; i >= 1; i -= 1) {
-              path.lineTo(holeInner[i].x, -holeInner[i].z)
+            path.moveTo(holeOuter[0]!.x, -holeOuter[0]!.z)
+            for (let i = holeOuter.length - 1; i >= 1; i -= 1) {
+              path.lineTo(holeOuter[i]!.x, -holeOuter[i]!.z)
             }
             path.closePath()
             shape.holes.push(path)
@@ -1673,13 +1714,13 @@ export class FacadeController {
   }
 
   /**
-   * Decken werfen Schatten; Böden empfangen. Kein Cast auf Böden — sonst doppelte Silhouette.
+   * Sichtbare Geschossplatten: cast + receive wenn sichtbar (lichtdicht).
+   * Layer nur Innen — keine Etagenstreifen auf der Außenfassade durch die Sonne.
    */
   private applyIndoorShadowCasting() {
     for (const child of this.indoorFloorGroup.children) {
       const mesh = child as THREE.Mesh
-      const role = mesh.userData.indoorRole as string | undefined
-      mesh.castShadow = role === 'ceiling' && mesh.visible
+      mesh.castShadow = mesh.visible
       mesh.receiveShadow = mesh.visible
       mesh.layers.set(SHADOW_LAYER_INTERIOR)
     }
@@ -1878,7 +1919,6 @@ export class FacadeController {
 
   /** Nach Fenster-/Verkleidungs-Rebuild: High-Cache invalidieren und LOD-Sichtbarkeit anwenden. */
   private finalizeGeometryRebuild() {
-    this.syncLabelShadowReceivers()
     this.applyPointLightOccluders()
     this.applyFacadeBacklitShade()
     if (!this.lodSettings.enabled) {
@@ -1886,6 +1926,8 @@ export class FacadeController {
     } else {
       this.applyLodVisibility()
     }
+    // Nach High-Fenstern: Empfang erst setzen (Meshes starten mit receiveShadow=false).
+    this.syncLabelShadowReceivers()
   }
 
   /** Gegenlicht: Seiten und Oberseiten wie die Front abdunkeln, ohne Front-Schraffur. */
@@ -2408,6 +2450,7 @@ export class FacadeController {
         this.rebuildWindowsForWalls(walls, 'high')
         this.highDetailBuilt.add(buildingId)
         this.applyLodVisibility()
+        this.syncLabelShadowReceivers()
       }
       return
     }
@@ -2418,6 +2461,7 @@ export class FacadeController {
     this.highDetailBuilt.add(buildingId)
     this.applyFacadeBacklitShade()
     this.applyLodVisibility()
+    this.syncLabelShadowReceivers()
   }
 
   private clearFarHulls() {
@@ -3150,13 +3194,13 @@ export class FacadeController {
                 if (this.isPreviewPresentation()) applyWorkModeSurfaceLook(material)
                 else this.finishExteriorMaterial(material)
                 const mesh = new THREE.Mesh(geometry, material)
-                mesh.castShadow = !this.isPreviewPresentation()
-                mesh.receiveShadow = this.isPreviewPresentation()
+                mesh.castShadow = true
                 mesh.userData.lodTier = 'low'
                 mesh.userData.buildingId = buildingId
                 mesh.userData.wallId = wall.id
                 if ((panel.taperDepth ?? 0) > 0.35) mesh.userData.lineEdgeThreshold = 48
                 tagPickable(mesh, { kind: 'wall', wallId: wall.id, wallPart: 'cladding' })
+                mesh.receiveShadow = this.claddingMeshShouldReceiveShadow(mesh)
                 mesh.userData.originalMaterial = material
                 mesh.position.set(transform.position.x, transform.position.y, transform.position.z)
                 mesh.rotation.y = transform.rotationY
@@ -3179,13 +3223,13 @@ export class FacadeController {
                   if (this.isPreviewPresentation()) applyWorkModeSurfaceLook(mortarMaterial)
                   else this.finishExteriorMaterial(mortarMaterial)
                   const mortarMesh = new THREE.Mesh(mortarGeometry, mortarMaterial)
-                  mortarMesh.castShadow = !this.isPreviewPresentation()
-                  mortarMesh.receiveShadow = this.isPreviewPresentation()
+                  mortarMesh.castShadow = true
                   mortarMesh.userData.lodTier = 'mortar'
                   mortarMesh.userData.skipLineEdges = true
                   mortarMesh.userData.buildingId = buildingId
                   mortarMesh.userData.wallId = wall.id
-                  tagPickable(mortarMesh, { kind: 'wall', wallId: wall.id })
+                  tagPickable(mortarMesh, { kind: 'wall', wallId: wall.id, wallPart: 'cladding' })
+                  mortarMesh.receiveShadow = this.claddingMeshShouldReceiveShadow(mortarMesh)
                   mortarMesh.userData.originalMaterial = mortarMaterial
                   mortarMesh.position.set(transform.position.x, transform.position.y, transform.position.z)
                   mortarMesh.rotation.y = transform.rotationY
@@ -3254,18 +3298,53 @@ export class FacadeController {
                 this.finishExteriorMaterial(material)
                 const mesh = new THREE.Mesh(geometry, material)
                 mesh.castShadow = true
-                mesh.receiveShadow = false
                 mesh.userData.lodTier = 'high'
                 mesh.userData.buildingId = buildingId
                 mesh.userData.wallId = wall.id
                 if ((panel.taperDepth ?? 0) > 0.35) mesh.userData.lineEdgeThreshold = 48
                 tagPickable(mesh, { kind: 'wall', wallId: wall.id, wallPart: 'cladding' })
+                mesh.receiveShadow = this.claddingMeshShouldReceiveShadow(mesh)
                 mesh.userData.originalMaterial = material
                 mesh.position.set(transform.position.x, transform.position.y, transform.position.z)
                 mesh.rotation.y = transform.rotationY
                 mesh.visible = false
                 this.claddingGroup.add(mesh)
                 targetList.push(mesh)
+              }
+
+              // High-LOD: bestehenden Mörtel der Wand ersetzen und Empfang setzen.
+              if (panel.joint > 0) {
+                for (let i = this.studioCladdingMeshes.length - 1; i >= 0; i -= 1) {
+                  const prev = this.studioCladdingMeshes[i]!
+                  if (prev.userData.wallId !== wall.id || prev.userData.lodTier !== 'mortar') continue
+                  this.claddingGroup.remove(prev)
+                  prev.geometry.dispose()
+                  this.studioCladdingMeshes.splice(i, 1)
+                }
+                const mortarGeometry = createStudioMortarGeometry(geomWall, panel, neighborWalls, tiles)
+                if (mortarGeometry) {
+                  const mortarColor = panel.jointColor ?? DEFAULT_JOINT_COLOR
+                  const mortarMaterial = createTintedMaterial(
+                    this.material,
+                    mortarColor,
+                    wall.wallFinish,
+                  )
+                  this.finishExteriorMaterial(mortarMaterial)
+                  const mortarMesh = new THREE.Mesh(mortarGeometry, mortarMaterial)
+                  mortarMesh.castShadow = true
+                  mortarMesh.userData.lodTier = 'mortar'
+                  mortarMesh.userData.skipLineEdges = true
+                  mortarMesh.userData.buildingId = buildingId
+                  mortarMesh.userData.wallId = wall.id
+                  tagPickable(mortarMesh, { kind: 'wall', wallId: wall.id, wallPart: 'cladding' })
+                  mortarMesh.receiveShadow = this.claddingMeshShouldReceiveShadow(mortarMesh)
+                  mortarMesh.userData.originalMaterial = mortarMaterial
+                  mortarMesh.position.set(transform.position.x, transform.position.y, transform.position.z)
+                  mortarMesh.rotation.y = transform.rotationY
+                  mortarMesh.visible = false
+                  this.claddingGroup.add(mortarMesh)
+                  this.studioCladdingMeshes.push(mortarMesh)
+                }
               }
             }
           } catch (error) {

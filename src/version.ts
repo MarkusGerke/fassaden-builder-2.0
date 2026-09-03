@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.88'
+export const APP_VERSION = '2.0.95'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,77 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.95',
+    date: '2026-09-03',
+    title: 'Keine schräge Kante am Bogenansatz',
+    changes: [
+      'Steine, die Kämpferlinie und Laibung überspannen, zeigen in der Zeichnung keine Diagonale mehr — die Laibungskante bleibt lotrecht',
+      'Bitte hart neu laden, bis v2.0.95 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.94',
+    date: '2026-09-03',
+    title: 'Paneele über und unter Rechteckfenstern',
+    changes: [
+      'Fehlende Steine direkt über dem Sturz und unter der Sohlbank bei Rechtecköffnungen sind wieder da (mit und ohne Freiraum)',
+      'Verhalten wie bei Rundbögen: angeschnittene Schichten werden geschnitten, nicht weggelassen',
+      'Bitte hart neu laden, bis v2.0.94 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.93',
+    date: '2026-09-03',
+    title: 'Wände bleiben beim Neuladen stehen',
+    changes: [
+      'Hard-Reload verschiebt keine Wand-Origins mehr (Außenkanten-Fit nur noch bei Altstand mit Innen-Origin)',
+      'Bitte hart neu laden, bis v2.0.93 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.92',
+    date: '2026-09-03',
+    title: 'Decken und Böden lichtdicht bis zur Fassade',
+    changes: [
+      'Geschossdecken und -böden reichen bis zum Fassadenrand und lassen kein Licht mehr durch die Wandstärke',
+      'Wandunterseite bleibt neben Türen geschlossen — nur unter der Schwelle offen',
+      'Bitte hart neu laden, bis v2.0.92 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.91',
+    date: '2026-09-03',
+    title: 'Schatten auch auf Fugen/Mörtel',
+    changes: [
+      'Mörtelplatten in den Fugen empfangen wieder Sonnen-Schatten (wie die Steine)',
+      'Bitte hart neu laden, bis v2.0.91 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.90',
+    date: '2026-09-03',
+    title: 'Weiße Rahmen, Fassaden-Schatten, einfaches Fenster, Keller-Gitter',
+    changes: [
+      'Fensterrahmen: Default und Alt-Saves mit unverändertem Grau (#4a4a4a) werden weiß',
+      '3D: Fassadenpaneele empfangen und werfen wieder Sonnen-Schatten; Arbeit-Modus wirft ebenfalls',
+      '2D-Aufriss: Schatten auf Fensterrahmen nach High-LOD-Rebuild wieder sichtbar',
+      'Neue Fenster ohne Oberlicht/Mehrflügel-Raster; Kellerfenster-Gitter an jedem Fenster zuschaltbar inkl. Gitterhöhe',
+      'Bitte hart neu laden, bis v2.0.90 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.89',
+    date: '2026-09-03',
+    title: 'Fassaden-Raster = Verband, Snap-Vorschau, Nudge-Numpad, kein Auto-Keilstein',
+    changes: [
+      'Blaues Raster beim Verschieben von Öffnungen folgt den Stoßfugen und Schichten des Paneels/Mauerwerks — nicht mehr einem festen 32-cm-Gitter',
+      'Orangene Drag-Vorschau hängt am Haus (siteOffset) und wird bei Breiten-Snap neu gebaut — sie sitzt dort, wo die Öffnung nach dem Loslassen landet',
+      'Maße-Pfeile und Tastatur: Standard 8 cm; Numpad-/Zifferntaste 1–9 halten = Vielfaches (z. B. 3 → 24 cm)',
+      'Rundbogen aktivieren schaltet den Keilstein-Ring nicht mehr automatisch ein',
+      'Bitte hart neu laden, bis v2.0.89 in der Titelleiste steht',
+    ],
+  },
   {
     version: '2.0.88',
     date: '2026-09-02',

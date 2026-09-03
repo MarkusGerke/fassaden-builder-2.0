@@ -32,7 +32,6 @@ import {
   wallStartPoint,
   wallEndPoint,
   pointsMeet,
-  findAdjacentWalls,
 } from './walls'
 
 const MITER_MATCH_EPS = 2
@@ -443,14 +442,10 @@ export function buildingNeedsOuterSpineFit(building: Building): boolean {
   const innerOrigin = linked.filter((wall) => wall.panelFlip === false)
   // Mehrheit innen: Altstand nach „Wandstärke an der Außenkante“. Einzeln gedrehtes
   // panelFlip (Front umkehren) nicht jedes Load zurücksetzen.
-  if (innerOrigin.length >= 2 && innerOrigin.length * 2 >= linked.length) return true
-  if (linked.length < 3) return false
-  const connected = linked.filter((wall) => {
-    const n =
-      findAdjacentWalls(wall, 'start', linked).length + findAdjacentWalls(wall, 'end', linked).length
-    return n > 0
-  })
-  return connected.length < linked.length / 2
+  // Keine Heuristik über „unverbundene Ringe“: freistehende planLinked-Wände, Endstücke
+  // oder knappe Ecken würden sonst bei jedem Hard-Reload erneut fitten und Origins
+  // verschieben — auch wenn panelFlip schon true ist.
+  return innerOrigin.length >= 2 && innerOrigin.length * 2 >= linked.length
 }
 
 /** Verschiebt eine Gebäudeecke (Gitterposition) auf allen Etagen und in allen 3D-Wänden. */

@@ -2,6 +2,34 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Keine Diagonale am Bogenansatz (2026-09-03) — v2.0.95
+
+Stein über Kämpfer + Laibung: `refinePolyArcToCurve` legte alle `bottomArc`-X mit 0,2 cm zusammen; die lotrechte Laibungsnaht (`JAMB_SEAM` = 0,001) verschwand und die Zeichnung zeigte eine Sehne vom Steinboden zum Bogenansatz. Jetzt bleiben die Original-Stützpunkte exakt; nur Kurven-Zusatzsamples werden dedupliziert. Dateien: `openingGeometry.ts`, `archOpeningMasonryClip.test.ts`. Docs: [panel-geometry.md](panel-geometry.md).
+
+### Paneele über/unter Rechteckfenstern (2026-09-03) — v2.0.94
+
+Mauerwerks-Layout blockierte jede Schicht, die die Öffnung in Y schnitt — Mittelsteine über Sturz und unter Sohlbank entfielen (Rundbogen-Kappe war ausgenommen, weil Blocker nur bis Kämpfer). Zusätzlich fraß `snapHoleToTileGrid` ganze Zeilen. Jetzt: Kopf-/Sohlbank-Schnittzeilen legen Steine und clippen wie die Bogenkappe; Y-Snap nur noch bei Rest < 8 cm. Dateien: `panelLayout.ts`, `panelGeometry.ts`, Tests. Docs: [panel-geometry.md](panel-geometry.md).
+
+### Wände stabil beim Hard-Reload (2026-09-03) — v2.0.93
+
+`buildingNeedsOuterSpineFit` löste den Außenkanten-Fit auch bei „unverbundenen Ringen“ aus (freistehende `planLinked`-Wände, knappe Ecken). Beim Laden wurden Origins dann neu geschnitten — manchmal sichtbar nach Hard-Reload. Jetzt nur noch bei Mehrheit `panelFlip: false` (Innen-Origin-Altstand). Dateien: `planGeometry.ts`, `loadWallStability.test.ts`. Docs: [migration.md](migration.md).
+
+### Decken/Böden bis Fassadenrand, lichtdichte Geschosse (2026-09-03) — v2.0.92
+
+Sichtbare Indoor-Platten nutzen den Plan-**Außenring** (statt Innenkante) — schließen die Wandstärke; Hof-Löcher ebenfalls Außenkontur. Platten casten wenn sichtbar inkl. `customDistanceMaterial` bei Punktlicht-Okklusion. Wandunterseite: Segmente neben Bodentüren bleiben zu (früher fehlte die ganze Unterseite sobald eine Tür existierte). Dateien: `FacadeController.ts`, `panelGeometry.ts`, `pointLightRoomOccluders.ts`. Docs: [floor-plan.md](floor-plan.md), [ux.md](ux.md), [scene-lights.md](scene-lights.md).
+
+### Schatten auf Fugen/Mörtel (2026-09-03) — v2.0.91
+
+Mörtelplatten (`lodTier: mortar`) bekamen nach Rebuild oft `receiveShadow=false` (nur Preview-Initialwert) und fehlten im High-LOD-Nachzug. Jetzt Empfang über `claddingMeshShouldReceiveShadow` beim Erzeugen; High-LOD ersetzt den Wand-Mörtel; Sync auch nach Öffnungs-Drag und wenn das Receive-Flag unverändert bleibt. Dateien: `FacadeController.ts`. Docs: [shadows.md](shadows.md).
+
+### Weiße Rahmen, Fassaden-Schatten, einfaches Fenster, Keller-Gitter (2026-09-03) — v2.0.90
+
+Rahmen: Hydrate ersetzt unverändertes Alt-Default `#4a4a4a` durch Weiß (`PREVIOUS_FRAME_COLOR_DEFAULTS`). Neue Gründerzeit-Defaults: 1 Flügel, kein Oberlicht. Schatten: `syncCladdingReceiveShadows` aktiv in 3D; nach High-LOD-Fenster-Rebuild `syncLabelShadowReceivers`; Flat-Paneele casten auch in Arbeit; Early-Return in `setCladdingReceiveShadows` zieht Opening-Empfang nach. Keller: Checkbox an jedem Fenster + Gitterhöhe-Slider; Teilung bleibt sichtbar. Dateien: `hydrate.ts`, `gruenderzeit.ts`, `FacadeController.ts`, `main.ts`, `index.html`, `openingExtras.ts`. Docs: [shadows.md](shadows.md), [opening-features.md](opening-features.md), [ux.md](ux.md).
+
+### Raster = Verband, Snap-Vorschau, Nudge-Numpad, kein Auto-Keilstein (2026-09-03) — v2.0.89
+
+Wandflächen-Raster beim Öffnungs-Drag nutzt Stoßfugen/Schichten (`wallFaceGridXs`/`Ys` in `placementGrid.ts`, gleiche Cuts wie `openingPanelSnap`) statt festem 32 cm. Orangene Drag-Ghosts unter `siteOffset`; bei Breiten-/Höhen-Snap Neuaufbau in `applyLiveOpeningOffsets`. Maße-Pfeile/Tastatur: Schritt 8·n cm (Numpad 1–9); Nudge auf Verband läuft Kandidaten bis ≥ Strecke. Rundbogen-UI setzt `voussoirs` nicht mehr automatisch. Dateien: `placementGrid.ts`, `FacadeController.ts`, `openingPanelSnap.ts`, `main.ts`, `index.html`, Tests. Docs: [ux.md](ux.md), [opening-features.md](opening-features.md).
+
 ### Bogenkappe ohne Zwickel-Spalten (2026-09-02) — v2.0.88
 
 `subdivideLargeTilesAtArchCaps` (v2.0.81) zerlegte jeden Stein ≥ 14 cm hoch oder ≥ 40 cm breit in der Bogenkappe (Kämpfer…Scheitel, Laibungs-X) in 16-cm-Spalten und schnitt ihn waagerecht am Scheitel — an der Bogenschulter und über Kellerfenstern entstanden Bruchstücke, während die Reihe über dem Scheitel (nicht in der Kappenzone) intakt blieb. Der Schritt ist entfernt: `prepareStudioPanelParts` clippt die Roh-Kacheln direkt (`clipRectMinusArch` liefert bereits ganze Steine mit `bottomArc`, L-Formen und Kerben). `ARCH_ZWICKEL_MAX_WIDTH_CM`, `archCapZones`, `sliceZwickelTile` entfernt. Test „Schulter- und Kellerfenster-Steine in der Bogenkappe bleiben ganze Steine“ (50×25 cm, Fenster 150 breit + Kellerfenster 40 breit). Dateien: `openingGeometry.ts`, `panelGeometry.ts`, `stripPanelClip.test.ts`. Docs: [panel-geometry.md](panel-geometry.md), [ux.md](ux.md).

@@ -1034,11 +1034,21 @@ export function masonryPatternCuts(
   return computeRowColCuts(wall, panel, rowIndex, allWalls, bondCornerW, [])
 }
 
-/** Laibungskörper, die die Zeile `y…yEnd` treffen, als Plan-X-Spannen. */
+/**
+ * Laibungskörper, die die Zeile `y…yEnd` als X-Blocker brauchen.
+ * Zeilen, die nur Kopf oder Sohlbank anschneiden, werden **nicht** blockiert —
+ * sonst fehlen die Mittelsteine ober-/unterhalb des Sturzes (Rechteckfenster).
+ * Wie bei der Bogenkappe: Steine legen, Öffnungs-Clip liefert den Rest.
+ */
 function rowJambBlockers(holes: JambHole[], y: number, yEnd: number): JambHole[] {
-  return holes.filter(
-    (h) => h.height > CLIP_EPS && y < h.y + h.height - CLIP_EPS && yEnd > h.y + CLIP_EPS,
-  )
+  return holes.filter((h) => {
+    if (h.height <= CLIP_EPS) return false
+    if (yEnd <= h.y + CLIP_EPS || y >= h.y + h.height - CLIP_EPS) return false
+    const straddlesHead = y < h.y - CLIP_EPS && yEnd > h.y + CLIP_EPS
+    const straddlesSill = y < h.y + h.height - CLIP_EPS && yEnd > h.y + h.height + CLIP_EPS
+    if (straddlesHead || straddlesSill) return false
+    return true
+  })
 }
 
 /** Zeilen-Schnitte einer Wand inkl. ihrer eigenen Laibungsfelder (für Dock-Nachbarn). */

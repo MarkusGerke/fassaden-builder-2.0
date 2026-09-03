@@ -75,7 +75,7 @@ interface PersistedAppState {
 }
 ```
 
-Laden: `applyFacadeLoadPipeline` (`migrateFacadeSchema` → `clampFacadeState` inkl. `hydrateFacadeState` → `finalizeStudioGeometry`). Speichern setzt immer `FACADE_SCHEMA_VERSION`. Details: [migration.md](migration.md). Korrekturen an **bestehenden** Wänden: abgeleitete Werte jedes Load; persistierte Fehlstände als Schema-Step (v0.7.222 / Schema 11: invertierte Abzweig-Fugen).
+Laden: `applyFacadeLoadPipeline` (`migrateFacadeSchema` → `clampFacadeState` inkl. `hydrateFacadeState` → ggf. Außenkanten-Fit nur bei Mehrheit `panelFlip: false` → `finalizeStudioGeometry`). Speichern setzt immer `FACADE_SCHEMA_VERSION`. Details: [migration.md](migration.md). Korrekturen an **bestehenden** Wänden: abgeleitete Werte jedes Load; persistierte Fehlstände als Schema-Step (v0.7.222 / Schema 11: invertierte Abzweig-Fugen). **v2.0.93:** Hard-Reload verschiebt keine Wand-Origins mehr über die alte „unverbundene Ringe“-Fit-Heuristik.
 
 **Teilen-Link (`#f=`):** Zusätzlich zu `facade` optional `scene` (Szene-Farben) und `viewYaw` (Kompass). Siehe [ux.md](ux.md#url-hash-live-srcutilssharets).
 

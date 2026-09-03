@@ -22,8 +22,8 @@ Ein Raum wird durch **Wände, Boden, Decke und Laibungen** begrenzt. Punktlicht 
 | Durchlässig | Blockiert |
 |---|---|
 | Fenster-/Türöffnung in der Wand (Loch) | Wandkörper, Verkleidung, Rahmen, Sprossen |
-| Klarglas (Transmission, kein Shadow-Cast) | Sichtbare Geschoss-Boden und -Decke (Innenkante) |
-| Geöffnete Fenster/Tür (kein Glas im Weg) | Unsichtbare Außenring-Platten (Wandstärke, nur Shadow-Map) |
+| Klarglas (Transmission, kein Shadow-Cast) | Sichtbare Geschoss-Boden und -Decke (**Außenring** / Fassadenrand, v2.0.92) |
+| Geöffnete Fenster/Tür (kein Glas im Weg) | Unsichtbare Außenring-Platten (Backup wenn Platten aus, nur Shadow-Map) |
 | | Rollladen (geschlossen), Laibung, **Konche**, Öffnungs-Tunnel |
 
 Im **Render**-Modus (3D/Front) ist die Okklusion **automatisch aktiv**, sobald mindestens ein Punktlicht eingeschaltet ist.
@@ -35,14 +35,14 @@ Im **Render**-Modus (3D/Front) ist die Okklusion **automatisch aktiv**, sobald m
 1. **Shader-Maske** (`skipPointLights.ts`): Außen-Materialien (Paneele, Sockel, Gesimse, äußere Fensterbänke, Wand-Außenmaterial, Fensterrahmen, **Konche/Nische-Außenmaterial**) bekommen **kein Punktlicht**. **Innenwand** (Materialgruppe 1), Böden, Decken, Glas und Laibungs-Innenseite schon — sichtbar durch Fenster in 2D/Front. Innenwände nutzen **kein** Gegenlicht-Shader (`applyFacadeShadeShader`). Der Patch sitzt in `getPointLightInfo` (Three.js-Lichtfunktion), nicht nur im Fragment-Include.
 2. **Konche:** sichtbare Kalotte ohne flache Okklusions-Kappen; Dichtung nur im unsichtbaren Shadow-Tunnel (`OPENING_SHADOW_TUNNEL_INFLATE_CM = 2,5`).
 3. **Unsichtbare Okkluder** (`SHADOW_LAYER_OCCLUDER = 3`): Boden/Decke auf dem **Grundriss-Außenring**, mit `customDistanceMaterial` in der Punktlicht-Cube-Map.
-4. **Sichtbare Böden** bleiben auf der Innenkante und der echten Fußbodenhöhe (`storeyFloorSurfaceY`) — nicht durch Kellerfenster angehoben.
-5. **Wände** sind **ein Mesh** mit zwei Materialien (außen/innen).
+4. **Sichtbare Böden/Decken (v2.0.92)** reichen bis zur **Fassaden-Außenkante** (Plan-Ring); sie casten wenn sichtbar und nutzen bei Raum-Okklusion `customDistanceMaterial`. Nicht durch Kellerfenster angehoben (`storeyFloorSurfaceY`).
+5. **Wände** sind **ein Mesh** mit zwei Materialien (außen/innen). Wandunterseite bleibt neben Bodentüren geschlossen (nur unter der Schwelle offen).
 6. **Marker im Render:** kein additives Billboard-Glühen (sticht durch Wände). Stattdessen eine kleine **opake Kugel** mit Tiefentest. Additive Glühen nur in Vorschau/Entwurf.
 7. **Innen-Fill:** Bei aktivem Punktlicht im Render zusätzlich schwaches `dirLightIndoor` (nur Layer Innen).
 8. **Wand-Normalen:** Außenfläche nach außen, Innenfläche in den Raum (`wallFaceNormalReverse`). Sonst ist der Freistreifen über den Paneelen ein Loch, und Innenwände erscheinen schwarz.
 9. **2D-Glas:** Orthografische Front nutzt dünne Alpha-Transparenz (opacity ~0,06) statt Physical-Transmission (`setOrthographicGlassSeeThrough`).
 10. **Innen-Schatten:** Innenwände bekommen Punktlicht, aber keine Cube-Selbstabschattung (`bindSkipPointShadows`).
-11. **Decke/Boden:** Innenfläche wie Wände (`createIndoorSlabMaterial`: EnvMap, kein Gegenlicht-Dim, kein Punktlicht-Cube-Schatten). Default weiß; `FloorPlan.ceilingColor` steuert die Albedo.
+11. **Decke/Boden:** Innenfläche wie Wände (`createIndoorSlabMaterial`: EnvMap, kein Gegenlicht-Dim, kein Punktlicht-Cube-Empfang). Default weiß; `FloorPlan.ceilingColor` steuert die Albedo.
 
 **Selective Bloom:** Nur Objekte auf **BLOOM_LAYER (2)** erzeugen Bloom — im Render mit Raum-Okklusion eine kleine **HDR-Kugel** am Licht (Tiefentest, kein Billboard durch Wände). **EnvMap** nur aus dem Außen-Layer. Sonne/Hemisphere auf der Außenfassade bleiben unbeeinflusst von `uSkipPointLights`.
 

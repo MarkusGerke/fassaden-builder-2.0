@@ -1,10 +1,22 @@
 import * as THREE from 'three'
 import type { Wall } from '../types/facade'
-import { STUDIO_TILE } from './constants'
+import {
+  DEFAULT_STUDIO_PANEL,
+  normalizeStudioPanel,
+  STUDIO_MASONRY,
+  STUDIO_TILE,
+} from './constants'
+import {
+  openingMasonryCourseYs,
+  openingMasonryJambXs,
+  wallUsesOpeningMasonrySnap,
+} from '../utils/openingPanelSnap'
+import { visiblePanelRowRange } from './panelLayout'
 import { wallAlongDelta } from './walls'
 
 const GRID_COLOR = 0x3399ff
 const GRID_OPACITY = 0.42
+const CUT_EPS = 0.05
 
 function gridMaterial() {
   return new THREE.LineBasicMaterial({
@@ -37,6 +49,61 @@ function addLineSegments(group: THREE.Group, points: THREE.Vector3[]) {
   const line = new THREE.LineSegments(geo, gridMaterial())
   line.renderOrder = 14
   group.add(line)
+}
+
+function uniqueCuts(values: number[], max: number): number[] {
+  const out: number[] = []
+  for (const v of [...values].sort((a, b) => a - b)) {
+    if (!Number.isFinite(v)) continue
+    const c = Math.max(0, Math.min(max, v))
+    if (out.length === 0 || c - out[out.length - 1]! > CUT_EPS) out.push(c)
+  }
+  if (out.length === 0 || out[0]! > CUT_EPS) out.unshift(0)
+  if (out[out.length - 1]! < max - CUT_EPS) out.push(max)
+  else out[out.length - 1] = max
+  return out
+}
+
+function regularCuts(length: number, step: number): number[] {
+  if (length <= CUT_EPS || step <= CUT_EPS) return [0, Math.max(0, length)]
+  const cuts: number[] = [0]
+  const n = Math.max(1, Math.floor((length + CUT_EPS) / step))
+  for (let i = 1; i < n; i += 1) cuts.push(i * step)
+  return uniqueCuts(cuts, length)
+}
+
+/**
+ * Vertikale Rasterlinien der Wandfläche = Stoßfugen des Verbands (gerade+ungerade),
+ * sonst Paneelbreite / 8-cm-Fallback. Streifen: nur Laibungen (0 / Breite).
+ */
+export function wallFaceGridXs(wall: Wall, allWalls: Wall[] = [wall]): number[] {
+  const panel = normalizeStudioPanel(wall.panel ?? DEFAULT_STUDIO_PANEL)
+  if (!panel.enabled || panel.pattern === 'none') {
+    return regularCuts(wall.width, STUDIO_TILE)
+  }
+  if (panel.pattern === 'strip') {
+    return uniqueCuts([0, wall.width], wall.width)
+  }
+  if (wallUsesOpeningMasonrySnap(wall)) {
+    return openingMasonryJambXs(wall, allWalls, wall.height / 2)
+  }
+  const step = Math.max(STUDIO_MASONRY, panel.panelWidth)
+  return regularCuts(wall.width, step)
+}
+
+/**
+ * Horizontale Rasterlinien = Schichtgrenzen des Paneels / Mauerwerks.
+ */
+export function wallFaceGridYs(wall: Wall): number[] {
+  const panel = normalizeStudioPanel(wall.panel ?? DEFAULT_STUDIO_PANEL)
+  if (!panel.enabled || panel.pattern === 'none') {
+    return regularCuts(wall.height, STUDIO_TILE)
+  }
+  if (wallUsesOpeningMasonrySnap(wall)) {
+    return openingMasonryCourseYs(wall, wall.height / 2)
+  }
+  const { rowCuts } = visiblePanelRowRange(wall.height, panel)
+  return uniqueCuts(rowCuts, wall.height)
 }
 
 /** 32-cm-Raster auf dem Boden (Welt-X/Z). */
@@ -109,11 +176,14 @@ export function showFloorResizeGrid(
   addLineSegments(group, verts)
 }
 
-/** 32-cm-Raster auf der Außenfläche einer Studio-Wand. */
+/**
+ * Raster auf der Außenfläche einer Studio-Wand = Fugen/Schichten des Paneels
+ * bzw. Mauerwerks (nicht mehr festes 32-cm-Gitter).
+ */
 export function showWallFacePlacementGrid(
   group: THREE.Group,
   wall: Wall,
-  cell = STUDIO_TILE,
+  allWalls: Wall[] = [wall],
 ) {
   clearPlacementGrid(group)
   const yawDeg = wall.yawDeg ?? 0
@@ -123,14 +193,20 @@ export function showWallFacePlacementGrid(
   const ox = outward.x
   const oz = outward.z
   const verts: THREE.Vector3[] = []
+  const xs = wallFaceGridXs(wall, allWalls)
+  const ys = wallFaceGridYs(wall)
 
-  for (let lx = 0; lx <= wall.width + 1e-6; lx += cell) {
+  for (const lx of xs) {
     const along = wallAlongDelta(yawDeg, lx)
     const bottom = new THREE.Vector3(originX + along.x + ox, wall.y, originZ + along.z + oz)
-    const top = new THREE.Vector3(originX + along.x + ox, wall.y + wall.height, originZ + along.z + oz)
+    const top = new THREE.Vector3(
+      originX + along.x + ox,
+      wall.y + wall.height,
+      originZ + along.z + oz,
+    )
     verts.push(bottom, top)
   }
-  for (let ly = 0; ly <= wall.height + 1e-6; ly += cell) {
+  for (const ly of ys) {
     const along0 = wallAlongDelta(yawDeg, 0)
     const along1 = wallAlongDelta(yawDeg, wall.width)
     const y = wall.y + ly

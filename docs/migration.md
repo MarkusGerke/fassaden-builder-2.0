@@ -12,7 +12,7 @@ JSON (localStorage / Hash / Datei)
   → hydrateFacadeState (fehlende Felder, Feature AUS)
   → clampFacadeState (Maße, Raster, Gebäude)
   → repairPlanLinkedWallFronts
-  → fitStateWallsToOuterSpine (wenn Origin innen / `panelFlip: false`)
+  → fitStateWallsToOuterSpine (nur bei Mehrheit `panelFlip: false`)
   → finalizeStudioGeometry (Grundriss-Sync, Öffnungs-Front, Gehrung)
 ```
 
@@ -24,7 +24,7 @@ Gemeinsamer Einstieg: [`src/utils/facadeLoad.ts`](../src/utils/facadeLoad.ts) `a
 | Hydrate | [`src/utils/hydrate.ts`](../src/utils/hydrate.ts) | Feldkatalog vervollständigen, Feature **aus** |
 | Clamp | [`src/utils/walls.ts`](../src/utils/walls.ts) `clampFacadeState` | inkl. Hydrate bei jedem Apply |
 | Abgeleitet | [`src/studio/planGeometry.ts`](../src/studio/planGeometry.ts) `finalizeStudioGeometry` | Grundriss, Bank-`flipForward`, Gehrung — **kein** `panelFlip` |
-| Außenkante | `fitStateWallsToOuterSpine` wenn `buildingNeedsOuterSpineFit` (`panelFlip: false` oder unverbundene Ringe) | Origin = Außenecke, Dicke nach innen; v0.7.280 richtet die Außenlinie an der Plan-Kante aus |
+| Außenkante | `fitStateWallsToOuterSpine` wenn `buildingNeedsOuterSpineFit` (Mehrheit `panelFlip: false`) | Origin = Außenecke, Dicke nach innen; v0.7.280 richtet die Außenlinie an der Plan-Kante aus. **v2.0.93:** keine Fit-Heuristik mehr über „unverbundene Ringe“ — die verschob Wände beim Hard-Reload |
 | Persistenz | [`src/utils/persistence.ts`](../src/utils/persistence.ts) | Speichert immer `FACADE_SCHEMA_VERSION` |
 
 `APP_VERSION` (Nutzer-Release) und `FACADE_SCHEMA_VERSION` (Datenmodell) sind **getrennt**.
@@ -80,7 +80,7 @@ Wenn ein Bug nur **neue** Elemente richtig macht, Bestandsprojekte aber falsch b
 | **Abgeleitet neu rechnen** | Jedes Load in `finalizeStudioGeometry` | Nur Werte, die **nicht** die Nutzer-Absicht sind | Gehrung aus Nachbarn, Grundriss aus Wandkanten, Fensterbank-`flipForward` aus `panelFlip` |
 | **Schema-Step** | Einmal `N → N+1` | Ja, dokumentiert | falsche IDs, invertierte Wand-Pose (`origin`/`yaw`/`panelFlip`) |
 
-**Nicht** jedes Load: `panelFlip`, Yaw oder Origin überschreiben — sonst gehen bewusste Front-Drehungen beim nächsten Öffnen verloren. Ausnahme: **Mehrheit** der verknüpften Wände hat `panelFlip: false` (Innen-Origin-Altstand) → `fitStateWallsToOuterSpine`.
+**Nicht** jedes Load: `panelFlip`, Yaw oder Origin überschreiben — sonst gehen bewusste Front-Drehungen beim nächsten Öffnen verloren. Ausnahme: **Mehrheit** der verknüpften Wände hat `panelFlip: false` (Innen-Origin-Altstand) → `fitStateWallsToOuterSpine`. Freistehende oder schlecht vernetzte `planLinked`-Wände allein lösen **keinen** Fit aus (v2.0.93).
 
 **Profile / Gesims / Sockel:** Sweep entsteht zur Renderzeit aus Wandzustand. Nach Pose-/Gehrungs-Repair folgen sie von selbst. Nur wenn ein **gespeichertes** Profil-Feld falsch ist (z. B. alte ID), gehört das in einen Schema-Step.
 

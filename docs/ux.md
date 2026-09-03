@@ -92,8 +92,8 @@ Defaults in `src/constants/colorPalettes.ts`:
 | Token | Hex | Nutzung |
 |---|---|---|
 | `DEFAULT_WALL_COLOR` | `#ffffff` | Wand / Sockel |
-| `DEFAULT_FRAME_COLOR` | `#4a4a4a` | Fensterrahmen |
-| `DEFAULT_DOOR_COLOR` | `#4a4a4a` | Türblatt/-rahmen beim Anlegen |
+| `DEFAULT_FRAME_COLOR` | `#ffffff` | Fensterrahmen |
+| `DEFAULT_DOOR_COLOR` | `#ffffff` | Türblatt/-rahmen beim Anlegen |
 | `DEFAULT_GLASS_COLOR` | `transparent` | Glas (Klarglas; physisch `#ffffff` + EnvMap) |
 | `DEFAULT_PROFILE_COLOR` | `#c4b49a` | Gesims/Profile |
 
@@ -175,14 +175,14 @@ Das Fenster bleibt 24 cm hinter der Wandkörper-Außenkante; die Leibung holt di
 
 ## Etagen-Trennfläche (Decke / Boden)
 
-`FacadeController.rebuildIndoorFloor`: **Decke und Fußboden** je Etage aus `planFacesWithHoles`. Das Polygon folgt den **Wand-Innenkanten** (`innerFaceRingFromWalls`, Zuordnung auch wenn Origins nicht auf dem 48-cm-Raster liegen): **0 cm** zur Innenwand, Abstand zur Außenwand = Wandstärke. Fallback: `innerFaceRingWorld`. Meshes sind `ExtrudeGeometry` mit Dicke `INDOOR_SLAB_THICKNESS` (8 cm).
+`FacadeController.rebuildIndoorFloor`: **Decke und Fußboden** je Etage aus `planFacesWithHoles`. **v2.0.92:** Das Polygon folgt dem **Plan-Außenring** (Fassadenrand) — lichtdicht über die gesamte Wandstärke; Hof-Löcher ebenfalls Außenkontur. Meshes sind `ExtrudeGeometry` mit Dicke `INDOOR_SLAB_THICKNESS` (8 cm).
 
 | Geschossgrenze | Y-Position |
 |---|---|
 | Decke EG / Boden OG1 | Wandoberkante der Etage (`storeyTopY`, max. `wall.y + wall.height`) — **Oberseite** der 8-cm-Platte (`y = storeyTopY − INDOOR_SLAB_THICKNESS`) |
 | Fußboden EG / OG | Wandunterkante der Etage (`storeyBottomY`, min. `wall.y`) — **Unterseite** der 8-cm-Platte |
 
-Meshes sind per `userData.indoorRole` (`ceiling` \| `floor`) und `userData.kind` getaggt sowie `buildingId` / `floorIndex`. Nur Decken werfen Schatten; Böden empfangen. **3D-Render (v2.0.56):** Decke und Fußboden hell wie Innenwände (`createIndoorSlabMaterial`: EnvMap, kein Gegenlicht-Dim). Default **Weiß**; `FloorPlan.ceilingColor` gilt für die 3D-Albedo (Farb-Toolbar).
+Meshes sind per `userData.indoorRole` (`ceiling` \| `floor`) und `userData.kind` getaggt sowie `buildingId` / `floorIndex`. **3D-Render (v2.0.56):** Decke und Fußboden hell wie Innenwände (`createIndoorSlabMaterial`: EnvMap, kein Gegenlicht-Dim). Default **Weiß**; `FloorPlan.ceilingColor` gilt für die 3D-Albedo (Farb-Toolbar).
 
 **Auswahl:** Linksklick auf die Decke in 3D setzt `selectedCeiling` (orange Highlight); Toolbar `#toolbar-ceiling` mit Farbe (`FloorPlan.ceilingColor`, Default Weiß). Dieselbe Farbe steht im Wand-Reiter **Farben**. Ebenenliste wie bisher.
 
@@ -192,7 +192,7 @@ Versteckte Gebäude (`building.hidden`), Wände (`wall.hidden`) und Öffnungen (
 
 `FacadeController.rebuildIndoorFloor` iteriert alle nicht-versteckten Gebäude mit eigenem `wallHeight` und `floors[]`.
 
-**Schatten:** Sichtbare Platten werfen (`castShadow`) — Grundrissform inkl. Höfe als Löcher. **v0.7.132:** Wandkörper und Sockel ohne Shadow-Empfang (kein Moiré beim Zoomen). Details: [shadows.md](shadows.md).
+**Schatten / Licht:** Sichtbare Platten **werfen und empfangen** Schatten wenn sichtbar; mit Punktlicht zusätzlich `customDistanceMaterial` für Cube-Shadows. Wandunterseite bleibt neben Bodentüren geschlossen (nur unter der Schwelle offen). Details: [shadows.md](shadows.md), [scene-lights.md](scene-lights.md).
 
 ---
 
@@ -290,7 +290,7 @@ Daten: `splitVCount` / `splitVRatio` / `splitHCount` / `splitHRatio` / `paneMunt
 
 ## Kellerfenster
 
-Kurz: Preset `window-basement-48` / `basementWindow.enabled`; Gitter-Checkbox nur bei bestehendem Kellerfenster; kein Profil/Bänke/Verdachung. **Teilung (v2.0.14):** Reiter sichtbar — max. 2 Flügel, kein Oberlicht, keine Fensterteilung (Raster), Sprosse max. 1 je Richtung (`clampGruenderzeitForBasement`). Details: [opening-features.md](opening-features.md#kellerfenster-basementwindow).
+Kurz: Preset `window-basement-48` / `basementWindow.enabled`; Checkbox an **jedem** Fenster inkl. Gitterhöhe-Slider; kein Profil/Bänke/Verdachung. Franz. Balkon-Gitter bei Keller ausgeblendet. **Teilung (v2.0.14):** Reiter sichtbar — max. 2 Flügel, kein Oberlicht, keine Fensterteilung (Raster), Sprosse max. 1 je Richtung (`clampGruenderzeitForBasement`). **v2.0.90:** Neue Fenster default 1 Flügel ohne Oberlicht (kein Mehrflügel-„Gitter“). Details: [opening-features.md](opening-features.md#kellerfenster-basementwindow).
 
 ---
 
@@ -502,14 +502,15 @@ Kanäle **Uhrzeit** und **Himmelsrichtung** unabhängig: nur Uhrzeit → Sonne/L
 
 ## Ausrichtungs-Hilfslinien
 
-### Platzierungs-Raster (v0.7.184)
+### Platzierungs-Raster (v2.0.89 / v0.7.184)
 
-Beim **Verschieben oder Platzieren** von Wänden und Öffnungen erscheint ein **32-cm-Raster** (`STUDIO_TILE`, `src/studio/placementGrid.ts`):
+Beim **Verschieben oder Platzieren** von Wänden und Öffnungen erscheint ein blaues Raster (`src/studio/placementGrid.ts`):
 
-- **Wand aus Bibliothek / Wand verschieben:** blaues Gitter auf dem **Boden** der Ziel-Etage (Oben, 2D, 3D).
-- **Öffnung verschieben:** Gitter auf der **Zielwand** (Außenfläche).
+- **Wand aus Bibliothek / Wand verschieben:** **32-cm**-Gitter auf dem **Boden** der Ziel-Etage (Oben, 2D, 3D) — unverändert `STUDIO_TILE`.
+- **Öffnung verschieben (v2.0.89):** Gitter auf der **Zielwand** = **Stoßfugen und Schichtgrenzen** des Paneels/Mauerwerks (`wallFaceGridXs` / `wallFaceGridYs`, gleiche Cuts wie `openingPanelSnap`). Streifen: nur Laibungen vertikal; ohne Modul: 32 cm.
 - Nach **Ablegen** oder Abbruch wird das Raster ausgeblendet (`clearPlacementGridOverlay`).
-- Öffnungs-**Position** (Drag, Nudge, Zahlenfelder): bei Modulverband Drag = Fuge + Wandmitte (Magnet 7 cm); Nudge = Fuge / Steinmitte / Wandmitte (`openingPanelSnap.ts`); bei Zwei-Bändern je Zone Y-bewusst; sonst **8 cm**. Schrift-Position bleibt 32 cm.
+- Öffnungs-**Position** (Drag, Nudge, Zahlenfelder): bei Modulverband Drag = Fuge + Wandmitte; Nudge = Fuge / Steinmitte / Wandmitte, Schrittweite **8·n** cm (Numpad 1–9); bei Zwei-Bändern je Zone Y-bewusst; sonst **8 cm**. Schrift-Position bleibt 32 cm.
+- **Orangene Drag-Vorschau:** unter `siteOffset` (dreht mit dem Haus); bei Breiten-/Höhen-Snap wird der Ghost neu gebaut.
 
 ### Öffnungen (`src/studio/openingGuides.ts`)
 
@@ -598,7 +599,7 @@ Neue Elemente: Wand, Paneele, Profile, Rahmen, Türen → `#ffffff`. Neue Fenste
 
 ## Fenster verschieben
 
-Studio-Öffnungen: rastet an **Fuge**, **Stein-/Paneelmitte** oder **Wandmitte** (`openingPlacementCandidateXs`) — Raster ist das **Verbandmodul** (Läufer: halbe Steinlänge), kein festes 8-cm-Schrittmaß. **Ziehen (v2.0.82):** nur Fugen-bündig + Wandmitte, **immer** der nächste Kandidat (kein Freilauf mehr); Breite so, dass **beide** Laibungen auf Fugen liegen. **Pfeile:** nächster Kandidat inkl. Steinmitte. 45°-Wände: Wandmitte mit Magnet ±8 cm. Streifen/ohne Modul: 8 cm. Abstand **zwischen** Öffnungen 32 cm. Beim Laden älterer Projekte rückt Schema 14 vorhandene Öffnungen einmalig auf dieses Raster.
+Studio-Öffnungen: rastet an **Fuge**, **Stein-/Paneelmitte** oder **Wandmitte** (`openingPlacementCandidateXs`) — Raster ist das **Verbandmodul** (Läufer: halbe Steinlänge), kein festes 8-cm-Schrittmaß. **Ziehen (v2.0.82):** nur Fugen-bündig + Wandmitte, **immer** der nächste Kandidat (kein Freilauf mehr); Breite so, dass **beide** Laibungen auf Fugen liegen. **Pfeile / Tastatur (v2.0.89):** Standard **8 cm**; Numpad- oder Zifferntaste **1–9 halten** = Vielfaches (3 → 24 cm). Auf Modulverband so viele Kandidaten weiter, bis die Strecke ≥ dem Schritt ist. 45°-Wände: Wandmitte mit Magnet ±8 cm. Streifen/ohne Modul: 8 cm. Abstand **zwischen** Öffnungen 32 cm. Beim Laden älterer Projekte rückt Schema 14 vorhandene Öffnungen einmalig auf dieses Raster.
 
 ---
 

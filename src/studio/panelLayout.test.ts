@@ -1240,3 +1240,82 @@ describe('Verbandsmuster gleichmäßig (wandweites Raster)', () => {
     expect(row0[0]!.width).toBeCloseTo(960, 0)
   })
 })
+
+describe('Rechteckfenster: Reste über/unter dem Sturz', () => {
+  it('legt Mittelsteine in der Schicht, die den Sturz schneidet', () => {
+    const panel = {
+      ...DEFAULT_STUDIO_PANEL,
+      pattern: 'runningBond' as const,
+      panelWidth: 64,
+      panelHeight: 32,
+      joint: 0.8,
+      plinthEnabled: false,
+      plinthHeight: 0,
+      cornerJoin: 'miter' as const,
+    }
+    // Sturz bei y=140 → mittendrin in einer ~32-cm-Schicht (nicht auf der Fuge)
+    const opening = {
+      id: 'win',
+      type: 'window' as const,
+      x: 200,
+      y: 140,
+      width: 160,
+      height: 200,
+    }
+    const wall = studioWall({
+      id: 'facade',
+      width: 640,
+      height: 448,
+      panel,
+      openings: [opening],
+    })
+    const tiles = layoutPanelTiles(wall, panel, [])
+    const midX = opening.x + opening.width / 2
+    const above = opening.y - 6
+    const below = opening.y + opening.height + 6
+    const coverAbove = tiles.filter(
+      (t) => t.x < midX && t.x + t.width > midX && t.y < above && t.y + t.height > above,
+    )
+    const coverBelow = tiles.filter(
+      (t) => t.x < midX && t.x + t.width > midX && t.y < below && t.y + t.height > below,
+    )
+    expect(coverAbove.length, 'Stein über dem Sturz fehlt').toBeGreaterThan(0)
+    expect(coverBelow.length, 'Stein unter der Sohlbank fehlt').toBeGreaterThan(0)
+  })
+
+  it('auch mit Freiraum: Reste über dem Sturz bleiben', () => {
+    const panel = {
+      ...DEFAULT_STUDIO_PANEL,
+      pattern: 'runningBond' as const,
+      panelWidth: 64,
+      panelHeight: 32,
+      joint: 0.8,
+      plinthEnabled: false,
+      plinthHeight: 0,
+      cornerJoin: 'miter' as const,
+    }
+    const opening = {
+      id: 'win',
+      type: 'window' as const,
+      x: 200,
+      y: 140,
+      width: 160,
+      height: 200,
+      panelClearance: { enabled: true, cm: 8, depthCm: 0, finish: 'empty' as const },
+    }
+    const wall = studioWall({
+      id: 'facade-clear',
+      width: 640,
+      height: 448,
+      panel,
+      openings: [opening],
+    })
+    const tiles = layoutPanelTiles(wall, panel, [])
+    const midX = opening.x + opening.width / 2
+    const above = opening.y - 6
+    const coverAbove = tiles.filter(
+      (t) => t.x < midX && t.x + t.width > midX && t.y < above && t.y + t.height > above,
+    )
+    expect(coverAbove.length, 'Stein über Sturz mit Freiraum fehlt').toBeGreaterThan(0)
+  })
+})

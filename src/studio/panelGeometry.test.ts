@@ -52,6 +52,42 @@ describe('createStudioWallGeometry', () => {
     expect(vertexCount(withPanels)).toBe(vertexCount(withoutPanels))
   })
 
+  it('schließt die Wandunterseite neben einer Bodentür (nicht die ganze Unterseite offen)', () => {
+    const withDoor: Wall = {
+      ...studioWall(),
+      openings: [
+        {
+          id: 'door1',
+          type: 'door',
+          x: 40,
+          y: 0,
+          width: 48,
+          height: 224,
+        },
+      ],
+    }
+    const geo = createStudioWallGeometry(withDoor)
+    const pos = geo.getAttribute('position') as THREE.BufferAttribute
+    const nrm = geo.getAttribute('normal') as THREE.BufferAttribute
+    const idx = geo.getIndex()!
+    let bottomBeside = 0
+    let bottomUnder = 0
+    for (let i = 0; i < idx.count; i += 3) {
+      const ia = idx.getX(i)
+      const ib = idx.getX(i + 1)
+      const ic = idx.getX(i + 2)
+      const ny = (nrm.getY(ia) + nrm.getY(ib) + nrm.getY(ic)) / 3
+      if (Math.abs(ny) < 0.7) continue
+      const cx = (pos.getX(ia) + pos.getX(ib) + pos.getX(ic)) / 3
+      if (cx > 41 && cx < 87) bottomUnder += 1
+      else bottomBeside += 1
+    }
+    expect(bottomBeside).toBeGreaterThan(0)
+    // Sohlbank-Kante der Tür-Notch kann 1–2 fast-horizontale Tris erzeugen — keine volle Bodenplatte unter der Tür.
+    expect(bottomUnder).toBeLessThan(bottomBeside)
+    expect(bottomUnder).toBeLessThan(4)
+  })
+
   it('legt die Innenfläche auf Material-Gruppe 1', () => {
     const geo = createStudioWallGeometry(studioWall())
     expect(geo.groups.length).toBe(2)
@@ -865,6 +901,60 @@ describe('Multi-Zone Verkleidung Geometrie', () => {
     const geo = createStudioPanelGeometry(wall, lower, [wall], tiles)
     const pos = geo.getAttribute('position')
     expect(pos.count).toBeGreaterThan(100)
+    geo.dispose()
+  })
+})
+
+describe('Rechteckfenster: Paneelreste über/unter dem Sturz', () => {
+  it('Mesh bedeckt die Zone direkt über dem Sturz (Y-Snap frisst nicht)', () => {
+    const panel = {
+      ...DEFAULT_STUDIO_PANEL,
+      enabled: true,
+      pattern: 'runningBond' as const,
+      panelWidth: 64,
+      panelHeight: 32,
+      joint: 0.8,
+      plinthEnabled: false,
+      plinthHeight: 0,
+      projectDepth: 4,
+      taperDepth: 2,
+      taper: 0.8,
+    }
+    const opening = {
+      id: 'win',
+      type: 'window' as const,
+      x: 200,
+      y: 140,
+      width: 160,
+      height: 200,
+    }
+    const wall = {
+      ...createStudioWall(0, 0),
+      id: 'facade',
+      width: 640,
+      height: 448,
+      openings: [opening],
+      panel,
+    }
+    const geo = createStudioPanelGeometry(wall, panel, [wall])
+    const pos = geo.getAttribute('position') as {
+      getX(i: number): number
+      getY(i: number): number
+      getZ(i: number): number
+      count: number
+    }
+    const frontZ = studioPanelFaceLocalZ(wall)
+    const halfW = wall.width / 2
+    const midLocalX = opening.x + opening.width / 2 - halfW
+    const sampleY = opening.y - 6
+    let hits = 0
+    for (let i = 0; i < pos.count; i += 1) {
+      if (Math.abs(pos.getZ(i) - frontZ) > 1.2) continue
+      if (Math.abs(pos.getX(i) - midLocalX) > 40) continue
+      if (Math.abs(pos.getY(i) - sampleY) > 8) continue
+      hits += 1
+    }
+    expect(hits, 'kein Paneelmesh über dem Sturz').toBeGreaterThan(0)
     geo.dispose()
   })
 })

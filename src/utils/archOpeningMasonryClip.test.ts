@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import type { Opening, Wall } from '../types/facade'
 import {
   clipPolysMinusArches,
+  clipRectMinusArch,
   normalizeOpeningArch,
+  openingArchGeom,
   openingClipRects,
   openingContainsPoint,
   openingHasCurvedMask,
@@ -124,4 +126,35 @@ describe('arch opening masonry clip (regression)', () => {
       expect(hits, `${form} masonry hits`).toBe(0)
     })
   }
+
+  it('Stein über Kämpfer + Laibung: lotrechte Laibungskante, keine Diagonale im Stein', () => {
+    const opening = {
+      id: 'o1', type: 'window', x: 150, y: 100, width: 120, height: 200,
+      arch: normalizeOpeningArch({ form: 'round', enabled: true }),
+    } as Opening
+    const geom = openingArchGeom(opening, 0)!
+    expect(geom).toBeTruthy()
+    const springY = geom.springY
+    // Schicht schneidet die Kämpferlinie, Stein läuft von links über die Laibung hinweg.
+    const stone = { x: 90, y: springY - 12, width: 100, height: 31.2 }
+    const parts = clipRectMinusArch(stone, geom, geom)
+    expect(parts.length).toBeGreaterThan(0)
+    const withArc = parts.find((p) => p.bottomArc && p.bottomArc.length >= 2)!
+    expect(withArc, 'Rest mit bottomArc erwartet').toBeTruthy()
+    const arc = withArc.bottomArc!
+    // Der Sprung vom Steinboden auf Kämpferhöhe muss lotrecht sein (Laibung), keine Sehne.
+    for (let i = 0; i < arc.length - 1; i += 1) {
+      const a = arc[i]!
+      const b = arc[i + 1]!
+      const fromFloor = Math.abs(a.y - stone.y) < 0.05
+      const toSpring = b.y > springY - 0.5
+      if (fromFloor && toSpring) {
+        const dx = Math.abs(b.x - a.x)
+        expect(dx, `Diagonale bei x=${a.x.toFixed(2)} (dx=${dx.toFixed(2)})`).toBeLessThan(0.01)
+      }
+    }
+    // Die Laibungs-Ecke (x = Öffnung links, y = Steinboden) bleibt als Punkt erhalten.
+    const corner = arc.find((p) => Math.abs(p.x - opening.x) < 0.01 && Math.abs(p.y - stone.y) < 0.05)
+    expect(corner, 'Laibungs-Eckpunkt fehlt').toBeTruthy()
+  })
 })

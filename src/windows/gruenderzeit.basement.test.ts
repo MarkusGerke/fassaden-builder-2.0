@@ -7,6 +7,13 @@ import {
 import type { Opening } from '../types/facade'
 
 describe('clampGruenderzeitForBasement', () => {
+  it('Default-Fenster ohne Mehrflügel/Oberlicht (Gitter-Optik aus)', () => {
+    const wide = defaultGruenderzeitConfig(180, 200, 'window')
+    expect(wide.casements).toBe(1)
+    expect(wide.transom).toBe(false)
+    expect(wide.paneMuntins.every((p) => p.v === 0 && p.h === 0)).toBe(true)
+  })
+
   it('begrenzt Flügel, Oberlicht, Teilung und Sprossen', () => {
     const base = defaultGruenderzeitConfig(120, 64, 'window')
     const clamped = clampGruenderzeitForBasement({

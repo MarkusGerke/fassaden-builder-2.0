@@ -539,10 +539,12 @@ export function defaultGruenderzeitConfig(width: number, height: number, type: O
       hardware: false,
     }
   }
-  const casements: 1 | 2 | 3 = width < 72 ? 1 : width < 168 ? 2 : 3
+  const casements: 1 | 2 | 3 = 1
   return {
     casements,
-    transom: height >= 152,
+    // Kein Oberlicht/Mehrflügel-Raster mehr als Default — Nutzer schaltet über Teilung zu.
+    // Kellerfenster bekommen ihr Stabgitter separat (`basementWindow`), nicht über Flügelteilung.
+    transom: false,
     transomRatio: 0.26,
     splitVCount: 1,
     splitVRatio: '1/1',

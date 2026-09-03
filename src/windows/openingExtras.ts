@@ -45,7 +45,7 @@ export function createOpeningGuardMesh(
   width: number,
   height: number,
   guard: OpeningGuard,
-  fallbackColor = '#4a4a4a',
+  fallbackColor = '#ffffff',
 ): THREE.Group {
   const group = new THREE.Group()
   const color = guard.color ?? fallbackColor

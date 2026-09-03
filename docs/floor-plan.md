@@ -2,7 +2,7 @@
 
 ## Übersicht
 
-Die gezeichnete Linie ist die **Außenkante**; die Wanddicke (`building.wallDepth`) liegt nach innen. Verknüpfung und Gehrung sitzen an den Außenecken. **v0.7.280:** `fitLoopWalls` folgt der Planrichtung (73dbdc9-Verhalten, ohne gegenläufigen 40-cm-Schnitt). **v0.7.279:** Altstände mit Origin innen (`panelFlip: false`) werden beim Laden auf diese Außenkante gelegt. Innenboden und Zwischendecke nutzen die Innenkante (`innerFaceRingWorld`, Inset = aktuelle Wandstärke → 0 cm Fuge zur Innenwand). Die **Oberkante** des Innenbodens liegt auf der unteren Türkante der Etage (`storeyFloorSurfaceY`); ohne Tür auf dem Wandfuß. Die Platte sitzt um `INDOOR_SLAB_THICKNESS` darunter.
+Die gezeichnete Linie ist die **Außenkante**; die Wanddicke (`building.wallDepth`) liegt nach innen. Verknüpfung und Gehrung sitzen an den Außenecken. **v0.7.280:** `fitLoopWalls` folgt der Planrichtung (73dbdc9-Verhalten, ohne gegenläufigen 40-cm-Schnitt). **v0.7.279:** Altstände mit Origin innen (`panelFlip: false`) werden beim Laden auf diese Außenkante gelegt. **v2.0.93:** Außenkanten-Fit beim Load nur noch bei Mehrheit `panelFlip: false` — nicht bei „unverbundenen“ Ringen (sonst wanderten Origins beim Hard-Reload). **v2.0.92:** Innenboden und Zwischendecke folgen dem **Plan-Außenring** (Fassadenrand) — lichtdicht über die Wandstärke; Hof-Löcher ebenfalls Außenkontur. Die **Oberkante** des Innenbodens liegt auf der unteren Türkante der Etage (`storeyFloorSurfaceY`); ohne Tür auf dem Wandfuß. Die Platte sitzt um `INDOOR_SLAB_THICKNESS` darunter.
 
 ---
 
@@ -130,11 +130,11 @@ Berechnet `miterStart` und `miterEnd` für jedes Wandsegment in einer Kette/Ring
 
 ---
 
-## Innenkante für Etagen-Trennfläche
+## Etagen-Trennfläche (Außenring)
 
-Plan-Knoten liegen auf der **Außenlinie** der Wand (`createStudioWallGeometry`: lokale `z = 0` außen, `z = WALL_DEPTH` innen, Dicke nach innen).
+Plan-Knoten liegen auf der **Außenlinie** der Wand. **v2.0.92:** Sichtbare Decken/Böden nutzen denselben Außenring (`planNodeWorld` / `planFacesWithHoles`) — die Platte reicht bis zur Fassadenkante und schließt die Wandstärke lichtdicht. Hof-Löcher ebenfalls Außenkontur. Unsichtbare Punktlicht-Okkluder (`pointLightRoomOccluders`) bleiben als Backup wenn Decke/Boden ausgeblendet sind.
 
-`innerFaceRingFromWalls` (in `panelGeometry.ts`) schneidet die Innenkanten der zugeordneten Studio-Wände (Zuordnung per Abstand zur Plankante, nicht nur exakte Rasterpunkte). Ergebnis: 0 cm Fuge zur Innenwand, Abstand zur Außenwand = `wall.depth`. Fallback: `innerFaceRingWorld(nodes, depth)`.
+`innerFaceRingFromWalls` / `innerFaceRingWorld` bleiben für andere Zwecke (z. B. Tests, ältere Insets).
 
 ---
 

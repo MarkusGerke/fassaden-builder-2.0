@@ -329,6 +329,31 @@ function adjacentValue(values: number[], current: number, dir: 1 | -1): number {
 }
 
 /**
+ * Nudge um `minTravelCm`: so viele Kandidaten weiter, bis die zurückgelegte Strecke
+ * ≥ dem gewünschten 8·n-Schritt ist (ein Fugen-Sprung kann größer sein als 8 cm).
+ */
+function adjacentValueByTravel(
+  values: number[],
+  current: number,
+  dir: 1 | -1,
+  minTravelCm: number,
+): number {
+  if (values.length === 0) return current
+  const need = Math.max(EPS, Math.abs(minTravelCm))
+  let x = current
+  let traveled = 0
+  for (let guard = 0; guard < values.length + 2; guard += 1) {
+    if (traveled >= need - EPS) break
+    const next = adjacentValue(values, x, dir)
+    const step = Math.abs(next - x)
+    if (step <= EPS) break
+    traveled += step
+    x = next
+  }
+  return x
+}
+
+/**
  * Nächster X-Kandidat; nahe Wandmitte mit Magnet auf exakte Zentrierung.
  * `magnetCm`: wenn gesetzt (Drag), nur innerhalb Radius einrasten — sonst freie Position.
  */
@@ -410,7 +435,7 @@ export function snapOpeningMoveToMasonry(
   const xs = openingPlacementCandidateXs(wall, allWalls, width, atY, kind)
   if (xs.length > 0) {
     if (mode === 'nudge' && Math.abs(dx) > EPS) {
-      x = adjacentValue(xs, opening.x, dx > 0 ? 1 : -1)
+      x = adjacentValueByTravel(xs, opening.x, dx > 0 ? 1 : -1, dx)
     } else if (Math.abs(dx) > EPS || Math.abs(proposedX - opening.x) > EPS) {
       x = nearestPlacementX(xs, proposedX, width, wall.width)
     } else {
@@ -430,7 +455,7 @@ export function snapOpeningMoveToMasonry(
     const ys = openingPlacementCandidateYs(wall, height, atY, kind)
     if (ys.length > 0) {
       if (mode === 'nudge' && Math.abs(dy) > EPS) {
-        y = adjacentValue(ys, opening.y, dy > 0 ? 1 : -1)
+        y = adjacentValueByTravel(ys, opening.y, dy > 0 ? 1 : -1, dy)
       } else if (Math.abs(dy) > EPS || Math.abs(proposedY - opening.y) > EPS) {
         y = nearestValue(ys, proposedY)
       } else {

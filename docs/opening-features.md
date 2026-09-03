@@ -24,7 +24,7 @@ Toolbar **Maße** (Auszug):
 | In Wand eingebettet | `revealFrame.enabled` → kein Wandloch, kein Rahmen/Glas; Bänke/Profile/Bogen/Verdachung bleiben. Nicht bei Cutouts |
 | Freiraum | `panelClearance`: Abstand in ganzen cm, Tiefe +/−/0; optional `finish: 'taper'` nur mit Paneelen |
 | Bogenform | Karten `#opening-arch-form-cards`: eckig, Rund, Spitz, Stich, Lanzett, Ellipse, Tudor. Legacy `basket` → Ellipse. Stichmaß `#opening-arch-rise-row` (8er-Raster, **Auto** löscht `riseCm`). Form/Stichmaß scoped über `editArchOpeningTargets` (Fenster **und** Türen) |
-| Keilstein-Ring | Nur Rundbogen; aus → Felder/Vorschau `hidden`. **Neu Rundbogen wählen:** Ring standardmäßig an (Spandrille `rect`); Alt-Projekte ohne/`voussoirs: false` bleiben aus. Optional Schenkel bis Sohlbank |
+| Keilstein-Ring | Nur Rundbogen; aus → Felder/Vorschau `hidden`. **Nicht** automatisch an beim Aktivieren von Rundbogen — Checkbox bleibt maßgeblich. Alt-Projekte ohne/`voussoirs: false` bleiben aus. Optional Schenkel bis Sohlbank |
 | Glasbogen | Folgt immer `Opening.arch.form` / `riseCm` — keine separate Checkbox (`glazingArch` Legacy, ignoriert) |
 
 Kern: `src/utils/archForms.ts`, `openingGeometry.ts`. Schichten-Vertrag (Shell/Freiraum/Einbettung): [facade-layers.md](facade-layers.md), `resolveOpeningLayerContract`. Aktionen: `#duplicate-opening`, `#reset-opening`, `#delete-opening`.
@@ -95,11 +95,11 @@ Datei: `src/studio/stairs.ts`.
 
 ## Kellerfenster (`basementWindow`)
 
-Preset `window-basement-48` bzw. `basementWindow.enabled`. Checkbox „mit Gitter“ nur, wenn Auswahl bereits Kellerfenster ist; nur aktuelle Auswahl (kein Scope).
+Preset `window-basement-48` bzw. `basementWindow.enabled`. Checkbox **Kellerfenster mit Gitter** bei jedem Fenster (nicht nur bei bereits aktivem Keller); nur aktuelle Auswahl (kein Scope). Bei aktivem Keller: Slider **Gitterhöhe** (`grilleHeight` 25–85 %, Default 50 %). Franz. Balkon / Stabgitter (`Opening.guard`) ist bei Keller ausgeblendet — Stabgitter kommt aus `basementWindow.ts`.
 
-Kein Rahmenprofil, keine Bänke, keine Verdachung — nur Gitter + Position/Farbe. Ist der Sockel höher als das Fenster, umschließt das Sockelprofil die Öffnung (Sturz), statt einen Schacht auszuschneiden ([wall-decor.md](wall-decor.md)).
+Kein Rahmenprofil, keine Bänke, keine Verdachung — nur Gitter + Position/Farbe. Teilung bleibt sichtbar (max. 2 Flügel, kein OL/Raster, Sprosse max. 1). Ist der Sockel höher als das Fenster, umschließt das Sockelprofil die Öffnung (Sturz), statt einen Schacht auszuschneiden ([wall-decor.md](wall-decor.md)).
 
-Dateien: `src/studio/basementWindow.ts`, FacadeController / SvgView / main.
+Dateien: `src/studio/basementWindow.ts`, FacadeController / SvgView / main / `index.html`.
 
 ## Oberflächen-Finish
 

@@ -165,7 +165,8 @@ function openingHoles(opening: Opening, inflate = 0): Rect[] {
 
 /**
  * Paneel-Loch an Fugen ausrichten:
- * - Y: jede getroffene Zeile wird ganz aufgenommen (keine halben Steinhöhen).
+ * - Y: nur auffressen, wenn der Reststreifen über/unter dem Loch schmaler als
+ *   `minRemnant` wäre (sonst fehlen ganze Steine über/unter Rechteckfenstern).
  * - X bleibt am Öffnungsmaß — Steine werden an der Laibung geschnitten, nicht aufgefressen.
  */
 function snapHoleToTileGrid(
@@ -184,11 +185,13 @@ function snapHoleToTileGrid(
     let changed = false
     for (const tile of tiles) {
       if (!rectsOverlap(tile, current)) continue
-      if (tile.y < y0 - CLIP_EPS) {
+      const above = y0 - tile.y
+      if (above > CLIP_EPS && above < minRemnant) {
         y0 = tile.y
         changed = true
       }
-      if (tile.y + tile.height > y1 + CLIP_EPS) {
+      const below = tile.y + tile.height - y1
+      if (below > CLIP_EPS && below < minRemnant) {
         y1 = tile.y + tile.height
         changed = true
       }
@@ -3176,19 +3179,35 @@ export function createStudioWallGeometry(wall: Wall, allWalls: Wall[] = []): THR
     new THREE.Vector3(startInner, yTop, innerZ),
   )
 
-  const doors = wall.openings.filter((opening) => opening.y === 0)
-  if (doors.length === 0) {
+  // Unterseite der Wandstärke: Lücken nur unter Bodentüren (früher: ganz ohne Boden bei Tür).
+  const groundDoors = wall.openings
+    .filter((opening) => opening.y === 0 && openingCutsWall(opening))
+    .slice()
+    .sort((a, b) => a.x - b.x)
+  const addBottomSpan = (xStart: number, xEnd: number) => {
+    if (xEnd - xStart < 0.05) return
+    const o0 = wallLocalX(wall, xStart, outerZ)
+    const i0 = wallLocalX(wall, xStart, innerZ)
+    const o1 = wallLocalX(wall, xEnd, outerZ)
+    const i1 = wallLocalX(wall, xEnd, innerZ)
     addQuad(
       positions,
       normals,
       indices,
-      new THREE.Vector3(startOuter, yBottom, outerZ),
-      new THREE.Vector3(endOuter, yBottom, outerZ),
-      new THREE.Vector3(endInner, yBottom, innerZ),
-      new THREE.Vector3(startInner, yBottom, innerZ),
+      new THREE.Vector3(o0, yBottom, outerZ),
+      new THREE.Vector3(o1, yBottom, outerZ),
+      new THREE.Vector3(i1, yBottom, innerZ),
+      new THREE.Vector3(i0, yBottom, innerZ),
     )
   }
-  // Bei Bodentüren kein separates Bodenquad — vermeidet Stör-Linie an der Schwelle.
+  let bottomCursor = 0
+  for (const opening of groundDoors) {
+    const masonry = openingMasonryRect(opening, 0)
+    addBottomSpan(bottomCursor, masonry.x)
+    bottomCursor = masonry.x + masonry.width
+  }
+  addBottomSpan(bottomCursor, wall.width)
+  // Bei Bodentüren kein Querschnitt unter der Schwelle — vermeidet Stör-Linie.
 
   const exteriorIndexCount = indices.length
   appendShapeFace(studioWallFaceShape(wall, innerZ), innerZ, faceReverse(innerZ), positions, normals, indices)

@@ -60,6 +60,8 @@ export const OUTER_SILL_PAST_FACADE_CM = OUTER_SILL_DEFAULT_CM
  * entsprechen, gelten als „nicht vom Nutzer überschrieben“.
  */
 export const PREVIOUS_OUTER_SILL_DEPTH_DEFAULTS = [20, 32, 36, 40, 48] as const
+/** Alte Rahmenfarbe vor Weiß-Default (v2.0.89+). */
+export const PREVIOUS_FRAME_COLOR_DEFAULTS = ['#4a4a4a'] as const
 
 /**
  * Wenn ein gespeicherter Wert noch dem alten Default entspricht, den neuen setzen.
@@ -217,7 +219,11 @@ export function hydrateOpening(
   next.arch = normalizeOpeningArch(next.arch)
   // glazingArch: Legacy, ignoriert — Blendrahmen folgt immer Opening.arch.form; nicht auf false setzen.
 
-  next.frameColor = next.frameColor ?? defaultOpeningFrameColor(next.type)
+  next.frameColor = replaceUnchangedDefault(
+    next.frameColor,
+    PREVIOUS_FRAME_COLOR_DEFAULTS,
+    defaultOpeningFrameColor(next.type),
+  )
   next.frameFinish =
     next.frameFinish === 'glossy' || next.frameFinish === 'metal' ? next.frameFinish : 'matte'
   next.glassColor = next.glassColor ?? DEFAULT_GLASS_COLOR
