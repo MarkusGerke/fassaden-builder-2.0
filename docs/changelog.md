@@ -2,6 +2,10 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Bühne lädt + Bloom (2026-09-03) — v2.0.133
+
+`setView('3d')` im Bühnenmodus erst nach Modul-Init (vorher TDZ auf `exportStage`). Bloom wird bei `?stage=1` eingeschaltet. Datei: `main.ts`.
+
 ### Bühnenmodus / LAN (2026-09-03) — v2.0.132
 
 `?stage=1` bzw. `?view=stage`: nur Zeichenfläche (3D), Tageszeit-Slider und „Animationen pausieren“. `npm run dev:lan` lauscht auf `0.0.0.0:5173` fürs lokale Netz. Dateien: `main.ts`, `index.html`, `style.css`, `package.json`. Docs: [ux.md](ux.md).
