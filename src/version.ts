@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.122'
+export const APP_VERSION = '2.0.123'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,17 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.123',
+    date: '2026-09-03',
+    title: 'Lichtfarbe, Nischen dicht, Fugen-Glanz',
+    changes: [
+      'Punktlicht: eigene Farbe zusätzlich zur Farbtemperatur wählbar',
+      'Nischen lassen kein Licht mehr durch die Wand — nur Empfang auf der Rückwand',
+      'Fugen spiegeln Licht wie die Paneele (nicht mehr matt-schwarz in den Nuten)',
+      'Bitte hart neu laden, bis v2.0.123 in der Titelleiste steht',
+    ],
+  },
   {
     version: '2.0.122',
     date: '2026-09-03',

@@ -552,11 +552,18 @@
               <div class="toolbar-group">
                 <span class="toolbar-label">Lichtfarbe</span>
                 <label class="slider-label">
+                  <span>Farbe</span>
+                </label>
+                <div class="scene-light-color-row">
+                  <input id="scene-light-color" type="color" value="#ffaa66" title="Lichtfarbe" />
+                  <span id="scene-light-color-swatch" class="scene-light-color-swatch" title="Aktuelle Lichtfarbe" aria-hidden="true"></span>
+                </div>
+                <label class="slider-label">
                   <span>Farbtemperatur (Wärme)</span>
                   <output id="scene-light-color-temp-value">3000 K</output>
                 </label>
                 <input id="scene-light-color-temp" type="range" min="2000" max="6500" step="50" value="3000" />
-                <span id="scene-light-color-swatch" class="scene-light-color-swatch" title="Aktuelle Lichtfarbe" aria-hidden="true"></span>
+                <span class="toolbar-hint">Temperatur setzt die Farbe; eigene Farbe bleibt, bis die Temperatur erneut bewegt wird</span>
               </div>
               <div class="toolbar-group">
                 <span class="toolbar-label">Leistung (Watt LED)</span>

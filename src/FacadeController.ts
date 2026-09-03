@@ -775,6 +775,18 @@ export class FacadeController {
     applyRenderExteriorSurfaceLook(material)
   }
 
+  /** Fugen: wie Außenfläche, aber glatter — sonst kein sichtbares Licht-Glanzlicht in den Nuten. */
+  private finishMortarMaterial(material: THREE.MeshStandardMaterial): void {
+    if (this.isPerfPresentation()) {
+      if (this.isPreviewPresentation()) applyWorkModeSurfaceLook(material)
+      return
+    }
+    applyRenderExteriorSurfaceLook(material)
+    material.roughness = Math.min(material.roughness, 0.42)
+    material.envMapIntensity = Math.max(material.envMapIntensity, 0.72)
+    material.needsUpdate = true
+  }
+
   private finishInteriorMaterial(material: THREE.MeshStandardMaterial): void {
     if (this.isPerfPresentation()) return
     applyRenderInteriorSurfaceLook(material)
@@ -2915,6 +2927,11 @@ export class FacadeController {
         mesh.castShadow = true
         mesh.userData.sealedNiche =
           opening.type === 'conch' || openingFillMode(opening) === 'niche'
+        // Nischen-Rückwand muss aus beiden Richtungen in die Cube-Map werfen.
+        if (mesh.userData.sealedNiche) {
+          exteriorMaterial.shadowSide = THREE.DoubleSide
+          interiorMaterial.shadowSide = THREE.DoubleSide
+        }
         // Sonne + Punktlicht: Empfang wie Paneele; Nische/Konche immer (Rückwand).
         mesh.receiveShadow = this.revealShouldReceiveShadow(mesh)
         mesh.renderOrder = 2
@@ -3399,10 +3416,10 @@ export class FacadeController {
                   const mortarMaterial = createTintedMaterial(
                     this.material,
                     mortarColor,
-                    wall.wallFinish,
+                    wall.claddingFinish ?? wall.wallFinish,
                   )
                   if (this.isPreviewPresentation()) applyWorkModeSurfaceLook(mortarMaterial)
-                  else this.finishExteriorMaterial(mortarMaterial)
+                  else this.finishMortarMaterial(mortarMaterial)
                   const mortarMesh = new THREE.Mesh(mortarGeometry, mortarMaterial)
                   mortarMesh.castShadow = true
                   mortarMesh.userData.lodTier = 'mortar'
@@ -3508,9 +3525,9 @@ export class FacadeController {
                   const mortarMaterial = createTintedMaterial(
                     this.material,
                     mortarColor,
-                    wall.wallFinish,
+                    wall.claddingFinish ?? wall.wallFinish,
                   )
-                  this.finishExteriorMaterial(mortarMaterial)
+                  this.finishMortarMaterial(mortarMaterial)
                   const mortarMesh = new THREE.Mesh(mortarGeometry, mortarMaterial)
                   mortarMesh.castShadow = true
                   mortarMesh.userData.lodTier = 'mortar'

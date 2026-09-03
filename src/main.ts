@@ -4780,6 +4780,7 @@ const sceneLightZInput = document.querySelector<HTMLInputElement>('#scene-light-
 const sceneLightIntensityInput = document.querySelector<HTMLInputElement>('#scene-light-intensity')!
 const sceneLightColorTempInput = document.querySelector<HTMLInputElement>('#scene-light-color-temp')!
 const sceneLightColorTempValue = document.querySelector<HTMLOutputElement>('#scene-light-color-temp-value')!
+const sceneLightColorInput = document.querySelector<HTMLInputElement>('#scene-light-color')!
 const sceneLightColorSwatch = document.querySelector<HTMLSpanElement>('#scene-light-color-swatch')!
 const sceneLightShowMarkerInput = document.querySelector<HTMLInputElement>('#scene-light-show-marker')!
 const sceneLightMarkerSizeRow = document.querySelector<HTMLDivElement>('#scene-light-marker-size-row')!
@@ -8532,6 +8533,7 @@ function syncSceneLightToolbar(): void {
   const colorTemp = light.colorTemperature ?? 3000
   sceneLightColorTempInput.value = String(colorTemp)
   sceneLightColorTempValue.textContent = `${Math.round(colorTemp)} K`
+  sceneLightColorInput.value = light.color.length === 7 ? light.color : '#ffaa66'
   sceneLightColorSwatch.style.backgroundColor = light.color
   sceneLightShowMarkerInput.checked = light.showMarker !== false
   sceneLightMarkerSizeRow.hidden = light.showMarker === false
@@ -18440,8 +18442,14 @@ sceneLightColorTempInput.addEventListener('input', () => {
   if (!Number.isFinite(kelvin)) return
   const color = kelvinToHex(kelvin)
   sceneLightColorTempValue.textContent = `${Math.round(kelvin)} K`
+  sceneLightColorInput.value = color
   sceneLightColorSwatch.style.backgroundColor = color
   patchSelectedSceneLight({ colorTemperature: kelvin, color })
+})
+sceneLightColorInput.addEventListener('input', () => {
+  const color = sceneLightColorInput.value
+  sceneLightColorSwatch.style.backgroundColor = color
+  patchSelectedSceneLight({ color })
 })
 sceneLightShowMarkerInput.addEventListener('change', () => {
   patchSelectedSceneLight({ showMarker: sceneLightShowMarkerInput.checked })

@@ -36,6 +36,15 @@ describe('sceneLights', () => {
     expect(light?.color.startsWith('#')).toBe(true)
   })
 
+  it('bewahrt manuelle Farbe neben Farbtemperatur', () => {
+    const { state, lightId } = addSceneLight(createDefaultFacadeState())
+    const withTemp = updateSceneLight(state, lightId, { colorTemperature: 3000 })
+    const custom = updateSceneLight(withTemp, lightId, { color: '#00ff88' })
+    const light = normalizeSceneLights(custom.sceneLights)[0]
+    expect(light?.color).toBe('#00ff88')
+    expect(light?.colorTemperature).toBe(3000)
+  })
+
   it('dupliziert mit gleichen Einstellungen und Versatz', () => {
     const { state, lightId } = addSceneLight(createDefaultFacadeState())
     const patched = updateSceneLight(state, lightId, {

@@ -2509,11 +2509,27 @@ button.os-menu-item:disabled {
   background-position: 0 0, 0 4px, 4px -4px, -4px 0;
 }
 
+.scene-light-color-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.25rem 0 0.45rem;
+}
+
+.scene-light-color-row input[type='color'] {
+  width: 2.4rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid #bbb;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+}
+
 .scene-light-color-swatch {
   display: inline-block;
   width: 2rem;
   height: 2rem;
-  margin-top: 0.35rem;
   border: 1px solid #bbb;
   border-radius: 4px;
   vertical-align: middle;

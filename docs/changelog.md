@@ -2,6 +2,10 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Lichtfarbe, Nischen dicht, Fugen-Glanz (2026-09-03) — v2.0.123
+
+Punktlicht: Color-Picker zusätzlich zur Kelvin-Temperatur (`#scene-light-color`). Nischen: Shadow-Tunnel-Kappen an Rückwand + Innenkante + `shadowSide: DoubleSide` auf versiegelter Laibung — kein Leck durchs Wandloch. Fugen: `claddingFinish` + `finishMortarMaterial` (geringere Roughness, EnvMap) für sichtbares Glanzlicht. Dateien: `index.html`, `main.ts`, `panelGeometry.ts`, `FacadeController.ts`, `sceneLights.test.ts`. Docs: [scene-lights.md](scene-lights.md), [opening-features.md](opening-features.md), [panel-geometry.md](panel-geometry.md), [shadows.md](shadows.md).
+
 ### Punktlicht-Undo: Paneele nicht mehr schwarz (2026-09-03) — v2.0.122
 
 Nach Löschen eines Punktlichts und Undo blieben Paneele/Fugen dunkelgrau: `shadowMap.autoUpdate = false`, und reine `sceneLights`-Änderungen backten die Cube-Map nicht sofort (nur `schedule` bei Raum-Okklusion). Frische Lichter mit `castShadow` ohne Map sampleten „voller Schatten“. Fix: `applyState` erkennt Licht-Diff und ruft `applySunLighting({ updateShadowMap: true })` / `flushSunShadowMap`. Datei: `main.ts`. Docs: [scene-lights.md](scene-lights.md), [shadows.md](shadows.md).

@@ -33,6 +33,7 @@ import {
   openingMaskPolyline,
   openingWallFaceMaskPolyline,
   openingMasonryRect,
+  openingFillMode,
   openingPanelClearance,
   openingPanelClearanceFinish,
   type OpeningPoly,
@@ -3278,6 +3279,17 @@ export function createStudioOpeningShadowTunnelGeometry(wall: Wall): THREE.Buffe
         appendOpeningMaskCap(wall, poly, backZ, positions, normals, indices)
       }
       quads += 3
+    } else if (openingFillMode(opening) === 'niche') {
+      // Nische: sichtbare Rückwand reicht nur `depth` cm — Shadow-Tunnel braucht
+      // Kappen an Rückwand und Innenkante, sonst leckt Punktlicht durchs Wandloch.
+      const fill = normalizeOpeningFill(opening.fill)
+      const depth = Math.max(1, fill.nicheDepthCm ?? 10)
+      const zOuter = studioOpeningRevealOuterZ(wall, opening)
+      const outward = studioWindowDepthForwardSign(wall)
+      const backZ = zOuter - outward * depth
+      appendOpeningMaskCap(wall, poly, backZ, positions, normals, indices)
+      appendOpeningMaskCap(wall, poly, innerZ, positions, normals, indices)
+      quads += 2
     } else if (basementWindowEnabled(opening)) {
       appendOpeningMaskCap(wall, poly, innerZ, positions, normals, indices)
       const yCap = opening.y + opening.height + OPENING_SHADOW_TUNNEL_INFLATE_CM

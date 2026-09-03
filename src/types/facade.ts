@@ -1092,7 +1092,7 @@ export interface SceneLight {
   intensity: number
   enabled: boolean
   castShadow: boolean
-  /** Farbtemperatur in Kelvin (2000–6500). Steuert `color` über kelvinToColor. */
+  /** Farbtemperatur in Kelvin (2000–6500). Slider setzt `color` daraus; manuelle Farbe bleibt, bis die Temperatur erneut bewegt wird. */
   colorTemperature?: number
   /** Sichtbare Editor-Kugel (nur Darstellung, Licht bleibt aktiv). */
   showMarker?: boolean
