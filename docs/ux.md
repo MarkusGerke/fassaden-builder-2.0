@@ -175,12 +175,12 @@ Das Fenster bleibt 24 cm hinter der Wandkörper-Außenkante; die Leibung holt di
 
 ## Etagen-Trennfläche (Decke / Boden)
 
-`FacadeController.rebuildIndoorFloor`: **Decke und Fußboden** je Etage aus `planFacesWithHoles`. **v2.0.92:** Das Polygon folgt dem **Plan-Außenring** (Fassadenrand) — lichtdicht über die gesamte Wandstärke; Hof-Löcher ebenfalls Außenkontur. Meshes sind `ExtrudeGeometry` mit Dicke `INDOOR_SLAB_THICKNESS` (8 cm).
+`FacadeController.rebuildIndoorFloor`: **Decke und Fußboden** je Etage aus `planFacesWithHoles`. **v2.0.92:** Das Polygon folgt dem **Plan-Außenring** (Fassadenrand) — lichtdicht über die gesamte Wandstärke; Hof-Löcher ebenfalls Außenkontur. **v2.0.121:** An Öffnungen, die die Platte schneiden/berühren, Kerbe auf die Wandinnenseite (`src/studio/slabNotches.ts`). Meshes sind `ExtrudeGeometry` mit Dicke `INDOOR_SLAB_THICKNESS` (8 cm).
 
 | Geschossgrenze | Y-Position |
 |---|---|
 | Decke EG / Boden OG1 | Wandoberkante der Etage (`storeyTopY`, max. `wall.y + wall.height`) — **Oberseite** der 8-cm-Platte (`y = storeyTopY − INDOOR_SLAB_THICKNESS`) |
-| Fußboden EG / OG | Wandunterkante der Etage (`storeyBottomY`, min. `wall.y`) — **Unterseite** der 8-cm-Platte |
+| Fußboden EG / OG | Untere Türkante der Etage (`storeyFloorSurfaceY`) — **Unterseite** der 8-cm-Platte (`y = surfaceY − INDOOR_SLAB_THICKNESS`); ohne Tür: Wandunterkante |
 
 Meshes sind per `userData.indoorRole` (`ceiling` \| `floor`) und `userData.kind` getaggt sowie `buildingId` / `floorIndex`. **3D-Render (v2.0.56):** Decke und Fußboden hell wie Innenwände (`createIndoorSlabMaterial`: EnvMap, kein Gegenlicht-Dim). Default **Weiß**; `FloorPlan.ceilingColor` gilt für die 3D-Albedo (Farb-Toolbar).
 

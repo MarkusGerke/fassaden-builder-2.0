@@ -106,6 +106,7 @@ import {
   createPedimentSweepGeometry,
 } from './studio/pedimentGeometry'
 import { innerFaceRingWorld, planFacesWithHoles, planNodeWorld } from './studio/floorPlan'
+import { notchSlabRingAtOpenings } from './studio/slabNotches'
 import { storeyFloorSurfaceY, storeyTopY } from './utils/layers'
 import { facadeOutward } from './studio/elevation'
 import { isStudioWall, leafOpenSignForWall, outerSillBoardPose, studioFacadeOutwardLocalZ, studioFacadeSelectionLocalZ, studioPanelFaceLocalZ, studioProfileAnchorLocalZ, studioWallOuterLocalZ, studioWallTransform, studioWindowOriginZ, wallAlongDelta, wallHasPanels, windowDepthForwardSign } from './studio/walls'
@@ -1472,6 +1473,9 @@ export class FacadeController {
       const floors = building.floors
       if (!floors || floors.length === 0) continue
       const wallDepth = building.wallDepth ?? WALL_DEPTH
+      const buildingWalls = getVisibleWalls(this.state).filter(
+        (wall) => wall.buildingId === building.id,
+      )
 
       for (let fi = 0; fi < floors.length; fi++) {
         const plan = floors[fi]
@@ -1480,25 +1484,38 @@ export class FacadeController {
         const faces = planFacesWithHoles(plan)
         for (const face of faces) {
           // Bis zur Fassaden-Außenkante (Plan-Ring) — schließt die Wandstärke lichtdicht.
-          const outer = face.outer.map(planNodeWorld)
-          if (outer.length < 3) continue
-          const shape = ringToShapeXY(outer)
-          if (!shape) continue
-          for (const holeNodes of face.holes) {
-            const holeOuter = holeNodes.map(planNodeWorld)
-            if (holeOuter.length < 3) continue
-            const path = new THREE.Path()
-            path.moveTo(holeOuter[0]!.x, -holeOuter[0]!.z)
-            for (let i = holeOuter.length - 1; i >= 1; i -= 1) {
-              path.lineTo(holeOuter[i]!.x, -holeOuter[i]!.z)
+          // An Öffnungen, die die Platte durchdringen (z. B. Kellerfenster unter einem per
+          // Treppe angehobenen Boden), weicht die Kante auf die Wandinnenseite zurück —
+          // sonst läuft die Platte sichtbar quer durch die Öffnung.
+          const outerWorld = face.outer.map(planNodeWorld)
+          if (outerWorld.length < 3) continue
+          const holesWorld = face.holes
+            .map((holeNodes) => holeNodes.map(planNodeWorld))
+            .filter((hole) => hole.length >= 3)
+          const slabShapeFor = (slabBottomY: number, slabTopY: number) => {
+            const outer = notchSlabRingAtOpenings(outerWorld, buildingWalls, slabBottomY, slabTopY)
+            const shape = ringToShapeXY(outer)
+            if (!shape) return null
+            for (const holeWorld of holesWorld) {
+              const hole = notchSlabRingAtOpenings(holeWorld, buildingWalls, slabBottomY, slabTopY)
+              const path = new THREE.Path()
+              path.moveTo(hole[0]!.x, -hole[0]!.z)
+              for (let i = hole.length - 1; i >= 1; i -= 1) {
+                path.lineTo(hole[i]!.x, -hole[i]!.z)
+              }
+              path.closePath()
+              shape.holes.push(path)
             }
-            path.closePath()
-            shape.holes.push(path)
+            return shape
           }
           const ceilingY = storeyTopY(building, fi) - slabThickness
-          addFloorMesh(shape.clone(), ceilingY, slabMat, building.id, fi, 'ceiling')
+          const ceilingShape = slabShapeFor(ceilingY, ceilingY + slabThickness)
+          if (ceilingShape) addFloorMesh(ceilingShape, ceilingY, slabMat, building.id, fi, 'ceiling')
           const floorSurfaceY = storeyFloorSurfaceY(building, fi)
-          addFloorMesh(shape.clone(), floorSurfaceY - slabThickness, slabMat, building.id, fi, 'floor')
+          const floorShape = slabShapeFor(floorSurfaceY - slabThickness, floorSurfaceY)
+          if (floorShape) {
+            addFloorMesh(floorShape, floorSurfaceY - slabThickness, slabMat, building.id, fi, 'floor')
+          }
 
           // Sonne: Innenkante, damit keine horizontalen Streifen auf der Außenfassade.
           const sunOuter = innerFaceRingWorld(face.outer, wallDepth)

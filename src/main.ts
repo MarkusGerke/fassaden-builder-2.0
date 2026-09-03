@@ -8460,7 +8460,7 @@ function sceneLightsActive(): boolean {
   return normalizeSceneLights(state.sceneLights).some((item) => item.enabled)
 }
 
-function syncSceneLightRuntime(): void {
+function syncSceneLightRuntime(opts?: { flushShadows?: boolean }): void {
   const roomOcclusion = sceneLightRoomOcclusionActive()
   const lightsActive = sceneLightsActive()
   const frontView = currentView === 'front'
@@ -8475,7 +8475,12 @@ function syncSceneLightRuntime(): void {
   })
   if (!facadeReady) return
   facade.syncPointLightOccluders(roomOcclusion, lightsActive)
-  if (roomOcclusion) scheduleSunShadowMapUpdate()
+  // Frische Punktlichter haben noch keine Cube-Map — ohne Bake wirken receiveShadow-
+  // Flächen (Paneele/Fugen) schwarz. Undo nach Löschen: sofort flushen, nicht nur 90 ms später.
+  if (opts?.flushShadows || roomOcclusion) {
+    if (opts?.flushShadows) flushSunShadowMap()
+    else scheduleSunShadowMapUpdate()
+  }
 }
 
 function insertSceneLightFromLibrary(position?: Pick<SceneLight, 'x' | 'y' | 'z'>): void {
@@ -8712,13 +8717,16 @@ function applyState(nextState: FacadeState, nextEditor = editor) {
   }
   const geometryUnchanged = rebuildIds !== null && rebuildIds.length === 0
   let geometryChanged = false
+  const lightsChanged =
+    JSON.stringify(normalizeSceneLights(prevState.sceneLights)) !==
+    JSON.stringify(normalizeSceneLights(state.sceneLights))
 
   if (labelOnly) {
     facade.setState(state, { rebuildBuildingIds: [] })
     facade.refreshWallLabels()
     applySunLighting({ updateShadowMap: true })
   } else if (geometryUnchanged) {
-    // Nur Editor/Selektion — kein Geometrie-Rebuild, kein svgView.
+    // Nur Editor/Selektion/Lichter — kein Geometrie-Rebuild, kein svgView.
   } else if (rebuildIds !== null) {
     geometryChanged = rebuildIds.length > 0
     facade.setState(state, { rebuildBuildingIds: rebuildIds })
@@ -8738,7 +8746,7 @@ function applyState(nextState: FacadeState, nextEditor = editor) {
   syncSiteTransform()
   updateGroundPlane()
   syncCameraDistanceLimits()
-  if (geometryChanged || openingDragCommit) {
+  if (geometryChanged || openingDragCommit || lightsChanged) {
     applySunLighting({ updateShadowMap: true })
   }
   if (currentView === 'front') {
@@ -8758,7 +8766,8 @@ function applyState(nextState: FacadeState, nextEditor = editor) {
   renderUi({ skipLayerList: geometryUnchanged && !labelOnly })
   updateHistoryButtons()
   updateWallLibraryGizmos()
-  syncSceneLightRuntime()
+  // Licht-Änderung: applySunLighting hat bereits geflusht; hier nicht nochmal schedule.
+  syncSceneLightRuntime({ flushShadows: lightsChanged && !geometryChanged && !openingDragCommit })
   markViewportDirty()
 }
 

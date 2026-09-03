@@ -59,6 +59,7 @@
 | 3D-Geometrie (Wand, Paneele, Leibung bis Profil) | `src/studio/panelGeometry.ts` |
 | Kachel-Layout (Muster) | `src/studio/panelLayout.ts` |
 | Grundriss zeichnen/auswerten, Innenkanten-Ring | `src/studio/floorPlan.ts` |
+| Indoor-Platten-Kerben an Öffnungen | `src/studio/slabNotches.ts` |
 | Grundriss 3D-Overlay | `src/studio/floorPlanView.ts` |
 | Studio-Wand erstellen/normalisieren | `src/studio/walls.ts` |
 | Three.js Szene, Innenboden/Zwischendecke, Dach | `src/FacadeController.ts` |

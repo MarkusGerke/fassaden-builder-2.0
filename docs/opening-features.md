@@ -89,7 +89,7 @@ Nur bei **genau einer** gewählten Tür (`#door-stairs-section`). Optionen nur w
 | Podesttiefe | 8 cm | oberste Ebene; hinten bis Tür/Innenwand |
 | Breite oben / Überstand / Aufweitung | 8 cm | |
 
-Oberste Hinterkante = Innenwand; tiefere Stufen = Außenkante. Aktive Treppe: Sockel clippt Loch von y=0 bis über die Tür. Unteres Türprofil (`bottom`) wird nicht gezeichnet.
+Oberste Hinterkante = Innenwand; tiefere Stufen = Außenkante. Aktive Treppe: Sockel, Wandkörper, Paneele und Mörtel clippen das Loch von y=0 bis über die Tür (`openingForShellCut`) — sonst bliebe Mauerwerk als Fläche unter der angehobenen Schwelle. Unteres Türprofil (`bottom`) wird nicht gezeichnet. Der Innenboden folgt der Schwelle (`storeyFloorSurfaceY`) und kerbt an der Tür sowie an Kellerfenstern, die die Platte berühren ([floor-plan.md](floor-plan.md)).
 
 Datei: `src/studio/stairs.ts`.
 

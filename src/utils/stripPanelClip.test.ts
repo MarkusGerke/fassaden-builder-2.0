@@ -1463,3 +1463,84 @@ describe('Läuferverband: Ecken und Laibungen im Render', () => {
     expect(insetNearOpening).toBe(0)
   })
 })
+
+describe('Mörtelband zwischen Kellerfenster und angehobener Tür', () => {
+  it('füllt die Türöffnung nicht mit einer Fläche', () => {
+    const wall = {
+      id: 'w',
+      kind: 'studio' as const,
+      x: 0,
+      y: 0,
+      width: 1120,
+      height: 448,
+      depth: 32,
+      originX: 0,
+      originZ: 0,
+      yawDeg: 0,
+      panelFlip: true,
+      panel: normalizeStudioPanel({
+        enabled: true,
+        pattern: 'runningBond' as const,
+        panelWidth: 48,
+        panelHeight: 16,
+        joint: 1.6,
+        jointDepth: 2.4,
+        projectDepth: 2,
+        taperDepth: 3.5,
+        taper: 0.8,
+      }),
+      openings: [
+        {
+          id: 'kw',
+          type: 'window' as const,
+          x: 96,
+          y: 0,
+          width: 48,
+          height: 64,
+          arch: { enabled: true, form: 'round' as const },
+        },
+        {
+          id: 'door',
+          type: 'door' as const,
+          x: 600,
+          y: 72,
+          width: 96,
+          height: 320,
+          stairs: {
+            enabled: true,
+            count: 3,
+            rise: 24,
+            tread: 32,
+            width: 96,
+            extendLeft: 0,
+            extendRight: 0,
+            splayLeft: 0,
+            splayRight: 0,
+          },
+          arch: { enabled: true, form: 'round' as const },
+          panelClearance: { enabled: true, cm: 8, finish: 'empty' as const, depthCm: 4 },
+        },
+      ],
+      profiles: [],
+      neighbors: {},
+    }
+    const panel = wall.panel
+    const mortar = createStudioMortarGeometry(wall as never, panel, [])
+    expect(mortar).not.toBeNull()
+    const pos = mortar!.getAttribute('position')
+    const halfW = wall.width / 2
+    const halfH = wall.height / 2
+    const door = wall.openings[1]!
+    let vertsInDoor = 0
+    for (let i = 0; i < pos.count; i += 1) {
+      const x = pos.getX(i) + halfW
+      const y = pos.getY(i) + halfH
+      if (x > door.x + 24 && x < door.x + door.width - 24 && y > 12 && y < door.y - 4) {
+        vertsInDoor += 1
+      }
+    }
+    mortar!.dispose()
+    expect(vertsInDoor).toBe(0)
+  })
+})
+

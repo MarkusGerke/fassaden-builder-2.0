@@ -2,6 +2,14 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Punktlicht-Undo: Paneele nicht mehr schwarz (2026-09-03) — v2.0.122
+
+Nach Löschen eines Punktlichts und Undo blieben Paneele/Fugen dunkelgrau: `shadowMap.autoUpdate = false`, und reine `sceneLights`-Änderungen backten die Cube-Map nicht sofort (nur `schedule` bei Raum-Okklusion). Frische Lichter mit `castShadow` ohne Map sampleten „voller Schatten“. Fix: `applyState` erkennt Licht-Diff und ruft `applySunLighting({ updateShadowMap: true })` / `flushSunShadowMap`. Datei: `main.ts`. Docs: [scene-lights.md](scene-lights.md), [shadows.md](shadows.md).
+
+### Treppe: Wandloch + Plattenkerbe (2026-09-03) — v2.0.121
+
+Aktive Treppe hob die Türkante, ließ aber Wand/Mörtel/Paneele unter der Schwelle stehen — sichtbare Fläche in der unteren Türhälfte. `openingForShellCut` / `openingCutsFromGround` ziehen das Schalenloch auf y=0 (Bogen bleibt, Rise von oben). Zusätzlich: Indoor-Boden/-Decke kerben an Öffnungen, die die Platte schneiden oder berühren (`slabNotches.ts`), inkl. Kellerfenster unter dem angehobenen Boden und angehobener Türschwelle — sonst lief die Plattenkante als „zweiter Sockel“ durchs Fenster bzw. füllte die Tür. Dateien: `openingGeometry.ts`, `panelGeometry.ts`, `slabNotches.ts`, `FacadeController.ts`. Docs: [opening-features.md](opening-features.md), [floor-plan.md](floor-plan.md), [panel-geometry.md](panel-geometry.md), [ux.md](ux.md).
+
 ### Flüssiges Navigieren in 3D — PCSS-Shader (2026-09-03) — v2.0.120
 
 Drehen/Schwenken im Render-Modus lief mit ~4 Bilder/s. Nicht die Shadow-Map (8192) oder die Tap-Zahl war schuld, sondern der PCSS-Shader: globales `vec2 pcssPoissonDisk[32]`, pro Fragment gefüllt und dynamisch indiziert (Metal: Register/Occupancy). Jetzt `const`-Disk + `mat2`-Rotation, Literal-Schleifen entrollt, `step()` — pixelgleiches Bild, Orbit bei Vsync. Neu: Uniform `pcssLite` (1 Tap ohne Rebuild), adaptiv nach 4 Orbit-Frames > 30 ms (sitzungsweit). Dateien: `pcssShadows.ts`, `main.ts`. Docs: [performance.md](performance.md), [shadows.md](shadows.md).

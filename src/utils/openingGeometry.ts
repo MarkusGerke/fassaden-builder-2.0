@@ -1323,6 +1323,22 @@ export function openingClipRects(opening: Opening, inflate = 0): OpeningRect[] {
   return body.height > 0.5 ? [body] : []
 }
 
+/**
+ * Tür mit Treppe: die Schwelle liegt über dem Boden, das **Wandloch** geht trotzdem
+ * von y=0 bis zur originalen Oberkante (Bogen bleibt, weil Rise von oben zählt).
+ * Sonst bleibt Mauerwerk/Mörtel als Fläche in der unteren Türhälfte.
+ */
+export function openingCutsFromGround(opening: Opening): boolean {
+  if (opening.hidden || !openingCutsWall(opening)) return false
+  if (opening.y <= 0.05) return true
+  return opening.type === 'door' && Boolean(opening.stairs?.enabled)
+}
+
+export function openingForShellCut(opening: Opening): Opening {
+  if (opening.type !== 'door' || !opening.stairs?.enabled || opening.y <= 0.05) return opening
+  return { ...opening, y: 0, height: opening.y + opening.height }
+}
+
 function copyPolyProps(
   rect: OpeningPoly,
 ): Pick<
@@ -2429,12 +2445,20 @@ function splitOneMultiNotchArcPoly(poly: OpeningPoly, eps: number, minSliceWidth
   if (poly.outline && poly.outline.length >= 3) return [poly]
   const top = poly.topArc
   const bottom = poly.bottomArc
-  if (top && top.length >= 4 && !(bottom && bottom.length >= 2)) {
-    return splitPolyAlongNotchedArc(poly, top, 'top', eps, minSliceWidth)
+  const hasTop = Boolean(top && top.length >= 4)
+  const hasBottom = Boolean(bottom && bottom.length >= 4)
+  if (hasTop && hasBottom) {
+    // Beide Kanten gekerbt (z. B. Mörtelband y=0…Sockel: unten Kellerfenster, oben
+    // angehobene Tür). Auch **eine** Kerbe je Kante muss splitten — sonst bleibt ein
+    // Band mit zwei Arcs und füllt die Türöffnung.
+    return splitPolyAlongNotchedArc(poly, top!, 'top', eps, minSliceWidth, true).flatMap((part) =>
+      part.bottomArc && part.bottomArc.length >= 4
+        ? splitPolyAlongNotchedArc(part, part.bottomArc, 'bottom', eps, minSliceWidth, true)
+        : [part],
+    )
   }
-  if (bottom && bottom.length >= 4 && !(top && top.length >= 2)) {
-    return splitPolyAlongNotchedArc(poly, bottom, 'bottom', eps, minSliceWidth)
-  }
+  if (hasTop) return splitPolyAlongNotchedArc(poly, top!, 'top', eps, minSliceWidth)
+  if (hasBottom) return splitPolyAlongNotchedArc(poly, bottom!, 'bottom', eps, minSliceWidth)
   return [poly]
 }
 
@@ -2444,6 +2468,7 @@ function splitPolyAlongNotchedArc(
   kind: 'top' | 'bottom',
   eps: number,
   minSliceWidth: number,
+  splitSingleNotch = false,
 ): OpeningPoly[] {
   const flatY = kind === 'top' ? poly.y + poly.height : poly.y
   const cutEps = Math.max(eps, 0.5)
@@ -2459,7 +2484,8 @@ function splitPolyAlongNotchedArc(
   // Eine Kerbe = ein Rundbogen: Rest bleibt ein Polygon mit bottomArc/topArc.
   // Split in flach|Kerbe|flach erzeugt vertikale Stirnkanten je Reihe (Treppenstufen
   // in der Zeichnung) und dreieckige Lücken am Scheitel.
-  if (cutCount < 2) return [poly]
+  if (!splitSingleNotch && cutCount < 2) return [poly]
+  if (cutCount < 1) return [poly]
 
   const splitXs: number[] = [poly.x, poly.x + poly.width]
   for (let r = 0; r < runs.length; r += 1) {

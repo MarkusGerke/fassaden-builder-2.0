@@ -24,7 +24,9 @@ import {
   openingArchHybridMasonryEnabled,
   openingArchVoussoirsEnabled,
   openingClipRects,
+  openingCutsFromGround,
   openingCutsWall,
+  openingForShellCut,
   openingHasCurvedMask,
   openingHasRoundMask,
   openingIsConch,
@@ -155,7 +157,7 @@ function rectsOverlap(a: Rect, b: Rect): boolean {
 }
 
 function openingHoles(opening: Opening, inflate = 0): Rect[] {
-  return openingClipRects(opening, inflate + openingPanelClearance(opening)).map((r) => ({
+  return openingClipRects(openingForShellCut(opening), inflate + openingPanelClearance(opening)).map((r) => ({
     x: r.x,
     y: r.y,
     width: r.width,
@@ -2274,25 +2276,16 @@ function plinthClipOpenings(wall: Wall): Opening[] {
     if (opening.hidden) continue
     const clearance = openingPanelClearance(opening)
     const pad = clearance > 0.05 ? clearance : 0
-    if (opening.type === 'door' && opening.stairs?.enabled) {
-      result.push({
-        ...opening,
-        x: opening.x - pad,
-        width: opening.width + pad * 2,
-        y: 0,
-        height: opening.y + opening.height,
-      })
-      continue
-    }
+    const shell = openingForShellCut(opening)
     if (pad > 0) {
       result.push({
-        ...opening,
-        x: opening.x - pad,
-        width: opening.width + pad * 2,
+        ...shell,
+        x: shell.x - pad,
+        width: shell.width + pad * 2,
       })
       continue
     }
-    result.push(opening)
+    result.push(shell)
   }
   return result
 }
@@ -2721,7 +2714,7 @@ function appendShapeFace(
 }
 
 function addArchOpeningHole(path: THREE.Path, wall: Wall, opening: Opening, z: number) {
-  appendOpeningContour(path, wall, opening, clearanceWallHoleInflate(wall, opening, z), z, true)
+  appendOpeningContour(path, wall, openingForShellCut(opening), clearanceWallHoleInflate(wall, opening, z), z, true)
 }
 
 function clearanceWallHoleInflate(wall: Wall, opening: Opening, faceZ: number): number {
@@ -2930,7 +2923,7 @@ function studioWallFaceShape(wall: Wall, z: number): THREE.Shape {
   const x1 = wallLocalX(wall, wall.width, z)
   const shape = new THREE.Shape()
   const groundAll = wall.openings
-    .filter((opening) => opening.y === 0 && openingCutsWall(opening) && !openingHasRoundMask(opening))
+    .filter((opening) => openingCutsFromGround(opening) && !openingHasRoundMask(opening))
     .slice()
     .sort((a, b) => a.x - b.x)
   // Notch berührt die Wandkante → Earcut-Diagonale durchs Loch. Dann als Loch behandeln.
@@ -2938,7 +2931,7 @@ function studioWallFaceShape(wall: Wall, z: number): THREE.Shape {
   const groundAsHoles: Opening[] = []
   for (const opening of groundAll) {
     const inflate = clearanceWallHoleInflate(wall, opening, z)
-    const masonry = openingMasonryRect(opening, inflate)
+    const masonry = openingMasonryRect(openingForShellCut(opening), inflate)
     if (masonry.x <= 0.05 || masonry.x + masonry.width >= wall.width - 0.05) {
       groundAsHoles.push(opening)
     } else {
@@ -2948,7 +2941,9 @@ function studioWallFaceShape(wall: Wall, z: number): THREE.Shape {
   const elevated = [
     ...groundAsHoles,
     ...wall.openings.filter(
-      (opening) => openingCutsWall(opening) && (opening.y > 0 || openingHasRoundMask(opening)),
+      (opening) =>
+        openingCutsWall(opening) &&
+        (!openingCutsFromGround(opening) || openingHasRoundMask(opening)),
     ),
   ]
 
@@ -2956,10 +2951,11 @@ function studioWallFaceShape(wall: Wall, z: number): THREE.Shape {
   let cursor = 0
   for (const opening of groundNotches) {
     const inflate = clearanceWallHoleInflate(wall, opening, z)
-    const masonry = openingMasonryRect(opening, inflate)
+    const shell = openingForShellCut(opening)
+    const masonry = openingMasonryRect(shell, inflate)
     const ox0 = wallLocalX(wall, masonry.x, z)
     if (masonry.x > cursor + 0.05) shape.lineTo(ox0, y0)
-    const poly = openingWallFaceMaskPolyline(opening, inflate)
+    const poly = openingWallFaceMaskPolyline(shell, inflate)
     if (poly.length >= 3) {
       const notch = [poly[0], ...poly.slice(1).reverse()]
       let prevX = Number.NaN
@@ -3197,7 +3193,7 @@ export function createStudioWallGeometry(wall: Wall, allWalls: Wall[] = []): THR
 
   // Unterseite der Wandstärke: Lücken nur unter Bodentüren (früher: ganz ohne Boden bei Tür).
   const groundDoors = wall.openings
-    .filter((opening) => opening.y === 0 && openingCutsWall(opening))
+    .filter((opening) => openingCutsFromGround(opening))
     .slice()
     .sort((a, b) => a.x - b.x)
   const addBottomSpan = (xStart: number, xEnd: number) => {
@@ -3218,7 +3214,7 @@ export function createStudioWallGeometry(wall: Wall, allWalls: Wall[] = []): THR
   }
   let bottomCursor = 0
   for (const opening of groundDoors) {
-    const masonry = openingMasonryRect(opening, 0)
+    const masonry = openingMasonryRect(openingForShellCut(opening), 0)
     addBottomSpan(bottomCursor, masonry.x)
     bottomCursor = masonry.x + masonry.width
   }
@@ -3253,7 +3249,7 @@ export function createStudioOpeningShadowTunnelGeometry(wall: Wall): THREE.Buffe
     const revealZ = studioOpeningRevealOuterZ(wall, opening)
     const outerZ = forward >= 0 ? Math.max(facadeZ, revealZ) : Math.min(facadeZ, revealZ)
     if (Math.abs(outerZ - innerZ) < 0.35) continue
-    const poly = openingMaskPolyline(opening, OPENING_SHADOW_TUNNEL_INFLATE_CM)
+    const poly = openingMaskPolyline(openingForShellCut(opening), OPENING_SHADOW_TUNNEL_INFLATE_CM)
     if (poly.length < 3) continue
     const n = poly.length
     for (let i = 0; i < n; i += 1) {

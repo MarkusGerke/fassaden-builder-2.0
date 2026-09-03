@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.120'
+export const APP_VERSION = '2.0.122'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,25 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.122',
+    date: '2026-09-03',
+    title: 'Licht-Undo ohne dunkle Paneele',
+    changes: [
+      'Nach Entfernen eines Punktlichts und Rückgängig bleiben Paneele und Fugen hell — die Schatten-Map wird sofort neu berechnet',
+      'Bitte hart neu laden, bis v2.0.122 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.121',
+    date: '2026-09-03',
+    title: 'Treppe ohne falschen Sockel und Türfläche',
+    changes: [
+      'Mit aktiver Treppe bleibt die Tür unten offen — kein Mauerwerk/Mörtel mehr in der unteren Hälfte',
+      'Der Innenboden läuft nicht mehr als „zweiter Sockel“ durch Kellerfenster und Tür',
+      'Bitte hart neu laden, bis v2.0.121 in der Titelleiste steht',
+    ],
+  },
   {
     version: '2.0.120',
     date: '2026-09-03',
