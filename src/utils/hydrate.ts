@@ -36,7 +36,7 @@ import {
   normalizeOpeningTaperedField,
 } from '../studio/taperedField'
 import { defaultOpeningStairs, syncStairsToDoorWidth } from '../studio/stairs'
-import { normalizeSceneLights } from '../scene/sceneLights'
+import { normalizeSceneLightState } from '../scene/sceneLights'
 import { defaultOpeningRollerShutter, normalizeOpeningRollerShutter } from '../studio/rollerShutter'
 import { gruenderzeitConfigForOpening } from '../windows/gruenderzeit'
 import {
@@ -364,6 +364,7 @@ export function hydrateWall(wall: Wall): Wall {
 
 /** Hydriert alle Gebäude/Wände/Öffnungen eines FacadeState. */
 export function hydrateFacadeState(state: FacadeState): FacadeState {
+  const lightState = normalizeSceneLightState(state)
   return {
     ...state,
     buildings: state.buildings.map((building) => ({
@@ -376,7 +377,8 @@ export function hydrateFacadeState(state: FacadeState): FacadeState {
       walls: building.walls.map(hydrateWall),
       groups: (building.groups ?? []).map((g) => ({ ...g })),
     })),
-    sceneLights: normalizeSceneLights(state.sceneLights),
+    sceneLights: lightState.sceneLights,
+    sceneLightGroups: lightState.sceneLightGroups,
   }
 }
 

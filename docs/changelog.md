@@ -2,6 +2,42 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Bühnenmodus / LAN (2026-09-03) — v2.0.132
+
+`?stage=1` bzw. `?view=stage`: nur Zeichenfläche (3D), Tageszeit-Slider und „Animationen pausieren“. `npm run dev:lan` lauscht auf `0.0.0.0:5173` fürs lokale Netz. Dateien: `main.ts`, `index.html`, `style.css`, `package.json`. Docs: [ux.md](ux.md).
+
+### Rollläden: Laibung, Stapel, lichtdicht (2026-09-03) — v2.0.131
+
+Lamellen volle Öffnungsbreite (kein seitlicher Spalt). Absenken: freihängend vom Sturz, Stapel erst nach Aufsetzen auf der Fensterbank; Hochfahren umgekehrt. Unsichtbare Abdeckplatte dichtet Lamellenspalte für Sonne/Punktlicht. Dateien: `rollerShutter.ts`, `FacadeController.ts`. Docs: [roller-shutter.md](roller-shutter.md), [ux.md](ux.md).
+
+### Tagesdauer, Lichtnamen, Nischen-Licht (2026-09-03) — v2.0.130
+
+Einmaliger **Tagesverlauf** (Kanäle, Von/Bis, Abspielen) aus Szene → Animation entfernt. Tageszyklus mit einstellbarer **Tagesdauer** (`dayCycleRealMinutes`, Default 60). Ebenen-Lichter nach Preset-Typ. Nische/Konche: kein Shadow-Map-Empfang/Selbstwurf, EnvMap wie Innenwand; Tunnel-Kappe 1 cm hinter Rückwand. Dateien: `index.html`, `main.ts`, `sunLighting.ts`, `sceneLights.ts`, `FacadeController.ts`, `panelGeometry.ts`. Docs: [ux.md](ux.md), [shadows.md](shadows.md), [scene-lights.md](scene-lights.md), [opening-features.md](opening-features.md).
+
+### Boden/Decke Innenkante (2026-09-03) — v2.0.129
+
+Sichtbare Geschossplatten folgen wieder der **Innenkante** (`innerFaceRingWorld` + 1 cm Inset, `polygonOffset`) — kein Durchscheinen/Flackern an Außenwänden. Lichtdichte: Punktlicht-Okkluder bleiben auf dem **Außenring**; Sonne über `sunCeilingOccluder` an der Innenkante; Öffnungs-Kerben unverändert. Dateien: `FacadeController.ts`, `sunLighting.ts`, `slabNotches.ts`. Docs: [floor-plan.md](floor-plan.md), [ux.md](ux.md), [shadows.md](shadows.md), [scene-lights.md](scene-lights.md).
+
+### Lade-Freeze (2026-09-03) — v2.0.128
+
+`syncAutoSceneLightsWithSun(true)` lief vor `new FacadeController` und rief `applyState` → ReferenceError (TDZ), Modulstart brach ab, Ladeanimation blieb. Aufruf nach Facade-Init + `facadeReady`-Guard. Datei: `main.ts`.
+
+### Nischen-Licht, Animationen, Tageszyklus (2026-09-03) — v2.0.127
+
+Nischen-/Konchen-Laibung: `DoubleSide` + kein Fassaden-Gegenlicht-Shader; Rückwand-Normalen zur Öffnung. Szene → Animation: Master-Pause, Tageszyklus (1 Tag = 1 Std.), Auto-Lichter bei Sonnenuntergang/-aufgang. Dateien: `FacadeController.ts`, `panelGeometry.ts`, `sunLighting.ts`, `main.ts`, `index.html`. Docs: [opening-features.md](opening-features.md), [scene-lights.md](scene-lights.md), [ux.md](ux.md).
+
+### Blaulicht-Phasen, Ebenen-Namen, Lichtgruppen (2026-09-03) — v2.0.126
+
+Aktive Blaulichter teilen sich den 500‑ms-Zyklus gleichmäßig (Phasenversatz). Ebenen-Zeilen nutzen Art + Nummer (`sceneLightDisplayName`). Lichtgruppen (`sceneLightGroups` / `groupId`): Shift+Mehrfachauswahl → Gruppieren; Gruppenzeile im Ebenenbaum. Dateien: `sceneLightAnimation.ts`, `sceneLights.ts`, `main.ts`, `hydrate.ts`. Docs: [scene-lights.md](scene-lights.md), [ux.md](ux.md).
+
+### Stabiles Bloom + Blaulicht (2026-09-03) — v2.0.125
+
+Bei aktivem Bloom (ohne „bei Kamerabewegung aus“) bleibt die Pixelratio während Orbit/Element-Drag voll — kein sichtbarer Qualitätswechsel des Glühens. Neues Preset **Blaulicht** (`#0a3dff`, Omni, Doppelblitz ~2 Hz nach ECE-R65-Bereich); Animation per Checkbox. Dateien: `main.ts`, `sceneLightAnimation.ts`, `sceneLightPresets.ts`, `sceneLightRuntime.ts`, `index.html`. Docs: [scene-lights.md](scene-lights.md), [shadows.md](shadows.md), [performance.md](performance.md).
+
+### Bloom dauerhaft + Licht-Voreinstellungen (2026-09-03) — v2.0.124
+
+Bloom bleibt beim Orbitieren/Zoomen standardmäßig an; optional „Bloom bei Kamerabewegung aus“ (`disableDuringMotion`). Bibliothek → Licht: Voreinstellungen Laterne, Deckenlampe, Stehlampe, Leselampe, Fassadenlampe. Pro Licht Abstrahlung (omni / unten / oben / unten+oben) und Spot-Winkel; Runtime Point- oder SpotLight(s). Dateien: `sceneLightPresets.ts`, `sceneLights.ts`, `sceneLightRuntime.ts`, `bloom.ts`, `main.ts`, `index.html`, `style.css`. Docs: [scene-lights.md](scene-lights.md), [shadows.md](shadows.md), [performance.md](performance.md).
+
 ### Lichtfarbe, Nischen dicht, Fugen-Glanz (2026-09-03) — v2.0.123
 
 Punktlicht: Color-Picker zusätzlich zur Kelvin-Temperatur (`#scene-light-color`). Nischen: Shadow-Tunnel-Kappen an Rückwand + Innenkante + `shadowSide: DoubleSide` auf versiegelter Laibung — kein Leck durchs Wandloch. Fugen: `claddingFinish` + `finishMortarMaterial` (geringere Roughness, EnvMap) für sichtbares Glanzlicht. Dateien: `index.html`, `main.ts`, `panelGeometry.ts`, `FacadeController.ts`, `sceneLights.test.ts`. Docs: [scene-lights.md](scene-lights.md), [opening-features.md](opening-features.md), [panel-geometry.md](panel-geometry.md), [shadows.md](shadows.md).

@@ -94,6 +94,7 @@ import {
   openingSupportsRollerShutter,
   rollerShutterFinish,
   rollerShutterSlatCentersFromBottom,
+  rollerShutterCoverHeightFromTop,
   rollerShutterSlatCount,
   rollerShutterSlatWidth,
   DEFAULT_ROLLER_BULGE_CM,
@@ -105,7 +106,7 @@ import {
   createPedimentConsoleGeometries,
   createPedimentSweepGeometry,
 } from './studio/pedimentGeometry'
-import { innerFaceRingWorld, planFacesWithHoles, planNodeWorld } from './studio/floorPlan'
+import { innerFaceRingWorld, planFacesWithHoles } from './studio/floorPlan'
 import { notchSlabRingAtOpenings } from './studio/slabNotches'
 import { storeyFloorSurfaceY, storeyTopY } from './utils/layers'
 import { facadeOutward } from './studio/elevation'
@@ -127,6 +128,7 @@ import {
 import { wallHasLabel, wallLabel } from './utils/wallLabel'
 import {
   INDOOR_SLAB_THICKNESS,
+  INDOOR_SLAB_VISUAL_INSET_CM,
   SHADOW_LAYER_EXTERIOR,
   SHADOW_LAYER_INTERIOR,
 } from './utils/sunLighting'
@@ -634,10 +636,11 @@ export class FacadeController {
       this.tagPointLightShadowOccluder(tunnel)
     }
     for (const mesh of this.revealMeshes) {
-      mesh.castShadow = true
-      // Sonne (claddingReceive) + Punktlicht-Okklusion; Nische/Konche immer.
+      // Nische: Tunnel dichtet ab; sichtbare Fläche wirft nicht (kein Selbstschatten).
+      mesh.castShadow = mesh.userData.sealedNiche !== true
       mesh.receiveShadow = this.revealShouldReceiveShadow(mesh)
-      if (enable) {
+      this.syncWallMeshLightLayers(mesh)
+      if (enable && mesh.castShadow) {
         mesh.customDistanceMaterial = this.shadowDistanceMaterial
       } else if (mesh.customDistanceMaterial === this.shadowDistanceMaterial) {
         mesh.customDistanceMaterial = undefined
@@ -725,11 +728,10 @@ export class FacadeController {
   }
 
   private revealShouldReceiveShadow(mesh: THREE.Mesh): boolean {
-    return (
-      this.claddingReceiveShadows ||
-      this.pointLightOccludersEnabled ||
-      mesh.userData.sealedNiche === true
-    )
+    // Nische/Konche: kein Shadow-Map-Empfang — sonst schwärzt der koplanare
+    // Tunnel-Okkluder (oder Selbstschatten) die Rückwand; Licht + EnvMap reichen.
+    if (mesh.userData.sealedNiche === true) return false
+    return this.claddingReceiveShadows || this.pointLightOccludersEnabled
   }
 
   private claddingMeshShouldReceiveShadow(mesh: THREE.Mesh): boolean {
@@ -1375,6 +1377,10 @@ export class FacadeController {
       metalness: 0,
       side: THREE.DoubleSide,
       shadowSide: THREE.DoubleSide,
+      // Gegen koplanare Innenwand / Paneelrückseite — sonst Flackern beim Orbit.
+      polygonOffset: true,
+      polygonOffsetFactor: 1,
+      polygonOffsetUnits: 1,
     })
     material.userData.interiorWallSurface = true
     material.userData.skipFacadeShade = true
@@ -1495,17 +1501,19 @@ export class FacadeController {
         const slabMat = slabMatFor(plan.ceilingColor ?? DEFAULT_CEILING_COLOR)
         const faces = planFacesWithHoles(plan)
         for (const face of faces) {
-          // Bis zur Fassaden-Außenkante (Plan-Ring) — schließt die Wandstärke lichtdicht.
-          // An Öffnungen, die die Platte durchdringen (z. B. Kellerfenster unter einem per
-          // Treppe angehobenen Boden), weicht die Kante auf die Wandinnenseite zurück —
-          // sonst läuft die Platte sichtbar quer durch die Öffnung.
-          const outerWorld = face.outer.map(planNodeWorld)
-          if (outerWorld.length < 3) continue
+          // Sichtbar: Innenkante (+ kleiner Inset) — endet an der Raumseite, nicht an der
+          // Fassadenfront (kein Durchscheinen / Z-Fight an Außenwänden).
+          // Lichtdichte: unsichtbare Außenring-Okkluder (Punktlicht) + sunCeilingOccluder
+          // (Sonne) + Wandkörper. An Öffnungen, die die Platte schneiden, Kerbe weiter
+          // nach innen (`slabNotches`) — sonst füllt die Kante Tür/Kellerfenster.
+          const visualDepth = wallDepth + INDOOR_SLAB_VISUAL_INSET_CM
+          const innerWorld = innerFaceRingWorld(face.outer, visualDepth)
+          if (innerWorld.length < 3) continue
           const holesWorld = face.holes
-            .map((holeNodes) => holeNodes.map(planNodeWorld))
+            .map((holeNodes) => innerFaceRingWorld(holeNodes, visualDepth))
             .filter((hole) => hole.length >= 3)
           const slabShapeFor = (slabBottomY: number, slabTopY: number) => {
-            const outer = notchSlabRingAtOpenings(outerWorld, buildingWalls, slabBottomY, slabTopY)
+            const outer = notchSlabRingAtOpenings(innerWorld, buildingWalls, slabBottomY, slabTopY)
             const shape = ringToShapeXY(outer)
             if (!shape) return null
             for (const holeWorld of holesWorld) {
@@ -2058,6 +2066,7 @@ export class FacadeController {
 
   private layoutRollerShutterGroup(group: THREE.Group, drop: number) {
     const openingHeight = Number(group.userData.openingHeight) || 1
+    const openingWidth = Number(group.userData.openingWidth) || 1
     const slatHeight = Number(group.userData.slatHeight) || 5
     const gap = Number(group.userData.gap) || 0.85
     const centers = rollerShutterSlatCentersFromBottom(openingHeight, drop, slatHeight, gap)
@@ -2073,6 +2082,19 @@ export class FacadeController {
       }
       mesh.visible = true
       mesh.position.y = y - openingHeight / 2
+    }
+
+    const cover = rollerShutterCoverHeightFromTop(openingHeight, drop, slatHeight, gap)
+    const occluder = group.userData.shadowOccluderMesh as THREE.Mesh | undefined
+    if (occluder) {
+      if (cover < 0.5) {
+        occluder.visible = false
+      } else {
+        occluder.visible = true
+        occluder.scale.set(Math.max(1, openingWidth), Math.max(0.5, cover), 1)
+        // Von Sturz nach unten: Zentrum der Abdeckung.
+        occluder.position.set(0, openingHeight / 2 - cover / 2, 0)
+      }
     }
   }
 
@@ -2927,12 +2949,23 @@ export class FacadeController {
         mesh.castShadow = true
         mesh.userData.sealedNiche =
           opening.type === 'conch' || openingFillMode(opening) === 'niche'
-        // Nischen-Rückwand muss aus beiden Richtungen in die Cube-Map werfen.
+        // Nische/Konche: von außen sichtbar beidseitig; kein Fassaden-Gegenlicht-Shader
+        // (sonst wirken Seiten/Rückwand schwarz und empfangen kein Licht).
         if (mesh.userData.sealedNiche) {
+          exteriorMaterial.side = THREE.DoubleSide
+          interiorMaterial.side = THREE.DoubleSide
           exteriorMaterial.shadowSide = THREE.DoubleSide
           interiorMaterial.shadowSide = THREE.DoubleSide
+          exteriorMaterial.userData.skipFacadeShade = true
+          interiorMaterial.userData.skipFacadeShade = true
+          // Wie Innenwand: EnvMap-Fill + Punktlicht sichtbar („spiegeln“).
+          this.finishInteriorMaterial(exteriorMaterial)
+          this.finishInteriorMaterial(interiorMaterial)
+          // Lichtdichte über Shadow-Tunnel; sichtbare Nische wirft nicht selbst
+          // (vermeidet Selbstabschattung der Rückwand).
+          mesh.castShadow = false
         }
-        // Sonne + Punktlicht: Empfang wie Paneele; Nische/Konche immer (Rückwand).
+        // Sonne + Punktlicht: Empfang wie Paneele; Nische/Konche: kein receive (s.o.).
         mesh.receiveShadow = this.revealShouldReceiveShadow(mesh)
         mesh.renderOrder = 2
         // Leichter Offset gegen Z-Fight mit Freiraum/Paneel — starker Offset (−2)
@@ -2959,6 +2992,7 @@ export class FacadeController {
         const transform = studioWallTransform(wall)
         mesh.position.set(transform.position.x, transform.position.y, transform.position.z)
         mesh.rotation.y = transform.rotationY
+        this.syncWallMeshLightLayers(mesh)
         this.profileGroup.add(mesh)
         this.revealMeshes.push(mesh)
       }
@@ -3696,6 +3730,8 @@ export class FacadeController {
     if (guideGeo instanceof THREE.BufferGeometry) guideGeo.dispose()
     const guideMat = group.userData.sharedGuideMaterial
     if (guideMat instanceof THREE.Material) guideMat.dispose()
+    const occGeo = group.userData.sharedOccluderGeometry
+    if (occGeo instanceof THREE.BufferGeometry) occGeo.dispose()
   }
 
   private rebuildRollerShutters(buildingId?: string) {
@@ -3730,6 +3766,9 @@ export class FacadeController {
         const finish = rollerShutterFinish(shutter)
         const material = createTintedMaterial(this.profileMaterial, color, finish)
         material.side = THREE.DoubleSide
+        material.transparent = false
+        material.opacity = 1
+        material.depthWrite = true
         const slatGeo = createRollerSlatGeometry(width, slatHeight, DEFAULT_ROLLER_BULGE_CM)
 
         const group = new THREE.Group()
@@ -3737,6 +3776,7 @@ export class FacadeController {
         group.userData.openingId = opening.id
         group.userData.buildingId = wall.buildingId
         group.userData.openingHeight = opening.height
+        group.userData.openingWidth = opening.width
         group.userData.slatHeight = slatHeight
         group.userData.gap = gap
         group.userData.kind = 'rollerShutter'
@@ -3758,6 +3798,22 @@ export class FacadeController {
           })
           group.add(mesh)
         }
+
+        // Unsichtbare Platte: dichtet Spalte zwischen Lamellen für Sonne/Punktlicht.
+        const occluderGeo = new THREE.PlaneGeometry(1, 1)
+        const occluderMat = this.shadowOccluderMaterial
+        const occluder = new THREE.Mesh(occluderGeo, occluderMat)
+        occluder.castShadow = true
+        occluder.receiveShadow = false
+        occluder.frustumCulled = false
+        occluder.visible = false
+        occluder.userData.role = 'shadowOccluder'
+        occluder.userData.shadowOccluder = true
+        occluder.userData.skipLineEdges = true
+        this.tagPointLightShadowOccluder(occluder)
+        group.add(occluder)
+        group.userData.shadowOccluderMesh = occluder
+        group.userData.sharedOccluderGeometry = occluderGeo
 
         const localX = opening.x + opening.width / 2 - wall.width / 2
         const localY = opening.y + opening.height / 2 - wall.height / 2

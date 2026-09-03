@@ -2,7 +2,7 @@
 
 ## Übersicht
 
-Die gezeichnete Linie ist die **Außenkante**; die Wanddicke (`building.wallDepth`) liegt nach innen. Verknüpfung und Gehrung sitzen an den Außenecken. **v0.7.280:** `fitLoopWalls` folgt der Planrichtung (73dbdc9-Verhalten, ohne gegenläufigen 40-cm-Schnitt). **v0.7.279:** Altstände mit Origin innen (`panelFlip: false`) werden beim Laden auf diese Außenkante gelegt. **v2.0.93:** Außenkanten-Fit beim Load nur noch bei Mehrheit `panelFlip: false` — nicht bei „unverbundenen“ Ringen (sonst wanderten Origins beim Hard-Reload). **v2.0.92:** Innenboden und Zwischendecke folgen dem **Plan-Außenring** (Fassadenrand) — lichtdicht über die Wandstärke; Hof-Löcher ebenfalls Außenkontur. **v2.0.100:** Zusätzlich unsichtbarer Sonnen-Okkluder an der **Innenkante** (`innerFaceRingWorld`), damit die Sonne die Decke trifft ohne horizontale Streifen auf der Außenfassade. Die **Oberkante** des Innenbodens liegt auf der unteren Türkante der Etage (`storeyFloorSurfaceY`); ohne Tür auf dem Wandfuß. Die Platte sitzt um `INDOOR_SLAB_THICKNESS` darunter. **v2.0.121:** An Öffnungen, die die Platte schneiden oder berühren (Kellerfenster unter angehobenem Boden, Türschwelle mit Treppe), weicht der Ring auf die Wandinnenseite zurück (`notchSlabRingAtOpenings` in `src/studio/slabNotches.ts`) — sonst lief die Plattenkante sichtbar durch die Öffnung.
+Die gezeichnete Linie ist die **Außenkante**; die Wanddicke (`building.wallDepth`) liegt nach innen. Verknüpfung und Gehrung sitzen an den Außenecken. **v0.7.280:** `fitLoopWalls` folgt der Planrichtung (73dbdc9-Verhalten, ohne gegenläufigen 40-cm-Schnitt). **v0.7.279:** Altstände mit Origin innen (`panelFlip: false`) werden beim Laden auf diese Außenkante gelegt. **v2.0.93:** Außenkanten-Fit beim Load nur noch bei Mehrheit `panelFlip: false` — nicht bei „unverbundenen“ Ringen (sonst wanderten Origins beim Hard-Reload). **v2.0.92–v2.0.128:** Sichtbare Innenboden/Zwischendecke folgten zeitweise dem Plan-Außenring (lichtdicht über die Wandstärke, aber Flackern/Durchscheinen an der Fassade). **v2.0.129:** Sichtbare Platten wieder an der **Innenkante** (`innerFaceRingWorld` + `INDOOR_SLAB_VISUAL_INSET_CM`); Lichtdichte über unsichtbare Außenring-Punktlicht-Okkluder und `sunCeilingOccluder`. **v2.0.100:** Unsichtbarer Sonnen-Okkluder an der Innenkante, damit die Sonne die Decke trifft ohne horizontale Streifen auf der Außenfassade. Die **Oberkante** des Innenbodens liegt auf der unteren Türkante der Etage (`storeyFloorSurfaceY`); ohne Tür auf dem Wandfuß. Die Platte sitzt um `INDOOR_SLAB_THICKNESS` darunter. **v2.0.121:** An Öffnungen, die die Platte schneiden oder berühren (Kellerfenster unter angehobenem Boden, Türschwelle mit Treppe), weicht der Ring auf die Wandinnenseite zurück (`notchSlabRingAtOpenings` in `src/studio/slabNotches.ts`) — sonst lief die Plattenkante sichtbar durch die Öffnung.
 
 ---
 
@@ -130,11 +130,11 @@ Berechnet `miterStart` und `miterEnd` für jedes Wandsegment in einer Kette/Ring
 
 ---
 
-## Etagen-Trennfläche (Außenring)
+## Etagen-Trennfläche (Innenkante sichtbar)
 
-Plan-Knoten liegen auf der **Außenlinie** der Wand. **v2.0.92:** Sichtbare Decken/Böden nutzen denselben Außenring (`planNodeWorld` / `planFacesWithHoles`) — die Platte reicht bis zur Fassadenkante und schließt die Wandstärke lichtdicht. Hof-Löcher ebenfalls Außenkontur. Unsichtbare Punktlicht-Okkluder (`pointLightRoomOccluders`) bleiben als Backup wenn Decke/Boden ausgeblendet sind.
+Plan-Knoten liegen auf der **Außenlinie** der Wand. **v2.0.129:** Sichtbare Decken/Böden nutzen die **Innenkante** (`innerFaceRingWorld` mit `wallDepth + INDOOR_SLAB_VISUAL_INSET_CM`) — bündig zur Raumseite, ohne Durchscheinen an der Fassade und ohne Z-Fight-Flackern (`polygonOffset`). Hof-Löcher analog innen. **Lichtdichte:** unsichtbare Punktlicht-Okkluder (`pointLightRoomOccluders`) bleiben auf dem **Außenring**; Sonne über `sunCeilingOccluder` (Innenkante, Layer 0). Öffnungs-Kerben (`slabNotches`) greifen weiterhin, wenn die Platte Tür/Kellerfenster schneiden würde.
 
-`innerFaceRingFromWalls` / `innerFaceRingWorld` bleiben für andere Zwecke (z. B. Tests, ältere Insets).
+`innerFaceRingFromWalls` bleibt für Tests / Wand-genaue Insets verfügbar.
 
 ---
 

@@ -11,14 +11,19 @@ export const DEFAULT_ROLLER_BULGE_CM = 0.55
 export const DEFAULT_ROLLER_COLOR = '#6b7280'
 /** Rollladen-Ebene relativ zur Fassadenaußenfläche nach innen (cm). */
 export const ROLLER_SHUTTER_INWARD_CM = 8
-/** Abstand der Führungsschienen von linker/rechter Öffnungskante nach innen (cm). */
-export const ROLLER_GUIDE_EDGE_INSET_CM = 8
+/**
+ * Früher: Abstand zu Führungsschienen. Lamellen gehen jetzt bis zur Laibung
+ * (volle Öffnungsbreite); Konstante 0 für Alt-Tests / Docs.
+ */
+export const ROLLER_GUIDE_EDGE_INSET_CM = 0
 /** Querschnitt der Führungsschiene entlang der Öffnungsbreite (cm). */
 export const ROLLER_GUIDE_THICKNESS_CM = 1.4
 /** Tiefe der Führungsschiene (cm, lokal ±Z). */
 export const ROLLER_GUIDE_DEPTH_CM = 3.2
 /** Deckkraft der Innen-Führungsschienen (durchscheinend). */
 export const ROLLER_GUIDE_OPACITY = 0.38
+/** Stapel-Pitch relativ zur Lamellenhöhe (< 1 → leichte Überlappung, lichtdicht). */
+export const ROLLER_STACK_PITCH_FACTOR = 0.9
 
 const SOFT_LOWER: MotionCurve = {
   durationMs: 1800,
@@ -108,12 +113,12 @@ export function openingSupportsRollerShutter(opening: {
 /** Maximale Lamellenanzahl, damit die Öffnung bei Stapelung voll abgedeckt ist. */
 export function rollerShutterSlatCount(openingHeight: number, slatHeight: number): number {
   const h = Math.max(2.5, slatHeight)
-  return Math.max(4, Math.ceil(openingHeight / (h * 0.92)) + 1)
+  const pitchPacked = h * ROLLER_STACK_PITCH_FACTOR
+  return Math.max(4, Math.ceil((Math.max(1, openingHeight) - h) / pitchPacked) + 1)
 }
 
 /**
- * Abstände zwischen Lamellenzentren von oben nach unten.
- * Oben eher freier Spalt, unten zunehmend gestapelt (Spalt → 0).
+ * Abstände zwischen Lamellenzentren: oben freier Spalt, unten Stapel (komprimiert).
  */
 function redistributeSpacings(
   count: number,
@@ -126,7 +131,7 @@ function redistributeSpacings(
   const raw: number[] = []
   for (let i = 0; i < count; i += 1) {
     const t = i / (count - 1)
-    // Stärkere Kompression unten (Stapel).
+    // Stapel unten: stärkere Kompression am unteren Ende.
     const ease = t * t
     raw.push(preferTop * (1 - ease) + preferBottom * ease)
   }
@@ -138,8 +143,9 @@ function redistributeSpacings(
  * Y-Positionen der Lamellenmitten relativ zur Öffnungsunterkante (cm, lokal).
  * `drop` 0 = oben/offen (keine sichtbaren Lamellen), 1 = unten/geschlossen.
  *
- * Freihängend: Abstände ≈ Höhe + Spalt. Reicht die Länge nicht für die
- * Abdeckung (unten angekommen), schrumpfen die Abstände nach unten (Stapel).
+ * Absenken: Vorhang hängt vom Sturz mit freiem Spalt nach unten. Sobald die
+ * unterste Lamelle die Fensterbank berührt, stapeln weitere Lamellen von unten
+ * aufeinander (Hochfahren umgekehrt).
  */
 export function rollerShutterSlatCentersFromBottom(
   openingHeight: number,
@@ -154,39 +160,64 @@ export function rollerShutterSlatCentersFromBottom(
   if (d < 1e-4) return []
 
   const nMax = rollerShutterSlatCount(H, h)
-  const cover = d * H
   const pitchFree = h + g
-  const pitchPacked = h * 0.92
+  const pitchPacked = h * ROLLER_STACK_PITCH_FACTOR
+  // Gesamtlänge der Kette bei freiem Spalt — drop skaliert linear darauf.
+  const Lmax = (nMax - 1) * pitchFree + h
+  const L = Math.max(h, d * Lmax)
 
-  // Solange Platz: so viele Lamellen wie mit freiem Spalt in `cover` passen.
-  // Ganz geschlossen: alle Lamellen, dann Stapel-Kompression.
-  let nOut =
-    d >= 0.995
-      ? nMax
-      : Math.min(nMax, Math.max(1, Math.floor((cover - h) / pitchFree) + 1))
+  let n = Math.min(nMax, Math.max(1, Math.floor((L - h) / pitchFree) + 1))
+  if (d >= 0.995) n = nMax
 
-  if (nOut === 1) {
+  if (n === 1) {
     return [H - h / 2]
   }
 
-  const freeLen = (nOut - 1) * pitchFree + h
-  const available = Math.max(h, cover)
+  const Lchain = (n - 1) * pitchFree + h
+  // Freihängend vom Sturz: Oberkante der ersten Lamelle bei H.
+  const bottomEdge = H - Lchain
 
-  let spacings: number[]
-  if (freeLen <= available + 0.05) {
-    spacings = Array.from({ length: nOut - 1 }, () => pitchFree)
-  } else {
-    spacings = redistributeSpacings(nOut - 1, available - h, pitchFree, pitchPacked)
+  if (bottomEdge >= -0.02) {
+    const centers: number[] = []
+    let y = H - h / 2
+    for (let i = 0; i < n; i += 1) {
+      centers.push(y)
+      y -= pitchFree
+    }
+    return centers
   }
 
+  // Bank erreicht: unterste Mitte auf h/2, Abstände oben frei / unten Stapel.
+  const available = Math.max(h * 0.5, H - h)
+  const spacings = redistributeSpacings(n - 1, available, pitchFree, pitchPacked)
   const centers: number[] = []
-  let yFromTop = h / 2
-  centers.push(H - yFromTop)
+  let y = H - h / 2
+  centers.push(y)
   for (const spacing of spacings) {
-    yFromTop += spacing
-    centers.push(H - yFromTop)
+    y -= spacing
+    centers.push(y)
   }
+  // Numerisch unterste auf Bank pinnen.
+  centers[centers.length - 1] = h / 2
   return centers
+}
+
+/**
+ * Abgedeckte Höhe von oben (cm): für lichtdichten Schatten-Okkluder.
+ * Entspricht dem Bereich vom Sturz bis zur Unterkante des Vorhangs / Stapels.
+ */
+export function rollerShutterCoverHeightFromTop(
+  openingHeight: number,
+  drop: number,
+  slatHeight: number,
+  gap: number,
+): number {
+  const H = Math.max(1, openingHeight)
+  const centers = rollerShutterSlatCentersFromBottom(openingHeight, drop, slatHeight, gap)
+  if (centers.length === 0) return 0
+  const h = Math.max(2.5, slatHeight)
+  const bottomEdge = Math.min(...centers.map((c) => c - h / 2))
+  return Math.max(0, Math.min(H, H - bottomEdge))
 }
 
 /** Gewölbter Lamellen-Querschnitt, Extrusion entlang der Breite. */
@@ -243,7 +274,7 @@ export function createRollerGuideRailGeometry(
   return geo
 }
 
-/** Nutzbreite der Lamellen zwischen den Führungsschienen. */
+/** Nutzbreite der Lamellen: volle Öffnungsbreite bis zur Laibung (kein seitlicher Spalt). */
 export function rollerShutterSlatWidth(openingWidth: number): number {
   return Math.max(8, openingWidth - ROLLER_GUIDE_EDGE_INSET_CM * 2)
 }

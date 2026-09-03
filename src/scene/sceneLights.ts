@@ -1,11 +1,25 @@
 import * as THREE from 'three'
-import type { FacadeState, SceneLight } from '../types/facade'
+import type { FacadeState, SceneLight, SceneLightGroup } from '../types/facade'
 import { createId } from '../utils/id'
 import { getAllWalls } from '../utils/buildings'
 import { buildingWorldBox, kelvinToColor } from '../utils/sunLighting'
 import { DEFAULT_POWER_WATTS, normalizePowerWatts } from '../lighting/sceneLightUnits'
+import {
+  normalizeSceneLightAnimation,
+  type SceneLightAnimationId,
+} from './sceneLightAnimation'
+import {
+  DEFAULT_BEAM_ANGLE_DOWN_DEG,
+  DEFAULT_BEAM_ANGLE_UP_DEG,
+  normalizeBeamAngleDeg,
+  normalizeBeamMode,
+  normalizePresetId,
+  sceneLightPresetById,
+  type SceneLightPresetId,
+} from './sceneLightPresets'
 
-export type { SceneLight }
+export type { SceneLight, SceneLightGroup }
+export type { SceneLightPresetId }
 
 const MARKER_SIZE_MIN_CM = 8
 const MARKER_SIZE_MAX_CM = 200
@@ -24,10 +38,43 @@ export const DEFAULT_SCENE_LIGHT: Omit<SceneLight, 'id' | 'x' | 'y' | 'z'> = {
   markerSizeCm: 40,
   distance: 0,
   decay: 2,
+  beamMode: 'omni',
+  beamAngleDownDeg: DEFAULT_BEAM_ANGLE_DOWN_DEG,
+  beamAngleUpDeg: DEFAULT_BEAM_ANGLE_UP_DEG,
+  animation: 'none',
 }
 
 export function kelvinToHex(kelvin: number): string {
   return `#${kelvinToColor(kelvin).getHexString()}`
+}
+
+/** Anzeigename der Lichtart (Preset-Label oder gesetzter Label). */
+export function sceneLightTypeLabel(
+  light: Pick<SceneLight, 'label' | 'preset' | 'animation'>,
+): string {
+  const preset =
+    sceneLightPresetById(light.preset) ??
+    (light.animation === 'blaulicht' ? sceneLightPresetById('blaulicht') : undefined)
+  if (preset) return preset.label
+  const label = light.label?.trim()
+  if (label && label !== DEFAULT_SCENE_LIGHT.label) return label
+  if (label) return label
+  return DEFAULT_SCENE_LIGHT.label!
+}
+
+/**
+ * Ebenen-Name: Art + laufende Nummer bei mehreren gleicher Art.
+ * Beispiel: Blaulicht, Blaulicht 2, Laterne, Laterne 2.
+ */
+export function sceneLightDisplayName(
+  light: SceneLight,
+  allLights: readonly SceneLight[],
+): string {
+  const base = sceneLightTypeLabel(light)
+  const same = allLights.filter((item) => sceneLightTypeLabel(item) === base)
+  if (same.length <= 1) return base
+  const index = same.findIndex((item) => item.id === light.id)
+  return `${base} ${Math.max(1, index + 1)}`
 }
 
 export function normalizeSceneLight(raw: Partial<SceneLight> & { id: string }): SceneLight {
@@ -45,14 +92,30 @@ export function normalizeSceneLight(raw: Partial<SceneLight> & { id: string }): 
   const colorFromKelvin = kelvinToHex(colorTemperature)
   const hasLegacyHexOnly =
     typeof raw.color === 'string' && raw.color.startsWith('#') && raw.colorTemperature === undefined
-  const color =
-    hasLegacyHexOnly ||
-    (typeof raw.color === 'string' && raw.color.startsWith('#') && raw.color !== colorFromKelvin)
+  const color: string =
+    (hasLegacyHexOnly ||
+      (typeof raw.color === 'string' &&
+        raw.color.startsWith('#') &&
+        raw.color !== colorFromKelvin)) &&
+    typeof raw.color === 'string'
       ? raw.color
       : colorFromKelvin
+  const preset =
+    normalizePresetId(raw.preset) ??
+    (normalizeSceneLightAnimation(raw.animation) === 'blaulicht' ? 'blaulicht' : undefined)
+  const groupId = typeof raw.groupId === 'string' && raw.groupId ? raw.groupId : undefined
+  const defaultLabel = preset
+    ? sceneLightPresetById(preset)?.label ?? DEFAULT_SCENE_LIGHT.label
+    : DEFAULT_SCENE_LIGHT.label
+  const rawLabel = typeof raw.label === 'string' ? raw.label.trim() : ''
+  // Generisches „Punktlicht“ durch Preset-Namen ersetzen (Ebenen-Anzeige).
+  const label: string =
+    rawLabel && rawLabel !== DEFAULT_SCENE_LIGHT.label
+      ? rawLabel
+      : (defaultLabel ?? DEFAULT_SCENE_LIGHT.label!)
   return {
     id: raw.id,
-    label: typeof raw.label === 'string' ? raw.label : DEFAULT_SCENE_LIGHT.label,
+    label,
     x,
     y,
     z,
@@ -74,6 +137,12 @@ export function normalizeSceneLight(raw: Partial<SceneLight> & { id: string }): 
       typeof raw.decay === 'number' && Number.isFinite(raw.decay)
         ? Math.min(3, Math.max(0, raw.decay))
         : DEFAULT_SCENE_LIGHT.decay!,
+    preset,
+    beamMode: normalizeBeamMode(raw.beamMode),
+    beamAngleDownDeg: normalizeBeamAngleDeg(raw.beamAngleDownDeg, DEFAULT_BEAM_ANGLE_DOWN_DEG),
+    beamAngleUpDeg: normalizeBeamAngleDeg(raw.beamAngleUpDeg, DEFAULT_BEAM_ANGLE_UP_DEG),
+    animation: normalizeSceneLightAnimation(raw.animation),
+    groupId,
   }
 }
 
@@ -89,7 +158,60 @@ export function normalizeSceneLights(raw: unknown): SceneLight[] {
   return out
 }
 
-export function defaultSceneLightPosition(state: FacadeState, index = 0): Pick<SceneLight, 'x' | 'y' | 'z'> {
+export function normalizeSceneLightGroups(
+  raw: unknown,
+  lights: readonly SceneLight[],
+): SceneLightGroup[] {
+  if (!Array.isArray(raw)) return []
+  const lightIds = new Set(lights.map((item) => item.id))
+  const out: SceneLightGroup[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const id = (item as { id?: string }).id
+    if (typeof id !== 'string' || !id) continue
+    const nameRaw = (item as { name?: string }).name
+    const name = typeof nameRaw === 'string' && nameRaw.trim() ? nameRaw.trim() : 'Lichtgruppe'
+    const membersRaw = (item as { memberLightIds?: unknown }).memberLightIds
+    const memberLightIds = Array.isArray(membersRaw)
+      ? [
+          ...new Set(
+            membersRaw.filter((mid): mid is string => typeof mid === 'string' && lightIds.has(mid)),
+          ),
+        ]
+      : []
+    if (memberLightIds.length === 0) continue
+    out.push({ id, name, memberLightIds })
+  }
+  return out
+}
+
+/** Lichter + Gruppen konsistent (verwaiste groupId / leere Gruppen bereinigen). */
+export function normalizeSceneLightState(state: FacadeState): {
+  sceneLights: SceneLight[]
+  sceneLightGroups: SceneLightGroup[]
+} {
+  const lights = normalizeSceneLights(state.sceneLights)
+  const groups = normalizeSceneLightGroups(state.sceneLightGroups, lights)
+  const groupIds = new Set(groups.map((g) => g.id))
+  const membersByLight = new Map<string, string>()
+  for (const group of groups) {
+    for (const lightId of group.memberLightIds) membersByLight.set(lightId, group.id)
+  }
+  const sceneLights = lights.map((light) => {
+    const groupId = membersByLight.get(light.id)
+    if (groupId) return normalizeSceneLight({ ...light, groupId })
+    if (light.groupId && !groupIds.has(light.groupId)) {
+      return normalizeSceneLight({ ...light, groupId: undefined })
+    }
+    return light
+  })
+  return { sceneLights, sceneLightGroups: groups }
+}
+
+export function defaultSceneLightPosition(
+  state: FacadeState,
+  index = 0,
+): Pick<SceneLight, 'x' | 'y' | 'z'> {
   const box = buildingWorldBox(getAllWalls(state))
   if (box.isEmpty()) {
     return { x: index * 48, y: 220, z: 0 }
@@ -103,23 +225,63 @@ export function defaultSceneLightPosition(state: FacadeState, index = 0): Pick<S
   }
 }
 
+/** Felder einer Voreinstellung (Farbe aus Kelvin oder feste Hex-Farbe). */
+export function sceneLightFieldsFromPreset(presetId: SceneLightPresetId): Partial<SceneLight> {
+  const preset = sceneLightPresetById(presetId)
+  if (!preset) return {}
+  const color =
+    typeof preset.colorHex === 'string' && preset.colorHex.startsWith('#')
+      ? preset.colorHex
+      : kelvinToHex(preset.colorTemperature)
+  return {
+    preset: preset.id,
+    label: preset.label,
+    beamMode: preset.beamMode,
+    beamAngleDownDeg: preset.beamAngleDownDeg,
+    beamAngleUpDeg: preset.beamAngleUpDeg,
+    colorTemperature: preset.colorTemperature,
+    color,
+    intensity: preset.intensity,
+    distance: preset.distance,
+    decay: preset.decay,
+    castShadow: preset.castShadow,
+    markerSizeCm: preset.markerSizeCm,
+    animation: (preset.animation ?? 'none') as SceneLightAnimationId,
+    enabled: true,
+    showMarker: true,
+  }
+}
+
 export function addSceneLight(
   state: FacadeState,
   position?: Partial<Pick<SceneLight, 'x' | 'y' | 'z'>>,
+  presetId?: SceneLightPresetId,
 ): { state: FacadeState; lightId: string } {
-  const lights = normalizeSceneLights(state.sceneLights)
+  const { sceneLights: lights, sceneLightGroups } = normalizeSceneLightState(state)
   const pos = defaultSceneLightPosition(state, lights.length)
   const lightId = createId()
+  const fromPreset = presetId ? sceneLightFieldsFromPreset(presetId) : {}
   const next: SceneLight = normalizeSceneLight({
     id: lightId,
     ...DEFAULT_SCENE_LIGHT,
+    ...fromPreset,
     ...pos,
     ...position,
+    groupId: undefined,
   })
   return {
-    state: { ...state, sceneLights: [...lights, next] },
+    state: { ...state, sceneLights: [...lights, next], sceneLightGroups },
     lightId,
   }
+}
+
+/** Wendet Voreinstellung auf ein bestehendes Licht an (Position bleibt). */
+export function applySceneLightPreset(
+  state: FacadeState,
+  lightId: string,
+  presetId: SceneLightPresetId,
+): FacadeState {
+  return updateSceneLight(state, lightId, sceneLightFieldsFromPreset(presetId))
 }
 
 export function updateSceneLight(
@@ -127,27 +289,35 @@ export function updateSceneLight(
   lightId: string,
   patch: Partial<Omit<SceneLight, 'id'>>,
 ): FacadeState {
-  const lights = normalizeSceneLights(state.sceneLights)
+  const { sceneLights: lights, sceneLightGroups } = normalizeSceneLightState(state)
   const idx = lights.findIndex((item) => item.id === lightId)
   if (idx < 0) return state
   lights[idx] = normalizeSceneLight({ ...lights[idx], ...patch, id: lightId })
-  return { ...state, sceneLights: lights }
+  return { ...state, sceneLights: lights, sceneLightGroups }
 }
 
 /** Schaltet alle Bibliotheks-Punktlichter gemeinsam ein oder aus. */
 export function setAllSceneLightsEnabled(state: FacadeState, enabled: boolean): FacadeState {
-  const lights = normalizeSceneLights(state.sceneLights)
+  const { sceneLights: lights, sceneLightGroups } = normalizeSceneLightState(state)
   if (lights.length === 0) return state
   if (lights.every((item) => item.enabled === enabled)) return state
   return {
     ...state,
     sceneLights: lights.map((item) => normalizeSceneLight({ ...item, enabled })),
+    sceneLightGroups,
   }
 }
 
 export function removeSceneLight(state: FacadeState, lightId: string): FacadeState {
-  const lights = normalizeSceneLights(state.sceneLights).filter((item) => item.id !== lightId)
-  return { ...state, sceneLights: lights }
+  const { sceneLights, sceneLightGroups } = normalizeSceneLightState(state)
+  const lights = sceneLights.filter((item) => item.id !== lightId)
+  const groups = sceneLightGroups
+    .map((group) => ({
+      ...group,
+      memberLightIds: group.memberLightIds.filter((id) => id !== lightId),
+    }))
+    .filter((group) => group.memberLightIds.length > 0)
+  return { ...state, sceneLights: lights, sceneLightGroups: groups }
 }
 
 export function sceneLightById(state: FacadeState, lightId: string): SceneLight | undefined {
@@ -178,6 +348,110 @@ export function duplicateSceneLight(
     markerSizeCm: source.markerSizeCm,
     distance: source.distance,
     decay: source.decay,
+    preset: source.preset,
+    beamMode: source.beamMode,
+    beamAngleDownDeg: source.beamAngleDownDeg,
+    beamAngleUpDeg: source.beamAngleUpDeg,
+    animation: source.animation,
+    groupId: undefined,
   })
   return { state: next, lightId: newId }
+}
+
+export function createSceneLightGroup(
+  state: FacadeState,
+  lightIds: string[],
+  name = 'Lichtgruppe',
+): FacadeState {
+  const { sceneLights, sceneLightGroups } = normalizeSceneLightState(state)
+  const ids = [...new Set(lightIds.filter((id) => sceneLights.some((l) => l.id === id)))]
+  if (ids.length < 2) return state
+  const groupId = createId()
+  const groups = [
+    ...sceneLightGroups.map((group) => ({
+      ...group,
+      memberLightIds: group.memberLightIds.filter((id) => !ids.includes(id)),
+    })),
+    { id: groupId, name, memberLightIds: ids },
+  ].filter((group) => group.memberLightIds.length > 0)
+  const lights = sceneLights.map((light) =>
+    ids.includes(light.id) ? normalizeSceneLight({ ...light, groupId }) : light,
+  )
+  return { ...state, sceneLights: lights, sceneLightGroups: groups }
+}
+
+export function addLightsToSceneLightGroup(
+  state: FacadeState,
+  groupId: string,
+  lightIds: string[],
+): FacadeState {
+  const { sceneLights, sceneLightGroups } = normalizeSceneLightState(state)
+  if (!sceneLightGroups.some((g) => g.id === groupId)) return state
+  const ids = [...new Set(lightIds.filter((id) => sceneLights.some((l) => l.id === id)))]
+  if (ids.length === 0) return state
+  const groups = sceneLightGroups
+    .map((group) => {
+      if (group.id === groupId) {
+        return {
+          ...group,
+          memberLightIds: [...new Set([...group.memberLightIds, ...ids])],
+        }
+      }
+      return {
+        ...group,
+        memberLightIds: group.memberLightIds.filter((id) => !ids.includes(id)),
+      }
+    })
+    .filter((group) => group.memberLightIds.length > 0)
+  const lights = sceneLights.map((light) =>
+    ids.includes(light.id) ? normalizeSceneLight({ ...light, groupId }) : light,
+  )
+  return { ...state, sceneLights: lights, sceneLightGroups: groups }
+}
+
+export function ungroupSceneLights(state: FacadeState, lightIds: string[]): FacadeState {
+  const { sceneLights, sceneLightGroups } = normalizeSceneLightState(state)
+  const ids = new Set(lightIds)
+  if (ids.size === 0) return state
+  const lights = sceneLights.map((light) =>
+    ids.has(light.id) ? normalizeSceneLight({ ...light, groupId: undefined }) : light,
+  )
+  const groups = sceneLightGroups
+    .map((group) => ({
+      ...group,
+      memberLightIds: group.memberLightIds.filter((id) => !ids.has(id)),
+    }))
+    .filter((group) => group.memberLightIds.length > 0)
+  return { ...state, sceneLights: lights, sceneLightGroups: groups }
+}
+
+export function renameSceneLightGroup(
+  state: FacadeState,
+  groupId: string,
+  name: string,
+): FacadeState {
+  const { sceneLights, sceneLightGroups } = normalizeSceneLightState(state)
+  const trimmed = name.trim() || 'Lichtgruppe'
+  const groups = sceneLightGroups.map((group) =>
+    group.id === groupId ? { ...group, name: trimmed } : group,
+  )
+  return { ...state, sceneLights, sceneLightGroups: groups }
+}
+
+export function setSceneLightGroupEnabled(
+  state: FacadeState,
+  groupId: string,
+  enabled: boolean,
+): FacadeState {
+  const { sceneLights, sceneLightGroups } = normalizeSceneLightState(state)
+  const group = sceneLightGroups.find((g) => g.id === groupId)
+  if (!group) return state
+  const memberIds = new Set(group.memberLightIds)
+  return {
+    ...state,
+    sceneLights: sceneLights.map((light) =>
+      memberIds.has(light.id) ? normalizeSceneLight({ ...light, enabled }) : light,
+    ),
+    sceneLightGroups,
+  }
 }

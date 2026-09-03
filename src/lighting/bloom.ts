@@ -13,6 +13,11 @@ export interface BloomSettings {
   threshold: number
   /** Belichtung für ACES (0,75…1,45), intern als exposure³. */
   exposure: number
+  /**
+   * Wenn true: Bloom während Orbit/Zoom/Schwenken aus (Orbit-Lite).
+   * Default false — Bloom bleibt auch bei Kamerabewegung an.
+   */
+  disableDuringMotion?: boolean
 }
 
 export const DEFAULT_BLOOM_SETTINGS: BloomSettings = {
@@ -21,6 +26,7 @@ export const DEFAULT_BLOOM_SETTINGS: BloomSettings = {
   radius: 0.6,
   threshold: 0.72,
   exposure: 1.116,
+  disableDuringMotion: false,
 }
 
 /** Tone-Mapping-Exposure — Kubik: mehr Spielraum als ^4, stärker als ^2. */
@@ -54,6 +60,10 @@ export function normalizeBloomSettings(value: unknown): BloomSettings {
       typeof raw.exposure === 'number' && Number.isFinite(raw.exposure)
         ? clamp(raw.exposure, 0.75, 1.45)
         : base.exposure,
+    disableDuringMotion:
+      typeof raw.disableDuringMotion === 'boolean'
+        ? raw.disableDuringMotion
+        : base.disableDuringMotion,
   }
 }
 

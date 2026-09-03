@@ -91,12 +91,13 @@ function isParallel(a: XZ, b: XZ, yawDeg: number): boolean {
 }
 
 /**
- * Kerbt einen Plan-Ring (Welt-XZ, Außenkante der Wände) an allen Öffnungen ein,
- * die die Platte `[slabBottomY, slabTopY]` durchdringen: dort weicht die Plattenkante
- * von der Fassaden-Außenkante auf die Wandinnenseite zurück. Sonst würde die Platte
- * quer durch die Öffnung laufen (z. B. angehobener Boden bei Tür mit Treppe vor einem
- * Kellerfenster → „zweiter Sockel“). Außerhalb der Kerben bleibt der Ring unverändert
- * (Schwelle unter Türen bleibt bis zur Fassade geschlossen).
+ * Kerbt einen Plan-Ring (Welt-XZ) an allen Öffnungen ein, die die Platte
+ * `[slabBottomY, slabTopY]` durchdringen. Der Ring kann Außen- oder Innenkante
+ * sein: die Kerbenrückwand liegt immer hinter der Wandinnenseite
+ * (`wall.depth + SLAB_NOTCH_BACK_EXTRA_CM` von der Fassaden-Spine). Sonst würde die
+ * Platte quer durch die Öffnung laufen (z. B. angehobener Boden bei Tür mit Treppe
+ * vor einem Kellerfenster → „zweiter Sockel“). Außerhalb der Kerben bleibt der Ring
+ * unverändert (Schwelle unter Türen bleibt geschlossen).
  *
  * Funktioniert für Außen- und Hof-Ringe: die Kerbe zeigt immer vom Wand-Außen ins
  * Gebäude (`studioWallOuterSpine().outward`), unabhängig von der Ring-Orientierung.

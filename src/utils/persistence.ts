@@ -165,6 +165,9 @@ export function loadPersistedState(): PersistedAppState | null {
           typeof parsed.editor.selectedSceneLightId === 'string'
             ? parsed.editor.selectedSceneLightId
             : undefined,
+        selectedSceneLightIds: Array.isArray(parsed.editor.selectedSceneLightIds)
+          ? parsed.editor.selectedSceneLightIds.filter((id): id is string => typeof id === 'string')
+          : undefined,
       },
       view: normalizeView(parsed.view),
       sun: isSunSettings(parsed.sun)

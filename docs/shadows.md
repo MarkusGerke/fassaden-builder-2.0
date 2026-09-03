@@ -27,7 +27,7 @@ Bloom und Gobo-Schatten: frühere Laub-Gobo-UI entfernt (v0.7.341). **Unreal Blo
 
 ### Bloom (3D / 2D-Front)
 
-- `EffectComposer` + `RenderPass` + **`UnrealBloomPass` (Full-Scene)** + optional `SMAAPass` + `OutputPass` in `main.ts` (`renderLitSceneFrame`). **v2.0.104:** Selective-Darkening (nur Marker) entfernt — Bloom gilt wieder für helle Flächen der ganzen Szene (Fenster, Himmel, Lichter). **v2.0.55:** `syncComposerPixelRatio` setzt auch `composer.setSize`. **Dirty-Rendering (v0.7.74):** idle kein Vollbild-Render. **Bloom während Navigation (v2.0.100):** während Orbit-Lite aus (nur `renderer.render`); idle wieder an. **Schärfe (v0.7.186 / v0.7.187):** Composer-`setPixelRatio` folgt dem Renderer; Composer-RTs mit bis zu 8× MSAA (SMAA nur ohne GPU-Samples).
+- `EffectComposer` + `RenderPass` + **`UnrealBloomPass` (Full-Scene)** + optional `SMAAPass` + `OutputPass` in `main.ts` (`renderLitSceneFrame`). **v2.0.104:** Selective-Darkening (nur Marker) entfernt — Bloom gilt wieder für helle Flächen der ganzen Szene (Fenster, Himmel, Lichter). **v2.0.55:** `syncComposerPixelRatio` setzt auch `composer.setSize`. **Dirty-Rendering (v0.7.74):** idle kein Vollbild-Render. **Bloom während Navigation (v2.0.124 / v2.0.125):** Default **an** auch bei Orbit-Lite; optional `#bloom-disable-during-motion`. **Stabilität (v2.0.125):** solange Bloom an und „bei Bewegung aus“ nicht gesetzt, bleibt die Pixelratio beim Orbit/Drag voll — sonst sprang Retina 2×→1× und das Glühen wirkte anders. **Schärfe (v0.7.186 / v0.7.187):** Composer-`setPixelRatio` folgt dem Renderer; Composer-RTs mit bis zu 8× MSAA (SMAA nur ohne GPU-Samples).
 - Checkbox, Schwelle / Stärke / Radius / Belichtung als Slider **und** Number. Defaults (v2.0.57 / v2.0.104): aus, Schwelle `0,72`, Stärke `0,28`, Radius `0,6`, Belichtung `1,116`. Bereiche: Schwelle `0…1,2`, Stärke `0…1,5`, Radius `0…1`, Belichtung `0,75…1,45`.
 - Bei an: `ACESFilmicToneMapping`, `toneMappingExposure = exposure ** 3` (OutputPass). Persistenz: `PersistedAppState.bloom`.
 - HDR-Lichtkerne an Punktlichtern bleiben optional (`enableBloomLayer`); Full-Scene-Bloom erfasst sie ohnehin.
@@ -44,16 +44,13 @@ Bloom und Gobo-Schatten: frühere Laub-Gobo-UI entfernt (v0.7.341). **Unreal Blo
 
 - Die Sonne wirft weiche Schatten auf Boden, Wände (innen und außen), Laibungen, Fensterrahmen, Glas und **Fassaden-Schrift**. **v0.7.183 / v0.7.188:** Schrift-Schatten nur auf dem Wandkörper (Freistreifen); Paneele empfangen nicht. **v0.7.198:** Wandkörper castet bei Schrift-Empfang weiter (Bodenschatten); Gesims/Zierband casteten damals nicht auf denselben Freistreifen. **v0.7.288:** Gesims/Zierband casten wieder immer — Schrift empfängt mit Z-Bias. **v0.7.199:** Beschriftung empfing keine Schatten (Lesbarkeit). **v0.7.252:** Schrift empfängt wieder Directional-Schatten; Extra-Z-Bias im Label-Shader (`LABEL_SHADOW_COORD_Z_BIAS`) verhindert, dass die 1–2 cm entfernte Wand die Glyphen frisst. Auf der Schattenseite dimmt ein eigener Schrift-Shade die ganze Glyphe (stärker als bei Wänden). Shadow-Map wird auch bei reinen Schrift-Updates neu berechnet (`consumeWallLabelsShadowDirty`).
 - Licht fällt **nur** durch Fenster- und Tür**öffnungen** und **Glas** in den Innenraum. Wände, Decken, Böden und Fensterrahmen bleiben lichtdicht (siehe [Lichtdichte Hülle](#lichtdichte-hülle-sonne)).
-- **Decke / Boden** (eine Platte pro Geschossgrenze, **Außenring** / Fassadenrand, v2.0.92) werfen und empfangen Schatten; Form aus `planFacesWithHoles` inkl. Hof-Löcher.
+- **Decke / Boden** (eine Platte pro Geschossgrenze, **Innenkante** + 1 cm Inset, v2.0.129) werfen und empfangen Schatten; Form aus `planFacesWithHoles` inkl. Hof-Löcher. Lichtdichte über Wand + Außenring-Punktlicht-Okkluder + `sunCeilingOccluder`.
 - **Kein Licht durch die Trennfläche** zur Etage darunter, solange sie sichtbar ist. Ausblenden = bewusstes Oberlicht.
 - **Außenschatten** folgt L/U/Hof-Polygon + Wänden mit Fensterlöchern + Dach — kein achsenparalleler Kasten aus falsch gefüllten Ringen.
 - **Datum + Tageszeit (Berlin):** realistischer Sonnenstand (`src/utils/solar.ts`, NOAA-Näherung, 52,52°N / 13,405°O). Setzt Azimut, Elevation, Intensität, Weichheit und Farbtemperatur neu (`syncSunSettingsFromSolar` mit `applySolarLook`). **v0.7.251:** Datum immer heute; Tageszeit fest 0–24 h; Sonnenwinkel wieder manuell — siehe [celestial-sky.md](celestial-sky.md).
 - Tageszeit-Slider **0:00–23:59** (Minutenschritte; auch Nacht und Dämmerung).
 - **Manuelle Overrides:** `#sun-azimuth` (0°=N, 90°=O), Intensität, Weichheit, Farbtemperatur — bleiben, bis Datum/Tageszeit wieder den Solar-Look schreibt. Elevation bleibt beim reinen Azimut-Drehen erhalten.
-- **Tagesverlauf:** Mehrfachauswahl **Himmelsrichtung** und/oder **Uhrzeit** (Checkboxen; mindestens eines). Defaults: nur Himmelsrichtung N/O→S, 20 s.
-  - Nur Uhrzeit: Sonne interpoliert Von/Bis; Kamera folgt dem tatsächlichen Sonnenazimut in **Grad** (kein 45°-Raster, keine 2D-Aufriss-Sprünge).
-  - Nur Himmelsrichtung: Sonne über `timeWhenSunAzimuth`; Kamera interpoliert Von/Bis auf dem kürzesten Bogen (ebenfalls weich in Grad).
-  - Beides: Sonne folgt der Uhrzeit, Kamera der Himmelsrichtung (unabhängig).
+- **Tageszyklus (v2.0.130):** kontinuierlich unter Szene → Animation; Dauer über `#anim-day-cycle-minutes` (`dayCycleRealMinutes`, Default 60). Einmaliger Tagesverlauf-Abspielen entfernt.
 - **Sonnenlicht** Default **3,9** (Slider `#sun-intensity` 0,3…**8**). Zusätzlich **Umgebungslicht** (`#sun-ambient`, Default **0,53**), **Schatten-Kontrast** (`#sun-shadow-contrast`, Default **1,50**), **Schatten-Weichheit** (`#sun-softness`, Default **5,0**), **Farbtemperatur** (`#sun-color-temp`, Default **4500 K**), Tageszeit **13:15**, Sonnenwinkel **210°** und Schatten-Dunkelheit (`#sun-shadow-density`, Default 0,55). **v0.7.253:** Diese Slider steuern auch Umbra-Tönung, Kontaktschatten und Bodenreflex — siehe [lighting-mood.md](lighting-mood.md).
 - **Sonnen-Slider (v0.7.341):** Azimut/Tageszeit/Intensität: Licht sofort, Shadow-Map gedrosselt (~90 ms). **v2.0.27:** Live-Slider/Animation backen die Map **pro Frame** (requestAnimationFrame) — Licht und Schatten synchron, kein Zittern. **Weichheit (v2.0.1):** `#sun-softness` → PCSS-Lichtgröße 0,8…28 cm als Uniform `pcssLightSizeUv` (live, hart am Okkluder, weicher mit Abstand). **Farbtemperatur (v2.0.1):** `#sun-color-temp` färbt das Key-Light.
 - **Fenster in 2D (v0.7.344):** Rahmen/Konsolen empfangen Werfschatten wenn Paneele empfangen (`syncOpeningReceiveShadows`, ohne Glas). **v2.0.9:** Teil-Rebuild muss `syncLabelShadowReceivers` rufen — sonst bleiben neue Rahmen ohne Empfang. **v2.0.12:** Erstes Shadow-Map-Bake nach `loadMeshes` (`bootstrapSceneLighting`) — ohne Reload-Workaround über Sonnenwinkel-Slider.
@@ -63,8 +60,9 @@ Bloom und Gobo-Schatten: frühere Laub-Gobo-UI entfernt (v0.7.341). **Unreal Blo
 ```
 planFacesWithHoles(plan)
   → Outer + holes (Hof = kleinerer Ring im größeren)
-  → Decken-Extrude sichtbar (INDOOR_SLAB_THICKNESS) Layer 1
+  → Decken-Extrude sichtbar (INDOOR_SLAB_THICKNESS) an Innenkante Layer 1 (v2.0.129)
   → unsichtbarer sunCeilingOccluder an Innenkante Layer 0 (v2.0.100 — Sonne lichtdicht, keine Fassadenstreifen)
+  → Punktlicht-Okkluder Außenring Layer 3 (Backup / weiche Cube-Schatten)
   + Studio-Wände mit Öffnungslöchern castShadow
   + Dach (Outer+Holes an Firstkappe) castShadow
   → eine DirectionalLight-Shadow-Map
@@ -141,6 +139,7 @@ State-Änderung / Sonnen-Slider
 | `PCSS_NUM_SAMPLES` | 32 | PCSS-Filter-/Blocker-Taps (v0.7.346; vorher 17) |
 | `PCSS_LITE_SLOW_FRAME_MS` / `PCSS_LITE_SLOW_FRAMES` | 30 ms / 4 | `main.ts`: ab so vielen langsamen Orbit-Frames navigiert die Sonne mit 1 Tap (Uniform `pcssLite`, sitzungsweit; v2.0.120) |
 | `INDOOR_SLAB_THICKNESS` | 8 cm | Extrusionsdicke Etagen-Trennfläche |
+| `INDOOR_SLAB_VISUAL_INSET_CM` | 1 cm | Sichtbare Platte hinter Innenwand (kein Z-Fight, v2.0.129) |
 | `SHADOW_BIAS` | −0.0002 | Tiefen-Bias |
 | `SHADOW_NORMAL_BIAS_MIN/MAX` | 0,05 / 0,22 cm | `normalBias` aus Texelgröße (niedrig gegen Lichtspalten an Laibung, v2.0.117) |
 | `SHADOW_FRUSTUM_PAD` | 120 cm | Rand um den Shadow-Kasten |
@@ -173,6 +172,7 @@ Glas: dunkles Klarglas, CubeCamera-EnvMap der Szene von außerhalb. `transmissio
 - **Render + stotternde Navigation (v2.0.98):** Bei Punktlicht setzte `renderLitSceneFrame` jedes Frame `shadowMap.needsUpdate` — teurer Full-Bake. Nur noch bei Geometrie/Licht über `scheduleSunShadowMapUpdate`.
 - **Undo nach Licht-Löschen → Paneele dunkelgrau (v2.0.122):** Reine `sceneLights`-Diffs backten die Map nicht (kein Geometrie-Rebuild → kein `applySunLighting({ updateShadowMap: true })`). Frische PointLights mit `castShadow` ohne Cube-Map verdunkelten `receiveShadow`-Flächen. Jetzt Licht-Diff → sofort `flushSunShadowMap`.
 - **Nische lässt Licht durch (v2.0.123):** Sichtbare Rückwand nur `nicheDepth` tief; Shadow-Tunnel hatte keine Kappe — Cube-Map leckte durchs Wandloch. Fix: Kappen an Rückwand + Innenkante; `sealedNiche` → `shadowSide: DoubleSide`.
+- **Nische schwarz (v2.0.127):** Laibung/`sealedNiche` bekam Fassaden-Gegenlicht-Shader und `FrontSide` — Seiten/Rückwand wirkten schwarz. Fix: `side`+`shadowSide` DoubleSide, `skipFacadeShade`, Rückwand-Winding zur Öffnung.
 - **Render + „sieht hart aus“ (v0.7.328):** Zu kleine Lichtfläche/UV und falsche Near-Skala ließen PCSS wie Basic wirken. Scale 8 + Softness-Slider in **Render** (Boden/lange Schatten).
 - **Custom-Shader:** `facadeShade` und Standard-Materialien nutzen PCSS über `getShadow`. Boden (`groundMood`) nur Fill-Override — **kein** zweites Schatten-Sampling (v0.7.330 / v2.0.99).
 - Wandkörper empfängt wieder Schatten (**v0.7.237** / **v0.7.285**, auch ohne Schrift). **v2.0.90:** Paneele empfangen auch in **3D** (Farbe); Zeichnung und Streiflicht-Ost/West weiter aus. **2D-Front (v0.7.285):** Paneele empfangen Werfschatten (`setCladdingReceiveShadows`).

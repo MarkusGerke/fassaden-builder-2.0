@@ -6,8 +6,6 @@ const SKIP_HINT_IDS = new Set([
   'validation-hint-studio',
   'opening-motion-status',
   'roller-shutter-drop-label',
-  'sun-anim-hint',
-  'sun-anim-both-hint',
   'share-status',
   'plan-status',
 ])

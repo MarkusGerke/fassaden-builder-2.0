@@ -9,7 +9,7 @@
 | [changelog.md](changelog.md) | Änderungsprotokoll (Historie) |
 | [shadows.md](shadows.md) | 3D-Sonnenlicht, **lichtdichte Hülle** (Sonne nur Öffnung+Glas), Shadow-Camera, Bias; Gesims-Cast; 2D-Front Paneel-Werfschatten |
 | [lighting-mood.md](lighting-mood.md) | Mehrschichtige Lichtstimmung: Umbra, Kontakt, Bounce |
-| [scene-lights.md](scene-lights.md) | Bibliotheks-Punktlichter: einfügen, XYZ, Persistenz |
+| [scene-lights.md](scene-lights.md) | Bibliotheks-Lichter: Presets, Abstrahlung, XYZ, Persistenz |
 | [celestial-sky.md](celestial-sky.md) | Takram-Himmel, Sonne/Mond, Dämmerung, Tageszeit 0–24 h |
 | [panel-geometry.md](panel-geometry.md) | Gehrungsberechnung, `wallLocalX`, Paneelextrusion, 3D-Leibung, Rest-Bossen an Öffnungen (`remnantBoss.ts`) |
 | [floor-plan.md](floor-plan.md) | Grundriss-System, Ring-Erkennung, Miter, Etagen, Innenkante Decke/Boden |

@@ -1102,6 +1102,25 @@ export interface SceneLight {
   distance?: number
   /** Three.js Abfall (Default 2). */
   decay?: number
+  /** Voreinstellung (Laterne, Deckenlampe, …). */
+  preset?: 'laterne' | 'deckenlampe' | 'stehlampe' | 'leselampe' | 'fassadenlampe' | 'blaulicht'
+  /** Abstrahlung: omni (Punkt) oder Spot nach unten/oben. */
+  beamMode?: 'omni' | 'down' | 'up' | 'upDown'
+  /** Spot-Halbwinkel nach unten in Grad (10–90). */
+  beamAngleDownDeg?: number
+  /** Spot-Halbwinkel nach oben in Grad (10–90). */
+  beamAngleUpDeg?: number
+  /** Laufzeit-Animation (z. B. Blaulicht-Doppelblitz). */
+  animation?: 'none' | 'blaulicht'
+  /** Persistente Lichtgruppe im Ebenenbaum. */
+  groupId?: string
+}
+
+/** Gruppe von Bibliotheks-Lichtern (Ebenenbaum). */
+export interface SceneLightGroup {
+  id: string
+  name: string
+  memberLightIds: string[]
 }
 
 export interface FacadeState {
@@ -1118,6 +1137,8 @@ export interface FacadeState {
   siteYawDeg?: number
   /** Frei platzierbare Punktlichter (Bibliothek → Licht). */
   sceneLights?: SceneLight[]
+  /** Lichtgruppen für den Ebenenbaum. */
+  sceneLightGroups?: SceneLightGroup[]
 }
 
 export interface EditorState {
@@ -1138,8 +1159,10 @@ export interface EditorState {
   selectedCeiling?: { buildingId: string; floorIndex: number }
   /** Haus-Gruppe für Verschieben im Grundriss. */
   selectedBuildingId?: string
-  /** Gewähltes Bibliotheks-Punktlicht. */
+  /** Gewähltes Bibliotheks-Punktlicht (Fokus / Toolbar). */
   selectedSceneLightId?: string
+  /** Mehrfachauswahl von Lichtern (Ebenen: Shift+Klick, Gruppieren). */
+  selectedSceneLightIds?: string[]
 }
 
 export const DEFAULT_WALL_ID = 'wall-1'
@@ -1305,6 +1328,10 @@ export function cloneFacadeState(state: FacadeState): FacadeState {
     viewOptions: state.viewOptions ? { ...state.viewOptions } : undefined,
     siteYawDeg: state.siteYawDeg,
     sceneLights: state.sceneLights?.map((light) => ({ ...light })),
+    sceneLightGroups: state.sceneLightGroups?.map((group) => ({
+      ...group,
+      memberLightIds: [...group.memberLightIds],
+    })),
   }
 }
 

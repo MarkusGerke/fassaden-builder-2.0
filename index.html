@@ -532,6 +532,37 @@
           <div id="toolbar-scene-light" hidden>
             <div class="settings-section" data-settings-section="sceneLight" data-settings-label="Punktlicht">
               <div class="toolbar-group">
+                <span class="toolbar-label">Voreinstellung</span>
+                <div id="scene-light-preset-cards" class="tpl-card-row scene-light-preset-cards" role="listbox" aria-label="Licht-Voreinstellung"></div>
+              </div>
+              <div class="toolbar-group">
+                <span class="toolbar-label">Abstrahlung</span>
+                <select id="scene-light-beam-mode" aria-label="Abstrahlrichtung">
+                  <option value="omni">Alle Richtungen</option>
+                  <option value="down">Nur nach unten</option>
+                  <option value="up">Nur nach oben</option>
+                  <option value="upDown">Unten und oben</option>
+                </select>
+              </div>
+              <div id="scene-light-beam-angle-down-row" class="toolbar-group" hidden>
+                <span class="toolbar-label">Winkel nach unten (°)</span>
+                <label class="slider-label">
+                  <span>Öffnung</span>
+                  <output id="scene-light-beam-angle-down-value">60</output>
+                </label>
+                <input id="scene-light-beam-angle-down" type="range" min="10" max="90" step="1" value="60" />
+                <input id="scene-light-beam-angle-down-num" type="number" min="10" max="90" step="1" value="60" />
+              </div>
+              <div id="scene-light-beam-angle-up-row" class="toolbar-group" hidden>
+                <span class="toolbar-label">Winkel nach oben (°)</span>
+                <label class="slider-label">
+                  <span>Öffnung</span>
+                  <output id="scene-light-beam-angle-up-value">55</output>
+                </label>
+                <input id="scene-light-beam-angle-up" type="range" min="10" max="90" step="1" value="55" />
+                <input id="scene-light-beam-angle-up-num" type="number" min="10" max="90" step="1" value="55" />
+              </div>
+              <div class="toolbar-group">
                 <span class="toolbar-label">Position (cm)</span>
                 <label class="slider-label"><span>X</span></label>
                 <input id="scene-light-x" type="number" step="8" />
@@ -603,6 +634,11 @@
                   <input id="scene-light-cast-shadow" type="checkbox" checked />
                   Schatten werfen (Render)
                 </label>
+                <label class="toolbar-check">
+                  <input id="scene-light-animation-blaulicht" type="checkbox" />
+                  Blaulicht blinken
+                </label>
+                <p class="toolbar-hint compact-hint">Doppelblitz ~2&nbsp;Hz (Feuerwehr/Polizei).</p>
               </div>
               <div class="toolbar-group">
                 <button id="scene-light-delete" type="button" class="preset-btn">Licht entfernen</button>
@@ -2198,6 +2234,11 @@
                   </label>
                 </div>
                 <div id="bloom-options" hidden>
+                  <label class="toolbar-check">
+                    <input id="bloom-disable-during-motion" type="checkbox" />
+                    Bloom bei Kamerabewegung aus
+                  </label>
+                  <p class="toolbar-hint compact-hint">Aus = Bloom bleibt auch beim Drehen/Zoomen an (Default).</p>
                   <label class="slider-label">
                     <span>Schwelle</span>
                     <output id="bloom-threshold-value">0.720</output>
@@ -2226,64 +2267,31 @@
               </div>
 
               <div class="settings-section" data-settings-section="anim" data-settings-label="Animation" data-settings-order="20">
-                <label class="slider-label"><span>Tagesverlauf</span></label>
-                <div class="sun-anim-channels">
+                <div class="toolbar-group">
                   <label class="toolbar-check">
-                    <input id="sun-anim-use-compass" type="checkbox" checked />
-                    Himmelsrichtung
+                    <input id="anim-paused" type="checkbox" />
+                    Animationen pausieren
                   </label>
-                  <label class="toolbar-check">
-                    <input id="sun-anim-use-time" type="checkbox" />
-                    Uhrzeit
-                  </label>
-                </div>
-                <div id="sun-anim-compass-row" class="toolbar-group">
-                  <div class="toolbar-row-2">
-                    <label>Von (Himmelsrichtung)
-                      <select id="sun-anim-from-compass">
-                        <option value="0">N</option>
-                        <option value="45" selected>N/O</option>
-                        <option value="90">O</option>
-                        <option value="135">S/O</option>
-                        <option value="180">S</option>
-                        <option value="225">S/W</option>
-                        <option value="270">W</option>
-                        <option value="315">N/W</option>
-                      </select>
-                    </label>
-                    <label>Bis (Himmelsrichtung)
-                      <select id="sun-anim-to-compass">
-                        <option value="0">N</option>
-                        <option value="45">N/O</option>
-                        <option value="90">O</option>
-                        <option value="135">S/O</option>
-                        <option value="180" selected>S</option>
-                        <option value="225">S/W</option>
-                        <option value="270">W</option>
-                        <option value="315">N/W</option>
-                      </select>
-                    </label>
-                  </div>
-                </div>
-                <div id="sun-anim-time-row" class="toolbar-group" hidden>
-                  <div class="toolbar-row-2">
-                    <label>Von (Uhrzeit)
-                      <input id="sun-anim-from-time" type="time" value="06:00" step="300" />
-                    </label>
-                    <label>Bis (Uhrzeit)
-                      <input id="sun-anim-to-time" type="time" value="20:00" step="300" />
-                    </label>
-                  </div>
+                  <p class="toolbar-hint compact-hint">Blaulicht, Fenster/Türen und Tageszyklus.</p>
                 </div>
                 <div class="toolbar-group">
-                  <span class="toolbar-label">Dauer (s)</span>
-                  <input id="sun-anim-duration" type="number" min="5" max="120" step="1" value="20" />
+                  <label class="toolbar-check">
+                    <input id="anim-day-cycle" type="checkbox" checked />
+                    Tageszyklus
+                  </label>
+                  <p class="toolbar-hint compact-hint">Uhrzeit und Sonne laufen kontinuierlich.</p>
                 </div>
-                <p id="sun-anim-both-hint" class="compact-hint" hidden>Sonne folgt der Uhrzeit, Kamera der Himmelsrichtung.</p>
-                <p id="sun-anim-hint" class="toolbar-hint compact-hint" hidden>Richtung am gewählten Tag nur näherungsweise erreichbar.</p>
-                <div class="preset-group" style="margin: 6px 0 10px; gap: 6px">
-                  <button id="sun-path-play" class="preset-btn" type="button">Tagesverlauf abspielen</button>
-                  <button id="sun-path-stop" class="preset-btn" type="button" hidden>Stop</button>
+                <div class="toolbar-group">
+                  <span class="toolbar-label">Tagesdauer (Min.)</span>
+                  <input id="anim-day-cycle-minutes" type="number" min="1" max="1440" step="1" value="60" />
+                  <p class="toolbar-hint compact-hint">Echtzeit-Minuten für einen Szene-Tag (24&nbsp;h). Standard: 60 (= 1&nbsp;Std.).</p>
+                </div>
+                <div class="toolbar-group">
+                  <label class="toolbar-check">
+                    <input id="anim-auto-lights" type="checkbox" checked />
+                    Lichter mit Sonne
+                  </label>
+                  <p class="toolbar-hint compact-hint">Bei Sonnenuntergang an, bei Sonnenaufgang aus.</p>
                 </div>
               </div>
 
@@ -2643,6 +2651,11 @@
         </div>
       </form>
     </dialog>
+
+    <div id="stage-hud" hidden aria-label="Bühnensteuerung">
+      <div class="stage-hud-block" id="stage-hud-time-host"></div>
+      <div class="stage-hud-block" id="stage-hud-pause-host"></div>
+    </div>
 
     <script type="module" src="/src/main.ts"></script>
   </body>

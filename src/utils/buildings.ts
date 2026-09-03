@@ -21,6 +21,8 @@ export type FacadeStateInput = {
   customProfiles?: FacadeState['customProfiles']
   viewOptions?: FacadeState['viewOptions']
   siteYawDeg?: number
+  sceneLights?: FacadeState['sceneLights']
+  sceneLightGroups?: FacadeState['sceneLightGroups']
 }
 
 function cloneFloorPlan(plan: FloorPlan): FloorPlan {
@@ -167,6 +169,7 @@ export function migrateToBuildings(legacyOrNew: FacadeStateInput | FacadeState):
       viewOptions: legacyOrNew.viewOptions,
       siteYawDeg: legacyOrNew.siteYawDeg,
       sceneLights: legacyOrNew.sceneLights,
+      sceneLightGroups: legacyOrNew.sceneLightGroups,
     }
   }
 
@@ -191,6 +194,7 @@ export function migrateToBuildings(legacyOrNew: FacadeStateInput | FacadeState):
     viewOptions: legacyOrNew.viewOptions,
     siteYawDeg: legacyOrNew.siteYawDeg,
     sceneLights: legacyOrNew.sceneLights,
+    sceneLightGroups: legacyOrNew.sceneLightGroups,
   }
 }
 

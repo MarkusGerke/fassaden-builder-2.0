@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.123'
+export const APP_VERSION = '2.0.132'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,104 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.132',
+    date: '2026-09-03',
+    title: 'Bühnenmodus fürs Handy',
+    changes: [
+      'URL ?stage=1 zeigt nur die Zeichenfläche, Tageszeit-Slider und „Animationen pausieren“',
+      'npm run dev:lan gibt den Dev-Server im lokalen Netz frei',
+      'Bitte hart neu laden, bis v2.0.132 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.131',
+    date: '2026-09-03',
+    title: 'Rollläden lichtdicht und stapelnd',
+    changes: [
+      'Rollläden gehen links und rechts bis zur Laibung — kein Lichtspalt an den Seiten',
+      'Absenken: erst frei hängen, dann auf der Fensterbank stapeln; Hochfahren umgekehrt',
+      'Geschlossene Rollläden lassen kein Licht mehr durch',
+      'Bitte hart neu laden, bis v2.0.131 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.130',
+    date: '2026-09-03',
+    title: 'Tagesdauer, Lichtnamen, Nischen-Licht',
+    changes: [
+      'Einmaliger Tagesverlauf (Himmelsrichtung/Uhrzeit/Abspielen) aus Szene → Animation entfernt',
+      'Tageszyklus: Dauer in Minuten einstellbar (Standard 60 = 1 Stunde pro Tag)',
+      'Ebenen: Lichter heißen nach Typ (Blaulicht, Stehlampe, …)',
+      'Nischen und Konchen empfangen und spiegeln wieder Licht (kein Selbstschatten)',
+      'Bitte hart neu laden, bis v2.0.130 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.129',
+    date: '2026-09-03',
+    title: 'Boden/Decke ohne Flackern',
+    changes: [
+      'Boden und Decke enden an der Wandinnenseite — kein Durchscheinen an der Fassade',
+      'Kein Z-Fighting-Flackern mehr an Boden/Decke beim Orbitieren',
+      'Lichtdichte bleibt: unsichtbare Okkluder auf dem Außenring + Sonnen-Deckenblocker',
+      'Bitte hart neu laden, bis v2.0.129 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.128',
+    date: '2026-09-03',
+    title: 'Lade-Freeze behoben',
+    changes: [
+      'Studio lädt wieder — Auto-Lichter starteten vor dem FacadeController und brachen den Start ab',
+      'Bitte hart neu laden, bis v2.0.128 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.127',
+    date: '2026-09-03',
+    title: 'Nischen-Licht, Animationen, Tageszyklus',
+    changes: [
+      'Nischenwände empfangen und spiegeln wieder Licht (nicht mehr schwarz)',
+      'Szene → Animation: alles mit einem Klick pausieren (Blaulicht, Türen/Fenster, Sonne)',
+      'Tageszyklus: 1 Tag ≈ 1 Stunde Echtzeit — Uhrzeit und Sonne laufen kontinuierlich',
+      'Lichter gehen bei Sonnenuntergang an und bei Sonnenaufgang aus',
+      'Bitte hart neu laden, bis v2.0.127 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.126',
+    date: '2026-09-03',
+    title: 'Blaulicht-Phasen, Ebenen-Namen, Lichtgruppen',
+    changes: [
+      'Mehrere Blaulichter blinken im gleichen Takt, aber versetzt zueinander',
+      'Ebenen: Lampen heißen nach ihrer Art (Laterne, Blaulicht 2, …)',
+      'Lichter im Ebenenbaum gruppieren (Shift+Mehrfachauswahl → Gruppieren)',
+      'Bitte hart neu laden, bis v2.0.126 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.125',
+    date: '2026-09-03',
+    title: 'Stabiles Bloom + Blaulicht',
+    changes: [
+      'Bloom ändert sich nicht mehr sichtbar beim Drehen/Verschieben — Auflösung bleibt bei aktivem Bloom konstant',
+      'Neues Licht „Blaulicht“ mit realistischem Doppelblitz (~2 Hz, Feuerwehr/Polizei)',
+      'Blinken pro Licht ein-/ausschaltbar („Blaulicht blinken“)',
+      'Bitte hart neu laden, bis v2.0.125 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.124',
+    date: '2026-09-03',
+    title: 'Bloom beim Navigieren + Licht-Voreinstellungen',
+    changes: [
+      'Bloom bleibt beim Drehen/Zoomen an — optional unter Szene → Licht ausschaltbar („Bloom bei Kamerabewegung aus“)',
+      'Bibliothek → Licht: Laterne, Deckenlampe, Stehlampe, Leselampe, Fassadenlampe',
+      'Pro Licht: Abstrahlung alle Richtungen / nur unten / nur oben / unten+oben inkl. Winkel',
+      'Bitte hart neu laden, bis v2.0.124 in der Titelleiste steht',
+    ],
+  },
   {
     version: '2.0.123',
     date: '2026-09-03',

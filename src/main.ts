@@ -329,8 +329,8 @@ import {
   fitDirectionalShadowCamera,
   formatTimeOfDay,
   normalizeSunSettings,
-  resolveAnimTimeRange,
-  resolveSunFromDate,
+  dayCycleSceneHoursPerRealSec,
+  clampDayCycleRealMinutes,
   SHADOW_BIAS,
   SHADOW_NORMAL_BIAS_MIN,
   SHADOW_GROUND_MAX_LENGTH,
@@ -345,7 +345,7 @@ import {
   syncSunSettingsFromSolar,
   type SunSettings,
 } from './utils/sunLighting'
-import { dateInputValue, parseDateInput, parseTimeInput, timeInputValue, todayMonthDay } from './utils/solar'
+import { dateInputValue, parseDateInput, todayMonthDay } from './utils/solar'
 import { createStudioWall, isStudioWall, stretchStudioFacade, studioWallTransform, studioWallsCollideIdentical, updateStudioPanel, wallAlongDelta, duplicateStudioWallAtGrid, rotateStudioWallAroundCenter, wallEndIsFree, buildEndPieceReturnWall, buildStandaloneEndPieceWalls, buildStudioWallAt, endPieceArmsCollide, endPieceGhostSegments, endPieceSideForHand, END_PIECE_DEFAULT_ANGLE_DEG, findAdjacentWall, findCollinearDockWall, isWallPlanLinked, linkStudioWalls, mergeCollinearDockedWalls, selectionLockedToUnselected, unlinkStudioWallsFromUnselected, unselectedLinkedNeighbors,   unselectedTouchingWalls,
   expandPlanLinkedWallIds,
   expandWallMoveIds,
@@ -426,7 +426,7 @@ import {
   normalizeOpeningInteriorShade,
 } from './windows/openingExtras'
 import { facadeOutward, facadeSunIsGrazing, wallsForYaw, type ElevationFilter } from './studio/elevation'
-import { lerpYawDeg, normalizeYawDeg, snapYawTo10, snapYawTo45, solarAzimuthToWallYaw, viewedFacadeYaw, wallCompassLabel, wallDockAxisFromFacadeYaw, yawFromCompassSvgPoint } from './studio/compass'
+import { normalizeYawDeg, snapYawTo10, snapYawTo45, solarAzimuthToWallYaw, viewedFacadeYaw, wallCompassLabel, wallDockAxisFromFacadeYaw, yawFromCompassSvgPoint } from './studio/compass'
 import { computeOpeningGuidesForRefs, computeOpeningDistanceLinesForRefs } from './studio/openingGuides'
 import { panelCourseCount, visiblePanelRowRange } from './studio/panelLayout'
 import {
@@ -549,15 +549,32 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { SceneLightRuntime, POINT_SHADOW_MAP_FRONT } from './lighting/sceneLightRuntime'
 import { normalizePowerWatts } from './lighting/sceneLightUnits'
 import {
+  addLightsToSceneLightGroup,
   addSceneLight,
+  applySceneLightPreset,
+  createSceneLightGroup,
   duplicateSceneLight,
   kelvinToHex,
+  normalizeSceneLightState,
   normalizeSceneLights,
   removeSceneLight,
+  renameSceneLightGroup,
   sceneLightById,
+  sceneLightDisplayName,
   setAllSceneLightsEnabled,
+  setSceneLightGroupEnabled,
+  ungroupSceneLights,
   updateSceneLight,
 } from './scene/sceneLights'
+import {
+  BEAM_ANGLE_MAX_DEG,
+  BEAM_ANGLE_MIN_DEG,
+  SCENE_LIGHT_BEAM_MODE_LABELS,
+  SCENE_LIGHT_PRESETS,
+  type SceneLightBeamMode,
+  type SceneLightPresetId,
+} from './scene/sceneLightPresets'
+import { sceneLightsNeedLiveFrames } from './scene/sceneLightAnimation'
 import {
   DEFAULT_FOG_SETTINGS,
   normalizeFogSettings,
@@ -614,6 +631,11 @@ let orbitLite = false
 let orbitLiteTimer: ReturnType<typeof setTimeout> | null = null
 /** true zwischen OrbitControls start und end (Mausrad: beides im selben Tick). */
 let orbitLitePointer = false
+/**
+ * Bloom an + „bei Bewegung aus“ nicht gesetzt → Pixelratio während Orbit nicht senken,
+ * sonst ändert sich das Glühen sichtbar (Retina 2× → 1×).
+ */
+let bloomKeepFullPixelRatioDuringOrbit = false
 
 /**
  * PCSS-Lite während Orbit nur bei Bedarf: Frames im Orbit werden gemessen; liegen anhaltend
@@ -648,10 +670,18 @@ function orbitProbeFrame(now: number) {
 }
 
 function applyRendererPixelRatio() {
-  const cap = orbitLite ? 1 : MAX_PIXEL_RATIO
+  const cap = orbitLite && !bloomKeepFullPixelRatioDuringOrbit ? 1 : MAX_PIXEL_RATIO
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, cap))
   // Composer erst nach Init vorhanden; danach Ratio immer mitsynchronisieren (sonst Bloom-Pfad weich/pixelig).
   syncComposerPixelRatio?.()
+}
+
+function syncBloomOrbitPixelPolicy() {
+  const next =
+    bloomSettings.enabled === true && bloomSettings.disableDuringMotion !== true
+  if (next === bloomKeepFullPixelRatioDuringOrbit) return
+  bloomKeepFullPixelRatioDuringOrbit = next
+  applyRendererPixelRatio()
 }
 
 /** Wird nach EffectComposer-Erzeugung gesetzt. */
@@ -3782,6 +3812,8 @@ const collapsedFloors = new Set<number>()
 const collapsedBuildings = new Set<string>()
 const expandedRoofs = new Set<string>()
 let sceneLightsLayerCollapsed = false
+/** Eingeklappte Lichtgruppen im Ebenenbaum. */
+const collapsedSceneLightGroups = new Set<string>()
 const buildingAddBtn = document.querySelector<HTMLButtonElement>('#building-add')!
 const expandedWalls = new Set<string>()
 let planBuildingDrag: {
@@ -3856,6 +3888,7 @@ function applyBloomRenderer() {
     renderer.toneMapping = THREE.NoToneMapping
     renderer.toneMappingExposure = 1
   }
+  syncBloomOrbitPixelPolicy()
 }
 
 function disposeDirectionalShadowMap(light: THREE.DirectionalLight) {
@@ -4006,7 +4039,9 @@ function renderLitSceneFrame(activeCamera: THREE.Camera) {
     bakeSceneReflectionsIfNeeded(renderer, scene, reflectionProbePos, sceneReflectionHideRoots)
     bindMaterialsToGlassEnv(scene)
   }
-  const bloomOn = bloomIsActive() && !orbitLite && !orbitLitePointer
+  const bloomOn =
+    bloomIsActive() &&
+    !(bloomSettings.disableDuringMotion && (orbitLite || orbitLitePointer))
   renderPass.camera = activeCamera
   if (bloomOn) {
     composer.render()
@@ -4728,22 +4763,43 @@ const planStatus = document.querySelector<HTMLSpanElement>('#plan-status')!
 const planClearButton = document.querySelector<HTMLButtonElement>('#plan-clear')!
 const planGenerateButton = document.querySelector<HTMLButtonElement>('#plan-generate')!
 const planLabelLayer = document.querySelector<HTMLDivElement>('#plan-label-layer')!
+
+/** Bühnenmodus für iPhone/LAN: nur Zeichenfläche + Tageszeit + Pause (`?stage=1`). */
+function applyStageViewModeFromUrl(): boolean {
+  const params = new URLSearchParams(window.location.search)
+  if (!(params.has('stage') || params.get('view') === 'stage')) return false
+  document.documentElement.classList.add('stage-view')
+  document.getElementById('app')?.classList.add('stage-view')
+  const hud = document.querySelector<HTMLDivElement>('#stage-hud')
+  const timeHost = document.querySelector<HTMLDivElement>('#stage-hud-time-host')
+  const pauseHost = document.querySelector<HTMLDivElement>('#stage-hud-pause-host')
+  const sunTime = document.querySelector<HTMLInputElement>('#sun-time')
+  const sunTimeValue = document.querySelector<HTMLOutputElement>('#sun-time-value')
+  const animPaused = document.querySelector<HTMLInputElement>('#anim-paused')
+  if (!hud || !timeHost || !pauseHost || !sunTime || !sunTimeValue || !animPaused) return true
+  const timeLabel = document.createElement('label')
+  timeLabel.className = 'stage-hud-label'
+  timeLabel.htmlFor = 'sun-time'
+  const title = document.createElement('span')
+  title.textContent = 'Tageszeit'
+  timeLabel.append(title, sunTimeValue)
+  timeHost.replaceChildren(timeLabel, sunTime)
+  const pauseLabel = document.createElement('label')
+  pauseLabel.className = 'stage-hud-check'
+  pauseLabel.append(animPaused, document.createTextNode(' Animationen pausieren'))
+  pauseHost.replaceChildren(pauseLabel)
+  hud.hidden = false
+  return true
+}
+const STAGE_VIEW_MODE = applyStageViewModeFromUrl()
+
 const sunDateInput = document.querySelector<HTMLInputElement>('#sun-date')!
 const sunTimeInput = document.querySelector<HTMLInputElement>('#sun-time')!
 const sunAzimuthInput = document.querySelector<HTMLInputElement>('#sun-azimuth')!
-const sunPathPlayButton = document.querySelector<HTMLButtonElement>('#sun-path-play')!
-const sunPathStopButton = document.querySelector<HTMLButtonElement>('#sun-path-stop')!
-const sunAnimUseCompass = document.querySelector<HTMLInputElement>('#sun-anim-use-compass')!
-const sunAnimUseTime = document.querySelector<HTMLInputElement>('#sun-anim-use-time')!
-const sunAnimCompassRow = document.querySelector<HTMLDivElement>('#sun-anim-compass-row')!
-const sunAnimTimeRow = document.querySelector<HTMLDivElement>('#sun-anim-time-row')!
-const sunAnimBothHint = document.querySelector<HTMLParagraphElement>('#sun-anim-both-hint')!
-const sunAnimFromCompass = document.querySelector<HTMLSelectElement>('#sun-anim-from-compass')!
-const sunAnimToCompass = document.querySelector<HTMLSelectElement>('#sun-anim-to-compass')!
-const sunAnimFromTime = document.querySelector<HTMLInputElement>('#sun-anim-from-time')!
-const sunAnimToTime = document.querySelector<HTMLInputElement>('#sun-anim-to-time')!
-const sunAnimDuration = document.querySelector<HTMLInputElement>('#sun-anim-duration')!
-const sunAnimHint = document.querySelector<HTMLParagraphElement>('#sun-anim-hint')!
+const animPausedInput = document.querySelector<HTMLInputElement>('#anim-paused')!
+const animDayCycleInput = document.querySelector<HTMLInputElement>('#anim-day-cycle')!
+const animDayCycleMinutesInput = document.querySelector<HTMLInputElement>('#anim-day-cycle-minutes')!
+const animAutoLightsInput = document.querySelector<HTMLInputElement>('#anim-auto-lights')!
 const sunIntensityInput = document.querySelector<HTMLInputElement>('#sun-intensity')!
 const sunSoftnessInput = document.querySelector<HTMLInputElement>('#sun-softness')!
 const sunColorTempInput = document.querySelector<HTMLInputElement>('#sun-color-temp')!
@@ -4782,6 +4838,16 @@ const sceneLightColorTempInput = document.querySelector<HTMLInputElement>('#scen
 const sceneLightColorTempValue = document.querySelector<HTMLOutputElement>('#scene-light-color-temp-value')!
 const sceneLightColorInput = document.querySelector<HTMLInputElement>('#scene-light-color')!
 const sceneLightColorSwatch = document.querySelector<HTMLSpanElement>('#scene-light-color-swatch')!
+const sceneLightPresetCards = document.querySelector<HTMLDivElement>('#scene-light-preset-cards')!
+const sceneLightBeamMode = document.querySelector<HTMLSelectElement>('#scene-light-beam-mode')!
+const sceneLightBeamAngleDownRow = document.querySelector<HTMLDivElement>('#scene-light-beam-angle-down-row')!
+const sceneLightBeamAngleDown = document.querySelector<HTMLInputElement>('#scene-light-beam-angle-down')!
+const sceneLightBeamAngleDownNum = document.querySelector<HTMLInputElement>('#scene-light-beam-angle-down-num')!
+const sceneLightBeamAngleDownValue = document.querySelector<HTMLOutputElement>('#scene-light-beam-angle-down-value')!
+const sceneLightBeamAngleUpRow = document.querySelector<HTMLDivElement>('#scene-light-beam-angle-up-row')!
+const sceneLightBeamAngleUp = document.querySelector<HTMLInputElement>('#scene-light-beam-angle-up')!
+const sceneLightBeamAngleUpNum = document.querySelector<HTMLInputElement>('#scene-light-beam-angle-up-num')!
+const sceneLightBeamAngleUpValue = document.querySelector<HTMLOutputElement>('#scene-light-beam-angle-up-value')!
 const sceneLightShowMarkerInput = document.querySelector<HTMLInputElement>('#scene-light-show-marker')!
 const sceneLightMarkerSizeRow = document.querySelector<HTMLDivElement>('#scene-light-marker-size-row')!
 const sceneLightMarkerSizeSlider = document.querySelector<HTMLInputElement>('#scene-light-marker-size')!
@@ -4791,6 +4857,9 @@ const sceneLightDistanceInput = document.querySelector<HTMLInputElement>('#scene
 const sceneLightDecayInput = document.querySelector<HTMLInputElement>('#scene-light-decay')!
 const sceneLightEnabledInput = document.querySelector<HTMLInputElement>('#scene-light-enabled')!
 const sceneLightCastShadowInput = document.querySelector<HTMLInputElement>('#scene-light-cast-shadow')!
+const sceneLightAnimationBlaulichtInput = document.querySelector<HTMLInputElement>(
+  '#scene-light-animation-blaulicht',
+)!
 const sceneLightDepthSlider = document.querySelector<HTMLInputElement>('#scene-light-depth')!
 const sceneLightDepthNum = document.querySelector<HTMLInputElement>('#scene-light-depth-num')!
 const sceneLightDepthValue = document.querySelector<HTMLOutputElement>('#scene-light-depth-value')!
@@ -4828,6 +4897,7 @@ const sceneLineStrokeNum = document.querySelector<HTMLInputElement>('#scene-line
 const sceneLineStrokeValue = document.querySelector<HTMLOutputElement>('#scene-line-stroke-value')!
 const bloomEnabledInput = document.querySelector<HTMLInputElement>('#bloom-enabled')!
 const bloomOptions = document.querySelector<HTMLDivElement>('#bloom-options')!
+const bloomDisableDuringMotionInput = document.querySelector<HTMLInputElement>('#bloom-disable-during-motion')!
 const bloomThreshold = document.querySelector<HTMLInputElement>('#bloom-threshold')!
 const bloomThresholdNum = document.querySelector<HTMLInputElement>('#bloom-threshold-num')!
 const bloomThresholdValue = document.querySelector<HTMLOutputElement>('#bloom-threshold-value')!
@@ -7653,38 +7723,42 @@ function initOpeningLibrary() {
 
   if (libraryTab === 'lights') {
     appendLibraryGroupLabel(host, 'Lichtquellen')
-    const card = document.createElement('button')
-    card.type = 'button'
-    card.className = 'opening-library-card'
-    card.title = 'Punktlicht — klicken oder in die Szene ziehen'
-    const thumb = document.createElement('div')
-    thumb.className = 'opening-library-thumb'
-    thumb.innerHTML =
-      '<svg viewBox="0 0 48 48" width="48" height="48" aria-hidden="true"><circle cx="24" cy="24" r="9" fill="#ffcc88"/><circle cx="24" cy="24" r="17" fill="none" stroke="#ffaa44" stroke-width="2" opacity="0.5"/><path d="M24 5 v6 M24 37 v6 M5 24 h6 M37 24 h6" stroke="#ffaa44" stroke-width="2" stroke-linecap="round" opacity="0.45"/></svg>'
-    const label = document.createElement('span')
-    label.textContent = 'Punktlicht'
-    card.append(thumb, label)
-    card.draggable = true
-    card.addEventListener('click', () => {
-      if (card.dataset.didDrag === '1') {
-        delete card.dataset.didDrag
-        return
-      }
-      insertSceneLightFromLibrary()
-    })
-    card.addEventListener('dragstart', (event) => {
-      card.dataset.didDrag = '1'
-      hideNativeDragImage(event)
-      event.dataTransfer?.setData('application/x-scene-light', 'point')
-      event.dataTransfer?.setData('text/plain', 'scene-light')
-      if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy'
-      card.classList.add('is-dragging')
-    })
-    card.addEventListener('dragend', () => {
-      card.classList.remove('is-dragging')
-      viewport.classList.remove('library-drop-target')
-    })
-    host.appendChild(card)
+    for (const preset of SCENE_LIGHT_PRESETS) {
+      const card = document.createElement('button')
+      card.type = 'button'
+      card.className = 'opening-library-card'
+      card.title = `${preset.label} — ${preset.hint}`
+      const thumb = document.createElement('div')
+      thumb.className = 'opening-library-thumb'
+      thumb.innerHTML =
+        preset.id === 'blaulicht'
+          ? '<svg viewBox="0 0 48 48" width="48" height="48" aria-hidden="true"><circle cx="24" cy="24" r="9" fill="#3d6cff"/><circle cx="24" cy="24" r="17" fill="none" stroke="#6a8fff" stroke-width="2" opacity="0.55"/><path d="M24 5 v6 M24 37 v6 M5 24 h6 M37 24 h6" stroke="#6a8fff" stroke-width="2" stroke-linecap="round" opacity="0.5"/></svg>'
+          : '<svg viewBox="0 0 48 48" width="48" height="48" aria-hidden="true"><circle cx="24" cy="24" r="9" fill="#ffcc88"/><circle cx="24" cy="24" r="17" fill="none" stroke="#ffaa44" stroke-width="2" opacity="0.5"/><path d="M24 5 v6 M24 37 v6 M5 24 h6 M37 24 h6" stroke="#ffaa44" stroke-width="2" stroke-linecap="round" opacity="0.45"/></svg>'
+      const label = document.createElement('span')
+      label.textContent = preset.label
+      card.append(thumb, label)
+      card.draggable = true
+      card.addEventListener('click', () => {
+        if (card.dataset.didDrag === '1') {
+          delete card.dataset.didDrag
+          return
+        }
+        insertSceneLightFromLibrary(undefined, preset.id)
+      })
+      card.addEventListener('dragstart', (event) => {
+        card.dataset.didDrag = '1'
+        hideNativeDragImage(event)
+        event.dataTransfer?.setData('application/x-scene-light', preset.id)
+        event.dataTransfer?.setData('text/plain', 'scene-light')
+        if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy'
+        card.classList.add('is-dragging')
+      })
+      card.addEventListener('dragend', () => {
+        card.classList.remove('is-dragging')
+        viewport.classList.remove('library-drop-target')
+      })
+      host.appendChild(card)
+    }
     appendLibraryGroupLabel(host, 'Anzeige')
     const allLightsToggle = document.createElement('label')
     allLightsToggle.className = 'library-lights-option toolbar-check'
@@ -7892,14 +7966,35 @@ function openingExists(nextState: FacadeState, ref: OpeningRef): boolean {
 }
 
 function normalizeEditor(nextState: FacadeState, nextEditor: EditorState): EditorState {
-  const sceneLightId = nextEditor.selectedSceneLightId
-  const sceneLightSelected =
-    typeof sceneLightId === 'string' &&
-    sceneLightId.length > 0 &&
-    normalizeSceneLights(nextState.sceneLights).some((item) => item.id === sceneLightId)
+  const lights = normalizeSceneLights(nextState.sceneLights)
+  const lightIdSet = new Set(lights.map((item) => item.id))
+  const selectedSceneLightIds = [
+    ...new Set(
+      (nextEditor.selectedSceneLightIds ?? []).filter((id) => lightIdSet.has(id)),
+    ),
+  ]
+  let sceneLightId = nextEditor.selectedSceneLightId
+  if (typeof sceneLightId === 'string' && !lightIdSet.has(sceneLightId)) {
+    sceneLightId = undefined
+  }
+  if (!sceneLightId && selectedSceneLightIds.length > 0) {
+    sceneLightId = selectedSceneLightIds[0]
+  }
+  if (sceneLightId && !selectedSceneLightIds.includes(sceneLightId)) {
+    selectedSceneLightIds.unshift(sceneLightId)
+  }
 
-  if (sceneLightSelected) {
-    return { ...createDefaultEditorState(), selectedSceneLightId: sceneLightId }
+  if (sceneLightId || selectedSceneLightIds.length > 0) {
+    return {
+      ...createDefaultEditorState(),
+      selectedSceneLightId: sceneLightId ?? selectedSceneLightIds[0],
+      selectedSceneLightIds:
+        selectedSceneLightIds.length > 0
+          ? selectedSceneLightIds
+          : sceneLightId
+            ? [sceneLightId]
+            : undefined,
+    }
   }
 
   const selectedWallIds = nextEditor.selectedWallIds.filter((id) =>
@@ -8272,56 +8367,16 @@ function syncSunUi() {
   sunShadowContrastValue.textContent = sunSettings.shadowContrast.toFixed(2)
   sunShadowDensityValue.textContent = sunSettings.shadowDensity.toFixed(2)
 
-  const compass = sunSettings.animUseCompass
-  const time = sunSettings.animUseTime
-  sunAnimUseCompass.checked = compass
-  sunAnimUseTime.checked = time
-  sunAnimCompassRow.hidden = !compass
-  sunAnimTimeRow.hidden = !time
-  sunAnimBothHint.hidden = !(compass && time)
-  if (compass) {
-    sunAnimFromCompass.value = String(sunSettings.animFromAzimuth)
-    sunAnimToCompass.value = String(sunSettings.animToAzimuth)
-  }
-  if (time) {
-    sunAnimFromTime.value = timeInputValue(sunSettings.animFromTime)
-    sunAnimToTime.value = timeInputValue(sunSettings.animToTime)
-  }
-  sunAnimDuration.value = String(sunSettings.animDurationSec)
-  const range = resolveAnimTimeRange(sunSettings)
-  sunAnimHint.hidden = !range.approxHint
+  animPausedInput.checked = sunSettings.animationsPaused === true
+  animDayCycleInput.checked = sunSettings.dayCycleEnabled !== false
+  animDayCycleMinutesInput.value = String(clampDayCycleRealMinutes(sunSettings.dayCycleRealMinutes))
+  animAutoLightsInput.checked = sunSettings.autoSceneLightsWithSun !== false
 }
 
 function commitSunFromDateTime(applySolarLook = true) {
   sunSettings = syncSunSettingsFromSolar(sunSettings, { applySolarLook })
   syncSunUi()
   applySunLighting()
-}
-
-function setSunAnimChannel(channel: 'time' | 'compass', enabled: boolean) {
-  if (channel === 'compass') {
-    if (!enabled && !sunSettings.animUseTime) {
-      sunAnimUseCompass.checked = true
-      return
-    }
-    sunSettings.animUseCompass = enabled
-  } else {
-    if (!enabled && !sunSettings.animUseCompass) {
-      sunAnimUseTime.checked = true
-      return
-    }
-    sunSettings.animUseTime = enabled
-    if (enabled) {
-      const bounds = resolveSunFromDate(sunSettings).bounds
-      if (sunSettings.animFromTime === sunSettings.animToTime) {
-        sunSettings.animFromTime = bounds.sunrise
-        sunSettings.animToTime = bounds.sunset
-      }
-    }
-  }
-  sunSettings = syncSunSettingsFromSolar(sunSettings, { applySolarLook: false })
-  syncSunUi()
-  persistApp()
 }
 
 /**
@@ -8484,39 +8539,125 @@ function syncSceneLightRuntime(opts?: { flushShadows?: boolean }): void {
   }
 }
 
-function insertSceneLightFromLibrary(position?: Pick<SceneLight, 'x' | 'y' | 'z'>): void {
+function insertSceneLightFromLibrary(
+  position?: Pick<SceneLight, 'x' | 'y' | 'z'>,
+  presetId?: SceneLightPresetId,
+): void {
   if (currentView !== '3d' && currentView !== 'top' && currentView !== 'front') {
     setView('3d')
   }
-  const { state: next, lightId } = addSceneLight(state, position)
+  const { state: next, lightId } = addSceneLight(state, position, presetId)
   commitState(next)
   selectSceneLight(lightId)
   syncSceneLightRuntime()
+  const label = presetId
+    ? SCENE_LIGHT_PRESETS.find((p) => p.id === presetId)?.label ?? 'Licht'
+    : 'Punktlicht'
   planStatus.textContent = position
-    ? 'Punktlicht platziert'
-    : 'Punktlicht eingefügt — in 3D ziehen oder Position rechts anpassen'
+    ? `${label} platziert`
+    : `${label} eingefügt — in 3D ziehen oder Position rechts anpassen`
 }
 
-function placeSceneLightFromLibraryDrop(clientX: number, clientY: number): boolean {
+function placeSceneLightFromLibraryDrop(clientX: number, clientY: number, presetId?: SceneLightPresetId): boolean {
   if (currentView !== '3d' && currentView !== 'top' && currentView !== 'front') {
     setView('3d')
   }
   const position = pickSceneLightPlacementFromClient(clientX, clientY)
   if (!position) {
-    planStatus.textContent = 'Punktlicht: in die Szene (3D/Front/Oben) ziehen'
+    planStatus.textContent = 'Licht: in die Szene (3D/Front/Oben) ziehen'
     return false
   }
-  insertSceneLightFromLibrary(position)
+  insertSceneLightFromLibrary(position, presetId)
   return true
 }
 
-function selectSceneLight(lightId: string | null): void {
+function selectSceneLight(lightId: string | null, additive = false): void {
   if (lightId === null) {
-    if (editor.selectedSceneLightId) applyEditorSelection(createDefaultEditorState())
+    if (editor.selectedSceneLightId || (editor.selectedSceneLightIds?.length ?? 0) > 0) {
+      applyEditorSelection(createDefaultEditorState())
+    }
     return
   }
   pendingSelectionToolbarTab = 'sceneLight'
-  applyEditorSelection({ ...createDefaultEditorState(), selectedSceneLightId: lightId })
+  if (additive) {
+    const current =
+      editor.selectedSceneLightIds && editor.selectedSceneLightIds.length > 0
+        ? [...editor.selectedSceneLightIds]
+        : editor.selectedSceneLightId
+          ? [editor.selectedSceneLightId]
+          : []
+    const nextIds = current.includes(lightId)
+      ? current.filter((id) => id !== lightId)
+      : [...current, lightId]
+    if (nextIds.length === 0) {
+      applyEditorSelection(createDefaultEditorState())
+      return
+    }
+    applyEditorSelection({
+      ...createDefaultEditorState(),
+      selectedSceneLightId: lightId,
+      selectedSceneLightIds: nextIds,
+    })
+    return
+  }
+  applyEditorSelection({
+    ...createDefaultEditorState(),
+    selectedSceneLightId: lightId,
+    selectedSceneLightIds: [lightId],
+  })
+}
+
+function selectedSceneLightIds(): string[] {
+  if (editor.selectedSceneLightIds && editor.selectedSceneLightIds.length > 0) {
+    return editor.selectedSceneLightIds
+  }
+  return editor.selectedSceneLightId ? [editor.selectedSceneLightId] : []
+}
+
+function selectSceneLightGroup(groupId: string): void {
+  const { sceneLightGroups } = normalizeSceneLightState(state)
+  const group = sceneLightGroups.find((item) => item.id === groupId)
+  if (!group || group.memberLightIds.length === 0) return
+  pendingSelectionToolbarTab = 'sceneLight'
+  applyEditorSelection({
+    ...createDefaultEditorState(),
+    selectedSceneLightId: group.memberLightIds[0],
+    selectedSceneLightIds: [...group.memberLightIds],
+  })
+}
+
+function syncSceneLightBeamAngleRows(mode: SceneLightBeamMode): void {
+  sceneLightBeamAngleDownRow.hidden = mode === 'omni' || mode === 'up'
+  sceneLightBeamAngleUpRow.hidden = mode === 'omni' || mode === 'down'
+}
+
+function rebuildSceneLightPresetCards(activePreset?: string): void {
+  sceneLightPresetCards.replaceChildren()
+  for (const preset of SCENE_LIGHT_PRESETS) {
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    btn.className = 'tpl-card scene-light-preset-card'
+    btn.dataset.value = preset.id
+    btn.setAttribute('role', 'option')
+    btn.setAttribute('aria-selected', activePreset === preset.id ? 'true' : 'false')
+    if (activePreset === preset.id) btn.classList.add('is-active')
+    btn.title = preset.hint
+    const title = document.createElement('span')
+    title.className = 'tpl-card-title'
+    title.textContent = preset.label
+    const hint = document.createElement('span')
+    hint.className = 'tpl-card-hint'
+    hint.textContent =
+      preset.animation === 'blaulicht' ? 'Doppelblitz' : SCENE_LIGHT_BEAM_MODE_LABELS[preset.beamMode]
+    btn.append(title, hint)
+    btn.addEventListener('click', () => {
+      const id = editor.selectedSceneLightId
+      if (!id) return
+      commitState(applySceneLightPreset(state, id, preset.id))
+      planStatus.textContent = `Voreinstellung „${preset.label}“ angewendet`
+    })
+    sceneLightPresetCards.appendChild(btn)
+  }
 }
 
 function syncSceneLightToolbar(): void {
@@ -8549,6 +8690,19 @@ function syncSceneLightToolbar(): void {
   }
   sceneLightEnabledInput.checked = light.enabled
   sceneLightCastShadowInput.checked = light.castShadow
+  sceneLightAnimationBlaulichtInput.checked = light.animation === 'blaulicht'
+  rebuildSceneLightPresetCards(light.preset)
+  const beamMode = (light.beamMode ?? 'omni') as SceneLightBeamMode
+  sceneLightBeamMode.value = beamMode
+  syncSceneLightBeamAngleRows(beamMode)
+  const angleDown = light.beamAngleDownDeg ?? 60
+  const angleUp = light.beamAngleUpDeg ?? 55
+  sceneLightBeamAngleDown.value = String(angleDown)
+  sceneLightBeamAngleDownNum.value = String(angleDown)
+  sceneLightBeamAngleDownValue.textContent = String(angleDown)
+  sceneLightBeamAngleUp.value = String(angleUp)
+  sceneLightBeamAngleUpNum.value = String(angleUp)
+  sceneLightBeamAngleUpValue.textContent = String(angleUp)
   const depth = Math.round(sceneLightViewDepthCm(light))
   sceneLightDepthSlider.value = String(depth)
   sceneLightDepthNum.value = String(depth)
@@ -9931,7 +10085,11 @@ function ensureOpeningSelected(wallId: string, openingId: string) {
 
 function sceneLightContextItems(lightId: string): MenuItem[] {
   const light = sceneLightById(state, lightId)
-  return [
+  const { sceneLightGroups } = normalizeSceneLightState(state)
+  const selectedIds = selectedSceneLightIds()
+  const menuIds =
+    selectedIds.includes(lightId) && selectedIds.length > 1 ? selectedIds : [lightId]
+  const items: MenuItem[] = [
     {
       label: light?.enabled !== false ? 'Ausblenden' : 'Einblenden',
       action: () => toggleSceneLightEnabled(lightId),
@@ -9941,15 +10099,91 @@ function sceneLightContextItems(lightId: string): MenuItem[] {
       action: () => {
         const { state: next, lightId: newId } = duplicateSceneLight(state, lightId)
         if (!newId) return
-        commitState(next, { ...createDefaultEditorState(), selectedSceneLightId: newId })
-        planStatus.textContent = 'Punktlicht dupliziert'
+        commitState(next, {
+          ...createDefaultEditorState(),
+          selectedSceneLightId: newId,
+          selectedSceneLightIds: [newId],
+        })
+        planStatus.textContent = 'Licht dupliziert'
+      },
+    },
+  ]
+  if (menuIds.length > 1) {
+    const groupChildren = sceneLightGroups.map((group) => ({
+      label: group.name,
+      action: () => {
+        commitState(addLightsToSceneLightGroup(state, group.id, menuIds))
+        planStatus.textContent = `Zu „${group.name}“ hinzugefügt`
+      },
+    }))
+    items.push({
+      label: 'Gruppieren',
+      children: [
+        {
+          label: 'Neue Gruppe',
+          action: () => {
+            const next = createSceneLightGroup(
+              state,
+              menuIds,
+              `Lichtgruppe ${(sceneLightGroups.length ?? 0) + 1}`,
+            )
+            commitState(next)
+            planStatus.textContent = 'Lichtgruppe erstellt'
+          },
+        },
+        ...groupChildren,
+      ],
+    })
+  }
+  if (menuIds.some((id) => sceneLightById(state, id)?.groupId)) {
+    items.push({
+      label: 'Aus Gruppe lösen',
+      action: () => {
+        commitState(ungroupSceneLights(state, menuIds))
+        planStatus.textContent = 'Aus Lichtgruppe gelöst'
+      },
+    })
+  }
+  items.push({
+    label: menuIds.length > 1 ? 'Lichter entfernen' : 'Licht entfernen',
+    action: () => {
+      let next = state
+      for (const id of menuIds) next = removeSceneLight(next, id)
+      commitState(next, createDefaultEditorState())
+      planStatus.textContent = menuIds.length > 1 ? 'Lichter entfernt' : 'Licht entfernt'
+    },
+  })
+  return items
+}
+
+function sceneLightGroupContextItems(groupId: string): MenuItem[] {
+  const { sceneLightGroups, sceneLights } = normalizeSceneLightState(state)
+  const group = sceneLightGroups.find((item) => item.id === groupId)
+  if (!group) return []
+  const members = sceneLights.filter((l) => group.memberLightIds.includes(l.id))
+  const allOn = members.length > 0 && members.every((l) => l.enabled)
+  return [
+    {
+      label: 'Gruppe auswählen',
+      action: () => selectSceneLightGroup(groupId),
+    },
+    {
+      label: allOn ? 'Alle ausblenden' : 'Alle einblenden',
+      action: () => commitState(setSceneLightGroupEnabled(state, groupId, !allOn)),
+    },
+    {
+      label: 'Umbenennen…',
+      action: () => {
+        const name = window.prompt('Name der Lichtgruppe', group.name)
+        if (name == null) return
+        commitState(renameSceneLightGroup(state, groupId, name))
       },
     },
     {
-      label: 'Licht entfernen',
+      label: 'Gruppe auflösen',
       action: () => {
-        commitState(removeSceneLight(state, lightId), createDefaultEditorState())
-        planStatus.textContent = 'Punktlicht entfernt'
+        commitState(ungroupSceneLights(state, group.memberLightIds))
+        planStatus.textContent = 'Lichtgruppe aufgelöst'
       },
     },
   ]
@@ -10350,7 +10584,8 @@ function sceneLightsLayerContextItems(): MenuItem[] {
 }
 
 function renderSceneLightsLayerSection() {
-  const lights = normalizeSceneLights(state.sceneLights)
+  const { sceneLights: lights, sceneLightGroups } = normalizeSceneLightState(state)
+  const selectedIds = new Set(selectedSceneLightIds())
   const sectionItem = document.createElement('li')
   sectionItem.className = 'layer-building layer-scene-lights'
 
@@ -10373,7 +10608,7 @@ function renderSceneLightsLayerSection() {
   title.textContent = lights.length > 0 ? `Lichter (${lights.length})` : 'Lichter'
   titleBtn.append(title)
   titleBtn.addEventListener('click', () => {
-    if (editor.selectedSceneLightId) {
+    if (editor.selectedSceneLightId || selectedIds.size > 0) {
       applyEditorSelection(createDefaultEditorState())
       return
     }
@@ -10399,32 +10634,85 @@ function renderSceneLightsLayerSection() {
       body.appendChild(emptyItem)
     }
 
-    for (const light of lights) {
+    const appendLightRow = (host: HTMLElement, light: (typeof lights)[number], nested = false) => {
       const rowWrap = document.createElement('li')
-      rowWrap.className = 'layer-row-wrap' + layerHiddenClass(!light.enabled)
+      rowWrap.className =
+        'layer-row-wrap' +
+        layerHiddenClass(!light.enabled) +
+        (nested ? ' layer-scene-light-nested' : '')
       const row = document.createElement('div')
       row.className = 'layer-wall-row'
 
       const btn = document.createElement('button')
       btn.type = 'button'
-      const selected = editor.selectedSceneLightId === light.id
+      const selected = selectedIds.has(light.id)
       btn.className = (selected ? 'layer-row selected' : 'layer-row') + layerHiddenClass(!light.enabled)
-      const kind = document.createElement('span')
-      kind.className = 'layer-kind'
-      kind.textContent = 'Licht'
+      // Art als Hauptname (Blaulicht, Stehlampe 2, …) — kein generisches „Licht“.
       const label = document.createElement('span')
       label.className = 'layer-label'
-      label.textContent = light.label?.trim() || 'Punktlicht'
+      label.textContent = sceneLightDisplayName(light, lights)
       const meta = document.createElement('span')
       meta.className = 'layer-meta'
       meta.textContent = `${Math.round(light.intensity)} W`
-      btn.append(kind, label, meta)
-      btn.addEventListener('click', () => selectSceneLight(light.id))
+      btn.append(label, meta)
+      btn.addEventListener('click', (event) => {
+        selectSceneLight(light.id, event.shiftKey)
+      })
 
       const lightMoreBtn = createLayerMoreButton(sceneLightContextItems(light.id))
       row.append(btn, lightMoreBtn)
       rowWrap.appendChild(row)
-      body.appendChild(rowWrap)
+      host.appendChild(rowWrap)
+    }
+
+    const groupedIds = new Set<string>()
+    for (const group of sceneLightGroups) {
+      const members = lights.filter((light) => group.memberLightIds.includes(light.id))
+      if (members.length === 0) continue
+      members.forEach((m) => groupedIds.add(m.id))
+
+      const groupLi = document.createElement('li')
+      groupLi.className = 'layer-scene-light-group' + layerHiddenClass(members.every((m) => !m.enabled))
+      const groupCollapsed = collapsedSceneLightGroups.has(group.id)
+
+      const groupCollapseBtn = document.createElement('button')
+      groupCollapseBtn.type = 'button'
+      groupCollapseBtn.className = 'layer-floor-collapse'
+      groupCollapseBtn.title = 'Ein-/Ausklappen'
+      groupCollapseBtn.textContent = groupCollapsed ? '▸' : '▾'
+      groupCollapseBtn.addEventListener('click', (event) => {
+        event.stopPropagation()
+        if (collapsedSceneLightGroups.has(group.id)) collapsedSceneLightGroups.delete(group.id)
+        else collapsedSceneLightGroups.add(group.id)
+        renderLayerList()
+      })
+
+      const groupSelected =
+        members.length > 0 && members.every((m) => selectedIds.has(m.id)) && selectedIds.size === members.length
+      const groupToggle = document.createElement('button')
+      groupToggle.type = 'button'
+      groupToggle.className = 'layer-floor-toggle' + (groupSelected ? ' selected' : '')
+      groupToggle.textContent = `${group.name} (${members.length})`
+      groupToggle.addEventListener('click', () => selectSceneLightGroup(group.id))
+
+      const groupMore = createLayerMoreButton(sceneLightGroupContextItems(group.id))
+      const groupHeader = document.createElement('div')
+      groupHeader.className = 'layer-floor-header'
+      groupHeader.append(groupCollapseBtn, groupToggle, groupMore)
+      groupLi.appendChild(groupHeader)
+
+      if (!groupCollapsed) {
+        const groupBody = document.createElement('ul')
+        groupBody.className = 'layer-floor-body'
+        for (const light of members) appendLightRow(groupBody, light, true)
+        groupLi.appendChild(groupBody)
+      }
+      body.appendChild(groupLi)
+    }
+
+    for (const light of lights) {
+      if (groupedIds.has(light.id)) continue
+      appendLightRow(body, light)
     }
 
     sectionItem.appendChild(body)
@@ -14473,6 +14761,10 @@ syncLodUi()
 
 const facade = new FacadeController(scene, state)
 facadeReady = true
+if (STAGE_VIEW_MODE) {
+  // Bühne: 3D-Zeichenfläche fürs Handy
+  setView('3d')
+}
 syncCladdingReceiveShadows()
 sceneReflectionHideRoots.push(
   atmosphereSky.root,
@@ -17901,12 +18193,10 @@ function bindSunSlider(
     output.textContent = format(value)
     applySunLighting({ live: true })
     if (sunSliderPersistTimer) window.clearTimeout(sunSliderPersistTimer)
-    if (!sunPathAnimating) {
-      sunSliderPersistTimer = window.setTimeout(() => {
-        sunSliderPersistTimer = 0
-        persistApp()
-      }, 400)
-    }
+    sunSliderPersistTimer = window.setTimeout(() => {
+      sunSliderPersistTimer = 0
+      persistApp()
+    }, 400)
   })
   input.addEventListener('change', () => {
     flushSunShadowMap()
@@ -17914,43 +18204,55 @@ function bindSunSlider(
       window.clearTimeout(sunSliderPersistTimer)
       sunSliderPersistTimer = 0
     }
-    if (!sunPathAnimating) persistApp()
+    persistApp()
   })
 }
 
-let sunPathAnimFrame = 0
-let sunPathAnimating = false
+/** 1 Szene-Tag = Default 1 Echtzeit-Stunde → 24 Szene-Stunden / 3600 s. */
+const DAY_CYCLE_FALLBACK_HOURS_PER_SEC = 24 / 3600
+let animationClockMs = 0
+let animationClockLastNow = 0
+let lastAutoLightNight: boolean | null = null
+let dayCycleUiAccumMs = 0
 
-function stopSunPathAnimation(persist = true) {
-  if (sunPathAnimFrame) cancelAnimationFrame(sunPathAnimFrame)
-  sunPathAnimFrame = 0
-  sunPathAnimating = false
-  sunPathPlayButton.hidden = false
-  sunPathStopButton.hidden = true
-  flushSunShadowMap()
-  if (persist) persistApp()
+function advanceAnimationClock(now: number): number {
+  if (animationClockLastNow <= 0) animationClockLastNow = now
+  const dt = Math.max(0, Math.min(100, now - animationClockLastNow))
+  animationClockLastNow = now
+  if (sunSettings.animationsPaused !== true) animationClockMs += dt
+  return animationClockMs
 }
 
-function startSunPathAnimation() {
-  stopSunPathAnimation(false)
-  sunSettings = syncSunSettingsFromSolar(sunSettings, { applySolarLook: false })
-  const { fromHours, toHours, approxHint } = resolveAnimTimeRange(sunSettings)
-  sunAnimHint.hidden = !approxHint
-  const start = fromHours
-  const end = toHours
-  const duration = Math.max(1, sunSettings.animDurationSec) * 1000
-  const t0 = performance.now()
-  const followCompass = sunSettings.animUseCompass
-  const camFromAz = sunSettings.animFromAzimuth
-  const camToAz = sunSettings.animToAzimuth
-  sunPathAnimating = true
-  sunPathPlayButton.hidden = true
-  sunPathStopButton.hidden = false
+function syncAutoSceneLightsWithSun(force = false): void {
+  if (!facadeReady) return
+  if (sunSettings.autoSceneLightsWithSun === false) return
+  const celestial = resolveCelestialState(sunSettings)
+  const night = !celestial.sunAboveHorizon
+  if (!force && lastAutoLightNight === night) return
+  lastAutoLightNight = night
+  const lights = normalizeSceneLights(state.sceneLights)
+  if (lights.length === 0) return
+  const wantOn = night
+  if (lights.every((item) => item.enabled === wantOn)) return
+  // Ohne Undo — sonst füllt jeder Sonnenauf-/untergang den Verlauf.
+  applyState(setAllSceneLightsEnabled(state, wantOn))
+  planStatus.textContent = wantOn
+    ? 'Sonnenuntergang — Lichter an'
+    : 'Sonnenaufgang — Lichter aus'
+}
 
-  const tick = (now: number) => {
-    const t = Math.min(1, (now - t0) / duration)
-    sunSettings.timeOfDay = start + (end - start) * t
-    sunSettings = syncSunSettingsFromSolar(sunSettings, { applySolarLook: true })
+function tickDayCycle(now: number, dtMs: number): boolean {
+  if (sunSettings.animationsPaused === true) return false
+  if (sunSettings.dayCycleEnabled === false) return false
+  if (dtMs <= 0) return false
+  const hoursPerSec =
+    dayCycleSceneHoursPerRealSec(sunSettings.dayCycleRealMinutes) || DAY_CYCLE_FALLBACK_HOURS_PER_SEC
+  const hours = (dtMs / 1000) * hoursPerSec
+  sunSettings.timeOfDay = ((sunSettings.timeOfDay + hours) % 24 + 24) % 24
+  sunSettings = syncSunSettingsFromSolar(sunSettings, { applySolarLook: true })
+  dayCycleUiAccumMs += dtMs
+  if (dayCycleUiAccumMs >= 250) {
+    dayCycleUiAccumMs = 0
     sunTimeInput.value = String(sunSettings.timeOfDay)
     sunTimeValue.textContent = formatTimeOfDay(sunSettings.timeOfDay)
     sunAzimuthInput.value = String(Math.round(sunSettings.azimuth))
@@ -17961,18 +18263,15 @@ function startSunPathAnimation() {
     sunSoftnessValue.textContent = sunSettings.shadowSoftness.toFixed(1)
     sunIntensityInput.value = String(sunSettings.intensity)
     sunIntensityValue.textContent = sunSettings.intensity.toFixed(1)
-    applySunLighting({ live: true })
-    // Kamera nur bei „Himmelsrichtung“ — bei nur Uhrzeit bleibt die Nutzer-Perspektive
-    if (followCompass) {
-      orbitViewToSunAzimuth(lerpYawDeg(camFromAz, camToAz, t))
-    }
-    if (t < 1 && sunPathAnimating) {
-      sunPathAnimFrame = requestAnimationFrame(tick)
-    } else {
-      stopSunPathAnimation(true)
-    }
   }
-  sunPathAnimFrame = requestAnimationFrame(tick)
+  applySunLighting({ live: true })
+  syncAutoSceneLightsWithSun()
+  return true
+}
+
+/** Früher: einmaliger Tagesverlauf — UI entfernt; Stub für verbleibende Aufrufe. */
+function stopSunPathAnimation(persist = true) {
+  if (persist) persistApp()
 }
 
 sunDateInput.addEventListener('change', () => {
@@ -17985,45 +18284,30 @@ sunDateInput.addEventListener('change', () => {
   persistApp()
 })
 
-sunAnimUseCompass.addEventListener('change', () => {
-  setSunAnimChannel('compass', sunAnimUseCompass.checked)
-})
-sunAnimUseTime.addEventListener('change', () => {
-  setSunAnimChannel('time', sunAnimUseTime.checked)
+animPausedInput.addEventListener('change', () => {
+  sunSettings = { ...sunSettings, animationsPaused: animPausedInput.checked }
+  persistApp()
+  markViewportDirty()
 })
 
-sunAnimFromCompass.addEventListener('change', () => {
-  sunSettings.animFromAzimuth = Number(sunAnimFromCompass.value)
-  sunSettings = syncSunSettingsFromSolar(sunSettings, { applySolarLook: false })
+animDayCycleInput.addEventListener('change', () => {
+  sunSettings = { ...sunSettings, dayCycleEnabled: animDayCycleInput.checked }
+  persistApp()
+  markViewportDirty()
+})
+
+animDayCycleMinutesInput.addEventListener('change', () => {
+  sunSettings = {
+    ...sunSettings,
+    dayCycleRealMinutes: clampDayCycleRealMinutes(Number(animDayCycleMinutesInput.value)),
+  }
   syncSunUi()
   persistApp()
 })
-sunAnimToCompass.addEventListener('change', () => {
-  sunSettings.animToAzimuth = Number(sunAnimToCompass.value)
-  sunSettings = syncSunSettingsFromSolar(sunSettings, { applySolarLook: false })
-  syncSunUi()
-  persistApp()
-})
-sunAnimFromTime.addEventListener('change', () => {
-  const parsed = parseTimeInput(sunAnimFromTime.value)
-  if (parsed === null) return
-  sunSettings.animFromTime = parsed
-  sunSettings = syncSunSettingsFromSolar(sunSettings, { applySolarLook: false })
-  syncSunUi()
-  persistApp()
-})
-sunAnimToTime.addEventListener('change', () => {
-  const parsed = parseTimeInput(sunAnimToTime.value)
-  if (parsed === null) return
-  sunSettings.animToTime = parsed
-  sunSettings = syncSunSettingsFromSolar(sunSettings, { applySolarLook: false })
-  syncSunUi()
-  persistApp()
-})
-sunAnimDuration.addEventListener('change', () => {
-  sunSettings.animDurationSec = Number(sunAnimDuration.value)
-  sunSettings = syncSunSettingsFromSolar(sunSettings, { applySolarLook: false })
-  syncSunUi()
+
+animAutoLightsInput.addEventListener('change', () => {
+  sunSettings = { ...sunSettings, autoSceneLightsWithSun: animAutoLightsInput.checked }
+  if (animAutoLightsInput.checked) syncAutoSceneLightsWithSun(true)
   persistApp()
 })
 
@@ -18045,9 +18329,6 @@ bindSunSlider(
   },
   (value) => formatTimeOfDay(value),
 )
-
-sunPathPlayButton.addEventListener('click', () => startSunPathAnimation())
-sunPathStopButton.addEventListener('click', () => stopSunPathAnimation(true))
 
 bindSunSlider(
   sunAzimuthInput,
@@ -18076,12 +18357,10 @@ sunSoftnessInput.addEventListener('input', () => {
   sunSoftnessValue.textContent = value.toFixed(1)
   applyPcssSoftnessLive()
   if (sunSoftnessPersistTimer) window.clearTimeout(sunSoftnessPersistTimer)
-  if (!sunPathAnimating) {
-    sunSoftnessPersistTimer = window.setTimeout(() => {
-      sunSoftnessPersistTimer = 0
-      persistApp()
-    }, 350)
-  }
+  sunSoftnessPersistTimer = window.setTimeout(() => {
+    sunSoftnessPersistTimer = 0
+    persistApp()
+  }, 350)
 })
 
 bindSunSlider(
@@ -18242,6 +18521,7 @@ sceneLineStrokeNum.addEventListener('change', () => {
 function syncBloomUi() {
   bloomEnabledInput.checked = bloomSettings.enabled
   bloomOptions.hidden = !bloomSettings.enabled
+  bloomDisableDuringMotionInput.checked = bloomSettings.disableDuringMotion === true
   bloomThreshold.value = String(bloomSettings.threshold)
   bloomThresholdNum.value = String(bloomSettings.threshold)
   bloomThresholdValue.textContent = bloomSettings.threshold.toFixed(3)
@@ -18341,6 +18621,9 @@ function commitBloomPatch(patch: Partial<BloomSettings>) {
   // Kein volles syncBloomUi() — Slider.value während input bricht den Drag ab.
   bloomEnabledInput.checked = bloomSettings.enabled
   bloomOptions.hidden = !bloomSettings.enabled
+  if (patch.disableDuringMotion != null) {
+    bloomDisableDuringMotionInput.checked = bloomSettings.disableDuringMotion === true
+  }
   if (patch.threshold != null) {
     bloomThreshold.value = String(bloomSettings.threshold)
     bloomThresholdNum.value = String(bloomSettings.threshold)
@@ -18400,6 +18683,9 @@ function bindSceneDualControl(
 bloomEnabledInput.addEventListener('change', () => {
   commitBloomPatch({ enabled: bloomEnabledInput.checked })
 })
+bloomDisableDuringMotionInput.addEventListener('change', () => {
+  commitBloomPatch({ disableDuringMotion: bloomDisableDuringMotionInput.checked })
+})
 
 sceneLightXInput.addEventListener('input', () => {
   patchSelectedSceneLight({ x: Number.parseFloat(sceneLightXInput.value) })
@@ -18410,6 +18696,33 @@ sceneLightYInput.addEventListener('input', () => {
 sceneLightZInput.addEventListener('input', () => {
   patchSelectedSceneLight({ z: Number.parseFloat(sceneLightZInput.value) })
 })
+sceneLightBeamMode.addEventListener('change', () => {
+  const mode = sceneLightBeamMode.value as SceneLightBeamMode
+  syncSceneLightBeamAngleRows(mode)
+  patchSelectedSceneLight({ beamMode: mode, preset: undefined })
+})
+bindSceneDualControl(
+  sceneLightBeamAngleDown,
+  sceneLightBeamAngleDownNum,
+  sceneLightBeamAngleDownValue,
+  (value) =>
+    patchSelectedSceneLight({
+      beamAngleDownDeg: Math.min(BEAM_ANGLE_MAX_DEG, Math.max(BEAM_ANGLE_MIN_DEG, value)),
+      preset: undefined,
+    }),
+  (value) => String(Math.round(value)),
+)
+bindSceneDualControl(
+  sceneLightBeamAngleUp,
+  sceneLightBeamAngleUpNum,
+  sceneLightBeamAngleUpValue,
+  (value) =>
+    patchSelectedSceneLight({
+      beamAngleUpDeg: Math.min(BEAM_ANGLE_MAX_DEG, Math.max(BEAM_ANGLE_MIN_DEG, value)),
+      preset: undefined,
+    }),
+  (value) => String(Math.round(value)),
+)
 function bindSceneLightDeferredNumber(
   input: HTMLInputElement,
   apply: (value: number) => void,
@@ -18467,6 +18780,11 @@ sceneLightEnabledInput.addEventListener('change', () => {
 })
 sceneLightCastShadowInput.addEventListener('change', () => {
   patchSelectedSceneLight({ castShadow: sceneLightCastShadowInput.checked })
+})
+sceneLightAnimationBlaulichtInput.addEventListener('change', () => {
+  patchSelectedSceneLight({
+    animation: sceneLightAnimationBlaulichtInput.checked ? 'blaulicht' : 'none',
+  })
 })
 sceneLightDeleteBtn.addEventListener('click', () => {
   const id = editor.selectedSceneLightId
@@ -18907,10 +19225,39 @@ controls.addEventListener('end', () => {
   scheduleOrbitLiteEnd()
 })
 
+let animateFramePrevMs = 0
+
 function animate() {
   requestAnimationFrame(animate)
-  if (openingMotionPlayback) tickOpeningMotionPlayback(performance.now())
-  if (rollerShutterPlayback) tickRollerShutterPlayback(performance.now())
+  const nowMs = performance.now()
+  const animClock = advanceAnimationClock(nowMs)
+  const paused = sunSettings.animationsPaused === true
+  const dayDt =
+    animateFramePrevMs > 0 ? Math.max(0, Math.min(100, nowMs - animateFramePrevMs)) : 16
+  animateFramePrevMs = nowMs
+
+  if (!paused) {
+    if (openingMotionPlayback) tickOpeningMotionPlayback(nowMs)
+    if (rollerShutterPlayback) tickRollerShutterPlayback(nowMs)
+  }
+
+  const dayMoved = tickDayCycle(nowMs, dayDt)
+  if (dayMoved) viewportDirty = true
+  else if (!paused) syncAutoSceneLightsWithSun()
+
+  const sceneLightLive =
+    !paused && sceneLightsNeedLiveFrames(normalizeSceneLights(state.sceneLights))
+  if (sceneLightLive) {
+    sceneLightRuntime.tickAnimations(animClock, normalizeSceneLights(state.sceneLights))
+    viewportDirty = true
+  }
+
+  const liveMotion =
+    dayMoved ||
+    (!paused && Boolean(openingMotionPlayback)) ||
+    (!paused && Boolean(rollerShutterPlayback)) ||
+    sceneLightLive
+
   const perfOn = isPerfOverlayEnabled()
   let perfT0 = 0
   if (perfOn) perfT0 = markPerfFrameStart()
@@ -18920,39 +19267,27 @@ function animate() {
       renderer.shadowMap.needsUpdate = true
       viewportDirty = true
     }
-    if (
-      sceneLightingReady &&
-      !viewportDirty &&
-      !perfOn &&
-      !sunPathAnimating &&
-      !openingMotionPlayback &&
-      !rollerShutterPlayback
-    ) {
-      // Kein Frame gerendert (Pause im Drag) — Abstand zum nächsten Frame ist keine Render-Zeit.
+    if (sceneLightingReady && !viewportDirty && !perfOn && !liveMotion) {
       orbitProbeReset()
       return
     }
     viewportDirty = false
     if (isGalleryModeActive()) syncGalleryNavigationFeel()
-    if (lodSettings.enabled && !orbitLite && !openingMotionPlayback && !rollerShutterPlayback) {
+    if (
+      lodSettings.enabled &&
+      !orbitLite &&
+      !openingMotionPlayback &&
+      !rollerShutterPlayback
+    ) {
       facade.updatePerformanceLod(camera, viewportRenderHeight())
     }
     render3dFrame()
     if (orbitLite) orbitProbeFrame(performance.now())
     perfRendered = true
     updateViewCompass()
-    // Gizmos während Orbit nur bei Bedarf — spart Traverse pro Frame.
     if (!orbitLite) updateWallLibraryGizmos()
   } else if (currentView === 'front') {
-    if (
-      sceneLightingReady &&
-      !viewportDirty &&
-      !perfOn &&
-      !viewZoomAnim &&
-      !sunPathAnimating &&
-      !openingMotionPlayback &&
-      !rollerShutterPlayback
-    ) {
+    if (sceneLightingReady && !viewportDirty && !perfOn && !viewZoomAnim && !liveMotion) {
       return
     }
     viewportDirty = false
@@ -18960,14 +19295,7 @@ function animate() {
     perfRendered = true
     if (!orbitLite) updateWallLibraryGizmos()
   } else if (currentView === 'top') {
-    if (
-      sceneLightingReady &&
-      !viewportDirty &&
-      !perfOn &&
-      !viewZoomAnim &&
-      !openingMotionPlayback &&
-      !rollerShutterPlayback
-    ) {
+    if (sceneLightingReady && !viewportDirty && !perfOn && !viewZoomAnim && !liveMotion) {
       return
     }
     viewportDirty = false
@@ -19944,7 +20272,10 @@ viewport.addEventListener('drop', (event) => {
   lastWallDockClient = null
   const sceneLightDrag = event.dataTransfer?.getData('application/x-scene-light')
   if (sceneLightDrag) {
-    placeSceneLightFromLibraryDrop(event.clientX, event.clientY)
+    const presetId = SCENE_LIGHT_PRESETS.some((p) => p.id === sceneLightDrag)
+      ? (sceneLightDrag as SceneLightPresetId)
+      : undefined
+    placeSceneLightFromLibraryDrop(event.clientX, event.clientY, presetId)
     return
   }
   let libraryAsset = activeLibraryAssetDrag
@@ -20544,6 +20875,7 @@ buildingRotateCw.addEventListener('click', () => commitBuildingRotate(-45))
 try {
   setView(currentView)
   applyState(state, editor)
+  syncAutoSceneLightsWithSun(true)
   sceneLightingReady = true
   markViewportDirty()
   animate()

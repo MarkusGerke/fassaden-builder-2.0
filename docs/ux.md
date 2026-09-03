@@ -33,7 +33,7 @@ Unmodifizierter Rechtsklick wird in der **Capture-Phase** mit `stopImmediateProp
 
 **Performance (v0.4.6+):** Schatten-Map nur bei Geometrie-/Sonnenänderung (`shadowMap.autoUpdate=false`), Pixelratio max. 1,5, Muster-SVG-Cache.
 
-**Navigation (v0.7.74 / v0.7.87 / v0.7.184):** Kein Orbit-Damping — Kamera folgt 1:1. Dirty-Rendering: Vollbild nur bei Kamera-/State-Änderung. Orbit-Lite markiert „während Navigation“ (LOD-Pause, ggf. Pixelratio); **Bloom bleibt an**, solange Bloom in der Szene eingeschaltet ist (**v0.7.302:** Default aus). Shadow-Map-Rebuild und `applyRenderStyle` (Zeichnungslinien) nur bei Geometrieänderung, nicht bei Selektion.
+**Navigation (v0.7.74 / v0.7.87 / v0.7.184 / v2.0.124):** Kein Orbit-Damping — Kamera folgt 1:1. Dirty-Rendering: Vollbild nur bei Kamera-/State-Änderung. Orbit-Lite markiert „während Navigation“ (LOD-Pause, ggf. Pixelratio); **Bloom bleibt an** während der Bewegung (Default; optional „Bloom bei Kamerabewegung aus“). Bloom selbst Default aus (**v0.7.302**). Shadow-Map-Rebuild und `applyRenderStyle` (Zeichnungslinien) nur bei Geometrieänderung, nicht bei Selektion.
 
 **Cmd-Steuerung (v0.4.10, 3D):** Eigene Navigation statt OrbitControls-Modifier — ⌘/Ctrl+Ziehen bzw. Pfeiltasten **rotieren**, ⌘/Ctrl+⇧ **schwenkt** (Maus und Tastatur). Capture-Phase fängt ⌘/Ctrl+LMB ab, damit Three.js nicht ⌘=Pan erzwingt. Öffnungen verschieben nur mit Pfeiltasten **ohne** Modifier. ⌘+Rechtsklick-Ziehen schaltet Pan ein. Kein `listenToKeyEvents`.
 
@@ -175,7 +175,7 @@ Das Fenster bleibt 24 cm hinter der Wandkörper-Außenkante; die Leibung holt di
 
 ## Etagen-Trennfläche (Decke / Boden)
 
-`FacadeController.rebuildIndoorFloor`: **Decke und Fußboden** je Etage aus `planFacesWithHoles`. **v2.0.92:** Das Polygon folgt dem **Plan-Außenring** (Fassadenrand) — lichtdicht über die gesamte Wandstärke; Hof-Löcher ebenfalls Außenkontur. **v2.0.121:** An Öffnungen, die die Platte schneiden/berühren, Kerbe auf die Wandinnenseite (`src/studio/slabNotches.ts`). Meshes sind `ExtrudeGeometry` mit Dicke `INDOOR_SLAB_THICKNESS` (8 cm).
+`FacadeController.rebuildIndoorFloor`: **Decke und Fußboden** je Etage aus `planFacesWithHoles`. **v2.0.129:** Polygon an der **Wandinnenseite** (`innerFaceRingWorld` + 1 cm Inset) — kein Durchscheinen/Flackern an Außenwänden; Lichtdichte über Außenring-Okkluder. **v2.0.121:** An Öffnungen, die die Platte schneiden/berühren, Kerbe weiter nach innen (`src/studio/slabNotches.ts`). Meshes sind `ExtrudeGeometry` mit Dicke `INDOOR_SLAB_THICKNESS` (8 cm).
 
 | Geschossgrenze | Y-Position |
 |---|---|
@@ -520,9 +520,20 @@ Oben links in der Zeichenfläche: Segmented Controls — **Oben | 2D | 3D** (Ans
 
 Checkbox **Abwechselnde Ebenen** (`panel.alternateFloors`): nur bei Muster **Streifen**. Zwei Blöcke **Ebene 1** / **Ebene 2** (`#studio-alternate-layers`) mit je Vorstand, Bossen-Vorstand und Bossenprofil. Siehe Abschnitt „Abwechselnde Paneel-Ebenen“.
 
-### Tagesverlauf-Animation
+### Animation / Tageszyklus
 
-Kanäle **Uhrzeit** und **Himmelsrichtung** unabhängig: nur Uhrzeit → Sonne/Licht, Kamera bleibt; nur/mit Himmelsrichtung → Kamera orbits zusätzlich. Während der Animation ist die 3D-Kamera frei beweglich, sofern Himmelsrichtung nicht aktiv die Orbit-Ziele setzt.
+Unter **Szene → Animation** (v2.0.130):
+
+- **Animationen pausieren** — Master-Stop für Blaulicht-Blinken, Fenster-/Tür-Abspielen, Rollläden-Lauf und Tageszyklus.
+- **Tageszyklus** — Uhrzeit und Sonne laufen kontinuierlich (Default an).
+- **Tagesdauer (Min.)** — Echtzeit-Minuten für einen Szene-Tag (`dayCycleRealMinutes`, Default **60** = 1 Stunde). Bereich 1…1440.
+- **Lichter mit Sonne** — bei Sonnenuntergang alle Bibliotheks-Lichter an, bei Sonnenaufgang aus (Default an; kein Undo-Eintrag).
+
+Der frühere einmalige **Tagesverlauf abspielen** (Himmelsrichtung/Uhrzeit-Kanäle) ist entfernt.
+
+### Bühnenmodus (v2.0.132)
+
+URL-Parameter **`?stage=1`** (oder `?view=stage`): nur die 3D-Zeichenfläche, der **Tageszeit**-Slider und **Animationen pausieren** — fürs Handy im lokalen Netz. Start: `npm run dev:lan`, dann `http://<LAN-IP>:5173/?stage=1`.
 
 ---
 
@@ -613,7 +624,7 @@ Ruhewinkel: Slider **Einzeln öffnen** (`leafOpenDeg` / `transomOpenDeg`). Zeitl
 
 ### Rollläden (v0.7.177)
 
-Reiter **Rollläden** bei Fenster/Tür **immer** sichtbar; Checkbox standardmäßig aus. Nur Lamellen, kein Kasten und keine Schienen (v0.7.202). Höhe `drop` 0…1, Spalt beim Absenken und Stapel unten, Hoch-/Runter-Animation. Details: [roller-shutter.md](roller-shutter.md).
+Reiter **Rollläden** bei Fenster/Tür **immer** sichtbar; Checkbox standardmäßig aus. Nur Lamellen, kein Kasten und keine Schienen. Höhe `drop` 0…1; freier Spalt bis die unterste Lamelle die Bank berührt, danach Stapel; volle Laibungsbreite; lichtdicht. Details: [roller-shutter.md](roller-shutter.md).
 
 ---
 
@@ -668,7 +679,7 @@ Swatch `transparent` (`TRANSPARENT_GLASS`) macht Klarverglasung. 3D-Glas (`apply
 
 - `FacadeState.buildings[]` + `activeBuildingId`; Legacy-Saves werden beim Laden in ein Gebäude „Haus 1“ migriert (`migrateToBuildings`).
 - Ebenen-Liste: **Lichter** (Szene, aufklappbar) → **Haus** → **Dach** (Sektion, aufklappbar) → **Geschosse** → **Decke / Boden** / Wände / Öffnungen / **Treppe** (Unterzeile unter Tür).
-- **Lichter:** Alle platzierten Punktlichter (`FacadeState.sceneLights`) als eigene Sektion oben im Ebenenbaum. Klick wählt das Licht (`selectedSceneLightId`, Toolbar `#toolbar-scene-light`). Mehr-Menü: **Ausblenden/Einblenden** (`enabled`), **Duplizieren**, **Licht entfernen**. Sektions-Mehr-Menü: **Punktlicht einfügen**, **Alle Lichter an/aus**. Globaler Toggle auch unter Bibliothek → Licht und Szene → Licht. Ausgeschaltete Lichter gedimmt (`.layer-dimmed`).
+- **Lichter:** Alle platzierten Punktlichter (`FacadeState.sceneLights`) als eigene Sektion oben im Ebenenbaum. Namen nach Art + Nummer (`Blaulicht 2`, `Laterne`, …). **Shift+Klick** Mehrfachauswahl → Mehr-Menü **Gruppieren** (persistente `sceneLightGroups`). Gruppenzeile wählt alle Mitglieder; Mehr-Menü: ein-/ausblenden, umbenennen, auflösen. Pro Licht: Klick wählt (`selectedSceneLightId` / `selectedSceneLightIds`), Mehr-Menü **Ausblenden/Einblenden** (`enabled`), **Duplizieren**, **Licht entfernen**. Sektions-Mehr-Menü: **Punktlicht einfügen**, **Alle Lichter an/aus**. Globaler Toggle auch unter Bibliothek → Licht und Szene → Licht. Ausgeschaltete Lichter gedimmt (`.layer-dimmed`).
 - Zeilen-Labels: nur **Typ** (`Wand`, `Fenster`, `Tür`, `Treppe`, `Decke / Boden`, `Dach`, `Ziegel`, `Rinne`) + **Meta** (Breite in cm oder Stufenanzahl). Keine Himmelsrichtung, kein Fenstermodell-String, keine x/y-Position.
 - Haus-Zeile: Klick **aktiviert** das Haus und setzt `selectedBuildingId` (Grundriss-Umriss orange). Mehr-Menü: **Neues Haus**, **Nur weiße Wände** / **Fassade einblenden** (`Building.bareWalls`), Umbenennen, Ausblenden, **Duplizieren** (Ost/West/Nord/Süd), Löschen (mind. ein Haus). Bei `bareWalls` zeigt die Hauszeile „· nur Wände“; 3D/2D nur weiße Vollwände (keine Öffnungen/Mauerwerk/Profile/Dach/Decken), Projektdaten unverändert.
 - **Decke / Boden** pro Geschoss: Zeile wie Wand (`selectedCeiling`, Toolbar `#toolbar-ceiling`, Farbe `FloorPlan.ceilingColor`, Default **Weiß** `#ffffff`). Farbe auch im Wand-Reiter **Farben**. **v0.7.227:** per Klick auf die Decke in 3D auswählbar. Mehr-Menü: Ein-/Ausblenden (`FloorPlan.showCeiling`). Alte braune Defaults (`#9a8a7a` / `#8a7a6a`) werden beim Laden weiß (Schema 13), eigene Farben bleiben.

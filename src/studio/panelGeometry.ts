@@ -3272,22 +3272,24 @@ export function createStudioOpeningShadowTunnelGeometry(wall: Wall): THREE.Buffe
       const depth = Math.max(1, fill.nicheDepthCm ?? 10)
       const zOuter = studioOpeningRevealOuterZ(wall, opening)
       const outward = studioWindowDepthForwardSign(wall)
-      const backZ = zOuter - outward * depth
+      // +1 cm hinter sichtbarer Kalotte — kein koplanarer Okkluder.
+      const sealBackZ = zOuter - outward * (depth + 1)
       appendOpeningMaskCap(wall, poly, innerZ, positions, normals, indices)
       appendOpeningMaskCap(wall, poly, outerZ, positions, normals, indices)
-      if (Math.abs(backZ - innerZ) > 0.35) {
-        appendOpeningMaskCap(wall, poly, backZ, positions, normals, indices)
+      if (Math.abs(sealBackZ - innerZ) > 0.35) {
+        appendOpeningMaskCap(wall, poly, sealBackZ, positions, normals, indices)
       }
       quads += 3
     } else if (openingFillMode(opening) === 'niche') {
       // Nische: sichtbare Rückwand reicht nur `depth` cm — Shadow-Tunnel braucht
-      // Kappen an Rückwand und Innenkante, sonst leckt Punktlicht durchs Wandloch.
+      // Kappen hinter der Rückwand (+1 cm) und an der Innenkante, sonst leckt
+      // Punktlicht durchs Wandloch. Koplanar zur sichtbaren Rückwand würde sie schwärzen.
       const fill = normalizeOpeningFill(opening.fill)
       const depth = Math.max(1, fill.nicheDepthCm ?? 10)
       const zOuter = studioOpeningRevealOuterZ(wall, opening)
       const outward = studioWindowDepthForwardSign(wall)
-      const backZ = zOuter - outward * depth
-      appendOpeningMaskCap(wall, poly, backZ, positions, normals, indices)
+      const sealBackZ = zOuter - outward * (depth + 1)
+      appendOpeningMaskCap(wall, poly, sealBackZ, positions, normals, indices)
       appendOpeningMaskCap(wall, poly, innerZ, positions, normals, indices)
       quads += 2
     } else if (basementWindowEnabled(opening)) {
@@ -3418,8 +3420,15 @@ export function createStudioOpeningRevealGeometry(
       normals.push(0, 0, 0)
     }
     if (idx) {
+      // ShapeGeometry zeigt +Z; Nischenöffnung liegt Richtung `outward` von der Rückwand.
+      // Bei panelFlip (outward −1) Winding drehen, damit die Normale zur Öffnung zeigt.
+      const outward = studioWindowDepthForwardSign(wall)
       for (let i = 0; i < idx.count; i += 3) {
-        innerIndices.push(base + idx.getX(i), base + idx.getX(i + 1), base + idx.getX(i + 2))
+        const a = base + idx.getX(i)
+        const b = base + idx.getX(i + 1)
+        const c = base + idx.getX(i + 2)
+        if (outward < 0) innerIndices.push(a, c, b)
+        else innerIndices.push(a, b, c)
       }
     }
     cap.dispose()

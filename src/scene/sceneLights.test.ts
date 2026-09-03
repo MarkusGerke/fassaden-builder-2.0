@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import { createDefaultFacadeState } from '../types/facade'
 import { clampFacadeState } from '../utils/walls'
-import { addSceneLight, duplicateSceneLight, normalizeSceneLights, setAllSceneLightsEnabled, updateSceneLight } from './sceneLights'
+import {
+  addSceneLight,
+  createSceneLightGroup,
+  duplicateSceneLight,
+  normalizeSceneLightState,
+  normalizeSceneLights,
+  sceneLightDisplayName,
+  setAllSceneLightsEnabled,
+  ungroupSceneLights,
+  updateSceneLight,
+} from './sceneLights'
 
 describe('sceneLights', () => {
   it('fügt Punktlicht mit Default-Position ein', () => {
@@ -43,6 +53,51 @@ describe('sceneLights', () => {
     const light = normalizeSceneLights(custom.sceneLights)[0]
     expect(light?.color).toBe('#00ff88')
     expect(light?.colorTemperature).toBe(3000)
+  })
+
+  it('wendet Deckenlampen-Voreinstellung an', () => {
+    const { state, lightId } = addSceneLight(createDefaultFacadeState(), undefined, 'deckenlampe')
+    const light = normalizeSceneLights(state.sceneLights)[0]
+    expect(lightId).toBeTruthy()
+    expect(light?.preset).toBe('deckenlampe')
+    expect(light?.beamMode).toBe('down')
+    expect(light?.beamAngleDownDeg).toBe(68)
+    expect(light?.label).toBe('Deckenlampe')
+  })
+
+  it('Blaulicht: feste Farbe und Blink-Animation', () => {
+    const { state } = addSceneLight(createDefaultFacadeState(), undefined, 'blaulicht')
+    const light = normalizeSceneLights(state.sceneLights)[0]
+    expect(light?.preset).toBe('blaulicht')
+    expect(light?.color).toBe('#0a3dff')
+    expect(light?.animation).toBe('blaulicht')
+    expect(light?.castShadow).toBe(false)
+    expect(light?.beamMode).toBe('omni')
+  })
+
+  it('benennt Ebenen-Einträge nach Art mit Nummer', () => {
+    let { state } = addSceneLight(createDefaultFacadeState(), undefined, 'blaulicht')
+    state = addSceneLight(state, undefined, 'blaulicht').state
+    state = addSceneLight(state, undefined, 'laterne').state
+    const lights = normalizeSceneLights(state.sceneLights)
+    expect(sceneLightDisplayName(lights[0]!, lights)).toBe('Blaulicht 1')
+    expect(sceneLightDisplayName(lights[1]!, lights)).toBe('Blaulicht 2')
+    expect(sceneLightDisplayName(lights[2]!, lights)).toBe('Laterne')
+  })
+
+  it('gruppiert und löst Lichter', () => {
+    let { state, lightId: a } = addSceneLight(createDefaultFacadeState(), undefined, 'laterne')
+    const b = addSceneLight(state, undefined, 'deckenlampe')
+    state = b.state
+    state = createSceneLightGroup(state, [a, b.lightId], 'Hof')
+    const grouped = normalizeSceneLightState(state)
+    expect(grouped.sceneLightGroups).toHaveLength(1)
+    expect(grouped.sceneLightGroups[0]?.name).toBe('Hof')
+    expect(grouped.sceneLights.every((l) => l.groupId === grouped.sceneLightGroups[0]?.id)).toBe(true)
+    state = ungroupSceneLights(state, [a])
+    const after = normalizeSceneLightState(state)
+    expect(after.sceneLightGroups[0]?.memberLightIds).toEqual([b.lightId])
+    expect(after.sceneLights.find((l) => l.id === a)?.groupId).toBeUndefined()
   })
 
   it('dupliziert mit gleichen Einstellungen und Versatz', () => {

@@ -56,6 +56,85 @@ body {
   border-left: 1px solid #ddd;
 }
 
+/* Bühnenmodus (?stage=1): nur Zeichenfläche + Uhrzeit + Pause */
+#app.stage-view {
+  grid-template-columns: minmax(0, 1fr);
+}
+#app.stage-view #ui,
+#app.stage-view #ui-right,
+#app.stage-view #ui-left-collapse,
+#app.stage-view #viewport-chrome,
+#app.stage-view #edit-scope-bar,
+#app.stage-view #library-dock,
+#app.stage-view #nav-help-btn,
+#app.stage-view #wall-library-gizmos,
+#app.stage-view #wall-resize-gizmos,
+#app.stage-view #plan-label-layer,
+#app.stage-view .viewport-status,
+#app.stage-view #compass,
+#app.stage-view #perf-overlay {
+  display: none !important;
+}
+#app.stage-view #viewport {
+  grid-column: 1;
+}
+#stage-hud {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.25rem;
+  padding: 0.65rem 1rem calc(0.65rem + env(safe-area-inset-bottom, 0px));
+  background: rgba(18, 18, 18, 0.72);
+  color: #f5f5f5;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+#stage-hud[hidden] {
+  display: none !important;
+}
+#app.stage-view #stage-hud:not([hidden]) {
+  display: flex;
+}
+.stage-hud-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: min(100%, 14rem);
+  flex: 1 1 12rem;
+}
+.stage-hud-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.stage-hud-label output {
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  opacity: 0.9;
+}
+#stage-hud #sun-time {
+  width: 100%;
+  accent-color: #f0a020;
+}
+.stage-hud-check {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.9rem;
+  user-select: none;
+}
+#app.stage-view #viewport-stage {
+  padding-bottom: 4.5rem;
+}
+
 #viewport-stage {
   position: relative;
   flex: 1;
@@ -1359,11 +1438,6 @@ button.field-info:focus-visible {
   margin-top: 0.5rem;
 }
 
-#lighting-accordion #sun-anim-compass-row,
-#lighting-accordion #sun-anim-time-row {
-  margin-top: 0.35rem;
-}
-
 .compact-hint {
   font-size: 0.72rem;
   color: #888;
@@ -1460,13 +1534,6 @@ button.field-info:focus-visible {
   color: #666;
   margin: 0 0 16px;
   line-height: 1.3;
-}
-
-.sun-anim-channels {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem 1rem;
-  margin: 0 0 6px;
 }
 
 .profile-draft-svg {
@@ -2509,6 +2576,31 @@ button.os-menu-item:disabled {
   background-position: 0 0, 0 4px, 4px -4px, -4px 0;
 }
 
+.scene-light-preset-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.35rem;
+}
+
+.scene-light-preset-card {
+  min-width: 5.5rem;
+  padding: 0.35rem 0.45rem;
+  text-align: left;
+}
+
+.scene-light-preset-card .tpl-card-title {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.scene-light-preset-card .tpl-card-hint {
+  display: block;
+  font-size: 0.72rem;
+  opacity: 0.75;
+}
+
 .scene-light-color-row {
   display: flex;
   align-items: center;
@@ -3522,6 +3614,18 @@ html[data-ui-mode='simple'] [data-ui-level='advanced'] {
   margin-bottom: 0.65rem;
   padding-bottom: 0.35rem;
   border-bottom: 1px solid #ececec;
+}
+
+.layer-scene-light-group {
+  margin: 0.15rem 0 0.25rem;
+}
+
+.layer-scene-light-group > .layer-floor-header .layer-floor-toggle {
+  font-weight: 600;
+}
+
+.layer-scene-light-nested {
+  margin-left: 0.35rem;
 }
 
 .layer-empty-hint {

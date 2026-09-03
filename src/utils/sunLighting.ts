@@ -43,6 +43,20 @@ export interface SunSettings {
   animToAzimuth: number
   /** Abspieldauer in Sekunden (5…120). */
   animDurationSec: number
+  /**
+   * Kontinuierlicher Tageszyklus.
+   * Unabhängig von manueller Uhrzeit-Steuerung.
+   */
+  dayCycleEnabled?: boolean
+  /**
+   * Echtzeit-Minuten für einen Szene-Tag (24 h). Default 60 (= 1 Stunde).
+   * Bereich 1…1440.
+   */
+  dayCycleRealMinutes?: number
+  /** Master-Pause: Blaulicht, Fenster/Tür-Animation, Tageszyklus. */
+  animationsPaused?: boolean
+  /** Bibliotheks-Lichter bei Sonnenuntergang an, bei Sonnenaufgang aus. */
+  autoSceneLightsWithSun?: boolean
 }
 
 /** Alte Saves: ein gemeinsames Von/Bis plus exklusiver Modus. */
@@ -100,6 +114,10 @@ export const DEFAULT_SUN_SETTINGS: SunSettings = {
   animFromAzimuth: 45,
   animToAzimuth: 180,
   animDurationSec: 20,
+  dayCycleEnabled: true,
+  dayCycleRealMinutes: 60,
+  animationsPaused: false,
+  autoSceneLightsWithSun: true,
 }
 
 /** Mindestabstand Licht→Ziel (cm). Wird bei großen Baukörpern angehoben, damit nichts hinter der Shadow-Camera liegt. */
@@ -153,11 +171,32 @@ export const BLOOM_LAYER = 2
 export const SHADOW_LAYER_OCCLUDER = 3
 /** Dicke der Innenboden-/Decken-Extrusion (cm) für stabile Shadow-Occluder. */
 export const INDOOR_SLAB_THICKNESS = 8
+/**
+ * Zusätzlicher Rückzug der sichtbaren Platte hinter die Wandinnenseite (cm).
+ * Vermeidet Z-Fighting / Flackern an der Innenwand; Lichtdichte über Okkluder + Wand.
+ */
+export const INDOOR_SLAB_VISUAL_INSET_CM = 1
 export const SUN_PATH_ANIM_SEC_MIN = 5
 export const SUN_PATH_ANIM_SEC_MAX = 120
 export const SUN_PATH_ANIM_SEC_DEFAULT = 20
 /** @deprecated Prefer animDurationSec on SunSettings */
 export const SUN_PATH_ANIM_MS = SUN_PATH_ANIM_SEC_DEFAULT * 1000
+
+/** Echtzeit-Minuten für einen Szene-Tag (Tageszyklus). */
+export const DAY_CYCLE_REAL_MINUTES_MIN = 1
+export const DAY_CYCLE_REAL_MINUTES_MAX = 1440
+export const DAY_CYCLE_REAL_MINUTES_DEFAULT = 60
+
+export function clampDayCycleRealMinutes(minutes: number | undefined): number {
+  if (typeof minutes !== 'number' || !Number.isFinite(minutes)) return DAY_CYCLE_REAL_MINUTES_DEFAULT
+  return Math.min(DAY_CYCLE_REAL_MINUTES_MAX, Math.max(DAY_CYCLE_REAL_MINUTES_MIN, Math.round(minutes)))
+}
+
+/** Szene-Stunden pro Echtzeit-Sekunde aus Tagesdauer (Minuten). */
+export function dayCycleSceneHoursPerRealSec(realMinutes: number | undefined): number {
+  const minutes = clampDayCycleRealMinutes(realMinutes)
+  return 24 / (minutes * 60)
+}
 
 function clampAnimDuration(sec: number): number {
   if (!Number.isFinite(sec)) return SUN_PATH_ANIM_SEC_DEFAULT
@@ -402,6 +441,19 @@ export function normalizeSunSettings(
     ...migrateLegacyAnim(value, base),
     animDurationSec:
       typeof value.animDurationSec === 'number' ? value.animDurationSec : base.animDurationSec,
+    dayCycleEnabled:
+      typeof value.dayCycleEnabled === 'boolean' ? value.dayCycleEnabled : base.dayCycleEnabled,
+    dayCycleRealMinutes: clampDayCycleRealMinutes(
+      typeof value.dayCycleRealMinutes === 'number'
+        ? value.dayCycleRealMinutes
+        : base.dayCycleRealMinutes,
+    ),
+    animationsPaused:
+      typeof value.animationsPaused === 'boolean' ? value.animationsPaused : base.animationsPaused,
+    autoSceneLightsWithSun:
+      typeof value.autoSceneLightsWithSun === 'boolean'
+        ? value.autoSceneLightsWithSun
+        : base.autoSceneLightsWithSun,
   }
   // Alt-Saves ohne elevationRad: Höhe aus Datum/Uhrzeit, Overrides (Intensität etc.) behalten.
   if (typeof value.elevationRad !== 'number') {
