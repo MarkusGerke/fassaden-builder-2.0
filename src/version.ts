@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.103'
+export const APP_VERSION = '2.0.104'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,15 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.104',
+    date: '2026-09-03',
+    title: 'Bloom wirkt wieder auf der ganzen Szene',
+    changes: [
+      'Bloom (Schwelle/Stärke/Radius) gilt wieder für helle Flächen in der gesamten Ansicht — nicht nur Lichtkugeln',
+      'Bitte hart neu laden, bis v2.0.104 in der Titelleiste steht',
+    ],
+  },
   {
     version: '2.0.103',
     date: '2026-09-03',

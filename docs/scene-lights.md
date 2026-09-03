@@ -43,7 +43,7 @@ Im **Render**-Modus (3D/Front) ist die Okklusion **automatisch aktiv**, sobald m
 11. **Decke/Boden:** Innenfläche wie Wände (`createIndoorSlabMaterial`: EnvMap, kein Gegenlicht-Dim). Default weiß; `FloorPlan.ceilingColor` steuert die Albedo.
 12. **Legacy:** `uSkipPointLights` / `bindSkipPointLights` bleiben im Code, sind aber standardmäßig **aus** (`setSkipPointLights(false)`).
 
-**Selective Bloom:** Nur Objekte auf **BLOOM_LAYER (2)** erzeugen Bloom — im Render mit Raum-Okklusion eine kleine **HDR-Kugel** am Licht (Tiefentest, kein Billboard durch Wände). **EnvMap** nur aus dem Außen-Layer.
+**Selective Bloom:** Entfällt seit v2.0.104 — Full-Scene `UnrealBloomPass`. HDR-Kerne an Lichtquellen bleiben optional; Bloom erfasst helle Flächen der ganzen Szene.
 
 ## Einstellungen (Toolbar)
 
@@ -75,7 +75,7 @@ Persistiert in `FacadeState.sceneLights`. Hydrate: `normalizeSceneLights` in `sr
 | `src/lighting/pointLightRoomOccluders.ts` | Unsichtbare Außenring-Platten (Layer 3) |
 | `src/studio/panelGeometry.ts` | Öffnungs-Shadow-Tunnel (Konche, Keller) |
 | `src/utils/layers.ts` | `effectiveStoreyFloorCapY` (Kellerfenster-Oberkante) |
-| `src/lighting/selectiveBloom.ts` | Bloom nur auf BLOOM_LAYER (Licht-Marker) |
+| `src/lighting/selectiveBloom.ts` | `enableBloomLayer` (optional HDR-Kerne); Bloom selbst in `main.ts` |
 | `src/lighting/sceneLightUnits.ts` | Watt ↔ Three.js-Intensität (cm-Maßstab) |
 | `src/lighting/lightGlowMarker.ts` | Weiches Glühen (Sprite, depthTest für Okklusion) |
 | `src/lighting/sceneLightRuntime.ts` | THREE.PointLight + Marker/Pick |

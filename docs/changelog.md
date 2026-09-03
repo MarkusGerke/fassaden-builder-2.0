@@ -2,6 +2,10 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Bloom Full-Scene (2026-09-03) — v2.0.104
+
+Selective Bloom (nur `BLOOM_LAYER`-Marker) wirkte ohne sichtbare Lichtkugeln wie „aus“. Wieder Full-Scene `UnrealBloomPass` auf dem EffectComposer (Schwelle/Stärke/Radius). Dateien: `main.ts`, `selectiveBloom.ts`. Docs: [shadows.md](shadows.md).
+
 ### Sockel ohne Innenlicht-Durchschein (2026-09-03) — v2.0.103
 
 Sockel hatte `receiveShadow = false` (Sonnen-Moiré) und bekam deshalb Punktlicht ungefiltert. Bei Raum-Okklusion empfängt der Sockel wieder Cube-Shadows. Datei: `FacadeController.ts`. Docs: [scene-lights.md](scene-lights.md).

@@ -544,7 +544,7 @@ import {
   presentationUsesWorkLikeShading,
   type PresentationMode,
 } from './lighting/editPresentation'
-import { SelectiveBloomPipeline } from './lighting/selectiveBloom'
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
 import { SceneLightRuntime } from './lighting/sceneLightRuntime'
 import { normalizePowerWatts } from './lighting/sceneLightUnits'
 import {
@@ -981,17 +981,14 @@ const composer = new EffectComposer(
 )
 const renderPass = new RenderPass(scene, camera)
 composer.addPass(renderPass)
-const selectiveBloom = new SelectiveBloomPipeline(
-  renderer,
-  scene,
-  camera,
+/** Full-Scene Unreal Bloom (Schwelle/Stärke/Radius auf dem gesamten Bild). */
+const bloomPass = new UnrealBloomPass(
   new THREE.Vector2(1, 1),
   DEFAULT_BLOOM_SETTINGS.strength,
   DEFAULT_BLOOM_SETTINGS.radius,
   DEFAULT_BLOOM_SETTINGS.threshold,
-  BLOOM_MSAA_SAMPLES,
 )
-composer.addPass(selectiveBloom.mixPass)
+composer.addPass(bloomPass)
 /** SMAA nur falls kein MSAA (WebGL1) — sonst weicher als der Pfad ohne Bloom. */
 const smaaPass = BLOOM_MSAA_SAMPLES === 0 ? new SMAAPass() : null
 if (smaaPass) composer.addPass(smaaPass)
@@ -1003,7 +1000,7 @@ syncComposerPixelRatio = () => {
   const w = viewportRenderWidth()
   const h = viewportRenderHeight()
   composer.setSize(w, h)
-  selectiveBloom.setSize(w, h, renderer.getPixelRatio())
+  bloomPass.resolution.set(w * renderer.getPixelRatio(), h * renderer.getPixelRatio())
 }
 syncComposerPixelRatio()
 
@@ -3761,15 +3758,13 @@ function bloomIsActive(): boolean {
 
 function applyBloomRenderer() {
   const enabled = bloomIsActive()
-  selectiveBloom.mixPass.enabled = enabled
+  bloomPass.enabled = enabled
   if (smaaPass) smaaPass.enabled = enabled
   outputPass.enabled = enabled
   atmosphereSky.setDisplayExposure(enabled ? SKY_DISPLAY_EXPOSURE_BLOOM : SKY_DISPLAY_EXPOSURE_PLAIN)
-  selectiveBloom.setBloomParams(
-    bloomSettings.strength,
-    bloomSettings.radius,
-    bloomSettings.threshold,
-  )
+  bloomPass.strength = bloomSettings.strength
+  bloomPass.radius = bloomSettings.radius
+  bloomPass.threshold = bloomSettings.threshold
   if (enabled) {
     renderer.toneMapping = THREE.ACESFilmicToneMapping
     renderer.toneMappingExposure = bloomToneMappingExposure(bloomSettings.exposure)
@@ -3922,9 +3917,7 @@ function renderLitSceneFrame(activeCamera: THREE.Camera) {
   }
   const bloomOn = bloomIsActive() && !orbitLite && !orbitLitePointer
   renderPass.camera = activeCamera
-  selectiveBloom.setCamera(activeCamera)
   if (bloomOn) {
-    selectiveBloom.prepareMix()
     composer.render()
   } else {
     renderer.render(scene, activeCamera)
