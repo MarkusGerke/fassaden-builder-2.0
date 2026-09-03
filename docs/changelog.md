@@ -2,6 +2,10 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Laibung/Sockel empfangen Sonnen-Schatten (2026-09-03) — v2.0.116
+
+Laibung und Sockel hatten `receiveShadow` nur bei Punktlicht-Okklusion (Sonnen-Moiré-Schutz) — bei verdeckter Sonne wirkten sie hell/strahlend. Empfang jetzt wie Paneele (`claddingReceiveShadows`) plus Punktlicht. Datei: `FacadeController.ts`. Docs: [shadows.md](shadows.md).
+
 ### Laibung hinter Freiraum-Front (2026-09-03) — v2.0.115
 
 Mit aktivem Freiraum endete `studioOpeningRevealOuterZ` exakt an `studioClearanceRecessZ` — ohne das Paneel-Inset. Die Laibung stand minimal vor der Freiraum-Front. Jetzt wie bei Paneelen: `REVEAL_OUTER_INSET_CM` (0,6 cm) dahinter. Datei: `walls.ts`. Docs: [panel-geometry.md](panel-geometry.md), [ux.md](ux.md).

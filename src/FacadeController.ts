@@ -473,6 +473,7 @@ export class FacadeController {
    * Wandkörper empfängt immer (Innenraum v0.7.237 + Freistreifen).
    * Paneele/Mörtel: Empfang wenn `claddingReceiveShadows` (2D-Front Farbe, 3D, Arbeit) —
    * Zeichnung und Streiflicht-Ost/West aus (Acne). Gesims/Zierband casten immer.
+   * Laibung/Sockel: wie Paneele + zusätzlich bei Punktlicht-Raum-Okklusion.
    */
   private syncLabelShadowReceivers() {
     for (const [wallId, mesh] of this.meshes) {
@@ -493,9 +494,11 @@ export class FacadeController {
         mesh.castShadow = true
       }
       if (wallPart === 'plinth') {
-        // Bei Punktlicht: Schattenempfang, sonst scheint Innenlicht auf den Sockel durch.
-        mesh.receiveShadow = this.pointLightOccludersEnabled
+        mesh.receiveShadow = this.plinthShouldReceiveShadow()
       }
+    }
+    for (const mesh of this.revealMeshes) {
+      mesh.receiveShadow = this.revealShouldReceiveShadow(mesh)
     }
     // Stufen-Geometrie: immer empfangen (Selbst-/Werfschatten), nicht wie große Paneelflächen.
     for (const mesh of this.stairMeshes) {
@@ -631,9 +634,8 @@ export class FacadeController {
     }
     for (const mesh of this.revealMeshes) {
       mesh.castShadow = true
-      // Wie Sockel: bei Raum-Okklusion Cube-Shadows empfangen, sonst Innenlicht-Leak.
-      const sealed = mesh.userData.sealedNiche === true
-      mesh.receiveShadow = enable || sealed
+      // Sonne (claddingReceive) + Punktlicht-Okklusion; Nische/Konche immer.
+      mesh.receiveShadow = this.revealShouldReceiveShadow(mesh)
       if (enable) {
         mesh.customDistanceMaterial = this.shadowDistanceMaterial
       } else if (mesh.customDistanceMaterial === this.shadowDistanceMaterial) {
@@ -714,16 +716,28 @@ export class FacadeController {
 
   /**
    * Paneele/Mörtel empfangen Shadow-Map nur wenn `claddingReceiveShadows`
-   * (2D-Front Farbe, 3D oder Arbeitsmodus). Sockel: nur bei Punktlicht-Raum-Okklusion
-   * (sonst Moiré von der Sonne; ohne Empfang scheint Innenlicht durch).
+   * (2D-Front Farbe, 3D oder Arbeitsmodus). Sockel/Laibung: zusätzlich bei
+   * Punktlicht-Raum-Okklusion (sonst Innenlicht-Leak ohne Sonnen-Moiré-Zwang).
    */
+  private plinthShouldReceiveShadow(): boolean {
+    return this.claddingReceiveShadows || this.pointLightOccludersEnabled
+  }
+
+  private revealShouldReceiveShadow(mesh: THREE.Mesh): boolean {
+    return (
+      this.claddingReceiveShadows ||
+      this.pointLightOccludersEnabled ||
+      mesh.userData.sealedNiche === true
+    )
+  }
+
   private claddingMeshShouldReceiveShadow(mesh: THREE.Mesh): boolean {
-    if (!this.claddingReceiveShadows && !this.isPerfPresentation()) return false
     const wallPart = mesh.userData.wallPart as string | undefined
     const lodTier = mesh.userData.lodTier as string | undefined
     if (wallPart === 'plinth' || lodTier === 'plinth') {
-      return this.pointLightOccludersEnabled
+      return this.plinthShouldReceiveShadow()
     }
+    if (!this.claddingReceiveShadows && !this.isPerfPresentation()) return false
     // Clearance-Kappen: openingPart gesetzt, kein wallPart cladding.
     if (mesh.userData.openingPart != null && wallPart !== 'cladding') return false
     return (
@@ -2878,11 +2892,10 @@ export class FacadeController {
             : exteriorMaterial
         const mesh = new THREE.Mesh(geometry, materials)
         mesh.castShadow = true
-        // Sonne: Empfang aus (Moiré). Punktlicht-Okklusion: an — sonst leuchtet Innenlicht die Laibung an.
-        mesh.receiveShadow =
-          this.pointLightOccludersEnabled ||
-          opening.type === 'conch' ||
-          openingFillMode(opening) === 'niche'
+        mesh.userData.sealedNiche =
+          opening.type === 'conch' || openingFillMode(opening) === 'niche'
+        // Sonne + Punktlicht: Empfang wie Paneele; Nische/Konche immer (Rückwand).
+        mesh.receiveShadow = this.revealShouldReceiveShadow(mesh)
         mesh.renderOrder = 2
         exteriorMaterial.polygonOffset = true
         exteriorMaterial.polygonOffsetFactor = -2
@@ -2892,8 +2905,6 @@ export class FacadeController {
         interiorMaterial.polygonOffsetUnits = -2
         mesh.userData.originalMaterial = materials
         mesh.userData.wallId = wall.id
-        mesh.userData.sealedNiche =
-          opening.type === 'conch' || openingFillMode(opening) === 'niche'
         // Zeichnung: Kanten wie Wandkörper bei Paneelen weglassen — Extrados besitzen
         // Steine/Sockel; sonst 64–128 Laibungs-Segmente als Reißverschluss.
         mesh.userData.skipLineEdges = true
@@ -3399,7 +3410,7 @@ export class FacadeController {
                     applyWorkModeSurfaceLook(plinthMaterial)
                     const plinthMesh = new THREE.Mesh(plinthGeometry, plinthMaterial)
                     plinthMesh.castShadow = true
-                    plinthMesh.receiveShadow = false
+                    plinthMesh.receiveShadow = this.plinthShouldReceiveShadow()
                     plinthMesh.userData.lodTier = 'plinth'
                     plinthMesh.userData.buildingId = buildingId
                     plinthMesh.userData.wallId = wall.id
@@ -3539,7 +3550,7 @@ export class FacadeController {
               )
               const plinthMesh = new THREE.Mesh(plinthGeometry, plinthMaterial)
               plinthMesh.castShadow = true
-              plinthMesh.receiveShadow = false
+              plinthMesh.receiveShadow = this.plinthShouldReceiveShadow()
               plinthMesh.userData.lodTier = 'plinth'
               plinthMesh.userData.buildingId = buildingId
               plinthMesh.userData.wallId = wall.id
@@ -3830,12 +3841,8 @@ export class FacadeController {
       const mesh = new THREE.Mesh(geometry, material)
       const isPlinth = path.role === 'plinthProfile'
       mesh.castShadow = true
-      // Sockel: Sonne ohne Empfang (Moiré); bei Punktlicht-Okklusion empfangen (sonst Leak).
-      mesh.receiveShadow = this.isPerfPresentation()
-        ? false
-        : isPlinth
-          ? this.pointLightOccludersEnabled
-          : true
+      // Sockel: Sonne wie Paneele; Punktlicht-Okklusion gegen Innenlicht-Leak.
+      mesh.receiveShadow = isPlinth ? this.plinthShouldReceiveShadow() : true
       mesh.userData.originalMaterial = material
       const plinthDiscard = geometry.userData.plinthOpeningDiscard
       if (plinthDiscard) {

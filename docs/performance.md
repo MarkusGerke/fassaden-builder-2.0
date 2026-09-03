@@ -65,7 +65,7 @@ Persistiert in `fassaden-builder-state-v6` unter `lod`.
 
 ## Schatten
 
-- **Ziegel-Paneele, Mörtel und Sockel** werfen Schatten (`castShadow = true`) — Silhouette auf dem Boden folgt der Fassade. In **3D/Oben** empfangen Paneele/Mörtel/Laibung/Sockel nicht (Shadow-Map-Schraffur). In der **2D-Front** empfangen Paneele/Mörtel Werfschatten (v0.7.285).
+- **Ziegel-Paneele, Mörtel und Sockel** werfen Schatten (`castShadow = true`) — Silhouette auf dem Boden folgt der Fassade. In **Farbe/3D** empfangen Paneele/Mörtel/Laibung/Sockel Werfschatten (`claddingReceiveShadows`, v2.0.90 / v2.0.116); Zeichnung und Streiflicht-Ost/West aus. In der **2D-Front** ebenfalls Werfschatten (v0.7.285).
 - **Entwurf/Vorschau (v0.7.311):** `BasicShadowMap` (hart, kein PCF), Radius 0, Bloom aus. Flache Steine/Fugen empfangen harte Werfschatten der Profil-Balken; Steine selbst werfen nicht (kein Selbstschatten-Acne). Shadow-Maps werden beim Typwechsel verworfen.
 - Shadow-Map-Größe: **4096**. Frustum: Gebäude plus Bodenprojektion, Länge cap 3200 cm (`src/utils/sunLighting.ts`).
 
