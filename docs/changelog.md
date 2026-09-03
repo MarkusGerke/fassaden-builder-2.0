@@ -2,6 +2,10 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Licht-Drag horizontal wieder (2026-09-03) — v2.0.112
+
+Ohne Shift traf der Ray bei flachem Blick / 2D-Front die Boden-Ebene nicht (parallel). Horizontal-Drag nutzt dann die vertikale Bildebene. Datei: `main.ts`. Docs: [scene-lights.md](scene-lights.md).
+
 ### Punktlicht-Schatten 2D weniger pixelig (2026-09-03) — v2.0.111
 
 Ortho-Front: Cube-Shadow-Map 4096, stärkerer Soft-Filter (17 Taps, Radius-Scale 2,25). Dateien: `pcssShadows.ts`, `sceneLightRuntime.ts`, `main.ts`. Docs: [scene-lights.md](scene-lights.md), [shadows.md](shadows.md).

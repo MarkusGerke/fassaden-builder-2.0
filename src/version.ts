@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.111'
+export const APP_VERSION = '2.0.112'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,16 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.112',
+    date: '2026-09-03',
+    title: 'Licht wieder horizontal ziehbar',
+    changes: [
+      'Punktlicht ohne Shift wieder nach links/rechts (und in 3D vor/zurück) verschieben',
+      'Shift + Ziehen bleibt für die Höhe',
+      'Bitte hart neu laden, bis v2.0.112 in der Titelleiste steht',
+    ],
+  },
   {
     version: '2.0.111',
     date: '2026-09-03',

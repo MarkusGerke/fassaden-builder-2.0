@@ -7,7 +7,7 @@ Platzierbare Punktlichter aus der Element-Bibliothek — unabhängig von Sonne u
 1. Unten in der Bibliothek den Tab **Licht** wählen.
 2. **Punktlicht** anklicken **oder** in die Szene (3D/Front/Oben) **hineinziehen**.
 3. Unter **Anzeige** (Bibliothek) oder **Szene → Licht**: **Alle Lichter an** schaltet alle Punktlichter ein/aus; **Lichtpunkte anzeigen** schaltet nur die Editor-Glühen (Lichtwirkung bleibt).
-4. **3D / 2D-Front:** leuchtende Kugel anklicken und **ziehen** — bewegt sich nur **horizontal** (Höhe bleibt). **Shift** halten und ziehen = nur **vertikal** (Höhe).
+4. **3D / 2D-Front:** leuchtende Kugel anklicken und **ziehen** — bewegt sich nur **horizontal** (Höhe bleibt; in Front entlang der Bildebene links/rechts). **Shift** halten und ziehen = nur **vertikal** (Höhe).
 5. **2D-Front:** zusätzlich **Tiefe (Blickrichtung)** per Slider vor/zurück entlang der Blickachse.
 6. **Ebenenbaum (links):** Sektion **Lichter** — Klick wählt, Mehr-Menü **Ausblenden/Einblenden**, Duplizieren, Entfernen; Sektions-Mehr-Menü: **Punktlicht einfügen**, **Alle Lichter an/aus**.
 7. **Rechtsklick** in der Szene: **Duplizieren** oder **Licht entfernen**.

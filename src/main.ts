@@ -646,6 +646,8 @@ const _frontPanRight = new THREE.Vector3()
 const _frontPanUp = new THREE.Vector3()
 const _frontPanForward = new THREE.Vector3()
 const _sceneLightWorld = new THREE.Vector3()
+const _sceneLightHit = new THREE.Vector3()
+const _sceneLightAnchor = new THREE.Vector3()
 const atmosphereSky = new AtmosphereSky()
 scene.add(atmosphereSky.root)
 atmosphereSky.attachLights(scene)
@@ -1227,6 +1229,39 @@ function pickWorldOnHorizontalPlane(
 }
 
 /**
+ * Horizontaler Licht-Drag (X/Z, Y bleibt).
+ * Bei steilem Blick: Horizontalebene. Bei flachem Blick (2D-Front / flacher 3D-Orbit):
+ * vertikale Bildebene — sonst ist der Ray parallel zur Boden-Ebene und trifft nichts.
+ */
+function pickSceneLightHorizontalXZ(
+  clientX: number,
+  clientY: number,
+  light: Pick<SceneLight, 'x' | 'y' | 'z'>,
+): { x: number; z: number } | null {
+  setRaycasterFromClient(clientX, clientY)
+  sceneLightLocalToWorld(light, _sceneLightAnchor)
+  getActiveCamera().getWorldDirection(_frontPanForward)
+
+  if (Math.abs(_frontPanForward.y) > 0.12) {
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -_sceneLightAnchor.y)
+    if (!raycaster.ray.intersectPlane(plane, _sceneLightHit)) return null
+  } else {
+    const flatLen = Math.hypot(_frontPanForward.x, _frontPanForward.z)
+    const normal =
+      flatLen > 1e-4
+        ? _frontPanRight.set(_frontPanForward.x / flatLen, 0, _frontPanForward.z / flatLen)
+        : _frontPanRight.set(0, 0, 1)
+    const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(normal, _sceneLightAnchor)
+    if (!raycaster.ray.intersectPlane(plane, _sceneLightHit)) return null
+    // Nur in der Höhe der Lampe bleiben (links/rechts bzw. entlang der Fassade).
+    _sceneLightHit.y = _sceneLightAnchor.y
+  }
+
+  const local = sceneLightPositionFromWorld(_sceneLightHit)
+  return { x: local.x, z: local.z }
+}
+
+/**
  * Vertikale Verschiebung eines Punktlichts: Schnitt mit vertikaler Ebene durch den Anker
  * (Normal = Blickrichtung in der XZ-Ebene). Nur Y auswerten; X/Z bleiben unverändert.
  */
@@ -1241,15 +1276,13 @@ function pickSceneLightVerticalY(
   if (flatLen < 1e-4) {
     // Kamera fast senkrecht: Bildebene senkrecht zur Blickrichtung
     const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(_frontPanForward, anchorWorld)
-    const hit = new THREE.Vector3()
-    if (!raycaster.ray.intersectPlane(plane, hit)) return null
-    return sceneLightPositionFromWorld(hit).y
+    if (!raycaster.ray.intersectPlane(plane, _sceneLightHit)) return null
+    return sceneLightPositionFromWorld(_sceneLightHit).y
   }
   const normal = _frontPanRight.set(_frontPanForward.x / flatLen, 0, _frontPanForward.z / flatLen)
   const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(normal, anchorWorld)
-  const hit = new THREE.Vector3()
-  if (!raycaster.ray.intersectPlane(plane, hit)) return null
-  return sceneLightPositionFromWorld(hit).y
+  if (!raycaster.ray.intersectPlane(plane, _sceneLightHit)) return null
+  return sceneLightPositionFromWorld(_sceneLightHit).y
 }
 
 function sceneLightLocalToWorld(
@@ -16856,14 +16889,14 @@ canvas.addEventListener('pointermove', (event) => {
       const y = pickSceneLightVerticalY(
         event.clientX,
         event.clientY,
-        sceneLightLocalToWorld(light, _sceneLightWorld),
+        sceneLightLocalToWorld(light, _sceneLightAnchor),
       )
       if (y == null) return
       drag3dSceneLight.planeY = y
       state = updateSceneLight(state, drag3dSceneLight.lightId, { y })
     } else {
-      // Default: nur horizontal (X/Z) auf aktueller Höhe
-      const pos = pickWorldOnHorizontalPlane(event.clientX, event.clientY, light.y)
+      // Default: nur horizontal (X/Z) — auch bei flachem Blick / 2D-Front
+      const pos = pickSceneLightHorizontalXZ(event.clientX, event.clientY, light)
       if (!pos) return
       state = updateSceneLight(state, drag3dSceneLight.lightId, { x: pos.x, z: pos.z })
     }
