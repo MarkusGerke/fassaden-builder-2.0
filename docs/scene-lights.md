@@ -39,7 +39,7 @@ Im **Render**-Modus (3D/Front) ist die Okklusion **automatisch aktiv**, sobald m
 7. **Innen-Fill:** Bei aktivem Punktlicht im Render zusätzlich schwaches `dirLightIndoor` (nur Layer Innen).
 8. **Wand-Normalen:** Außenfläche nach außen, Innenfläche in den Raum (`wallFaceNormalReverse`). Sonst ist der Freistreifen über den Paneelen ein Loch, und Innenwände erscheinen schwarz.
 9. **2D-Glas:** Orthografische Front nutzt dünne Alpha-Transparenz (opacity ~0,06) statt Physical-Transmission (`setOrthographicGlassSeeThrough`).
-10. **Innen-Schatten:** Innenwände, Böden und Decken empfangen Cube-Shadows (seit v2.0.102; früher `bindSkipPointShadows`-Workaround entfernt).
+10. **Innen-Schatten:** Innenwände, Böden und Decken empfangen Cube-Shadows (seit v2.0.102; früher `bindSkipPointShadows`-Workaround entfernt). **Sockel (v2.0.103):** empfängt bei Raum-Okklusion ebenfalls — sonst schien Innenlicht ungefiltert auf den äußeren Sockel (`receiveShadow` war dauerhaft aus wegen Sonnen-Moiré).
 11. **Decke/Boden:** Innenfläche wie Wände (`createIndoorSlabMaterial`: EnvMap, kein Gegenlicht-Dim). Default weiß; `FloorPlan.ceilingColor` steuert die Albedo.
 12. **Legacy:** `uSkipPointLights` / `bindSkipPointLights` bleiben im Code, sind aber standardmäßig **aus** (`setSkipPointLights(false)`).
 

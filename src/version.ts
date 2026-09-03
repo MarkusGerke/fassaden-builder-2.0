@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.102'
+export const APP_VERSION = '2.0.103'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,15 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.103',
+    date: '2026-09-03',
+    title: 'Sockel ohne Innenlicht-Durchschein',
+    changes: [
+      'Innenliegendes Punktlicht erhellt den äußeren Sockel nicht mehr — Wandschatten greifen am Sockel',
+      'Bitte hart neu laden, bis v2.0.103 in der Titelleiste steht',
+    ],
+  },
   {
     version: '2.0.102',
     date: '2026-09-03',

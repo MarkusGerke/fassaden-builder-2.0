@@ -488,8 +488,13 @@ export class FacadeController {
     }
     for (const mesh of this.profileMeshes) {
       const wallPart = mesh.userData.wallPart as string | undefined
-      if (wallPart !== 'cornice' && wallPart !== 'trimBand') continue
-      mesh.castShadow = true
+      if (wallPart === 'cornice' || wallPart === 'trimBand') {
+        mesh.castShadow = true
+      }
+      if (wallPart === 'plinth') {
+        // Bei Punktlicht: Schattenempfang, sonst scheint Innenlicht auf den Sockel durch.
+        mesh.receiveShadow = this.pointLightOccludersEnabled
+      }
     }
     // Stufen-Geometrie: immer empfangen (Selbst-/Werfschatten), nicht wie große Paneelflächen.
     for (const mesh of this.stairMeshes) {
@@ -696,13 +701,16 @@ export class FacadeController {
 
   /**
    * Paneele/Mörtel empfangen Shadow-Map nur wenn `claddingReceiveShadows`
-   * (2D-Front Farbe, 3D oder Arbeitsmodus). Sockel und Freiraum-Kappen bleiben aus.
+   * (2D-Front Farbe, 3D oder Arbeitsmodus). Sockel: nur bei Punktlicht-Raum-Okklusion
+   * (sonst Moiré von der Sonne; ohne Empfang scheint Innenlicht durch).
    */
   private claddingMeshShouldReceiveShadow(mesh: THREE.Mesh): boolean {
     if (!this.claddingReceiveShadows && !this.isPerfPresentation()) return false
     const wallPart = mesh.userData.wallPart as string | undefined
     const lodTier = mesh.userData.lodTier as string | undefined
-    if (wallPart === 'plinth' || lodTier === 'plinth') return false
+    if (wallPart === 'plinth' || lodTier === 'plinth') {
+      return this.pointLightOccludersEnabled
+    }
     // Clearance-Kappen: openingPart gesetzt, kein wallPart cladding.
     if (mesh.userData.openingPart != null && wallPart !== 'cladding') return false
     return (
@@ -3756,7 +3764,12 @@ export class FacadeController {
       const mesh = new THREE.Mesh(geometry, material)
       const isPlinth = path.role === 'plinthProfile'
       mesh.castShadow = true
-      mesh.receiveShadow = this.isPerfPresentation() ? false : !isPlinth
+      // Sockel: Sonne ohne Empfang (Moiré); bei Punktlicht-Okklusion empfangen (sonst Leak).
+      mesh.receiveShadow = this.isPerfPresentation()
+        ? false
+        : isPlinth
+          ? this.pointLightOccludersEnabled
+          : true
       mesh.userData.originalMaterial = material
       const plinthDiscard = geometry.userData.plinthOpeningDiscard
       if (plinthDiscard) {

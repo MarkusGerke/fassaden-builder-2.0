@@ -2,6 +2,10 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Sockel ohne Innenlicht-Durchschein (2026-09-03) — v2.0.103
+
+Sockel hatte `receiveShadow = false` (Sonnen-Moiré) und bekam deshalb Punktlicht ungefiltert. Bei Raum-Okklusion empfängt der Sockel wieder Cube-Shadows. Datei: `FacadeController.ts`. Docs: [scene-lights.md](scene-lights.md).
+
 ### Punktlicht: Fassade + Innen-Schatten (2026-09-03) — v2.0.102
 
 Punktlicht beleuchtet wieder Außen- und Innenflächen (beide Layer). Shader-Skip der Fassade und `bindSkipPointShadows` auf Innenwänden entfernt — Lichtdichte über Cube-Shadows (`customDistanceMaterial`, `normalBias` ~2,5 cm). Dateien: `sceneLightRuntime.ts`, `skipPointLights.ts`, `FacadeController.ts`. Docs: [scene-lights.md](scene-lights.md).
