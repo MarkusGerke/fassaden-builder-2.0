@@ -13,6 +13,7 @@ import {
 } from './lightGlowMarker'
 import { enableBloomLayer } from './selectiveBloom'
 import { markerGlowBrightness, wattsToThreeIntensity } from './sceneLightUnits'
+import { pointShadowRadiusFromSoftness } from './pcssShadows'
 import { SHADOW_LAYER_EXTERIOR, SHADOW_LAYER_INTERIOR, SHADOW_LAYER_OCCLUDER } from '../utils/sunLighting'
 
 const MARKER_RADIUS_CM = 40
@@ -35,6 +36,8 @@ export interface SceneLightRuntimeSyncOptions {
   roomOcclusion?: boolean
   /** Cube-Shadow Reichweite (cm-Maßstab). */
   shadowFarCm?: number
+  /** Sonnen-Weichheit-Slider → Punktlicht shadow.radius. */
+  shadowSoftness?: number
   /** Globale Anzeige der Editor-Kugeln (Bibliothek → Licht). */
   showMarkers?: boolean
   /** Bloom aktiv — HDR-Kern für Glühbirnen-Effekt. */
@@ -85,9 +88,9 @@ export class SceneLightRuntime {
     const color = new THREE.Color(colorHex)
     const light = new THREE.PointLight(color, 2800, 0, 2)
     light.castShadow = true
-    // cm-Maßstab: etwas Bias gegen Acne, normalBias in cm gegen Peter-Panning an dünnen Wänden
+    // Weniger normalBias: zu groß → Lichtlecks an Decken-/Bodenstößen (Geschosse).
     light.shadow.bias = -0.001
-    light.shadow.normalBias = 2.5
+    light.shadow.normalBias = 0.8
     light.shadow.mapSize.setScalar(POINT_SHADOW_MAP)
     light.shadow.radius = 1
     light.shadow.camera.near = POINT_SHADOW_NEAR_CM
@@ -129,6 +132,7 @@ export class SceneLightRuntime {
     entry.light.decay = spec.decay ?? 2
     entry.light.castShadow =
       spec.enabled && spec.castShadow !== false && options.roomOcclusion !== false
+    entry.light.shadow.radius = pointShadowRadiusFromSoftness(options.shadowSoftness ?? 2.5)
     const shadowFar = options.shadowFarCm ?? POINT_SHADOW_FAR_DEFAULT_CM
     if (entry.light.shadow.camera.far !== shadowFar) {
       entry.light.shadow.camera.far = shadowFar

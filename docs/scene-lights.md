@@ -30,7 +30,7 @@ Im **Render**-Modus (3D/Front) ist die Okklusion **automatisch aktiv**, sobald m
 
 **v2.0.102 — physikalisch:** Punktlicht beleuchtet **Fassade und Innenraum** (beide Layer). Lichtdichte nur über **Cube-Shadows** und Okkluder — nicht mehr über Shader-Skip der Außenflächen. Innenwände/Böden/Decken empfangen wieder Punktlicht-Schatten (Wände, Sprossen, Rahmen).
 
-1. **Cube-Shadows:** Wände, Verkleidung, Rahmen, Laibung, Geschossplatten und unsichtbare Außenring-Okkluder (`SHADOW_LAYER_OCCLUDER`) werfen in die Punktlicht-Cube-Map (`customDistanceMaterial` wo nötig). `normalBias` ~2,5 cm gegen Peter-Panning an dünnen Wänden.
+1. **Cube-Shadows:** Wände, Verkleidung, Rahmen, Laibung, Geschossplatten und unsichtbare Außenring-Okkluder (`SHADOW_LAYER_OCCLUDER`) werfen in die Punktlicht-Cube-Map (`customDistanceMaterial` wo nötig). **v2.0.106:** Okkluder 24 cm dick + zusätzliche Stoßplatte zwischen Etagen; `normalBias` ~0,8 cm. Weichheit-Slider setzt `shadow.radius` (Soft-Taps trotz BasicShadowMap/PCSS-Sonne).
 2. **Konche:** sichtbare Kalotte ohne flache Okklusions-Kappen; Dichtung nur im unsichtbaren Shadow-Tunnel (`OPENING_SHADOW_TUNNEL_INFLATE_CM = 2,5`).
 3. **Unsichtbare Okkluder** (`SHADOW_LAYER_OCCLUDER = 3`): Boden/Decke auf dem **Grundriss-Außenring**, mit `customDistanceMaterial` in der Punktlicht-Cube-Map.
 4. **Sichtbare Böden/Decken (v2.0.92)** reichen bis zur **Fassaden-Außenkante** (Plan-Ring); sie casten wenn sichtbar und nutzen bei Raum-Okklusion `customDistanceMaterial`. Nicht durch Kellerfenster angehoben (`storeyFloorSurfaceY`).

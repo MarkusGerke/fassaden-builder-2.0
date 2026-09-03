@@ -1,20 +1,27 @@
 import * as THREE from 'three'
 import type { Building } from '../types/facade'
 import { planFacesWithHoles, planNodeWorld } from '../studio/floorPlan'
-import { INDOOR_SLAB_THICKNESS, SHADOW_LAYER_OCCLUDER } from '../utils/sunLighting'
+import { SHADOW_LAYER_OCCLUDER } from '../utils/sunLighting'
 import { storeyFloorSurfaceY, storeyTopY } from '../utils/layers'
+
+/**
+ * Dicke der Punktlicht-Geschoss-Okkluder (cm). Dicker als sichtbare Platten (8 cm),
+ * damit Licht aus dem Untergeschoss nicht an der Sockelhöhe der Etage darüber leckt.
+ */
+export const POINT_LIGHT_OCCLUDER_THICKNESS = 24
 
 /**
  * Unsichtbare Boden-/Deckenplatten auf dem **Außenring** (Wandaußenkante).
  * Nur für Punktlicht-Cube-Shadows (Layer 3) — Hauptkamera und Sonne sehen sie nicht.
  *
  * Sichtbare Indoor-Platten liegen ebenfalls auf dem Außenring (v2.0.92). Die Okkluder
- * bleiben als Backup, wenn Decke/Boden ausgeblendet sind (`showCeiling === false`).
+ * bleiben als Backup, wenn Decke/Boden ausgeblendet sind (`showCeiling === false`),
+ * und sind dicker (v2.0.106), damit Etagenübergänge lichtdicht bleiben.
  */
 export function buildPointLightRoomOccluders(
   buildings: Building[],
   material: THREE.Material,
-  slabThickness = INDOOR_SLAB_THICKNESS,
+  slabThickness = POINT_LIGHT_OCCLUDER_THICKNESS,
 ): THREE.Mesh[] {
   const meshes: THREE.Mesh[] = []
 
@@ -77,6 +84,13 @@ export function buildPointLightRoomOccluders(
         const ceilingY = storeyTopY(building, fi) - slabThickness
         addSlab(shape.clone(), floorY, building.id, 'floor')
         addSlab(shape.clone(), ceilingY, building.id, 'ceiling')
+
+        // Zusätzliche Dichtung am Etagenstoß: überlappt Decke dieser und Boden der nächsten Etage.
+        if (fi + 1 < floors.length && floors[fi + 1] && !floors[fi + 1]!.hidden) {
+          const junctionTop = Math.max(storeyTopY(building, fi), storeyFloorSurfaceY(building, fi + 1))
+          const junctionY = junctionTop - slabThickness * 0.5
+          addSlab(shape.clone(), junctionY, building.id, 'junction')
+        }
       }
     }
   }

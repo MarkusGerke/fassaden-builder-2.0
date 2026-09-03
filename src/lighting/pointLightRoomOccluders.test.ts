@@ -5,7 +5,7 @@ import type { Building } from '../types/facade'
 import { createEmptyFloorPlan, drawPlanLine, innerFaceRingWorld, planFacesWithHoles, planNodeWorld } from '../studio/floorPlan'
 import { SHADOW_LAYER_OCCLUDER } from '../utils/sunLighting'
 import { storeyFloorSurfaceY } from '../utils/layers'
-import { buildPointLightRoomOccluders } from './pointLightRoomOccluders'
+import { buildPointLightRoomOccluders, POINT_LIGHT_OCCLUDER_THICKNESS } from './pointLightRoomOccluders'
 
 function rectanglePlan() {
   let plan = createEmptyFloorPlan()
@@ -37,12 +37,27 @@ describe('pointLightRoomOccluders', () => {
       expect(mesh.userData.shadowOccluder).toBe(true)
     }
     const floor = meshes.find((m) => m.userData.indoorRole === 'floor')!
-    expect(floor.position.y).toBe(storeyFloorSurfaceY(building, 0) - 8)
+    expect(floor.position.y).toBe(storeyFloorSurfaceY(building, 0) - POINT_LIGHT_OCCLUDER_THICKNESS)
 
     const face = planFacesWithHoles(plan)[0]!
     const outerArea = polygonArea(face.outer.map(planNodeWorld))
     const innerArea = polygonArea(innerFaceRingWorld(face.outer, WALL_DEPTH))
     expect(outerArea).toBeGreaterThan(innerArea)
+  })
+
+  it('legt am Etagenstoß eine zusätzliche Dichtungsplatte', () => {
+    const mat = new THREE.MeshBasicMaterial()
+    const building: Building = {
+      id: 'b1',
+      name: 'Haus',
+      walls: [],
+      wallHeight: WALL_HEIGHT,
+      wallDepth: WALL_DEPTH,
+      floors: [rectanglePlan(), rectanglePlan()],
+    }
+    const meshes = buildPointLightRoomOccluders([building], mat)
+    const junctions = meshes.filter((m) => m.userData.indoorRole === 'junction')
+    expect(junctions.length).toBeGreaterThanOrEqual(1)
   })
 })
 

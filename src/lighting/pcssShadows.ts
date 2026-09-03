@@ -149,6 +149,64 @@ const BASIC_GET_SHADOW_MARKER = `#else
 		}
 	#endif`
 
+/** Hard BasicCube getPointShadow — radius wird ignoriert; wir ersetzen durch Soft-Taps. */
+const BASIC_GET_POINT_SHADOW_MARKER = `float getPointShadow( samplerCube shadowMap, vec2 shadowMapSize, float shadowIntensity, float shadowBias, float shadowRadius, vec4 shadowCoord, float shadowCameraNear, float shadowCameraFar ) {
+		float shadow = 1.0;
+		vec3 lightToPosition = shadowCoord.xyz;
+		vec3 absVec = abs( lightToPosition );
+		float viewSpaceZ = max( max( absVec.x, absVec.y ), absVec.z );
+		if ( viewSpaceZ - shadowCameraFar <= 0.0 && viewSpaceZ - shadowCameraNear >= 0.0 ) {
+			float dp = ( shadowCameraFar * ( viewSpaceZ - shadowCameraNear ) ) / ( viewSpaceZ * ( shadowCameraFar - shadowCameraNear ) );
+			dp += shadowBias;
+			vec3 bd3D = normalize( lightToPosition );
+			float depth = textureCube( shadowMap, bd3D ).r;
+			#ifdef USE_REVERSED_DEPTH_BUFFER
+				depth = 1.0 - depth;
+			#endif
+			shadow = step( dp, depth );
+		}
+		return mix( 1.0, shadow, shadowIntensity );
+	}`
+
+/** Soft Basic getPointShadow — nutzt shadowRadius (Weichheit-Slider) trotz BasicShadowMap/PCSS-Sonne. */
+const BASIC_GET_POINT_SHADOW_SOFT = `float getPointShadow( samplerCube shadowMap, vec2 shadowMapSize, float shadowIntensity, float shadowBias, float shadowRadius, vec4 shadowCoord, float shadowCameraNear, float shadowCameraFar ) {
+		float shadow = 1.0;
+		vec3 lightToPosition = shadowCoord.xyz;
+		vec3 absVec = abs( lightToPosition );
+		float viewSpaceZ = max( max( absVec.x, absVec.y ), absVec.z );
+		if ( viewSpaceZ - shadowCameraFar <= 0.0 && viewSpaceZ - shadowCameraNear >= 0.0 ) {
+			float dp = ( shadowCameraFar * ( viewSpaceZ - shadowCameraNear ) ) / ( viewSpaceZ * ( shadowCameraFar - shadowCameraNear ) );
+			dp += shadowBias;
+			vec3 bd3D = normalize( lightToPosition );
+			float texelSize = max( shadowRadius, 1.0 ) / shadowMapSize.x;
+			vec3 absDir = abs( bd3D );
+			vec3 tangent = absDir.x > absDir.z ? vec3( 0.0, 1.0, 0.0 ) : vec3( 1.0, 0.0, 0.0 );
+			tangent = normalize( cross( bd3D, tangent ) );
+			vec3 bitangent = cross( bd3D, tangent );
+			float sum = 0.0;
+			vec2 offs[9];
+			offs[0] = vec2( 0.0, 0.0 );
+			offs[1] = vec2( 1.0, 0.0 );
+			offs[2] = vec2( -1.0, 0.0 );
+			offs[3] = vec2( 0.0, 1.0 );
+			offs[4] = vec2( 0.0, -1.0 );
+			offs[5] = vec2( 0.7071, 0.7071 );
+			offs[6] = vec2( -0.7071, 0.7071 );
+			offs[7] = vec2( 0.7071, -0.7071 );
+			offs[8] = vec2( -0.7071, -0.7071 );
+			for ( int i = 0; i < 9; i ++ ) {
+				vec3 dir = normalize( bd3D + ( tangent * offs[ i ].x + bitangent * offs[ i ].y ) * texelSize );
+				float depth = textureCube( shadowMap, dir ).r;
+				#ifdef USE_REVERSED_DEPTH_BUFFER
+					depth = 1.0 - depth;
+				#endif
+				sum += step( dp, depth );
+			}
+			shadow = sum / 9.0;
+		}
+		return mix( 1.0, shadow, shadowIntensity );
+	}`
+
 let originalShadowmapParsFragment: string | undefined
 let pcssEnabled = false
 let pcssChunkApplied = false
@@ -158,6 +216,15 @@ const pcssLightSizeUvUniform = { value: 0.002 }
 export function pcssLightWorldSizeFromSoftness(softness: number): number {
   const t = THREE.MathUtils.clamp((softness - 0.5) / 7.5, 0, 1)
   return THREE.MathUtils.lerp(PCSS_LIGHT_WORLD_SIZE_MIN_CM, PCSS_LIGHT_WORLD_SIZE_MAX_CM, t)
+}
+
+/**
+ * Punktlicht-Cube-Shadow-Radius aus dem Weichheit-Slider (BasicShadowMap nutzt das
+ * sonst nicht — Soft-Taps in BASIC_GET_POINT_SHADOW_SOFT).
+ */
+export function pointShadowRadiusFromSoftness(softness: number): number {
+  const t = THREE.MathUtils.clamp((softness - 0.5) / 7.5, 0, 1)
+  return THREE.MathUtils.lerp(1, 18, t)
 }
 
 /** Lichtgröße in UV-Raum relativ zur Ortho-Frustum-Breite (cm). */
@@ -182,6 +249,10 @@ uniform float pcssLightSizeUv;
     throw new Error('pcssShadows: shadowmap_pars_fragment Basic-getShadow-Marker nicht gefunden')
   }
   shader = shader.replace(BASIC_GET_SHADOW_MARKER, PCSS_BASIC_GET_SHADOW)
+  if (!shader.includes(BASIC_GET_POINT_SHADOW_MARKER)) {
+    throw new Error('pcssShadows: Basic-getPointShadow-Marker nicht gefunden')
+  }
+  shader = shader.replace(BASIC_GET_POINT_SHADOW_MARKER, BASIC_GET_POINT_SHADOW_SOFT)
   return shader
 }
 

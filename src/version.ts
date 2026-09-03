@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.105'
+export const APP_VERSION = '2.0.106'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,16 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.106',
+    date: '2026-09-03',
+    title: 'Weiche Punktlicht-Schatten, dichtere Geschosse',
+    changes: [
+      'Schatten-Weichheit gilt jetzt auch für Punktlichter (nicht nur Sonne)',
+      'Licht aus dem Untergeschoss scheint nicht mehr an der Sockelhöhe der Etage darüber durch',
+      'Bitte hart neu laden, bis v2.0.106 in der Titelleiste steht',
+    ],
+  },
   {
     version: '2.0.105',
     date: '2026-09-03',

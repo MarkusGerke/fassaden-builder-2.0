@@ -9,6 +9,7 @@ import {
   PCSS_PENUMBRA_SCALE,
   pcssLightSizeUvFromSoftness,
   pcssLightWorldSizeFromSoftness,
+  pointShadowRadiusFromSoftness,
   updatePcssShadowParameters,
 } from './pcssShadows'
 
@@ -22,6 +23,13 @@ describe('pcssShadows', () => {
     expect(pcssLightWorldSizeFromSoftness(8)).toBeCloseTo(28, 5)
     expect(pcssLightWorldSizeFromSoftness(2.5)).toBeGreaterThan(0.8)
     expect(pcssLightWorldSizeFromSoftness(2.5)).toBeLessThan(28)
+  })
+
+  it('mappt Weichheit auf Punktlicht-Cube-Shadow-Radius', () => {
+    expect(pointShadowRadiusFromSoftness(0.5)).toBeCloseTo(1, 5)
+    expect(pointShadowRadiusFromSoftness(8)).toBeCloseTo(18, 5)
+    expect(pointShadowRadiusFromSoftness(2.5)).toBeGreaterThan(1)
+    expect(pointShadowRadiusFromSoftness(2.5)).toBeLessThan(18)
   })
 
   it('berechnet LIGHT_SIZE_UV aus Frustum-Breite', () => {
@@ -41,6 +49,10 @@ describe('pcssShadows', () => {
     )
     expect(THREE.ShaderChunk.shadowmap_pars_fragment).not.toContain(
       'pcssLightSizeUv * PCSS_NEAR_PLANE / zReceiver',
+    )
+    expect(THREE.ShaderChunk.shadowmap_pars_fragment).toContain('sum / 9.0')
+    expect(THREE.ShaderChunk.shadowmap_pars_fragment).not.toContain(
+      'float depth = textureCube( shadowMap, bd3D ).r;',
     )
     disablePcssShadows()
     expect(isPcssShadowsEnabled()).toBe(false)

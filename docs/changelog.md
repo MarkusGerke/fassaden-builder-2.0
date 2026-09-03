@@ -2,6 +2,10 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Weiche Punktlicht-Schatten + Geschoss-Dichtung (2026-09-03) — v2.0.106
+
+Weichheit-Slider steuert Punktlicht-`shadow.radius` inkl. Soft-Taps unter BasicShadowMap (PCSS bleibt für Sonne). Punktlicht-Okkluder 24 cm + Etagenstoß-Platte; geringeres `normalBias`. Dateien: `pcssShadows.ts`, `sceneLightRuntime.ts`, `pointLightRoomOccluders.ts`, `main.ts`. Docs: [scene-lights.md](scene-lights.md), [shadows.md](shadows.md).
+
 ### Laibung ohne Innenlicht-Leak (2026-09-03) — v2.0.105
 
 Laibung hatte `receiveShadow` nur bei Nische/Konche — Fenster-Laibungen bekamen Punktlicht ohne Wand-Okklusion. Bei Raum-Okklusion empfangen Laibungen Cube-Shadows (wie Sockel). Datei: `FacadeController.ts`. Docs: [scene-lights.md](scene-lights.md).

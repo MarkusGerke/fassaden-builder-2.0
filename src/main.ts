@@ -8331,6 +8331,7 @@ function syncSceneLightRuntime(): void {
     roomOcclusion,
     selectedId: editor.selectedSceneLightId,
     shadowFarCm: sceneLightShadowFarCm(),
+    shadowSoftness: sunSettings.shadowSoftness,
     showMarkers: state.viewOptions?.showLightMarkers !== false,
     bloomActive: bloomIsActive(),
   })
