@@ -104,7 +104,7 @@ import {
   createPedimentConsoleGeometries,
   createPedimentSweepGeometry,
 } from './studio/pedimentGeometry'
-import { planFacesWithHoles, planNodeWorld } from './studio/floorPlan'
+import { innerFaceRingWorld, planFacesWithHoles, planNodeWorld } from './studio/floorPlan'
 import { storeyFloorSurfaceY, storeyTopY } from './utils/layers'
 import { facadeOutward } from './studio/elevation'
 import { isStudioWall, leafOpenSignForWall, outerSillBoardPose, studioFacadeOutwardLocalZ, studioFacadeSelectionLocalZ, studioPanelFaceLocalZ, studioProfileAnchorLocalZ, studioWallOuterLocalZ, studioWallTransform, studioWindowOriginZ, wallAlongDelta, wallHasPanels, windowDepthForwardSign } from './studio/walls'
@@ -590,7 +590,13 @@ export class FacadeController {
 
     for (const child of this.indoorFloorGroup.children) {
       if (!(child instanceof THREE.Mesh)) continue
-      // Sichtbare Platten immer casten wenn sichtbar — sonst Licht durch Geschossgrenzen.
+      if (child.userData.kind === 'sunCeilingOccluder') {
+        child.castShadow = child.visible
+        child.receiveShadow = false
+        child.layers.set(SHADOW_LAYER_EXTERIOR)
+        continue
+      }
+      // Sichtbare Platten: nur Innen-Layer (keine Fassadenstreifen). Sonne: sunCeilingOccluder.
       child.castShadow = child.visible
       child.receiveShadow = child.visible
       child.layers.set(SHADOW_LAYER_INTERIOR)
@@ -1334,6 +1340,10 @@ export class FacadeController {
         depthMat.dispose()
         child.customDepthMaterial = undefined
       }
+      if (child.userData.kind === 'sunCeilingOccluder') {
+        const mat = child.material
+        if (mat && !Array.isArray(mat)) mat.dispose()
+      }
     }
     const slabThickness = INDOOR_SLAB_THICKNESS
 
@@ -1364,10 +1374,40 @@ export class FacadeController {
       mesh.rotation.x = -Math.PI / 2
       mesh.position.set(0, y, 0)
       // Nur Innen-Layer: Außen-Sonne (Layer 0) soll keine Etagenstreifen auf der Fassade werfen.
+      // Sonne wird über unsichtbare sunCeilingOccluder (Innenkante, Layer 0) blockiert.
       mesh.layers.set(SHADOW_LAYER_INTERIOR)
       mesh.receiveShadow = true
       mesh.userData.indoorRole = role
       mesh.userData.kind = role === 'ceiling' ? 'ceiling' : 'floor'
+      mesh.userData.buildingId = buildingId
+      mesh.userData.floorIndex = floorIdx
+      this.indoorFloorGroup.add(mesh)
+    }
+
+    /** Unsichtbar, Layer 0: Decke blockiert Sonne ohne Fassadenstreifen (Endet an Innenwand). */
+    const addSunCeilingOccluder = (
+      shape: THREE.Shape,
+      y: number,
+      buildingId: string,
+      floorIdx: number,
+    ) => {
+      const geo = new THREE.ExtrudeGeometry(shape, {
+        depth: slabThickness,
+        bevelEnabled: false,
+      })
+      const mat = new THREE.MeshBasicMaterial({
+        colorWrite: false,
+        depthWrite: false,
+      })
+      const mesh = new THREE.Mesh(geo, mat)
+      mesh.rotation.x = -Math.PI / 2
+      mesh.position.set(0, y, 0)
+      mesh.castShadow = true
+      mesh.receiveShadow = false
+      mesh.frustumCulled = false
+      mesh.layers.set(SHADOW_LAYER_EXTERIOR)
+      mesh.userData.kind = 'sunCeilingOccluder'
+      mesh.userData.indoorRole = 'ceiling'
       mesh.userData.buildingId = buildingId
       mesh.userData.floorIndex = floorIdx
       this.indoorFloorGroup.add(mesh)
@@ -1378,6 +1418,7 @@ export class FacadeController {
       if (buildingShowsBareWalls(building)) continue
       const floors = building.floors
       if (!floors || floors.length === 0) continue
+      const wallDepth = building.wallDepth ?? WALL_DEPTH
 
       for (let fi = 0; fi < floors.length; fi++) {
         const plan = floors[fi]
@@ -1405,6 +1446,24 @@ export class FacadeController {
           addFloorMesh(shape.clone(), ceilingY, slabMat, building.id, fi, 'ceiling')
           const floorSurfaceY = storeyFloorSurfaceY(building, fi)
           addFloorMesh(shape.clone(), floorSurfaceY - slabThickness, slabMat, building.id, fi, 'floor')
+
+          // Sonne: Innenkante, damit keine horizontalen Streifen auf der Außenfassade.
+          const sunOuter = innerFaceRingWorld(face.outer, wallDepth)
+          const sunShape = ringToShapeXY(sunOuter)
+          if (sunShape) {
+            for (const holeNodes of face.holes) {
+              const holeInner = innerFaceRingWorld(holeNodes, wallDepth)
+              if (holeInner.length < 3) continue
+              const path = new THREE.Path()
+              path.moveTo(holeInner[0]!.x, -holeInner[0]!.z)
+              for (let i = holeInner.length - 1; i >= 1; i -= 1) {
+                path.lineTo(holeInner[i]!.x, -holeInner[i]!.z)
+              }
+              path.closePath()
+              sunShape.holes.push(path)
+            }
+            addSunCeilingOccluder(sunShape, ceilingY, building.id, fi)
+          }
         }
       }
     }
@@ -1702,6 +1761,17 @@ export class FacadeController {
 
   private applyIndoorVisibility() {
     for (const child of this.indoorFloorGroup.children) {
+      if (child.userData.kind === 'sunCeilingOccluder') {
+        const buildingId = child.userData.buildingId as string | undefined
+        const floorIndex = child.userData.floorIndex as number | undefined
+        const building = buildingId
+          ? this.state.buildings.find((item) => item.id === buildingId)
+          : undefined
+        const floor = building && floorIndex !== undefined ? building.floors[floorIndex] : undefined
+        // Okkluder folgt Decken-Sichtbarkeit (aus = bewusstes Oberlicht).
+        child.visible = floor ? floor.showCeiling !== false && !floor.hidden : true
+        continue
+      }
       const buildingId = child.userData.buildingId as string | undefined
       const floorIndex = child.userData.floorIndex as number | undefined
       const building = buildingId
@@ -1714,12 +1784,19 @@ export class FacadeController {
   }
 
   /**
-   * Sichtbare Geschossplatten: cast + receive wenn sichtbar (lichtdicht).
+   * Sichtbare Geschossplatten: cast + receive wenn sichtbar (lichtdicht für Punktlicht).
    * Layer nur Innen — keine Etagenstreifen auf der Außenfassade durch die Sonne.
+   * Sonne: separate sunCeilingOccluder auf Layer 0 (Innenkante).
    */
   private applyIndoorShadowCasting() {
     for (const child of this.indoorFloorGroup.children) {
       const mesh = child as THREE.Mesh
+      if (mesh.userData.kind === 'sunCeilingOccluder') {
+        mesh.castShadow = mesh.visible
+        mesh.receiveShadow = false
+        mesh.layers.set(SHADOW_LAYER_EXTERIOR)
+        continue
+      }
       mesh.castShadow = mesh.visible
       mesh.receiveShadow = mesh.visible
       mesh.layers.set(SHADOW_LAYER_INTERIOR)

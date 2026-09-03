@@ -7,7 +7,7 @@
 | [architecture.md](architecture.md) | Gesamtarchitektur, Kerntypen-Überblick |
 | [facade-layers.md](facade-layers.md) | Schichten A/B/C, Öffnungsvertrag, Freiraum/Einbettung, Verkleidungszonen |
 | [changelog.md](changelog.md) | Änderungsprotokoll (Historie) |
-| [shadows.md](shadows.md) | 3D-Sonnenlicht, Shadow-Camera, Bias, Glas/Decke; Gesims-Cast bei Schrift (v0.7.288); 2D-Front Paneel-Werfschatten |
+| [shadows.md](shadows.md) | 3D-Sonnenlicht, **lichtdichte Hülle** (Sonne nur Öffnung+Glas), Shadow-Camera, Bias; Gesims-Cast; 2D-Front Paneel-Werfschatten |
 | [lighting-mood.md](lighting-mood.md) | Mehrschichtige Lichtstimmung: Umbra, Kontakt, Bounce |
 | [scene-lights.md](scene-lights.md) | Bibliotheks-Punktlichter: einfügen, XYZ, Persistenz |
 | [celestial-sky.md](celestial-sky.md) | Takram-Himmel, Sonne/Mond, Dämmerung, Tageszeit 0–24 h |
@@ -15,7 +15,7 @@
 | [floor-plan.md](floor-plan.md) | Grundriss-System, Ring-Erkennung, Miter, Etagen, Innenkante Decke/Boden |
 | [views-and-state.md](views-and-state.md) | Views, Persistenz, Undo/Redo, Navigation |
 | [camera.md](camera.md) | 3D-Kamera, Orbit-Ziel, ⌘/Ctrl-Gesten, Geschwindigkeiten |
-| [ux.md](ux.md) | Bedienung: Navigation, Kontextmenü, Farben, Scope, Hilfslinien, Export, Toolbar-IDs — Fachdetails in den Feature-Docs |
+| [ux.md](ux.md) | Bedienung: Navigation, Kontextmenü, Farben, Scope; **rechte Einstellungs-Tabs** (Übersicht → Maße → Farben → Formen → Dekor oben→unten) |
 | [wall-decor.md](wall-decor.md) | Gesims, Sockel, Zierbänder |
 | [opening-features.md](opening-features.md) | Bogen, Nischen/Konche, Freiraum, Bänke, Verdachung, Treppe, Kellerfenster |
 | [windows-doors.md](windows-doors.md) | Fenster/Türen: Ist-Bestand Gründerzeit-Teilung, Individualisierung, Altbau-Roadmap |

@@ -742,6 +742,7 @@ function setOrbitLite(active: boolean) {
     updateGroundPlane()
     floorPlanView.syncGridToCamera(topCamera)
   }
+  updateWallLibraryGizmos()
   markViewportDirty()
 }
 
@@ -3899,18 +3900,17 @@ function renderLitSceneFrame(activeCamera: THREE.Camera) {
     dirLightIndoor.color.copy(dirLight.color)
   }
   renderer.autoClear = true
-  if (sceneLightRoomOcclusionActive()) {
-    renderer.shadowMap.needsUpdate = true
-  }
-  reflectionSiteBox.setFromObject(sitePivot)
-  activeCamera.getWorldPosition(reflectionCamPos)
-  if (reflectionSiteBox.isEmpty()) reflectionFocus.set(0, 180, 0)
-  else reflectionSiteBox.getCenter(reflectionFocus)
+  // Shadow-Map nur bei Geometrie/Licht-Änderung (scheduleSunShadowMapUpdate) —
+  // nicht jeden Frame bei Punktlicht, sonst stottern Orbit und Verschieben.
   const line = currentRenderStyle === 'line'
   const wantSky =
     !presentationUsesWorkLikeShading(presentationMode) && !line && (currentView === '3d' || currentView === 'top')
   atmosphereSky.setVisible(wantSky)
   if (!presentationUsesWorkLikeShading(presentationMode) && !orbitLite && !orbitLitePointer) {
+    reflectionSiteBox.setFromObject(sitePivot)
+    activeCamera.getWorldPosition(reflectionCamPos)
+    if (reflectionSiteBox.isEmpty()) reflectionFocus.set(0, 180, 0)
+    else reflectionSiteBox.getCenter(reflectionFocus)
     const viewBucket = reflectionViewBucket(reflectionCamPos, reflectionFocus)
     if (viewBucket !== lastReflectionViewBucket) {
       lastReflectionViewBucket = viewBucket
@@ -3920,7 +3920,7 @@ function renderLitSceneFrame(activeCamera: THREE.Camera) {
     bakeSceneReflectionsIfNeeded(renderer, scene, reflectionProbePos, sceneReflectionHideRoots)
     bindMaterialsToGlassEnv(scene)
   }
-  const bloomOn = bloomIsActive()
+  const bloomOn = bloomIsActive() && !orbitLite && !orbitLitePointer
   renderPass.camera = activeCamera
   selectiveBloom.setCamera(activeCamera)
   if (bloomOn) {
@@ -8247,8 +8247,10 @@ function applyPcssSoftnessLive() {
     shadowFrustumWidthCm(dirLight),
     scene,
   )
+  markViewportDirty()
   if (currentView === '3d') render3dFrame()
-  else markViewportDirty()
+  else if (currentView === 'front') renderLitSceneFrame(frontCamera)
+  else if (currentView === 'top') renderLitSceneFrame(topCamera)
 }
 
 const SUN_SHADOW_MAP_MIN_INTERVAL_MS = 90
@@ -13344,7 +13346,7 @@ function applyOpeningPartVisibility() {
   const actionsSection = document.querySelector<HTMLElement>('#opening-actions-section')
   if (actionsSection) actionsSection.hidden = focusPart
 
-  // Kellerfenster-Checkbox bei jedem Fenster; Gitterhöhe nur wenn aktiv
+  // Fenstergitter-Checkbox bei jedem Fenster; Gitterhöhe nur wenn aktiv (Default: nur Kellerfenster an)
   const showBasementToggle = isWindow && !lacksChrome && !isConch && (!focusPart || part === 'grille')
   windowBasementRow.hidden = !showBasementToggle
   windowBasementGrilleOptions.hidden = !showBasementToggle || !isBasement
@@ -18767,8 +18769,8 @@ function animate() {
     render3dFrame()
     perfRendered = true
     updateViewCompass()
-    // Auch während Orbit: Gizmos an der Wand halten (nicht mit der Kamera mitschwimmen).
-    updateWallLibraryGizmos()
+    // Gizmos während Orbit nur bei Bedarf — spart Traverse pro Frame.
+    if (!orbitLite) updateWallLibraryGizmos()
   } else if (currentView === 'front') {
     if (
       sceneLightingReady &&

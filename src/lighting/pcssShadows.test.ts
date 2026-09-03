@@ -6,6 +6,7 @@ import {
   getPcssLightSizeUv,
   isPcssShadowsEnabled,
   PCSS_NUM_SAMPLES,
+  PCSS_PENUMBRA_SCALE,
   pcssLightSizeUvFromSoftness,
   pcssLightWorldSizeFromSoftness,
   updatePcssShadowParameters,
@@ -35,6 +36,12 @@ describe('pcssShadows', () => {
     expect(THREE.ShaderChunk.shadowmap_pars_fragment).toContain('pcssGetShadow')
     expect(THREE.ShaderChunk.shadowmap_pars_fragment).toContain('uniform float pcssLightSizeUv')
     expect(THREE.ShaderChunk.shadowmap_pars_fragment).toContain('PCSS_PENUMBRA_SCALE')
+    expect(THREE.ShaderChunk.shadowmap_pars_fragment).toContain(
+      'pcssLightSizeUv * PCSS_PENUMBRA_SCALE * ( zReceiver - PCSS_NEAR_PLANE ) / zReceiver',
+    )
+    expect(THREE.ShaderChunk.shadowmap_pars_fragment).not.toContain(
+      'pcssLightSizeUv * PCSS_NEAR_PLANE / zReceiver',
+    )
     disablePcssShadows()
     expect(isPcssShadowsEnabled()).toBe(false)
     expect(THREE.ShaderChunk.shadowmap_pars_fragment).toBe(original)
@@ -71,5 +78,9 @@ describe('pcssShadows', () => {
 
   it('nutzt ausreichend PCSS-Samples gegen sichtbares Poisson-Raster', () => {
     expect(PCSS_NUM_SAMPLES).toBeGreaterThanOrEqual(25)
+  })
+
+  it('hat Ortho-Penumbra-Skala für sichtbaren Weichheit-Slider', () => {
+    expect(PCSS_PENUMBRA_SCALE).toBe(8)
   })
 })

@@ -1890,6 +1890,32 @@ function computeVertexNormals(positions: number[], indices: number[], normals: n
       normals[i + 2] /= len
     }
   }
+  biasArchCutChamferNormals(normals)
+}
+
+/**
+ * Fase entlang einer Bogen-/Schrägkante zeigt teils zur Sonne und wirkt heller als
+ * die achsparallelen Fasen im Feld. Normale zur Wandaußenrichtung ziehen.
+ */
+function biasArchCutChamferNormals(normals: number[]) {
+  const mix = 0.62
+  for (let i = 0; i < normals.length; i += 3) {
+    const nx = normals[i]!
+    const ny = normals[i + 1]!
+    const nz = normals[i + 2]!
+    const ax = Math.abs(nx)
+    const ay = Math.abs(ny)
+    const az = Math.abs(nz)
+    if (ax <= 0.18 || ay <= 0.18 || az <= 0.12) continue
+    const sign = nz >= 0 ? 1 : -1
+    const x = nx * (1 - mix)
+    const y = ny * (1 - mix)
+    const z = nz * (1 - mix) + sign * mix
+    const len = Math.hypot(x, y, z) || 1
+    normals[i] = x / len
+    normals[i + 1] = y / len
+    normals[i + 2] = z / len
+  }
 }
 
 /** Prozedurale Studio-Paneele als eine BufferGeometry (Wand-Lokalraum, zentriert). */

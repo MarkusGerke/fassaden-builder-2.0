@@ -93,9 +93,9 @@ Oberste Hinterkante = Innenwand; tiefere Stufen = Außenkante. Aktive Treppe: So
 
 Datei: `src/studio/stairs.ts`.
 
-## Kellerfenster (`basementWindow`)
+## Kellerfenster (`basementWindow`) / Fenstergitter
 
-Preset `window-basement-48` bzw. `basementWindow.enabled`. Checkbox **Kellerfenster mit Gitter** bei jedem Fenster (nicht nur bei bereits aktivem Keller); nur aktuelle Auswahl (kein Scope). Bei aktivem Keller: Slider **Gitterhöhe** (`grilleHeight` 25–85 %, Default 50 %). Franz. Balkon / Stabgitter (`Opening.guard`) ist bei Keller ausgeblendet — Stabgitter kommt aus `basementWindow.ts`.
+Preset `window-basement-48` bzw. `basementWindow.enabled`. Checkbox **Fenstergitter** bei jedem Fenster (nicht nur bei bereits aktivem Keller); Default **aus**, außer beim Kellerfenster-Preset. Nur aktuelle Auswahl (kein Scope). Bei aktivem Gitter: Slider **Gitterhöhe** (`grilleHeight` 25–85 %, Default 50 %). Franz. Balkon / Stabgitter (`Opening.guard`) ist dann ausgeblendet — Stabgitter kommt aus `basementWindow.ts`.
 
 Kein Rahmenprofil, keine Bänke, keine Verdachung — nur Gitter + Position/Farbe. Teilung bleibt sichtbar (max. 2 Flügel, kein OL/Raster, Sprosse max. 1). Ist der Sockel höher als das Fenster, umschließt das Sockelprofil die Öffnung (Sturz), statt einen Schacht auszuschneiden ([wall-decor.md](wall-decor.md)).
 

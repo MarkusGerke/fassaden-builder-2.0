@@ -1,6 +1,6 @@
 /**
- * Boden-Umbra-Shader: Shadow-Map auf der Platte, Fill wie Mauerwerk
- * (Nutzer-Albedo × Sonnenfarbe) — ohne Himmelsblau aus Light-Probe/Hemisphere.
+ * Boden-Fill-Shader: Nutzer-Albedo × Sonnen-Ambient statt Himmelsblau.
+ * Schatten kommt nur aus dem Standard-`getShadow` (PCSS) — kein zweites Sampling.
  */
 import * as THREE from 'three'
 
@@ -11,7 +11,7 @@ export interface GroundMoodUniforms {
   uGroundSoftness: { value: number }
 }
 
-const GROUND_MOOD_SHADER_VERSION = 'v5'
+const GROUND_MOOD_SHADER_VERSION = 'v6'
 
 const groundMoodUniforms: GroundMoodUniforms = {
   uGroundAlbedo: { value: new THREE.Color('#ffffff') },
@@ -33,7 +33,7 @@ export function applyGroundMoodShader(material: THREE.MeshStandardMaterial): voi
   material.roughness = 1
   material.metalness = 0
   const prevKey = material.customProgramCacheKey?.bind(material)
-  material.customProgramCacheKey = () => `${prevKey ? prevKey() : ''}|ground-mood-v5`
+  material.customProgramCacheKey = () => `${prevKey ? prevKey() : ''}|ground-mood-v6`
   const prevCompile = material.onBeforeCompile
   material.onBeforeCompile = (shader, renderer) => {
     prevCompile?.(shader, renderer)
@@ -47,43 +47,18 @@ export function applyGroundMoodShader(material: THREE.MeshStandardMaterial): voi
     }
     shader.uniforms.uGroundAlbedo = groundMoodUniforms.uGroundAlbedo
     shader.uniforms.uGroundAmbient = groundMoodUniforms.uGroundAmbient
-    shader.uniforms.uShadowUmbra = groundMoodUniforms.uShadowUmbra
-    shader.uniforms.uGroundSoftness = groundMoodUniforms.uGroundSoftness
 
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',
         `#include <common>
 uniform vec3 uGroundAlbedo;
-uniform vec3 uGroundAmbient;
-uniform float uShadowUmbra;
-uniform float uGroundSoftness;`,
+uniform vec3 uGroundAmbient;`,
       )
       .replace(
         '#include <lights_fragment_begin>',
         `#include <lights_fragment_begin>
         irradiance = uGroundAlbedo * uGroundAmbient;`,
-      )
-      .replace(
-        '#include <lights_fragment_end>',
-        `#include <lights_fragment_end>
-        {
-          float shadowVis = 1.0;
-          #if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS > 0
-            shadowVis = receiveShadow ? getShadow(
-              directionalShadowMap[ 0 ],
-              directionalLightShadows[ 0 ].shadowMapSize,
-              directionalLightShadows[ 0 ].shadowIntensity,
-              directionalLightShadows[ 0 ].shadowBias,
-              directionalLightShadows[ 0 ].shadowRadius,
-              vDirectionalShadowCoord[ 0 ]
-            ) : 1.0;
-          #endif
-          float shadowAmt = pow(1.0 - clamp(shadowVis, 0.0, 1.0), mix(1.0, 0.55, uGroundSoftness));
-          float umbraScale = mix(1.0, 1.0 - uShadowUmbra, shadowAmt);
-          reflectedLight.directDiffuse *= umbraScale;
-          reflectedLight.indirectDiffuse *= mix(1.0, mix(1.0, 0.55, uShadowUmbra), shadowAmt);
-        }`,
       )
   }
   material.needsUpdate = true

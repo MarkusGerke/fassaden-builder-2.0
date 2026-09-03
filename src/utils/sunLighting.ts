@@ -68,10 +68,10 @@ export function intensityFromElevation(elevationRad: number): number {
 export const DEFAULT_SUN_TIME_OF_DAY = 13.25
 export const DEFAULT_SUN_AZIMUTH = 210
 export const DEFAULT_SUN_INTENSITY = 3.9
-export const DEFAULT_SUN_SHADOW_SOFTNESS = 5
+export const DEFAULT_SUN_SHADOW_SOFTNESS = 2.5
 export const DEFAULT_SUN_COLOR_TEMP = 4500
 export const DEFAULT_SUN_AMBIENT = 0.53
-export const DEFAULT_SUN_SHADOW_CONTRAST = 1.5
+export const DEFAULT_SUN_SHADOW_CONTRAST = 1.4
 export const DEFAULT_SUN_SHADOW_DENSITY = 0.55
 
 const today = todayMonthDay()

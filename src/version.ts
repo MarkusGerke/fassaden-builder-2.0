@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.95'
+export const APP_VERSION = '2.0.101'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,66 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.101',
+    date: '2026-09-03',
+    title: 'Fenstergitter, Fugen unter Paneele',
+    changes: [
+      '„Kellerfenster mit Gitter“ heißt jetzt „Fenstergitter“ — standardmäßig aus, außer beim Kellerfenster',
+      'Fugen-Einstellungen stehen im Tab Paneele (kein eigener Reiter mehr)',
+      'Bitte hart neu laden, bis v2.0.101 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.100',
+    date: '2026-09-03',
+    title: 'Decke lichtdicht, flüssigere Navigation',
+    changes: [
+      'Sonne scheint nicht mehr durch Zwischendecken (ohne Streifen auf der Fassade)',
+      'Beim Orbitieren: Bloom aus und weniger UI-Arbeit — Navigation flüssiger',
+      'Bitte hart neu laden, bis v2.0.100 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.99',
+    date: '2026-09-03',
+    title: 'Ein weicher Schattenrand, lichtdichte Hülle',
+    changes: [
+      'Sonnenschatten: weicher Außenrand statt harter Texelkante über einer weichen Umbra',
+      'Sonne scheint nur durch Wandöffnungen und Glas — nicht durch Wände, Decken, Böden oder Fensterrahmen',
+      'Bitte hart neu laden, bis v2.0.99 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.98',
+    date: '2026-09-03',
+    title: 'Weichheit-Slider + flüssigere Navigation',
+    changes: [
+      'Schatten-Weichheit steuert die Penumbra wieder sichtbar (Ortho-Skala 8, Default 2,5)',
+      'Kein Shadow-Map-Neubake mehr bei jedem Frame mit Punktlicht — Orbit und Verschieben stottern weniger',
+      'Bitte hart neu laden, bis v2.0.98 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.97',
+    date: '2026-09-03',
+    title: 'Schatten wie v0.7.347',
+    changes: [
+      'Sonnenschatten wieder mit der klassischen PCSS-Formel (× Near/z) — hart am Kontakt, weich mit Abstand wie in v0.7.347',
+      'Weichheit-Default wieder 2,5 (statt 5); künstliche Penumbra-Skala entfernt',
+      'Bitte hart neu laden, bis v2.0.97 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.96',
+    date: '2026-09-03',
+    title: 'Gleich helle Steine am Bogen, Schatten wie bisher',
+    changes: [
+      'Paneele direkt am Rundbogen bleiben so hell wie die Steine im Feld (Fase fängt nicht mehr extra Sonne)',
+      'Sonnenschatten unverändert: bewährtes weiches PCSS (kein Mindest-Filter, Scale 8) — Experiment mit fransigen/langsamen Schatten zurückgenommen',
+      'Bitte hart neu laden, bis v2.0.96 in der Titelleiste steht',
+    ],
+  },
   {
     version: '2.0.95',
     date: '2026-09-03',

@@ -30,7 +30,7 @@ void main() {
       } as THREE.WebGLProgramParametersWithUniforms,
       {} as THREE.WebGLRenderer,
     )
-    expect(fragmentShader).toContain('getShadow(')
+    expect(fragmentShader).not.toContain('getShadow(')
     expect(fragmentShader).toContain('irradiance = uGroundAlbedo * uGroundAmbient')
     expect(fragmentShader).not.toContain('uShadowSkyColor')
     expect(fragmentShader).not.toContain('uContactMap')

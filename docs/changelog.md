@@ -2,6 +2,32 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Fenstergitter + Fugen im Paneele-Tab (2026-09-03) — v2.0.101
+
+Checkbox umbenannt in **Fenstergitter** (Default aus, außer Kellerfenster-Preset). Fugen-Felder im Tab **Paneele** (`#studio-joints-section`), eigener Reiter `joints` entfernt. Dateien: `index.html`, `main.ts`. Docs: [ux.md](ux.md), [opening-features.md](opening-features.md).
+
+### Rechte Einstellungs-Tabs: Reihenfolge (2026-09-03)
+
+Konvention in [ux.md](ux.md): erster Tab immer **Übersicht**; danach Maße, Farben, Formen/Profile; dann Dekor von oben nach unten (Gesims → Zierband → … → Sockel). Nur sichtbare Tabs; `data-settings-order` danach ausrichten.
+
+Unsichtbare Sonnen-Okkluder an der Decken-Innenkante (`sunCeilingOccluder`, Layer 0) blockieren die Sonne ohne horizontale Fassadenstreifen (sichtbare Platten bleiben Layer 1 / Außenring). Orbit-Lite: Bloom-Composer aus, Gizmo-Update pausiert. Dateien: `FacadeController.ts`, `main.ts`. Docs: [shadows.md](shadows.md), [performance.md](performance.md).
+
+### Ein weicher Schattenrand; lichtdichte Hülle (2026-09-03) — v2.0.99
+
+PCSS-Blocker-Suche und Filter nutzen dieselbe Ortho-Skala — sonst weiche Umbra mit kantigem Außenrand. Boden-Shader sampled `getShadow` nicht mehr ein zweites Mal (`ground-mood-v6`). Regel festgehalten: Sonne nur durch Wandöffnungen und Glas, nicht durch Wände, Decken, Böden, Fensterrahmen. Dateien: `pcssShadows.ts`, `groundMood.ts`. Docs: [shadows.md](shadows.md), [lighting-mood.md](lighting-mood.md).
+
+### Weichheit-Slider + flüssigere Navigation (2026-09-03) — v2.0.98
+
+PCSS-Filter wieder mit `PCSS_PENUMBRA_SCALE` 8 (Ortho), Softness-Default 2,5 — Weichheit-Slider wirkt sichtbar ohne Fransigkeit von Scale 24. `renderLitSceneFrame` backte bei aktivem Punktlicht **jede Frame** die Shadow-Map neu → Orbit/Verschieben stotterte; entfernt (Bake nur noch über `scheduleSunShadowMapUpdate`). EnvMap-AABB nur noch außerhalb Orbit-Lite. Dateien: `pcssShadows.ts`, `main.ts`. Docs: [shadows.md](shadows.md).
+
+### Schatten wie v0.7.347 (2026-09-03) — v2.0.97
+
+PCSS-Filter wieder `penumbraRatio × lightSizeUv × NEAR_PLANE / zReceiver` (Three.js / v0.7.347) statt künstlichem `PCSS_PENUMBRA_SCALE`. Softness-Default 2,5 und Kontrast 1,4. Live-Uniform für den Weichheit-Slider bleibt. Dateien: `pcssShadows.ts`, `sunLighting.ts`, `index.html`. Docs: [shadows.md](shadows.md).
+
+### Gleiche Helligkeit am Bogen; PCSS unverändert weich (2026-09-03) — v2.0.96
+
+Bogen-Fasen: Normale zur Wandaußenrichtung gezogen (`biasArchCutChamferNormals`), damit Reststeine nicht heller wirken als das Feld. Ein PCSS-Versuch mit Mindest-Filter und Scale 24 wurde zurückgenommen — Schatten bleiben klassisch (Scale 8, Contact-Hardening). Dateien: `panelGeometry.ts`, Tests. Docs: [panel-geometry.md](panel-geometry.md), [shadows.md](shadows.md).
+
 ### Keine Diagonale am Bogenansatz (2026-09-03) — v2.0.95
 
 Stein über Kämpfer + Laibung: `refinePolyArcToCurve` legte alle `bottomArc`-X mit 0,2 cm zusammen; die lotrechte Laibungsnaht (`JAMB_SEAM` = 0,001) verschwand und die Zeichnung zeigte eine Sehne vom Steinboden zum Bogenansatz. Jetzt bleiben die Original-Stützpunkte exakt; nur Kurven-Zusatzsamples werden dedupliziert. Dateien: `openingGeometry.ts`, `archOpeningMasonryClip.test.ts`. Docs: [panel-geometry.md](panel-geometry.md).

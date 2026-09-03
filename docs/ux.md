@@ -115,7 +115,7 @@ Anwendung über `applySceneAppearance()` — setzt Hintergrund, Boden, Glas-EnvM
 
 Rahmen-/Glas-Farben in der **Öffnungs-Toolbar** (`#frame-color-swatches`) über `<input type="color">` plus **RGB-, HSL- und HEX-Felder untereinander** (kein Format-Dropdown). Gleiches gilt für **Szene** (Alle drei / Hintergrund / Untergrund / Himmel) und **Nebel**. Bei Glas zusätzlich Button **Transparent**. Wand-, Fugen-, Profil-, Gesims- und Dachziegel-Farben ebenfalls. Die Inputs werden bei UI-Sync **wiederverwendet**; während eines aktiven Pickers (`activeColorPickerCount`) wird `renderUi` nicht für Farb-Hosts aufgerufen. Hover-Livevorschau (`previewSelectionColor`) aktualisiert nur 3D/2D, kein vollständiges `renderUi`.
 
-**Studio:** **Wandfarbe** färbt die Außenfläche (`wallColor`). **Laibung außen/innen** (`revealExteriorColor` / `revealInteriorColor` am Öffnung, Farben-Tab) sind unabhängig — fehlen sie, Fallback Wand-/Innenwandfarbe. **Verkleidung** (`claddingColor`) steuert Steine/Paneele. **Fugenfarbe** (`panel.jointColor`, Reiter Fugen) unabhängig davon. **Innenwandfarbe** (`interiorColor`, Default Weiß) nur die Raumseite.
+**Studio:** **Wandfarbe** färbt die Außenfläche (`wallColor`). **Laibung außen/innen** (`revealExteriorColor` / `revealInteriorColor` am Öffnung, Farben-Tab) sind unabhängig — fehlen sie, Fallback Wand-/Innenwandfarbe. **Verkleidung** (`claddingColor`) steuert Steine/Paneele. **Fugenfarbe** (`panel.jointColor`, unter Tab Paneele) unabhängig davon. **Innenwandfarbe** (`interiorColor`, Default Weiß) nur die Raumseite.
 
 Wand-Batch färbt Fenster **und** Türen.
 
@@ -288,9 +288,9 @@ Daten: `splitVCount` / `splitVRatio` / `splitHCount` / `splitHRatio` / `paneMunt
 - Hilfslinien: Self (cyan) und Align (orange), analog zu Fenster-Guides.
 - ±45°-Buttons: geometrische Drehung des gewählten/aktiven Hauses; ohne Auswahl Site-Yaw (nur 3D).
 
-## Kellerfenster
+## Kellerfenster / Fenstergitter
 
-Kurz: Preset `window-basement-48` / `basementWindow.enabled`; Checkbox an **jedem** Fenster inkl. Gitterhöhe-Slider; kein Profil/Bänke/Verdachung. Franz. Balkon-Gitter bei Keller ausgeblendet. **Teilung (v2.0.14):** Reiter sichtbar — max. 2 Flügel, kein Oberlicht, keine Fensterteilung (Raster), Sprosse max. 1 je Richtung (`clampGruenderzeitForBasement`). **v2.0.90:** Neue Fenster default 1 Flügel ohne Oberlicht (kein Mehrflügel-„Gitter“). Details: [opening-features.md](opening-features.md#kellerfenster-basementwindow).
+Kurz: Preset `window-basement-48` setzt `basementWindow.enabled` (Gitter an). Checkbox **Fenstergitter** (`#window-basement-enabled`) bei jedem Fenster; Default **aus**, außer Kellerfenster-Preset. Gitterhöhe-Slider nur wenn aktiv. Kein Profil/Bänke/Verdachung bei aktivem Gitter/Keller. Franz. Balkon-Gitter dann ausgeblendet. **Teilung (v2.0.14):** Reiter sichtbar — max. 2 Flügel, kein Oberlicht, keine Fensterteilung (Raster), Sprosse max. 1 je Richtung (`clampGruenderzeitForBasement`). **v2.0.90:** Neue Fenster default 1 Flügel ohne Oberlicht. Details: [opening-features.md](opening-features.md#kellerfenster-basementwindow).
 
 ---
 
@@ -374,9 +374,35 @@ Bei Wand-, Öffnungs-, Studio-, Dach- oder Decken-Auswahl:
 - Ohne Auswahl: rechts **immer** die Szeneneinstellungen (`#lighting-accordion`, Geschwister von `#selection-toolbar` unter `#ui-right` — nicht darin verschachtelt, sonst verschwindet die Szene mit `[hidden]` der Auswahl-Toolbar).
 - **`data-settings-inline-all`**: kein eigener Reiter, im aktiven rechten Panel mit sichtbar (Modell/Aktionen).
 - Tab-Wechsel filtert per CSS-Klasse `selection-tab-filtered-out` — bestehende `hidden`-Logik bleibt maßgeblich.
-- Wechsel der Auswahl setzt den Tab auf die **erste** verfügbare Sektion. Kein Reiter „Alles“.
+- Wechsel der Auswahl setzt den Tab auf **Übersicht** (bzw. die erste verfügbare Sektion, falls Übersicht fehlt).
 - **Einfach/Komplex:** Sektionen mit `data-ui-level="advanced"` erscheinen nur im Modus Komplex auch als Reiter. **Bossensteine** stehen im Tab Paneele (unter Mauerwerk), auch im Modus Einfach.
 - **Keine Akkordeons** in den Auswahl-Panels; Navigation über rechte Register + Überschriften.
+
+### Tab-Reihenfolge rechts (für alle Objekte)
+
+Gilt für die **rechten Einstellungs-Register** bei jeder Objektauswahl (Wand, Öffnung, Dach, Decke, Licht, …) und analog für die **Szene** ohne Auswahl. Nur Tabs, die für das aktuelle Objekt **sichtbar** sind (`hidden` / UI-Level / fehlende Features), erscheinen.
+
+| Position | Tab | Inhalt / Beispiele |
+|---|---|---|
+| **1. immer** | **Übersicht** | Alle sichtbaren Einstellungsblöcke untereinander (wie Szene-Tab `all`) |
+| **2.** | **Maße** / Größenangaben | Breite, Höhe, Tiefe, Position, Geschosshöhe, Wandstärke, … (`dimensions`, `measures`) |
+| **3.** | **Farben** | Flächen-, Rahmen-, Glas-, Fugenfarben, … (`colors`) |
+| **4.** | **Formen** / Profile | Querschnitte, Profilwahl, Teilung/Stil wenn formgebend (`profile`, ggf. Dachform) |
+| **danach** | Dekor & Anbauteile **von oben nach unten** am Objekt | Reihenfolge wie an der Fassade gelesen |
+
+**Von oben nach unten** (nur wenn vorhanden; `data-settings-order` bzw. DOM-Reihenfolge danach ausrichten):
+
+1. Gesims (`cornice`)
+2. Zierband / Zierbänder (`trimBands`)
+3. Schrift (`label`) — oben an der Wand
+4. Paneele / Verkleidung inkl. Fugen (`panels`) — Fugen kein eigener Tab
+5. Öffnungs-Anbauten von Sturz zu Sohlbank: Verdachung → Verdachungsfeld → Konsolen → Rollläden → Fensterbank außen → Fensterbrett innen → Treppe (`pediment`, `taperedField`, `consoles`, `roller-shutter`, `sill-outer`, `sill-inner`, `stairs`)
+6. Sockel (`plinth`) — unten
+7. Sonstiges (Animation, Modul, Debug, …) ans Ende
+
+**Technik:** Sichtbare Tabs aus `.settings-section[data-settings-section]` sortiert nach `data-settings-order` (aufsteigend). Neue Sektionen müssen Order und Label so setzen, dass die Tabelle oben gilt. Übersicht = synthetischer Tab (Szene: `sceneToolbarTab === 'all'`; Auswahl: gleiches Muster).
+
+**Nicht:** alphabetisch; nicht „was zufällig im HTML zuerst steht“, wenn Order fehlt — dann Order nachtragen.
 
 ### Keine Auswahl
 
@@ -559,7 +585,7 @@ Feldkatalog, Sweep, UI-IDs: [wall-decor.md](wall-decor.md). Kurz: Sockelhöhe 8 
 
 ## Rechte Seitenleiste
 
-Struktur bei Wandauswahl: Wand → Sockel → Gesims → Fenstertiefe → Paneele (Paneele/Mauerwerk-Kacheln, darunter Bossensteine) → Fugen. Bei Öffnungen: **Fensterteilung** (inkl. **Sprossen** ohne Feld-Auswahl) → **Rahmenprofil** …
+Struktur bei Wandauswahl: Wand → Sockel → Gesims → Fenstertiefe → Paneele (Paneele/Mauerwerk-Kacheln, darunter Bossensteine und Fugen). Bei Öffnungen: **Fensterteilung** (inkl. **Sprossen** ohne Feld-Auswahl) → **Rahmenprofil** …
 
 ### Toolbar-Layout (v0.7.14)
 

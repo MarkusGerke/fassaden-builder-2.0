@@ -13,10 +13,9 @@ export const PCSS_LIGHT_WORLD_SIZE_MAX_CM = 28
 export const PCSS_NEAR_PLANE = 0.002
 
 /**
- * Penumbra-Verstärker für Ortho-Shadow-Maps.
- * Das Three.js-PCSS-Beispiel multipliziert mit NEAR_PLANE/z (z. B. 9,5 / ~0,5 ≈ 19),
- * weil es Perspektiv-Tiefenzellen erwartet. Unsere Directional-Map liefert NDC-z (0…1);
- * NEAR_PLANE 0,002 würde die Filtergröße ~5000× zusammendrücken — Slider wirkungslos.
+ * Penumbra-Verstärker für Ortho-Shadow-Maps (statt Perspektiv-`NEAR/z`).
+ * Ohne ihn ist der Weichheit-Slider praktisch tot; zu groß (24+) wirkt fransig.
+ * Softness-Default 2,5 hält den Kontakt ruhig — Slider 0,5…8 steuert die Breite.
  */
 export const PCSS_PENUMBRA_SCALE = 8
 
@@ -52,7 +51,8 @@ float pcssPenumbraSize( const in float zReceiver, const in float zBlocker ) {
 }
 
 float pcssFindBlocker( sampler2D shadowMap, const in vec2 uv, const in float zReceiver ) {
-	float searchRadius = pcssLightSizeUv * ( zReceiver - PCSS_NEAR_PLANE ) / zReceiver;
+	// Gleiche Skala wie der Filter — sonst weiche Umbra innen, harte Texel-Kante außen.
+	float searchRadius = pcssLightSizeUv * PCSS_PENUMBRA_SCALE * ( zReceiver - PCSS_NEAR_PLANE ) / zReceiver;
 	float blockerDepthSum = 0.0;
 	int numBlockers = 0;
 	for ( int i = 0; i < PCSS_BLOCKER_SEARCH_NUM_SAMPLES; i++ ) {

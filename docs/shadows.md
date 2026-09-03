@@ -8,11 +8,26 @@ Glas-EnvMap: **CubeCamera vor dem Baukörper** (auf der Kameraseite, nicht im In
 
 Ein Zwei-Pass mit Scratch-RT ist **verworfen** (Viewport wurde leer/1×1). Die Haus-Silhouette kommt aus korrekten Grundrissflächen + Wänden, nicht aus einer zweiten Sonne.
 
+## Lichtdichte Hülle (Sonne)
+
+Die Sonne darf **ausschließlich durch Wandöffnungen und Glas** scheinen.
+
+**Nicht** durch: Wände, Decken, Böden, Fensterrahmen, Sprossen, Türfüllungen, Laibungs-Holz, Gesims, Dach, Sockel, opake Paneele.
+
+| Darf Licht durch | Darf **kein** Licht durch |
+|---|---|
+| Wandöffnung (Loch in der Shadow-Map) | Wandkörper, Paneele, Mörtel |
+| Glas (`castShadow: false`) | Fensterrahmen, Sprossen, Konsolen, Türfüllung |
+| | Decken- und Bodenplatten, Dach, Sockel, Gesims |
+
+Glas bleibt ohne Cast, damit die Öffnung hell bleibt. Alles Opake in der Hülle wirft in der Sonnen-Shadow-Map. Geschossplatten bleiben lichtdicht, solange sie sichtbar sind (Ausblenden = bewusstes Oberlicht). **v2.0.100:** Sichtbare Decke/Boden nur Layer 1 (kein Streifen auf der Fassade); unsichtbarer `sunCeilingOccluder` an der Innenkante wirft in Layer 0 und blockiert die Sonne.
+
+---
 Bloom und Gobo-Schatten: frühere Laub-Gobo-UI entfernt (v0.7.341). **Unreal Bloom** und **Nebel** unter **Szene**, in **3D** und **2D-Front** (nicht Oben/Plan).
 
 ### Bloom (3D / 2D-Front)
 
-- `EffectComposer` + `RenderPass` + `UnrealBloomPass` + optional `SMAAPass` + `OutputPass` in `main.ts` (`renderLitSceneFrame`). **v2.0.55:** `syncComposerPixelRatio` setzt auch `composer.setSize` — ohne das blieb der Composer in der Front-Ansicht bei 1×1 px (schwarzes Bild). **Dirty-Rendering (v0.7.74):** idle kein Vollbild-Render. **Bloom während Navigation (v0.7.184):** bleibt an, solange Bloom aktiviert ist (Orbit-Lite schaltet Bloom nicht mehr ab). **Schärfe (v0.7.186 / v0.7.187):** Composer-`setPixelRatio` folgt dem Renderer; Composer-RTs mit bis zu 8× MSAA (SMAA nur ohne GPU-Samples); kein extra Half-Res am Bloom-Pass. Selektion baut Edges/`applyRenderStyle` nicht neu; Shadow-Map-Rebuild nur bei Geometrie/Sonne.
+- `EffectComposer` + `RenderPass` + `UnrealBloomPass` + optional `SMAAPass` + `OutputPass` in `main.ts` (`renderLitSceneFrame`). **v2.0.55:** `syncComposerPixelRatio` setzt auch `composer.setSize` — ohne das blieb der Composer in der Front-Ansicht bei 1×1 px (schwarzes Bild). **Dirty-Rendering (v0.7.74):** idle kein Vollbild-Render. **Bloom während Navigation (v2.0.100):** während Orbit-Lite aus (nur `renderer.render`); idle wieder an. **Schärfe (v0.7.186 / v0.7.187):** Composer-`setPixelRatio` folgt dem Renderer; Composer-RTs mit bis zu 8× MSAA (SMAA nur ohne GPU-Samples); kein extra Half-Res am Bloom-Pass. Selektion baut Edges/`applyRenderStyle` nicht neu; Shadow-Map-Rebuild nur bei Geometrie/Sonne.
 - Checkbox, Schwelle / Stärke / Radius / Belichtung als Slider **und** Number (Schritt 0,001). Defaults (v0.7.290): an, Schwelle `0,85`, Stärke `0,12`, Radius `0,6`, Belichtung `1,116`. Bereiche: Schwelle `0…1,2`, Stärke `0…1,5`, Radius `0…1`, Belichtung `0,75…1,45`. **v0.7.290:** Slider-Änderungen markieren den Viewport dirty und rufen sofort `render3dFrame` auf (ohne Fog-UI-Rebuild während des Ziehens).
 - Bei an: `ACESFilmicToneMapping`, `toneMappingExposure = exposure ** 3` (OutputPass). Persistenz: `PersistedAppState.bloom`.
 - **Schattenseiten Hauptfläche (v2.0.57):** `dimMask = 1 − sideOrTop` — bei Gegenlicht werden auch große Wandflächen (Ost/Nord bei Südsonne) abgedunkelt; Seiten/Oberkanten der Geometrie bleiben hell. Datei: `facadeShade.ts`.
@@ -27,7 +42,7 @@ Bloom und Gobo-Schatten: frühere Laub-Gobo-UI entfernt (v0.7.341). **Unreal Blo
 ## Verhalten für den Nutzer
 
 - Die Sonne wirft weiche Schatten auf Boden, Wände (innen und außen), Laibungen, Fensterrahmen, Glas und **Fassaden-Schrift**. **v0.7.183 / v0.7.188:** Schrift-Schatten nur auf dem Wandkörper (Freistreifen); Paneele empfangen nicht. **v0.7.198:** Wandkörper castet bei Schrift-Empfang weiter (Bodenschatten); Gesims/Zierband casteten damals nicht auf denselben Freistreifen. **v0.7.288:** Gesims/Zierband casten wieder immer — Schrift empfängt mit Z-Bias. **v0.7.199:** Beschriftung empfing keine Schatten (Lesbarkeit). **v0.7.252:** Schrift empfängt wieder Directional-Schatten; Extra-Z-Bias im Label-Shader (`LABEL_SHADOW_COORD_Z_BIAS`) verhindert, dass die 1–2 cm entfernte Wand die Glyphen frisst. Auf der Schattenseite dimmt ein eigener Schrift-Shade die ganze Glyphe (stärker als bei Wänden). Shadow-Map wird auch bei reinen Schrift-Updates neu berechnet (`consumeWallLabelsShadowDirty`).
-- Licht fällt durch Fenster- und Türöffnungen in den Innenraum. Glas blockiert die Shadow-Map nicht.
+- Licht fällt **nur** durch Fenster- und Tür**öffnungen** und **Glas** in den Innenraum. Wände, Decken, Böden und Fensterrahmen bleiben lichtdicht (siehe [Lichtdichte Hülle](#lichtdichte-hülle-sonne)).
 - **Decke / Boden** (eine Platte pro Geschossgrenze, **Außenring** / Fassadenrand, v2.0.92) werfen und empfangen Schatten; Form aus `planFacesWithHoles` inkl. Hof-Löcher.
 - **Kein Licht durch die Trennfläche** zur Etage darunter, solange sie sichtbar ist. Ausblenden = bewusstes Oberlicht.
 - **Außenschatten** folgt L/U/Hof-Polygon + Wänden mit Fensterlöchern + Dach — kein achsenparalleler Kasten aus falsch gefüllten Ringen.
@@ -47,7 +62,8 @@ Bloom und Gobo-Schatten: frühere Laub-Gobo-UI entfernt (v0.7.341). **Unreal Blo
 ```
 planFacesWithHoles(plan)
   → Outer + holes (Hof = kleinerer Ring im größeren)
-  → Decken-Extrude (INDOOR_SLAB_THICKNESS) castShadow — **nur Layer 1** (v2.0.18: nicht auf Außenfassade)
+  → Decken-Extrude sichtbar (INDOOR_SLAB_THICKNESS) Layer 1
+  → unsichtbarer sunCeilingOccluder an Innenkante Layer 0 (v2.0.100 — Sonne lichtdicht, keine Fassadenstreifen)
   + Studio-Wände mit Öffnungslöchern castShadow
   + Dach (Outer+Holes an Firstkappe) castShadow
   → eine DirectionalLight-Shadow-Map
@@ -55,8 +71,9 @@ planFacesWithHoles(plan)
 
 | Rolle | castShadow | receiveShadow |
 |---|---|---|
-| `ceiling` (sichtbar) | ja (Layer 1) | ja |
-| `floor` (sichtbar) | nein | ja |
+| `ceiling` (sichtbar) | ja (Layer 1, Punktlicht) | ja |
+| `sunCeilingOccluder` (unsichtbar) | ja (Layer 0, Sonne; Innenkante, v2.0.100) | nein |
+| `floor` (sichtbar) | ja (Layer 1) | ja |
 | Wandkörper (Studio) | ja | ja (**v0.7.237** / **v0.7.285**; immer, nicht nur bei Schrift) |
 | Öffnungs-Tunnel (unsichtbar) | ja | nein (nur Shadow-Map; bis Fassadenfront inkl. Paneeltiefe, v0.7.192) |
 | Punktlicht-Raum-Okkluder (Außenring, Layer 3) | ja (nur Punktlicht-Cube-Map, `customDistanceMaterial`) | nein — unsichtbar für Kamera und Sonne |
@@ -86,7 +103,7 @@ planFacesWithHoles(plan)
 | `src/lighting/pcssShadows.ts` | PCSS-ShaderChunk (Blocker-Suche + variable Penumbra), Lichtgröße aus Weichheit |
 | `src/utils/sunLighting.ts` | Weichheit aus Elevation, Shadow-Camera, Kelvin |
 | `src/utils/lightingMood.ts` | Schichten-Intensitäten aus Sonne + Szenenfarben |
-| `src/lighting/groundMood.ts` | Boden-Umbra-Shader (**v0.7.264:** `ground-mood-v5`, Albedo × Sonnen-Ambient) |
+| `src/lighting/groundMood.ts` | Boden-Fill (`ground-mood-v6`, Albedo × Sonnen-Ambient; Schatten nur Standard-PCSS) |
 | `src/utils/facadeShade.ts` | Gegenlicht: Seiten/Oberseiten; Schrift: ganze Glyphe + eigene Dims (v0.7.252/254) |
 | `src/main.ts` | Szene-UI, ein Pass, Tagesanimation |
 | `src/windows/gruenderzeit.ts` | Glas: kein `castShadow`, `transmission = 0`; Holz/Türfüllung ohne `receiveShadow` (v0.7.191) |
@@ -112,8 +129,9 @@ State-Änderung / Sonnen-Slider
 | Konstante | Wert | Bedeutung |
 |---|---|---|
 | Softness-Bereich | 0,5 … 8 | Slider → PCSS-Lichtfläche 0,8…28 cm / Frustum-Breite (`pcssLightSizeUv`-Uniform) |
-| `PCSS_PENUMBRA_SCALE` | 8 | Ortho-NDC-Ausgleich; ohne ihn ist `NEAR/z` mit Near 0,002 unsichtbar |
-| `PCSS_NEAR_PLANE` | 0,002 | Normalisierte Near-Plane für Blocker-Suche (Shadow-Tiefenraum) |
+| Softness-Default | 2,5 | ruhiger Kontakt; Slider bis 8 weitet die Penumbra |
+| `PCSS_PENUMBRA_SCALE` | 8 | Ortho-Ausgleich statt Perspektiv-`NEAR/z` (sonst Slider tot) |
+| `PCSS_NEAR_PLANE` | 0,002 | Blocker-Suchradius (Shadow-Tiefenraum) |
 | `MIN_SUN_DISTANCE` | 900 cm | Untergrenze Licht→Ziel |
 | `SHADOW_MAP_SIZE` | 4096 | Shadow-Map (große Sites) |
 | `SHADOW_MAP_SIZE_HIGH` | 8192 | Shadow-Map wenn Site-Spanne ≤ 2200 cm (v0.7.346) |
@@ -135,17 +153,21 @@ Glas: dunkles Klarglas, CubeCamera-EnvMap der Szene von außerhalb. `transmissio
 - **Jeder Ring als volle Platte:** Hof + Rechteck → AABB-Kasten. Deshalb Nesting in `planFacesWithHoles`.
 - **Doppelte Platten an Geschossgrenzen:** früher separate Boden- und Decken-Meshes — jetzt nur noch eine Trennfläche pro Etage.
 - **Zwei-Pass / Scratch-RT:** Viewport 1×1 oder leer — nicht wieder einführen ohne sauberes Viewport-Restore.
-- **Glas wirft Schatten:** füllt die Öffnung; Glas bleibt ohne Cast.
+- **Glas wirft Schatten:** füllt die Öffnung; Glas bleibt ohne Cast — Sonne nur durch Loch + Glas, nicht durch Rahmen.
+- **Etagenstreifen auf Fassade (v2.0.18 / v2.0.100):** Decken auf Layer 0 warfen horizontale Streifen. Sichtbare Platten bleiben Layer 1; Sonne blockiert ein unsichtbarer Okkluder an der Innenkante (Layer 0).
 - **Einheiten cm:** Bias-Werte aus Meter-Tutorials sind hier falsch skaliert.
 - **Sehr flache Sonne:** Schattenlänge über 3200 cm wird im Frustum gekappt (sonst zu grobe Texel). Der Boden in der 3D-Ansicht ist um dieselbe Reichweite vergrößert.
 - **Entwurf / Vorschau:** PCSS aus, harte `BasicShadowMap` (kein Contact-Hardening) — absichtlich.
-- **Weichheit-Slider tot (v2.0.1):** `#define PCSS_LIGHT_SIZE_UV` ändert den Program-Cache von `MeshStandardMaterial` nicht (shaderID `standard`). Dazu Filter `* NEAR_PLANE / zReceiver` mit Near 0,002 auf NDC-z ≈ 0. Fix: Uniform + `PCSS_PENUMBRA_SCALE` 8. Slider nur in **Render** sichtbar.
+- **Weichheit-Slider tot (v2.0.1 / v2.0.97):** `#define PCSS_LIGHT_SIZE_UV` cached nicht; Filter `× NEAR/z` mit Near 0,002 auf Ortho-NDC ist unsichtbar. Fix: Uniform + `PCSS_PENUMBRA_SCALE` 8 (**v2.0.98**). Softness-Default 2,5. Slider nur in **Render**.
 - **Weichheit-Slider träge (v0.7.335):** Pro Tick Shader-Neubau — jetzt Uniform `pcssLightSizeUv`, sofortiger Frame-Render. PCSS-Filter in Lit-Bereichen erzeugte zweiten Weichschatten. Jetzt ein Pfad: hart am Kontakt, Weichheit nur via min(hard, soft) in der Penumbra.
 - **Render + schwebender Schatten (v0.7.333):** Umbra am Kontakt hart; NormalBias 0; Cast-Shadow ohne polygonOffset (`customDepthMaterial`).
 - **Render + schwebender Schatten (v0.7.332):** Mindest-Filter und hoher NormalBias wirkten am Kontakt wie Peter-Panning. Contact-Hardening + PCSS-NormalBias ≤ 0,12 cm.
 - **Render + „gepunktet“ / pixelig (v0.7.346):** Zu wenige PCSS-Samples (17) ließen das Poisson-Muster sichtbar werden. Jetzt **32 Samples**; kleine Sites zusätzlich **8192** Shadow-Map. Weichheit-Slider unverändert (0,8…28 cm).
-- **Render + „sieht hart aus“ (v0.7.328):** Zu kleine Lichtfläche/UV und falsche Near-Skala ließen PCSS wie Basic wirken. Jetzt größere Lichtfläche + Penumbra-Skala; Weichheit-Slider in **Render** prüfen (Boden/lange Schatten).
-- **Custom-Shader:** `facadeShade` und Standard-Materialien nutzen PCSS über `getShadow`. Boden (`groundMood`) nur Fill-Override — **kein** zweites Schatten-Sampling (v0.7.330).
+- **Render + fransig / langsam (Scale 24 / Softness 5):** zu großer Filterradius. Default Softness 2,5 + Scale 8.
+- **Render + gemischt weich / kantiger Außenrand (v2.0.99):** Blocker-Suche war kleiner als der PCSS-Filter → weiche Umbra, harte Texel-Silhouette. Suche nutzt jetzt dieselbe `PCSS_PENUMBRA_SCALE`. Boden sampled `getShadow` nicht mehr ein zweites Mal (ein Pfad).
+- **Render + stotternde Navigation (v2.0.98):** Bei Punktlicht setzte `renderLitSceneFrame` jedes Frame `shadowMap.needsUpdate` — teurer Full-Bake. Nur noch bei Geometrie/Licht über `scheduleSunShadowMapUpdate`.
+- **Render + „sieht hart aus“ (v0.7.328):** Zu kleine Lichtfläche/UV und falsche Near-Skala ließen PCSS wie Basic wirken. Scale 8 + Softness-Slider in **Render** (Boden/lange Schatten).
+- **Custom-Shader:** `facadeShade` und Standard-Materialien nutzen PCSS über `getShadow`. Boden (`groundMood`) nur Fill-Override — **kein** zweites Schatten-Sampling (v0.7.330 / v2.0.99).
 - Wandkörper empfängt wieder Schatten (**v0.7.237** / **v0.7.285**, auch ohne Schrift). **v2.0.90:** Paneele empfangen auch in **3D** (Farbe); Zeichnung und Streiflicht-Ost/West weiter aus. **2D-Front (v0.7.285):** Paneele empfangen Werfschatten (`setCladdingReceiveShadows`).
 - **Nord-Aufriss dunkel/statisch:** Physik — N·L der Nordfront bleibt bei Azimut O→S→W ≤ 0; West wechselt Gegenlicht↔Frontlicht. Ohne Paneel-`receiveShadow` fehlen zusätzlich wandernde Gesims-/Vorstandschatten. `facadeOutward(0)` und Front-Kamera sind korrekt (−Z).
 - **Teil-Rebuild ohne Empfang (v2.0.9 / v2.0.90 / v2.0.91):** `setState({ rebuildBuildingIds })` und `finalizeGeometryRebuild` / `ensureBuildingHighDetail` müssen `syncLabelShadowReceivers` **nach** High-Fenstern aufrufen. Gründerzeit-Meshes starten mit `receiveShadow=false`; ohne Sync fehlen Gesims-Schatten auf allen neu gebauten Fenstern. **v2.0.91:** Mörtel (`lodTier: mortar`) ebenso — Empfang beim Erzeugen setzen; High-LOD ersetzt den Wand-Mörtel; Opening-Drag sync’t erneut.

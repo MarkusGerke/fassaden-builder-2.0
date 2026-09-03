@@ -958,3 +958,54 @@ describe('Rechteckfenster: Paneelreste über/unter dem Sturz', () => {
     geo.dispose()
   })
 })
+
+describe('Bogen-Reststeine: Fase nicht heller als das Feld', () => {
+  it('schräge Bogenkanten-Fasen haben stärkere Außen-Normale', () => {
+    const panel = {
+      ...DEFAULT_STUDIO_PANEL,
+      enabled: true,
+      pattern: 'runningBond' as const,
+      panelWidth: 64,
+      panelHeight: 32,
+      joint: 0.8,
+      plinthEnabled: false,
+      plinthHeight: 0,
+      projectDepth: 4,
+      taperDepth: 2,
+      taper: 0.8,
+    }
+    const wall = {
+      ...createStudioWall(0, 0),
+      id: 'arch-facade',
+      width: 640,
+      height: 448,
+      openings: [
+        {
+          id: 'win',
+          type: 'window' as const,
+          x: 200,
+          y: 100,
+          width: 160,
+          height: 220,
+          arch: { enabled: true, form: 'round' as const },
+        },
+      ],
+      panel,
+    }
+    const geo = createStudioPanelGeometry(wall, panel, [wall])
+    const nrm = geo.getAttribute('normal') as THREE.BufferAttribute
+    let diagonal = 0
+    let minAbsNz = 1
+    for (let i = 0; i < nrm.count; i += 1) {
+      const nx = Math.abs(nrm.getX(i))
+      const ny = Math.abs(nrm.getY(i))
+      const nz = Math.abs(nrm.getZ(i))
+      if (nx <= 0.1 || ny <= 0.1 || nz <= 0.2) continue
+      diagonal += 1
+      minAbsNz = Math.min(minAbsNz, nz)
+    }
+    expect(diagonal, 'keine Bogen-Fasen im Mesh').toBeGreaterThan(10)
+    expect(minAbsNz, 'Bogenfase zeigt noch zu sehr seitlich (heller als Feld)').toBeGreaterThan(0.72)
+    geo.dispose()
+  })
+})

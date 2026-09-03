@@ -358,7 +358,7 @@ export interface Opening {
   stairs?: OpeningStairs
   /** Rollläden (nur Lamellen) vor Fenster/Tür. */
   rollerShutter?: OpeningRollerShutter
-  /** EG-Kellerfenster mit Gitter im unteren Bereich. */
+  /** Fenstergitter (Default aus; Kellerfenster-Preset setzt enabled). */
   basementWindow?: BasementWindowConfig
   /**
    * Öffnen-/Schließen-Kurve (Zeit 0…1 → Anteil am Zielwinkel).
