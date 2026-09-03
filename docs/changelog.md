@@ -2,6 +2,10 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Rest-Steine an Öffnungen mit Front nach außen (2026-09-03) — v2.0.119
+
+Umriss-Reste (Bogen, Freiraum, Laibung, Keilstein, Bossen-First) wurden per Earcut CCW (+z, in die Wand) trianguliert, Feldsteine per `addQuad` −z. Mit `shadowSide: FrontSide` fielen sie aus der Shadow-Map — kein Schattenwurf, kein Selbstschatten, heller als das Feld (Render und Vorschau). `triangulateOutlineRing(…, { front: true })` + `ringCcw` vor Seitenquads. Datei: `panelGeometry.ts`. Docs: [panel-geometry.md](panel-geometry.md), [shadows.md](shadows.md).
+
 ### Punktlicht ohne Soft-Würfel (2026-09-03) — v2.0.118
 
 v2.0.111 Soft-Disk-Taps + gekapptes `shadow.far` (≤ 48 m) zeichneten die Cube-Far als imaginären Würfel: Schatten brach auf leerer Fläche ab, Licht strahlte weiter. Soft-Filter entfernt (Hard-Cube); Far folgt Lichtreichweite bzw. Site (unbegrenzt → 500 m). 2D-Map 4096 bleibt. Dateien: `pcssShadows.ts`, `sceneLightRuntime.ts`, `main.ts`. Docs: [scene-lights.md](scene-lights.md), [shadows.md](shadows.md).

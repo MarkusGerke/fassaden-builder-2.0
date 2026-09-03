@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.118'
+export const APP_VERSION = '2.0.119'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,16 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.119',
+    date: '2026-09-03',
+    title: 'Keine hellen Steine an Öffnungen',
+    changes: [
+      'Steine direkt an Fenstern, Türen und Bögen sind nicht mehr heller als das Feld — in Render und Vorschau',
+      'Diese Rest-Steine werfen jetzt auch wieder Schatten (Rückseite zeigte bisher nach vorn)',
+      'Bitte hart neu laden, bis v2.0.119 in der Titelleiste steht',
+    ],
+  },
   {
     version: '2.0.118',
     date: '2026-09-03',

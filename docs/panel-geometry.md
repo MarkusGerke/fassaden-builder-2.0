@@ -160,6 +160,10 @@ Die vier Eckpunkte in Z-Richtung:
 
 An Wandenden (`wallX ≈ 0` oder `≈ width`) gilt `offset = |z| × |miter| / depth` (Plan-Kante z = 0).
 
+### Orientierung der Flächen (v2.0.119)
+
+Konvention in Wand-XY (x rechts, y oben, `panelFlip` = true): **Front = −z**. `addQuad(a, b, c, d)` mit CCW gelisteten Ecken liefert Dreiecke `(a, d, c)`, `(a, c, b)` — also −z. Umriss-Reste (`outline`, Bogen-/Keilstein-/Fächer-Polys, Bossen-Firste, Zwickel) laufen über `triangulateOutlineRing(outline, { front: true })`: Earcut (`ShapeUtils.triangulateShape`) gibt **immer CCW (+z)** zurück, unabhängig von der Umriss-Richtung; `front: true` dreht jedes Dreieck. Vor Seitenquads `(back_i, back_j, front_j, front_i)` wird der Ring mit `ringCcw` normiert, damit die Seiten nach außen zeigen. Gilt für `extrudeOutlinePoly` (Steine + Mörtel), `extrudeSpandrelStrip`, `fillRingFront` (Bossen-First-Flächen) und die Flat-Vorschau `addWorkFaceOutlinePoly`. Ohne diese Drehung standen die Rest-Steine mit Rückseite nach vorn: `DoubleSide` zeichnet sie zwar, aber `shadowSide: FrontSide` warf sie aus der Shadow-Map — kein Schatten, kein Selbstschatten, heller als das Feld (siehe [shadows.md](shadows.md)). Test: `panelGeometry.test.ts` › „Rest-Steine an Öffnungen“.
+
 ---
 
 ## Verband-Ecken (Mauerwerk)

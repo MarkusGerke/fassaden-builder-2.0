@@ -3,7 +3,7 @@ import * as THREE from 'three'
 import type { FacadeState, Wall } from '../types/facade'
 import { WALL_DEPTH } from '../constants/presets'
 import { DEFAULT_STUDIO_PANEL } from './constants'
-import { createStudioOpeningRevealGeometry, createStudioPanelGeometry, createStudioWallGeometry, innerFaceRingFromWalls, studioWallFaceNormalReverse } from './panelGeometry'
+import { createStudioOpeningRevealGeometry, createStudioPanelFlatGeometriesByColorIndex, createStudioPanelGeometry, createStudioWallGeometry, innerFaceRingFromWalls, studioWallFaceNormalReverse } from './panelGeometry'
 import { layoutPanelTiles } from './panelLayout'
 import { topBareBandForWall } from '../utils/wallLabel'
 import { buildingNeedsOuterSpineFit, finalizeStudioGeometry } from './planGeometry'
@@ -1036,6 +1036,95 @@ describe('Bogen-Reststeine: Fase nicht heller als das Feld', () => {
     }
     expect(diagonal, 'keine Bogen-Fasen im Mesh').toBeGreaterThan(10)
     expect(minAbsNz, 'Bogenfase zeigt noch zu sehr seitlich (heller als Feld)').toBeGreaterThan(0.72)
+    geo.dispose()
+  })
+})
+
+describe('Rest-Steine an Öffnungen: Front zeigt nach außen (v2.0.119)', () => {
+  // Umriss-Reste (Bogen, Freiraum, Laibung) wurden per Earcut immer CCW (+z, in die Wand)
+  // trianguliert, Feldsteine per addQuad −z. Folge: Reste ohne Schattenwurf/Selbstschatten → „heller“.
+  const panel = {
+    ...DEFAULT_STUDIO_PANEL,
+    enabled: true,
+    pattern: 'runningBond' as const,
+    panelWidth: 48,
+    panelHeight: 24,
+    joint: 1.6,
+    plinthEnabled: false,
+    plinthHeight: 0,
+    projectDepth: 3,
+    taperDepth: 3.5,
+    taper: 0.8,
+  }
+  const wall = {
+    ...createStudioWall(0, 0),
+    id: 'remnant-wall',
+    width: 640,
+    height: 448,
+    openings: [
+      {
+        id: 'arch-win',
+        type: 'window' as const,
+        x: 200,
+        y: 100,
+        width: 160,
+        height: 220,
+        arch: { enabled: true, form: 'round' as const },
+        panelClearance: { enabled: true, cm: 8, depthCm: 4, finish: 'empty' as const },
+      },
+      {
+        id: 'rect-win',
+        type: 'window' as const,
+        x: 440,
+        y: 120,
+        width: 120,
+        height: 160,
+      },
+    ],
+    panel,
+  }
+
+  /** Dreiecke mit |nz| ≥ 0,5 vor der Wandebene (z < backZ) gezählt nach Vorzeichen. */
+  function frontFacingSigns(geo: THREE.BufferGeometry, backZ: number): { outward: number; inward: number } {
+    const pos = geo.getAttribute('position') as THREE.BufferAttribute
+    const nrm = geo.getAttribute('normal') as THREE.BufferAttribute
+    const idx = geo.getIndex()!
+    let outward = 0
+    let inward = 0
+    for (let i = 0; i < idx.count; i += 3) {
+      const ia = idx.getX(i)
+      const ib = idx.getX(i + 1)
+      const ic = idx.getX(i + 2)
+      const nz = (nrm.getZ(ia) + nrm.getZ(ib) + nrm.getZ(ic)) / 3
+      if (Math.abs(nz) < 0.5) continue
+      const z = (pos.getZ(ia) + pos.getZ(ib) + pos.getZ(ic)) / 3
+      if (z > backZ - 0.01) continue
+      if (nz < 0) outward += 1
+      else inward += 1
+    }
+    return { outward, inward }
+  }
+
+  it('High-LOD: keine nach innen zeigende Frontfläche vor der Wandebene', () => {
+    const geo = createStudioPanelGeometry(wall, panel, [wall])
+    const backZ = studioWallOuterLocalZ(wall)
+    const { outward, inward } = frontFacingSigns(geo, backZ)
+    expect(outward).toBeGreaterThan(100)
+    expect(inward, 'Rest-Steine mit Rückseite nach vorn').toBe(0)
+    geo.dispose()
+  })
+
+  it('Flat (Vorschau): alle Kachel-Dreiecke zeigen nach außen', () => {
+    const geos = createStudioPanelFlatGeometriesByColorIndex(wall, panel, 1, 'seed', [wall])
+    expect(geos.length).toBe(1)
+    const geo = geos[0]!.geometry
+    const nrm = geo.getAttribute('normal') as THREE.BufferAttribute
+    let inward = 0
+    for (let i = 0; i < nrm.count; i += 1) {
+      if (nrm.getZ(i) > 0) inward += 1
+    }
+    expect(nrm.count).toBeGreaterThan(100)
+    expect(inward).toBe(0)
     geo.dispose()
   })
 })

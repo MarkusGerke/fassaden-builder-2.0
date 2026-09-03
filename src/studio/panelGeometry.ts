@@ -753,20 +753,31 @@ function makeCoordAt(
  * Mörtel wird separat in createStudioMortarGeometry erzeugt.
  */
 
-/** Extrudiert einen geschlossenen Wand-XY-Umriss (Keilstein/Fächer) als Steinquader. */
+/**
+ * Wand-XY-Umriss triangulieren. Earcut liefert **immer** CCW-Dreiecke (Normale +z, in die
+ * Wand), unabhängig von der Umriss-Richtung. Steinfronten aus `addQuad` (CCW gelistete
+ * Ecken) zeigen dagegen nach −z (Außenseite). `front: true` dreht deshalb jedes Dreieck
+ * um — sonst stehen Bogen-/Keilstein-/Laibungs-Reste mit Rückseite nach vorn: sie fallen
+ * aus der Shadow-Map (shadowSide FrontSide), werfen keinen Schatten und wirken „heller“
+ * als das Feld (v2.0.119).
+ */
 function triangulateOutlineRing(
   outline: { x: number; y: number }[],
+  opts?: { front?: boolean },
 ): number[][] {
   const contour = outline.map((pt) => new THREE.Vector2(pt.x, pt.y))
+  let tris: number[][]
   try {
-    return THREE.ShapeUtils.triangulateShape(contour, [])
+    tris = THREE.ShapeUtils.triangulateShape(contour, [])
   } catch {
     return []
   }
+  if (!opts?.front) return tris
+  return tris.map((tri) => [tri[0]!, tri[2]!, tri[1]!])
 }
 
 function extrudeOutlinePoly(
-  outline: { x: number; y: number }[],
+  outlineIn: { x: number; y: number }[],
   p: (wx: number, wy: number, z: number) => THREE.Vector3,
   backZ: number,
   frontZ: number,
@@ -775,13 +786,15 @@ function extrudeOutlinePoly(
   indices: number[],
   opts?: { skipFront?: boolean },
 ) {
+  if (outlineIn.length < 3) return
+  // CCW-Ring: Seitenquads (back_i, back_j, front_j, front_i) zeigen dann nach außen.
+  const outline = ringCcw(outlineIn)
   const n = outline.length
-  if (n < 3) return
   const front = outline.map((pt) => p(pt.x, pt.y, frontZ))
   const back = outline.map((pt) => p(pt.x, pt.y, backZ))
-  const tris = triangulateOutlineRing(outline)
-  if (tris.length > 0) {
-    for (const tri of tris) {
+  const frontTris = triangulateOutlineRing(outline, { front: true })
+  if (frontTris.length > 0) {
+    for (const tri of frontTris) {
       const ia = tri[0]!
       const ib = tri[1]!
       const ic = tri[2]!
@@ -791,11 +804,12 @@ function extrudeOutlinePoly(
       addTri(positions, normals, indices, back[ia]!, back[ic]!, back[ib]!)
     }
   } else {
+    // Fächer auf CCW-Ring: Front CW (−z), Rückseite CCW (+z).
     for (let i = 1; i < n - 1; i += 1) {
       if (!opts?.skipFront) {
-        addTri(positions, normals, indices, front[0], front[i], front[i + 1])
+        addTri(positions, normals, indices, front[0], front[i + 1], front[i])
       }
-      addTri(positions, normals, indices, back[0], back[i + 1], back[i])
+      addTri(positions, normals, indices, back[0], back[i], back[i + 1])
     }
   }
   for (let i = 0; i < n; i += 1) {
@@ -842,15 +856,11 @@ function extrudeSpandrelStrip(
   }
   if (cleaned.length < 3) return
 
-  const contour = cleaned.map((pt) => new THREE.Vector2(pt.x, pt.y))
-  let tris: number[][] = []
-  try {
-    tris = THREE.ShapeUtils.triangulateShape(contour, [])
-  } catch {
-    tris = []
-  }
-  const front = cleaned.map((pt) => p(pt.x, pt.y, frontZ))
-  const back = cleaned.map((pt) => p(pt.x, pt.y, backZ))
+  // CCW-Ring + Front CW (−z), siehe `triangulateOutlineRing`.
+  const ring = ringCcw(cleaned)
+  const tris = triangulateOutlineRing(ring, { front: true })
+  const front = ring.map((pt) => p(pt.x, pt.y, frontZ))
+  const back = ring.map((pt) => p(pt.x, pt.y, backZ))
   if (tris.length > 0) {
     for (const tri of tris) {
       const ia = tri[0]!
@@ -859,8 +869,8 @@ function extrudeSpandrelStrip(
       addTri(positions, normals, indices, front[ia]!, front[ib]!, front[ic]!)
       addTri(positions, normals, indices, back[ia]!, back[ic]!, back[ib]!)
     }
-    for (let i = 0; i < cleaned.length; i += 1) {
-      const j = (i + 1) % cleaned.length
+    for (let i = 0; i < ring.length; i += 1) {
+      const j = (i + 1) % ring.length
       addQuad(positions, normals, indices, back[i]!, back[j]!, front[j]!, front[i]!)
     }
     return
@@ -1549,23 +1559,7 @@ function extrudeInsetRingFrustum(
 
   for (const top of surf.tops) {
     if (Math.abs(ringArea(top)) < 0.05) continue
-    const front = top.map((pt) => p(pt.x, pt.y, frontZ))
-    const contour = top.map((pt) => new THREE.Vector2(pt.x, pt.y))
-    let tris: number[][] = []
-    try {
-      tris = THREE.ShapeUtils.triangulateShape(contour, [])
-    } catch {
-      tris = []
-    }
-    if (tris.length > 0) {
-      for (const tri of tris) {
-        addTri(positions, normals, indices, front[tri[0]!]!, front[tri[1]!]!, front[tri[2]!]!)
-      }
-    } else {
-      for (let i = 1; i < front.length - 1; i += 1) {
-        addTri(positions, normals, indices, front[0]!, front[i]!, front[i + 1]!)
-      }
-    }
+    fillRingFront(top, p, frontZ, positions, normals, indices)
   }
   return true
 }
@@ -1582,21 +1576,17 @@ function fillRingFront(
   indices: number[],
 ) {
   if (ring.length < 3) return
-  const front = ring.map((pt) => p(pt.x, pt.y, z))
-  const contour = ring.map((pt) => new THREE.Vector2(pt.x, pt.y))
-  let tris: number[][] = []
-  try {
-    tris = THREE.ShapeUtils.triangulateShape(contour, [])
-  } catch {
-    tris = []
-  }
+  // Front CW (−z, Außenseite) wie `addQuad`; Fächer-Rückfall auf CCW-Ring ebenfalls gedreht.
+  const ccw = ringCcw(ring)
+  const front = ccw.map((pt) => p(pt.x, pt.y, z))
+  const tris = triangulateOutlineRing(ccw, { front: true })
   if (tris.length > 0) {
     for (const tri of tris) {
       addTri(positions, normals, indices, front[tri[0]!]!, front[tri[1]!]!, front[tri[2]!]!)
     }
   } else {
     for (let i = 1; i < front.length - 1; i += 1) {
-      addTri(positions, normals, indices, front[0]!, front[i]!, front[i + 1]!)
+      addTri(positions, normals, indices, front[0]!, front[i + 1]!, front[i]!)
     }
   }
 }
@@ -3606,8 +3596,8 @@ function addWorkFaceOutlinePoly(
   if (outline.length < 3) return
   const halfH = wall.height / 2
   const xAt = (wx: number) => wallLocalX(wall, wx, faceZ, 0, faceZ, miter.start, miter.end)
-  const contour = outline.map((p) => new THREE.Vector2(p.x, p.y))
-  const tris = THREE.ShapeUtils.triangulateShape(contour, [])
+  // Gleiche Front-Orientierung wie `addWorkFaceQuad` (−z) — sonst Rest-Steine ohne Schatten.
+  const tris = triangulateOutlineRing(outline, { front: true })
   for (const [i0, i1, i2] of tris) {
     const a = outline[i0]!
     const b = outline[i1]!
@@ -3617,7 +3607,7 @@ function addWorkFaceOutlinePoly(
     const vc = v3(xAt(c.x), c.y - halfH, faceZ)
     const base = positions.length / 3
     positions.push(va.x, va.y, va.z, vb.x, vb.y, vb.z, vc.x, vc.y, vc.z)
-    normals.push(0, 0, 1, 0, 0, 1, 0, 0, 1)
+    normals.push(0, 0, -1, 0, 0, -1, 0, 0, -1)
     indices.push(base, base + 1, base + 2)
   }
 }
