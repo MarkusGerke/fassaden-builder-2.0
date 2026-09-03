@@ -54,6 +54,17 @@ export function setFacadeShadeParams(params: FacadeShadeParams): void {
 
 /** Leitet Abdunklungsstärke aus Sonnen-Slidern ab (Wände + stärkere Schrift-Werte). */
 export function facadeShadeParamsFromSun(settings: SunSettings): FacadeShadeParams {
+  // Nachts / unter Horizont: kein Gegenlicht-Dim — sonst dämpfen Punktlichter mit (Wände grau).
+  if (!Number.isFinite(settings.elevationRad) || settings.elevationRad <= 0.02) {
+    return {
+      directDim: 1,
+      hemiDim: 1,
+      interiorDirectDim: 1,
+      interiorHemiDim: 1,
+      labelDirectDim: 1,
+      labelHemiDim: 1,
+    }
+  }
   const ambientNorm = THREE.MathUtils.clamp(settings.ambient / 0.65, 0.25, 1.4)
   const invContrast = 1 / Math.max(0.5, settings.shadowContrast)
   const densityBoost = 1 + settings.shadowDensity * 0.35

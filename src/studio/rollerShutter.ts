@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import type { MotionCurve, Opening, OpeningRollerShutter, SurfaceFinish } from '../types/facade'
+import { openingMaskXRangesAtY } from '../utils/openingGeometry'
 import { normalizeMotionCurve, LINEAR_MOTION } from '../utils/openingMotion'
 
 /** Default: geschlossenheit 0 = oben, 1 = unten. */
@@ -277,6 +278,90 @@ export function createRollerGuideRailGeometry(
 /** Nutzbreite der Lamellen: volle Öffnungsbreite bis zur Laibung (kein seitlicher Spalt). */
 export function rollerShutterSlatWidth(openingWidth: number): number {
   return Math.max(8, openingWidth - ROLLER_GUIDE_EDGE_INSET_CM * 2)
+}
+
+function widestMaskRangeAtY(
+  opening: Opening,
+  yWall: number,
+): { x0: number; x1: number } | null {
+  const ranges = openingMaskXRangesAtY(opening, yWall)
+  if (ranges.length === 0) return null
+  let best = ranges[0]!
+  for (const range of ranges) {
+    if (range.x1 - range.x0 > best.x1 - best.x0) best = range
+  }
+  return best
+}
+
+/**
+ * Lamellen-Spannweite in Öffnungs-Mitte-Koordinaten: Schnitt der Maske über die
+ * Lamellenhöhe — bei Bogen/Stadion schmaler als `opening.width`, sonst volle Breite.
+ * `null` = Lamelle liegt außerhalb der Öffnung (ausblenden).
+ */
+export function rollerShutterSlatLocalSpan(
+  opening: Opening,
+  yFromOpeningBottom: number,
+  slatHeight: number,
+): { localX: number; width: number } | null {
+  const half = Math.max(0.5, slatHeight / 2)
+  const yCenter = opening.y + yFromOpeningBottom
+  const samples = [yCenter - half + 0.15, yCenter, yCenter + half - 0.15]
+  let x0 = Number.NEGATIVE_INFINITY
+  let x1 = Number.POSITIVE_INFINITY
+  let any = false
+  for (const y of samples) {
+    const range = widestMaskRangeAtY(opening, y)
+    if (!range) return null
+    x0 = Math.max(x0, range.x0)
+    x1 = Math.min(x1, range.x1)
+    any = true
+  }
+  if (!any || x1 - x0 < 2) return null
+  const cx = opening.x + opening.width / 2
+  return { localX: (x0 + x1) / 2 - cx, width: x1 - x0 }
+}
+
+/**
+ * Abgedeckte Öffnungskontur in lokalen Öffnungs-Koordinaten (Mitte = 0,0),
+ * für den lichtdichten Schatten-Okkluder — folgt Bogen/Stadion.
+ */
+export function rollerShutterCoverLocalPolygon(
+  opening: Opening,
+  coverHeightFromTop: number,
+  stepCm = 2,
+): { x: number; y: number }[] {
+  if (!(coverHeightFromTop > 0.5)) return []
+  const yTop = opening.y + opening.height
+  const yBot = Math.max(opening.y, yTop - coverHeightFromTop)
+  const cx = opening.x + opening.width / 2
+  const cy = opening.y + opening.height / 2
+  const left: { x: number; y: number }[] = []
+  const right: { x: number; y: number }[] = []
+  const ys: number[] = []
+  for (let y = yBot; y < yTop - 0.05; y += stepCm) ys.push(y)
+  ys.push(Math.max(yBot, yTop - 0.05))
+  for (const y of ys) {
+    const range = widestMaskRangeAtY(opening, y)
+    if (!range) continue
+    left.push({ x: range.x0 - cx, y: y - cy })
+    right.push({ x: range.x1 - cx, y: y - cy })
+  }
+  if (left.length < 2) return []
+  return [...left, ...right.reverse()]
+}
+
+/** Flache Okkluder-Geometrie aus der abgedeckten Maskenkontur (lokal XY). */
+export function createRollerShutterCoverOccluderGeometry(
+  points: { x: number; y: number }[],
+): THREE.BufferGeometry | null {
+  if (points.length < 3) return null
+  const shape = new THREE.Shape()
+  shape.moveTo(points[0]!.x, points[0]!.y)
+  for (let i = 1; i < points.length; i += 1) {
+    shape.lineTo(points[i]!.x, points[i]!.y)
+  }
+  shape.closePath()
+  return new THREE.ShapeGeometry(shape)
 }
 
 export type RollerShutterMotionPreset = 'soft' | 'linear'

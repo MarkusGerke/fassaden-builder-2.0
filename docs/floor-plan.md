@@ -132,9 +132,7 @@ Berechnet `miterStart` und `miterEnd` für jedes Wandsegment in einer Kette/Ring
 
 ## Etagen-Trennfläche (Innenkante sichtbar)
 
-Plan-Knoten liegen auf der **Außenlinie** der Wand. **v2.0.129:** Sichtbare Decken/Böden nutzen die **Innenkante** (`innerFaceRingWorld` mit `wallDepth + INDOOR_SLAB_VISUAL_INSET_CM`) — bündig zur Raumseite, ohne Durchscheinen an der Fassade und ohne Z-Fight-Flackern (`polygonOffset`). Hof-Löcher analog innen. **Lichtdichte:** unsichtbare Punktlicht-Okkluder (`pointLightRoomOccluders`) bleiben auf dem **Außenring**; Sonne über `sunCeilingOccluder` (Innenkante, Layer 0). Öffnungs-Kerben (`slabNotches`) greifen weiterhin, wenn die Platte Tür/Kellerfenster schneiden würde.
-
-`innerFaceRingFromWalls` bleibt für Tests / Wand-genaue Insets verfügbar.
+Plan-Knoten liegen auf der **Außenlinie** der Wand. **v2.0.140:** Sichtbare Decken/Böden nutzen die **echte Innenkante der Studio-Wände** (`innerFaceRingFromWalls` mit `wallDepth + INDOOR_SLAB_VISUAL_INSET_CM`) — bündig zur Raumseite auch bei `panelFlip: false` (kein Doppel-Inset / Lücke ≈ Wandstärke). Fallback `innerFaceRingWorld`, wenn Kanten nicht zuordenbar. Hof-Löcher analog. **Lichtdichte:** unsichtbare Punktlicht-Okkluder (`pointLightRoomOccluders`) bleiben auf dem **Außenring**; Sonne über `sunCeilingOccluder` (Innenkante, Layer 0). Öffnungs-Kerben (`slabNotches`) greifen weiterhin, wenn die Platte Tür/Kellerfenster schneiden würde.
 
 ---
 

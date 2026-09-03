@@ -189,4 +189,14 @@ describe('editWallTargets', () => {
     ).sort()
     expect(ids).toEqual(['east'])
   })
+
+  it('Etage: alle Studio-Wände derselben Etage im Haus', () => {
+    const ids = editWallTargets(
+      facade,
+      { selectedWallIds: ['north'], selectedOpenings: [], selectedEdges: [] },
+      'floor',
+    ).sort()
+    expect(ids).toEqual(['diag', 'east', 'north'])
+    expect(ids).not.toContain('north-1')
+  })
 })

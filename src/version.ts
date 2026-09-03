@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.132'
+export const APP_VERSION = '2.0.141'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,97 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.141',
+    date: '2026-09-04',
+    title: 'Lichter sofort hinzufügen / ausblenden / löschen',
+    changes: [
+      'Licht-Änderungen lösen keinen Fassaden-Rebuild mehr aus (stabile Grundriss-IDs + Licht-Schnellpfad)',
+      'Kein Sonnen-/EnvMap-Bake und kein Occluder-Rebuild bei jedem Licht; Shadow-Far folgt der Site statt 500 m',
+      'Bitte hart neu laden, bis v2.0.141 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.140',
+    date: '2026-09-03',
+    title: 'Auswahl, Hilfslinien, Maße, Duplizieren, Leer-Öffnung, Nachtlicht, Decke',
+    changes: [
+      'Blauer Front-Pfeil verschiebt nur die Auswahl (plus kollinear/Etagen), nicht den ganzen Grundriss-Ring',
+      'Intelligente Hilfslinien und Kanten-Snap beim Zeichnen/Abzweigen von Wänden',
+      'Breitenangabe in der rechten Einstellungsseite; Ebenen-Maße und Breite live beim Ziehen',
+      'Duplizieren mit 48 cm Abstand; Bibliothek/Typ „Keines (leer)“ für Öffnung ohne Fenster/Tür',
+      'Nachts kein Gegenlicht-Dim mehr (Wände bleiben hell unter Punktlicht); Decke bündig an Innenkante',
+      'Bitte hart neu laden, bis v2.0.140 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.139',
+    date: '2026-09-03',
+    title: 'Wandkappen bei panelFlip false',
+    changes: [
+      'Deckel und Stirnseiten zeigen auch bei manuellen Wänden (panelFlip aus) nach außen — kein hohles Aussehen mehr unter FrontSide',
+      'Bitte hart neu laden, bis v2.0.139 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.138',
+    date: '2026-09-03',
+    title: 'Erker: Front, Gehrung, Ansatz korrigiert',
+    changes: [
+      'Erker setzen auf der Wand-Planlinie an (Außenkante) — nicht um eine halbe Wandstärke versetzt',
+      '384er Front in der Mitte, Schenkel 90°/45° nach hinten; Gehrung an den Frontecken wie bei manuell gezogenen Wänden',
+      'Bitte hart neu laden, bis v2.0.138 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.137',
+    date: '2026-09-03',
+    title: 'Geschlossene Wände, 45°-Schluss, Erker 384',
+    changes: [
+      'Wanddecken und Stirnseiten sind wieder geschlossen (keine hohlen Kappen von oben/seitlich)',
+      '45°-Wände schließen an Ecken trotz leichtem Versatz — Endpunkt rastet auf die Ziel-Ecke',
+      'Erker-Bibliothek: nur noch 384 cm Front (90° und 45° nach hinten); runde/192er-Erker entfernt',
+      'Bitte hart neu laden, bis v2.0.137 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.136',
+    date: '2026-09-03',
+    title: 'Feindrehung in 1°-Schritten',
+    changes: [
+      'Wand-Feindrehung: nur noch Eingabefeld, 1°-Schritte, ohne ±10°-Buttons und ohne 10°-Raster',
+      'Bitte hart neu laden, bis v2.0.136 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.135',
+    date: '2026-09-03',
+    title: 'Rollläden an Bogenfenstern',
+    changes: [
+      'Rollladen-Lamellen und Schatten-Okkluder folgen der Fensterform (Bogen/Stadion) — kein Durchragen in die Wand',
+      'Bitte hart neu laden, bis v2.0.135 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.134',
+    date: '2026-09-03',
+    title: 'Gesims-Größe auf ganzer Etage',
+    changes: [
+      'Gesims-Höhe/Tiefe unter Etage, Fassade oder Typ gilt für alle Zielwände — letzte cm-Eingabe gewinnt',
+      'Umrechnung in scale pro Wand aus dem jeweiligen Profil-Querschnitt (nicht nur Anker-Wand)',
+      'Bitte hart neu laden, bis v2.0.134 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.133',
+    date: '2026-09-03',
+    title: 'Tiefe Nischen mit Schatten',
+    changes: [
+      'Nischen tiefer als die Wanddicke empfangen wieder Sonne/Punktlicht-Schatten',
+      'Shadow-Tunnel geht bis hinter die Rückwand — keine Kappe mitten in der Nische',
+      'Bitte hart neu laden, bis v2.0.133 in der Titelleiste steht',
+    ],
+  },
   {
     version: '2.0.132',
     date: '2026-09-03',

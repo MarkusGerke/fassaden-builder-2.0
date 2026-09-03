@@ -29,6 +29,8 @@ export const STUDIO_WALL_HEIGHT_STEP = 16
 export const WALL_RESIZE_FLOOR_STEP = PLAN_GRID
 /** Mindest-Breite/Höhe einer Studio-Wand (cm). */
 export const STUDIO_MIN_SIZE = PLAN_GRID
+/** Abstand Kante-zu-Kante beim Duplizieren von Wänden/Öffnungen. */
+export const DUPLICATE_GAP_CM = PLAN_GRID
 
 /** 45°/135°/225°/315° — schräge Plan-Richtung. */
 export function isDiagonalPlanYaw(yawDeg: number): boolean {

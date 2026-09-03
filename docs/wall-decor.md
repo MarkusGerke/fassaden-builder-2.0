@@ -23,8 +23,8 @@ Teil-Selektion in 3D: `wallPart` `cornice` / `plinth` / `trimBand`. Edit-Scope (
 | `enabled` | aus |
 | `edge` | fest `top` (UI oben/unten ausgeblendet) |
 | `profileId` | Traufgesims-IDs aus dem Gesims-Picker |
-| `scale` | Höhe über Querschnitt (UI in cm, 8er-Raster) |
-| `sectionScaleForward` | **Tiefe** des Querschnitts (UI in cm, 4er-Schritte) — nicht `offsetForward` |
+| `scale` | Höhe über Querschnitt (UI in cm, 8er-Raster); bei Etage/Fassade/Typ wird die **eingegebene cm-Höhe pro Wand** in `scale` umgerechnet (Profil-Querschnitt je Wand) |
+| `sectionScaleForward` | **Tiefe** des Querschnitts (UI in cm, 4er-Schritte) — nicht `offsetForward`; bei Scope ≠ Auswahl ebenfalls **pro Wand** aus cm |
 | `offsetForward` | Versatz senkrecht zur Wand |
 | `color` / `finish` | optional; Finish fällt auf `profileFinish` zurück |
 | `rotationDeg`, `flipOutward`, `flipForward` | Orientierung |
@@ -77,6 +77,7 @@ Felder analog Gesims: `profileId`, `scale`, `sectionScaleForward`, `offsetForwar
 ## Fallstricke
 
 - Gesims-**Tiefe** = `sectionScaleForward`, nicht `offsetForward`.
+- Gesims-Höhe/Tiefe unter **Etage / Fassade / Typ:** UI zeigt cm, State speichert `scale` / `sectionScaleForward` — Commit rechnet **pro Zielwand** aus dem jeweiligen Profil-Querschnitt (`updateWallCorniceHeightCm` / `updateWallCorniceDepthCm` in `cornice.ts`), damit die letzte Eingabe auf allen Wänden dieselbe sichtbare Größe liefert (nicht nur derselbe `scale`-Faktor am Ankerprofil).
 - Sockelprofil-Gehrung ≠ Gesims-Vorzeichen an Außenecken.
 - `fensterverdachung` in der allgemeinen Profil-Auswahl ist ein Kanten-Sweep — Verdachung steuert `Opening.pediment` ([opening-features.md](opening-features.md)).
 - Soft-Obergrenzen für Maße: `STUDIO_PANEL_SOFT_MAX` / `CORNICE_SCALE_MAX` (~10000); keine harten HTML-`max`.

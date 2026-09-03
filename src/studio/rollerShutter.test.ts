@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
+import type { Opening } from '../types/facade'
 import {
   normalizeOpeningRollerShutter,
   rollerShutterCoverHeightFromTop,
+  rollerShutterCoverLocalPolygon,
   rollerShutterSlatCentersFromBottom,
   rollerShutterSlatCount,
+  rollerShutterSlatLocalSpan,
   rollerShutterSlatWidth,
   ROLLER_GUIDE_EDGE_INSET_CM,
   ROLLER_STACK_PITCH_FACTOR,
@@ -71,6 +74,62 @@ describe('rollerShutterSlatWidth', () => {
     expect(ROLLER_GUIDE_EDGE_INSET_CM).toBe(0)
     expect(rollerShutterSlatWidth(96)).toBe(96)
     expect(rollerShutterSlatWidth(144)).toBe(144)
+  })
+})
+
+describe('rollerShutterSlatLocalSpan — Bogenmaske', () => {
+  it('Rechteck: volle Breite, Mitte 0', () => {
+    const opening: Opening = {
+      id: 'w1',
+      type: 'window',
+      x: 40,
+      y: 96,
+      width: 120,
+      height: 180,
+      arch: { form: 'rect' },
+    }
+    const span = rollerShutterSlatLocalSpan(opening, 90, 5)
+    expect(span).not.toBeNull()
+    expect(span!.width).toBeCloseTo(120, 5)
+    expect(span!.localX).toBeCloseTo(0, 5)
+  })
+
+  it('Rundbogen: oben schmaler als unten', () => {
+    const opening: Opening = {
+      id: 'w1',
+      type: 'window',
+      x: 40,
+      y: 96,
+      width: 120,
+      height: 180,
+      arch: { form: 'round' },
+    }
+    const nearSill = rollerShutterSlatLocalSpan(opening, 10, 5)
+    const nearCrown = rollerShutterSlatLocalSpan(opening, 175, 5)
+    expect(nearSill).not.toBeNull()
+    expect(nearCrown).not.toBeNull()
+    expect(nearSill!.width).toBeGreaterThan(nearCrown!.width + 10)
+    expect(nearCrown!.width).toBeLessThan(120)
+  })
+})
+
+describe('rollerShutterCoverLocalPolygon', () => {
+  it('folgt dem Bogen und bleibt innerhalb der Öffnungsbreite', () => {
+    const opening: Opening = {
+      id: 'w1',
+      type: 'window',
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 160,
+      arch: { form: 'round' },
+    }
+    const poly = rollerShutterCoverLocalPolygon(opening, 80)
+    expect(poly.length).toBeGreaterThan(4)
+    const halfW = opening.width / 2
+    for (const p of poly) {
+      expect(Math.abs(p.x)).toBeLessThanOrEqual(halfW + 0.5)
+    }
   })
 })
 

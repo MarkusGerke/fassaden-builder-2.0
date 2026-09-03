@@ -267,13 +267,13 @@ describe('duplicateWalls', () => {
     }
     const left = duplicateWalls(state, ['w1'], 'left')
     const cloneLeft = left.buildings[0]!.walls.find((item) => item.id !== 'w1')
-    expect(cloneLeft?.originX).toBe(192)
+    expect(cloneLeft?.originX).toBe(192 + 48)
     expect(cloneLeft?.width).toBe(192)
     expect(cloneLeft?.originZ).toBe(0)
 
     const right = duplicateWalls(state, ['w1'], 'right')
     const cloneRight = right.buildings[0]!.walls.find((item) => item.id !== 'w1')
-    expect(cloneRight?.originX).toBe(-192)
+    expect(cloneRight?.originX).toBe(-(192 + 48))
     expect(cloneRight?.width).toBe(192)
   })
 
@@ -304,16 +304,16 @@ describe('duplicateWalls', () => {
     const towardEnd = duplicateWalls(state, ['b'], 'left', { planLinked: true })
     const cloneEnd = towardEnd.buildings[0]!.walls.find((item) => item.id !== 'a' && item.id !== 'b' && item.id !== 'c')
     const cShifted = towardEnd.buildings[0]!.walls.find((item) => item.id === 'c')
-    expect(cloneEnd?.originX).toBe(200)
-    expect(cShifted?.originX).toBe(300)
+    expect(cloneEnd?.originX).toBe(248)
+    expect(cShifted?.originX).toBe(348)
 
     const towardStart = duplicateWalls(state, ['b'], 'right', { planLinked: true })
     const cloneStart = towardStart.buildings[0]!.walls.find(
       (item) => item.id !== 'a' && item.id !== 'b' && item.id !== 'c',
     )
     const aShifted = towardStart.buildings[0]!.walls.find((item) => item.id === 'a')
-    expect(cloneStart?.originX).toBe(0)
-    expect(aShifted?.originX).toBe(-100)
+    expect(cloneStart?.originX).toBe(-48)
+    expect(aShifted?.originX).toBe(-148)
   })
 })
 

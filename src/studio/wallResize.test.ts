@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { FacadeState, Wall } from '../types/facade'
 import { emptyNeighbors } from '../types/facade'
 import { WALL_DEPTH } from '../constants/presets'
-import { applyWallGripCornerTarget, alongWidthDeltaFromMove, snapBranchYawDeg, attachAngledWallFromEnd, poseAngledWallFromEnd, wallEndPoint, wallStartPoint, miterAtWallEnd, repairBuildingPlanLinkedWalls, repairPlanLinkedWallFronts, snapBranchClose, splitStudioWallAt, branchClosesAgainstWalls, findAdjacentWalls, unselectedLinkedDiagonalWalls, offsetStudioWallsAlongFront, frontMoveStepCm } from './walls'
+import { applyWallGripCornerTarget, alongWidthDeltaFromMove, snapBranchYawDeg, attachAngledWallFromEnd, poseAngledWallFromEnd, wallEndPoint, wallStartPoint, miterAtWallEnd, repairBuildingPlanLinkedWalls, repairPlanLinkedWallFronts, snapBranchClose, splitStudioWallAt, branchClosesAgainstWalls, findAdjacentWalls, unselectedLinkedDiagonalWalls, offsetStudioWallsAlongFront, frontMoveStepCm, wallAlongDelta } from './walls'
 import { PLAN_DIAGONAL_STEP, PLAN_GRID, snapWallWidthCm, snapWallWidthDelta, wallWidthStepCm } from './constants'
 import { facadeOutward } from './elevation'
 import { finalizeStudioGeometry } from './planGeometry'
@@ -461,6 +461,98 @@ describe('snapBranchClose / Pfad schließen', () => {
     expect(Math.abs(branch.miterEnd ?? 0)).toBeCloseTo(WALL_DEPTH)
     const first = walls.find((item) => item.id === 'long')!
     expect(Math.abs(miterAtWallEnd(first, 'end', walls))).toBeCloseTo(WALL_DEPTH)
+  })
+
+  it('zieht 45°-Abzweig auf Ecke mit Querversatz und schließt den Stoß', () => {
+    const yaw = 45
+    const step = wallWidthStepCm(yaw)
+    const widthIdeal = step * 4
+    const joint = { x: 0, z: 0 }
+    const dir = wallAlongDelta(yaw, 1)
+    const dirLen = Math.hypot(dir.x, dir.z) || 1
+    const ux = dir.x / dirLen
+    const uz = dir.z / dirLen
+    const px = -uz
+    const pz = ux
+    const offsetCm = 8
+    const target = {
+      x: joint.x + ux * widthIdeal + px * offsetCm,
+      z: joint.z + uz * widthIdeal + pz * offsetCm,
+    }
+    const source = wallAt('src', -192, 0, 0, 192)
+    const targetWall = wallAt('tgt', target.x, target.z, 0, 192)
+
+    const snap = snapBranchClose(joint, yaw, widthIdeal - 20, [source, targetWall], {
+      floorY: 0,
+      excludeIds: ['src'],
+    })
+    expect(snap?.widthCm).toBeCloseTo(widthIdeal, 5)
+    expect(snap?.meet).toBeDefined()
+
+    const closed = finalizeStudioGeometry(
+      attachAngledWallFromEnd(
+        stateWith([source, targetWall]),
+        'src',
+        'end',
+        yaw,
+        widthIdeal - 20,
+        'branch',
+      ),
+    )
+    const walls = closed.buildings[0]!.walls
+    const branch = walls.find((item) => item.id === 'branch')!
+    const free =
+      Math.hypot(wallEndPoint(branch).x - target.x, wallEndPoint(branch).z - target.z) <
+      Math.hypot(wallStartPoint(branch).x - target.x, wallStartPoint(branch).z - target.z)
+        ? wallEndPoint(branch)
+        : wallStartPoint(branch)
+    expect(Math.hypot(free.x - target.x, free.z - target.z)).toBeLessThan(2)
+    expect(branchClosesAgainstWalls(branch, 'src', walls)).toBe(true)
+    const neighbors = [
+      ...findAdjacentWalls(branch, 'start', walls),
+      ...findAdjacentWalls(branch, 'end', walls),
+    ]
+    expect(neighbors.some((item) => item.id === 'tgt')).toBe(true)
+    const freeEnd =
+      findAdjacentWalls(branch, 'end', walls).some((item) => item.id === 'tgt') ? 'end' : 'start'
+    expect(Math.abs(miterAtWallEnd(branch, freeEnd, walls))).toBeGreaterThan(0.5)
+  })
+
+  it('schließt 45°-Pfad bei ~12 cm Querversatz zur Zielecke', () => {
+    const yaw = 45
+    const step = wallWidthStepCm(yaw)
+    const widthIdeal = step * 5
+    const joint = { x: 0, z: 0 }
+    const dir = wallAlongDelta(yaw, 1)
+    const dirLen = Math.hypot(dir.x, dir.z) || 1
+    const ux = dir.x / dirLen
+    const uz = dir.z / dirLen
+    const offsetCm = 12
+    const target = {
+      x: joint.x + ux * widthIdeal - uz * offsetCm,
+      z: joint.z + uz * widthIdeal + ux * offsetCm,
+    }
+    const source = wallAt('src', -192, 0, 0, 192)
+    const targetWall = wallAt('tgt', target.x, target.z, 90, 192)
+
+    expect(
+      snapBranchClose(joint, yaw, widthIdeal, [source, targetWall], {
+        floorY: 0,
+        excludeIds: ['src'],
+      })?.widthCm,
+    ).toBeCloseTo(widthIdeal, 5)
+
+    const walls = finalizeStudioGeometry(
+      attachAngledWallFromEnd(stateWith([source, targetWall]), 'src', 'end', yaw, widthIdeal, 'd'),
+    ).buildings[0]!.walls
+    const d = walls.find((item) => item.id === 'd')!
+    const free =
+      Math.hypot(wallEndPoint(d).x - target.x, wallEndPoint(d).z - target.z) <
+      Math.hypot(wallStartPoint(d).x - target.x, wallStartPoint(d).z - target.z)
+        ? wallEndPoint(d)
+        : wallStartPoint(d)
+    expect(Math.hypot(free.x - target.x, free.z - target.z)).toBeLessThan(2)
+    expect(branchClosesAgainstWalls(d, 'src', walls)).toBe(true)
   })
 
   it('legt Öffnungen beim Teilen auf das Stück mit dem Mittelpunkt', () => {

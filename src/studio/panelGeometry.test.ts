@@ -3,7 +3,7 @@ import * as THREE from 'three'
 import type { FacadeState, Wall } from '../types/facade'
 import { WALL_DEPTH } from '../constants/presets'
 import { DEFAULT_STUDIO_PANEL } from './constants'
-import { createStudioOpeningRevealGeometry, createStudioPanelFlatGeometriesByColorIndex, createStudioPanelGeometry, createStudioWallGeometry, innerFaceRingFromWalls, studioWallFaceNormalReverse } from './panelGeometry'
+import { createStudioOpeningRevealGeometry, createStudioOpeningShadowTunnelGeometry, createStudioPanelFlatGeometriesByColorIndex, createStudioPanelGeometry, createStudioWallGeometry, innerFaceRingFromWalls, studioWallFaceNormalReverse } from './panelGeometry'
 import { layoutPanelTiles } from './panelLayout'
 import { topBareBandForWall } from '../utils/wallLabel'
 import { buildingNeedsOuterSpineFit, finalizeStudioGeometry } from './planGeometry'
@@ -53,6 +53,42 @@ describe('createStudioWallGeometry', () => {
     const withPanels = studioWall({ ...DEFAULT_STUDIO_PANEL, enabled: true, pattern: 'strip' })
     const withoutPanels = studioWall({ ...DEFAULT_STUDIO_PANEL, enabled: false, pattern: 'none' })
     expect(vertexCount(withPanels)).toBe(vertexCount(withoutPanels))
+  })
+
+  it('Dicke-Kappen zeigen nach außen (panelFlip true und false, FrontSide)', () => {
+    for (const panelFlip of [true, false]) {
+      const wall = { ...studioWall(), panelFlip, kind: 'studio' as const }
+      const geo = createStudioWallGeometry(wall)
+      const pos = geo.getAttribute('position') as THREE.BufferAttribute
+      const idx = geo.getIndex()!
+      let topOut = 0
+      let startOut = 0
+      let endOut = 0
+      const ab = new THREE.Vector3()
+      const ac = new THREE.Vector3()
+      const n = new THREE.Vector3()
+      const halfW = wall.width / 2
+      for (let i = 0; i < idx.count; i += 3) {
+        const ia = idx.getX(i)
+        const ib = idx.getX(i + 1)
+        const ic = idx.getX(i + 2)
+        const ax = pos.getX(ia)
+        const ay = pos.getY(ia)
+        const az = pos.getZ(ia)
+        ab.set(pos.getX(ib) - ax, pos.getY(ib) - ay, pos.getZ(ib) - az)
+        ac.set(pos.getX(ic) - ax, pos.getY(ic) - ay, pos.getZ(ic) - az)
+        n.copy(ab).cross(ac).normalize()
+        const cx = (ax + pos.getX(ib) + pos.getX(ic)) / 3
+        const cy = (ay + pos.getY(ib) + pos.getY(ic)) / 3
+        if (cy > wall.height / 2 - 2 && n.y > 0.7) topOut += 1
+        if (cx < -halfW + 2 && n.x < -0.7) startOut += 1
+        if (cx > halfW - 2 && n.x > 0.7) endOut += 1
+      }
+      expect(topOut, `panelFlip=${panelFlip} top`).toBeGreaterThan(0)
+      expect(startOut, `panelFlip=${panelFlip} start`).toBeGreaterThan(0)
+      expect(endOut, `panelFlip=${panelFlip} end`).toBeGreaterThan(0)
+      geo.dispose()
+    }
   })
 
   it('schließt die Wandunterseite neben einer Bodentür (nicht die ganze Unterseite offen)', () => {
@@ -874,6 +910,37 @@ describe('createStudioOpeningRevealGeometry — Konche', () => {
     }
     expect(minZ).toBeLessThan(0)
     expect(geo!.groups.length).toBeGreaterThanOrEqual(2)
+    geo!.dispose()
+  })
+})
+
+describe('createStudioOpeningShadowTunnelGeometry — tiefe Nische', () => {
+  it('bei Nischentiefe > Wanddicke reicht der Tunnel hinter die Rückwand (keine Mittelkappe)', () => {
+    const wallDepth = 32
+    const nicheDepth = 64
+    const wall = studioWall()
+    wall.depth = wallDepth
+    wall.panelFlip = true
+    const opening = {
+      id: 'niche-deep',
+      type: 'cutout' as const,
+      x: 48,
+      y: 96,
+      width: 64,
+      height: 96,
+      fill: { mode: 'niche' as const, nicheDepthCm: nicheDepth },
+    }
+    wall.openings = [opening]
+    const geo = createStudioOpeningShadowTunnelGeometry(wall)
+    expect(geo).not.toBeNull()
+    const pos = geo!.getAttribute('position')
+    let maxZ = -Infinity
+    for (let i = 0; i < pos.count; i += 1) {
+      maxZ = Math.max(maxZ, pos.getZ(i))
+    }
+    // panelFlip: innen +Z — Seal hinter Rückwand muss hinter Wandinnenkante liegen
+    expect(maxZ).toBeGreaterThan(wallDepth + 1)
+    expect(maxZ).toBeGreaterThan(nicheDepth - 8)
     geo!.dispose()
   })
 })

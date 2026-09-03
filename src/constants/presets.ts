@@ -119,6 +119,16 @@ export interface WallOpeningPreset {
 
 export const WALL_OPENING_PRESETS: WallOpeningPreset[] = [
   {
+    id: 'opening-empty-96',
+    label: 'Keines (leer)',
+    type: 'cutout',
+    width: 96,
+    height: WINDOW_HEIGHT,
+    y: WINDOW_SILL_Y,
+    cutoutShape: 'rect',
+    fill: { mode: 'opening' },
+  },
+  {
     id: 'window-48',
     label: 'Fenster 48×192',
     type: 'window',

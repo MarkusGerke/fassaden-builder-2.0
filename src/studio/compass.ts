@@ -28,7 +28,12 @@ export function wallDockAxisFromFacadeYaw(facadeYaw: number): 'x' | 'z' {
   return toX <= toZ ? 'x' : 'z'
 }
 
-/** Raste Yaw auf 10°-Schritte (Wanddrehung in den Einstellungen). */
+/** Raste Yaw auf 1°-Schritte (Feindrehung in den Einstellungen). */
+export function snapYawTo1(yawDeg: number): number {
+  return normalizeYawDeg(Math.round(normalizeYawDeg(yawDeg)))
+}
+
+/** Raste Yaw auf 10°-Schritte (Legacy, z. B. ältere Docs/Tests). */
 export function snapYawTo10(yawDeg: number): number {
   return normalizeYawDeg(Math.round(normalizeYawDeg(yawDeg) / 10) * 10)
 }

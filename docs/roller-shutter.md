@@ -7,9 +7,9 @@ Bei **Fenster** und **Tür** (nicht Nische, nicht Kellerfenster) gibt es den Rei
 Wenn aktiviert:
 
 - **Höhe (geschlossen):** 0 % = oben offen, 100 % = vollständig geschlossen (`Opening.rollerShutter.drop` 0…1).
-- **Lamellen:** leicht gewölbte Querschnitte **in der Leibung** (8 cm hinter der Fassadenaußenfläche, Wölbung nach innen). **v2.0.131:** Breite = volle Öffnungsbreite bis zur Laibung (kein seitlicher Lichtspalt).
+- **Lamellen:** leicht gewölbte Querschnitte **in der Leibung** (8 cm hinter der Fassadenaußenfläche, Wölbung nach innen). **v2.0.131:** Breite = volle Öffnungsbreite bis zur Laibung (kein seitlicher Lichtspalt). **v2.0.135:** bei Bogen/Stadion wird jede Lamelle an die Öffnungsmaske gekürzt (kein Durchragen in die Wand); Schatten-Okkluder folgt derselben Kontur.
 - **Absenken:** Vorhang hängt vom Sturz mit freiem Spalt nach unten. Sobald die **unterste** Lamelle die Fensterbank berührt, stapeln sich weitere Lamellen von unten aufeinander, bis der Rollladen vollständig unten ist. **Hochfahren** genau umgekehrt, bis die unterste Lamelle im Sturz verschwunden ist.
-- **Lichtdicht:** Sichtbare Lamellen werfen Schatten; unsichtbare Abdeckplatte folgt der abgedeckten Höhe (Spalte zwischen Lamellen).
+- **Lichtdicht:** Sichtbare Lamellen werfen Schatten; unsichtbare Abdeckplatte folgt der abgedeckten Höhe **und Form** (Spalte zwischen Lamellen).
 - **Kein Kasten, keine Führungsschienen:** nur die Lamellen. Standard: Checkbox aus, `drop` 0.
 - **Farbe / Oberfläche:** Swatches und Stumpf/Glänzend/Metallisch.
 - **Lamellenhöhe / Spalt:** Feinjustierung (cm) — Spalt gilt nur im freihängenden Abschnitt.
@@ -49,17 +49,18 @@ Hydrate setzt fehlende Config auf **disabled**. Kein Schema-Step nötig.
 | Datei | Rolle |
 |---|---|
 | `src/types/facade.ts` | `OpeningRollerShutter`, `OpeningPart: 'rollerShutter'` |
-| `src/studio/rollerShutter.ts` | Defaults, Normalize, Lamellen-Layout (Frei + Stapel), Extrude-Geometrie |
+| `src/studio/rollerShutter.ts` | Defaults, Normalize, Lamellen-Layout (Frei + Stapel), Extrude-Geometrie, Masken-Spannweite (`rollerShutterSlatLocalSpan`), Okkluder-Polygon |
 | `src/utils/openings.ts` | `updateOpeningRollerShutter` |
 | `src/utils/hydrate.ts` | Defaults für Fenster/Tür |
-| `src/FacadeController.ts` | `rebuildRollerShutters`, `applyRollerShutterDrop`, Schatten-Okkluder |
+| `src/FacadeController.ts` | `rebuildRollerShutters`, `applyRollerShutterDrop`, Schatten-Okkluder an Maske |
 | `index.html` / `src/main.ts` | Tab, Sync, Playback |
 
 ## Fallstricke
 
 - Animation der Flügel (`Opening.motion`) und der Rollläden sind getrennt; gleichzeitiges Abspielen wird vermieden (Rollladen-Play stoppt Flügel-Play).
 - Live-Ziehen am Höhen-Slider nutzt `applyRollerShutterDrop` (kein Mesh-Rebuild); Commit speichert `drop`.
-- Geteilte Lamellen-Geometrie/Material pro Öffnung — beim Dispose nur einmal freigeben (`sharedGeometry` / `sharedMaterial`); Okkluder: `sharedOccluderGeometry`.
-- `layoutRollerShutterGroup` aktualisiert Kinder mit `userData.role === 'slat'` und die Okkluder-Höhe.
+- Geteilte Lamellen-Geometrie/Material pro Öffnung — beim Dispose nur einmal freigeben (`sharedGeometry` / `sharedMaterial`); Okkluder: `sharedOccluderGeometry` (wird bei Layout neu erzeugt).
+- `layoutRollerShutterGroup` aktualisiert Kinder mit `userData.role === 'slat'` (Breite/`scale.x` + `position.x` aus Maske) und die Okkluder-Kontur.
 - Führungsschienen werden nicht erzeugt (v0.7.202) — `createRollerGuideRailGeometry` bleibt ungenutzt im Modul.
 - **Kein Kasten über dem Fenster:** Sturz ist die Oberkante des Leibungs-Tunnels (`panelGeometry.ts`).
+- **Bogenfenster (v2.0.135):** ohne Masken-Clip ragten rechteckige Lamellen oben in die Wand — `openingMaskXRangesAtY` liefert die erlaubte Spannweite je Lamellenhöhe.

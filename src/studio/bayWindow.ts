@@ -40,12 +40,9 @@ export interface BayWindowPreset {
 export const ROUND_BAY_FACETS = 32
 
 export const BAY_WINDOW_PRESETS: BayWindowPreset[] = [
-  { id: 'bay-192-rect', label: 'Erker 192', frontWidthCm: 192, depthCm: 144, shape: 'rect', kind: 'bay' },
+  // Erker: nur die beiden Bühnen-Formen (384er Front; 90° bzw. 45° nach hinten).
   { id: 'bay-384-rect', label: 'Erker 384', frontWidthCm: 384, depthCm: 144, shape: 'rect', kind: 'bay' },
-  { id: 'bay-192-45', label: 'Erker 192 (45°)', frontWidthCm: 192, depthCm: 144, shape: 'angled45', kind: 'bay' },
   { id: 'bay-384-45', label: 'Erker 384 (45°)', frontWidthCm: 384, depthCm: 144, shape: 'angled45', kind: 'bay' },
-  { id: 'bay-192-round', label: 'Erker 192 (rund)', frontWidthCm: 192, depthCm: 144, shape: 'round', kind: 'bay' },
-  { id: 'bay-384-round', label: 'Erker 384 (rund)', frontWidthCm: 384, depthCm: 144, shape: 'round', kind: 'bay' },
   { id: 'balcony-192', label: 'Balkon 192', frontWidthCm: 192, depthCm: 96, shape: 'rect', kind: 'balcony' },
   { id: 'balcony-384', label: 'Balkon 384', frontWidthCm: 384, depthCm: 96, shape: 'rect', kind: 'balcony' },
   { id: 'loggia-192', label: 'Loggia 192', frontWidthCm: 192, depthCm: 144, shape: 'rect', kind: 'loggia' },
@@ -125,11 +122,113 @@ function dist2(a: { x: number; z: number }, b: { x: number; z: number }): number
   return Math.hypot(b.x - a.x, b.z - a.z)
 }
 
-/** Halbe Wandtiefe nach außen — Andocken an die Außenfläche, nicht die Mittellinie. */
-function outerFaceOffset(parent: Wall, inward: boolean): { x: number; z: number } {
-  const half = (parent.depth ?? WALL_DEPTH) / 2
-  const out = wallAlongDelta(outwardYaw(parent), inward ? -half : half)
-  return out
+/**
+ * Planlinie = Außenkante (nicht Mittellinie). Kein zusätzlicher half-depth-Versatz —
+ * der würde Erker um eine halbe Wandstärke zu weit nach außen setzen und Gehrungen zerstören.
+ */
+function attachPointOnParent(
+  parent: Wall,
+  alongCm: number,
+): { x: number; z: number } {
+  const yaw = parent.yawDeg ?? 0
+  const start = wallStartPoint(parent)
+  const along = wallAlongDelta(yaw, alongCm)
+  return { x: start.x + along.x, z: start.z + along.z }
+}
+
+function buildUShapeWalls(
+  parent: Wall,
+  preset: BayWindowPreset,
+  attachAlongCenter: number | undefined,
+  inward: boolean,
+): { parent: Wall; walls: Wall[] } | null {
+  const W = preset.frontWidthCm
+  const D = preset.depthCm
+  const angled = preset.shape === 'angled45'
+  // 45°: Front = W, Ansatz am Parent = W+2D (Schenkel tragen je D entlang der Fassade).
+  // 90°: Front = Ansatz = W (Schenkel senkrecht nach hinten).
+  const attachW = angled ? W + 2 * D : W
+  const center = attachAlongCenter ?? parent.width / 2
+  const leftX = center - attachW / 2
+  const rightX = center + attachW / 2
+  if (leftX < -1 || rightX > parent.width + 1) return null
+
+  const yaw = parent.yawDeg ?? 0
+  const outSign = inward ? -1 : 1
+  const out = wallAlongDelta(outwardYaw(parent), outSign)
+  const along = wallAlongDelta(yaw, 1)
+
+  // Ansatzpunkte auf der Parent-Planlinie (Außenkante).
+  const leftAttach = attachPointOnParent(parent, leftX)
+  const rightAttach = attachPointOnParent(parent, rightX)
+
+  // Front-Ecken: 384er Wand „in der Mitte“, Schenkel gehen nach hinten zum Parent.
+  const frontLeft = angled
+    ? {
+        x: leftAttach.x + along.x * D + out.x * D,
+        z: leftAttach.z + along.z * D + out.z * D,
+      }
+    : {
+        x: leftAttach.x + out.x * D,
+        z: leftAttach.z + out.z * D,
+      }
+  const frontRight = angled
+    ? {
+        x: rightAttach.x - along.x * D + out.x * D,
+        z: rightAttach.z - along.z * D + out.z * D,
+      }
+    : {
+        x: rightAttach.x + out.x * D,
+        z: rightAttach.z + out.z * D,
+      }
+
+  const isParapet = bayPresetKind(preset) === 'balcony' || bayPresetKind(preset) === 'loggia'
+
+  // Wie manuell gezeichnet: Planlinie von Ecke zu Ecke, Außennormale vom Erker weg.
+  const leftYaw = yawFromSegment(leftAttach, frontLeft)
+  const frontYaw = yawFromSegment(frontLeft, frontRight)
+  const rightYaw = yawFromSegment(rightAttach, frontRight)
+
+  const leftAlong = wallAlongDelta(leftYaw, 1)
+  const rightAlong = wallAlongDelta(rightYaw, 1)
+  // Linke Außennormale: von der Erker-Innenfläche weg (nach links außen).
+  const leftOut = { x: leftAlong.z, z: -leftAlong.x }
+  // Rechte Außennormale: nach rechts außen.
+  const rightOut = { x: -rightAlong.z, z: rightAlong.x }
+  const frontOut = { x: out.x, z: out.z }
+
+  const leftLen = dist2(leftAttach, frontLeft)
+  const rightLen = dist2(rightAttach, frontRight)
+  const frontLen = dist2(frontLeft, frontRight)
+
+  const leftSide = mkChildWall(parent, leftAttach, leftYaw, leftLen, 'side', {
+    panelFlip: panelFlipForExteriorNormal(leftYaw, leftOut),
+  })
+  const rightSide = mkChildWall(parent, rightAttach, rightYaw, rightLen, 'side', {
+    panelFlip: panelFlipForExteriorNormal(rightYaw, rightOut),
+  })
+  const front = mkChildWall(parent, frontLeft, frontYaw, frontLen, 'front', {
+    panelFlip: panelFlipForExteriorNormal(frontYaw, frontOut),
+    height: isParapet ? BAY_PARAPET_HEIGHT_CM : parent.height,
+    depth: isParapet ? BAY_PARAPET_DEPTH_CM : undefined,
+  })
+
+  const kind = bayPresetKind(preset)
+  const updatedParent: Wall = {
+    ...parent,
+    bayWindow: {
+      frontWidthCm: W,
+      depthCm: D,
+      shape: angled ? 'angled45' : 'rect',
+      kind,
+      wallIds: [leftSide.id, front.id, rightSide.id],
+    },
+  }
+  leftSide.bayParentId = parent.id
+  rightSide.bayParentId = parent.id
+  front.bayParentId = parent.id
+
+  return { parent: updatedParent, walls: [leftSide, front, rightSide] }
 }
 
 /**
@@ -161,7 +260,6 @@ export function roundBayArcPoints(
   for (let i = 0; i <= facets; i += 1) {
     const t = i / facets
     const phi = Math.PI * t
-    // φ=0 → links (−a, 0), φ=π/2 → Scheitel (0, b), φ=π → rechts (+a, 0)
     const alongDist = -a * Math.cos(phi)
     const outDist = b * Math.sin(phi)
     pts.push({
@@ -170,83 +268,6 @@ export function roundBayArcPoints(
     })
   }
   return pts
-}
-
-function buildUShapeWalls(
-  parent: Wall,
-  preset: BayWindowPreset,
-  attachAlongCenter: number | undefined,
-  inward: boolean,
-): { parent: Wall; walls: Wall[] } | null {
-  const W = preset.frontWidthCm
-  const D = preset.depthCm
-  const center = attachAlongCenter ?? parent.width / 2
-  const leftX = center - W / 2
-  const rightX = center + W / 2
-  if (leftX < -1 || rightX > parent.width + 1) return null
-
-  const yaw = parent.yawDeg ?? 0
-  const outYaw = normalizeYawDeg(outwardYaw(parent) + (inward ? 180 : 0))
-  const face = outerFaceOffset(parent, inward)
-  const start = wallStartPoint(parent)
-  const leftOrigin = {
-    x: start.x + wallAlongDelta(yaw, leftX).x + face.x,
-    z: start.z + wallAlongDelta(yaw, leftX).z + face.z,
-  }
-  const rightOrigin = {
-    x: start.x + wallAlongDelta(yaw, rightX).x + face.x,
-    z: start.z + wallAlongDelta(yaw, rightX).z + face.z,
-  }
-
-  const angled = preset.shape === 'angled45'
-  const sideLen = angled ? D / Math.cos(Math.PI / 4) : D
-  const sideYawLeft = angled ? normalizeYawDeg(yaw + (inward ? -45 : 45)) : outYaw
-  const sideYawRight = angled ? normalizeYawDeg(yaw + (inward ? -135 : 135)) : outYaw
-  const isParapet = bayPresetKind(preset) === 'balcony' || bayPresetKind(preset) === 'loggia'
-
-  const frontOut = wallAlongDelta(outwardYaw(parent), inward ? -1 : 1)
-
-  /** Außennormale senkrecht zur Schenkel-Achse, vom Erker weg (nicht zur Parent-Normale). */
-  function baySideExteriorNormal(sideYawDeg: number, side: 'left' | 'right'): { x: number; z: number } {
-    const along = wallAlongDelta(sideYawDeg, 1)
-    const ccw = side === 'right'
-    return ccw ? { x: -along.z, z: along.x } : { x: along.z, z: -along.x }
-  }
-
-  const leftSide = mkChildWall(parent, leftOrigin, sideYawLeft, sideLen, 'side', {
-    panelFlip: panelFlipForExteriorNormal(sideYawLeft, baySideExteriorNormal(sideYawLeft, 'left')),
-  })
-  const rightSide = mkChildWall(parent, rightOrigin, sideYawRight, sideLen, 'side', {
-    panelFlip: panelFlipForExteriorNormal(sideYawRight, baySideExteriorNormal(sideYawRight, 'right')),
-  })
-
-  const leftEnd = wallEndPoint(leftSide)
-  const rightEnd = wallEndPoint(rightSide)
-  const frontWidth =
-    preset.shape === 'angled45' ? Math.max(8, dist2(leftEnd, rightEnd)) : Math.max(8, W)
-  const frontYaw = yawFromSegment(leftEnd, rightEnd)
-  const front = mkChildWall(parent, leftEnd, frontYaw, frontWidth, 'front', {
-    panelFlip: panelFlipForExteriorNormal(frontYaw, frontOut),
-    height: isParapet ? BAY_PARAPET_HEIGHT_CM : parent.height,
-    depth: isParapet ? BAY_PARAPET_DEPTH_CM : undefined,
-  })
-
-  const kind = bayPresetKind(preset)
-  const updatedParent: Wall = {
-    ...parent,
-    bayWindow: {
-      frontWidthCm: W,
-      depthCm: D,
-      shape: preset.shape === 'angled45' ? 'angled45' : 'rect',
-      kind,
-      wallIds: [leftSide.id, front.id, rightSide.id],
-    },
-  }
-  leftSide.bayParentId = parent.id
-  rightSide.bayParentId = parent.id
-  front.bayParentId = parent.id
-
-  return { parent: updatedParent, walls: [leftSide, front, rightSide] }
 }
 
 function buildRoundBayWalls(
@@ -263,12 +284,7 @@ function buildRoundBayWalls(
   if (leftX < -1 || rightX > parent.width + 1) return null
 
   const yaw = parent.yawDeg ?? 0
-  const face = outerFaceOffset(parent, inward)
-  const start = wallStartPoint(parent)
-  const leftOrigin = {
-    x: start.x + wallAlongDelta(yaw, leftX).x + face.x,
-    z: start.z + wallAlongDelta(yaw, leftX).z + face.z,
-  }
+  const leftOrigin = attachPointOnParent(parent, leftX)
   const arcLength = partialEllipseArcLength(W / 2, D, Math.PI)
   const exteriorOut = wallAlongDelta(outwardYaw(parent), inward ? -1 : 1)
   const arcWall = mkChildWall(parent, leftOrigin, yaw, arcLength, 'arc', {
@@ -363,10 +379,11 @@ export function bayWindowGhostSegments(
     }
     return segs
   }
-  const along = wallAlongDelta(yawDeg, W)
-  const left = { x: originX, z: originZ }
-  const right = { x: originX + along.x, z: originZ + along.z }
   if (preset.shape === 'angled45') {
+    const attachW = W + 2 * D
+    const along = wallAlongDelta(yawDeg, attachW)
+    const left = { x: originX, z: originZ }
+    const right = { x: originX + along.x, z: originZ + along.z }
     const sideLen = D / Math.cos(Math.PI / 4)
     const leftDir = wallAlongDelta(
       normalizeYawDeg(yawDeg + (inward ? -45 : 45)),
@@ -384,6 +401,9 @@ export function bayWindowGhostSegments(
       { ax: right.x, az: right.z, bx: rightOut.x, bz: rightOut.z },
     ]
   }
+  const along = wallAlongDelta(yawDeg, W)
+  const left = { x: originX, z: originZ }
+  const right = { x: originX + along.x, z: originZ + along.z }
   const out = wallAlongDelta(outwardYawDeg(yawDeg, panelFlip), inward ? -D : D)
   const leftOut = { x: left.x + out.x, z: left.z + out.z }
   const rightOut = { x: right.x + out.x, z: right.z + out.z }
@@ -411,6 +431,8 @@ export function buildBayWindowAtPose(
   const needsBackWall = kind === 'balcony' || kind === 'loggia'
   const height = pose.height ?? styleFrom?.height ?? virtualHeight(styleFrom)
   const depth = styleFrom?.depth ?? WALL_DEPTH
+  const attachW =
+    preset.shape === 'angled45' ? preset.frontWidthCm + 2 * preset.depthCm : preset.frontWidthCm
   const virtual: Wall = {
     ...createStudioWall(pose.originX, pose.y),
     id: createId(),
@@ -419,7 +441,7 @@ export function buildBayWindowAtPose(
     x: pose.originX,
     yawDeg: pose.yawDeg,
     panelFlip: pose.panelFlip,
-    width: preset.frontWidthCm,
+    width: attachW,
     height,
     depth: needsBackWall ? depth : 0,
     panel: styleFrom?.panel ? { ...styleFrom.panel } : undefined,
@@ -431,7 +453,7 @@ export function buildBayWindowAtPose(
     bayRole: needsBackWall ? 'back' : undefined,
     planLinked: true,
   }
-  const built = buildBayWindowWalls(virtual, preset, preset.frontWidthCm / 2)
+  const built = buildBayWindowWalls(virtual, preset, attachW / 2)
   if (!built) return []
   const host =
     needsBackWall

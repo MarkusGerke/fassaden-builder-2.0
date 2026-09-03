@@ -27,7 +27,7 @@ import {
 import { createId } from './id'
 import { DEFAULT_NICHE_DEPTH_CM } from './openingGeometry'
 import { GRID_SIZE, WALL_HEIGHT, WALL_DEPTH, WINDOW_SILL_Y, WINDOW_TRIM_DEFAULT_OFFSET_FORWARD } from '../constants/presets'
-import { STUDIO_MASONRY } from '../studio/constants'
+import { DUPLICATE_GAP_CM, STUDIO_MASONRY } from '../studio/constants'
 import { viewerSideToAlongSign } from '../studio/walls'
 import { defaultOpeningStairs, normalizeOpeningStairs, stairTopY } from '../studio/stairs'
 import { normalizeOpeningPediment } from '../studio/pediment'
@@ -706,7 +706,7 @@ export function duplicateOpenings(
       const nextId = createId()
       const snappedWidth = snapToGrid(opening.width, grid)
       const wallWithAdditions = { ...wall, openings: [...wall.openings, ...additions] }
-      const gap = snappedWidth + 32
+      const gap = snappedWidth + DUPLICATE_GAP_CM
 
       let duplicate: Opening | null = null
       let issue: OpeningInsertIssue | null = { kind: 'invalid', message: 'pending' }

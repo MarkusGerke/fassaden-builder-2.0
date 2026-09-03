@@ -5,7 +5,7 @@ import {
   DEFAULT_PROFILE_COLOR,
   DEFAULT_WALL_COLOR,
 } from '../constants/colorPalettes'
-import { DEFAULT_STUDIO_PANEL } from '../studio/constants'
+import { DEFAULT_STUDIO_PANEL, DUPLICATE_GAP_CM } from '../studio/constants'
 import { getWallModule, wallFromModule } from '../blender/wallModules'
 import type { Building, FacadeState, SurfaceFinish, Wall, WallSide } from '../types/facade'
 import { cloneBuilding, cloneFacadeState, cloneWall, emptyNeighbors } from '../types/facade'
@@ -373,7 +373,7 @@ export function duplicateWalls(
   const sign = viewerSideToAlongSign(selected[0]!, preferredSide, vr.x, vr.z)
   const refWall = selected[0]!
   const insertWidthCm = selected.length === 1 ? refWall.width : bounds.width
-  const layoutDx = sign * bounds.width
+  const layoutDx = sign * (bounds.width + DUPLICATE_GAP_CM)
   const clones: Wall[] = []
 
   for (const wall of selected) {
@@ -400,11 +400,11 @@ export function duplicateWalls(
     }
 
     if (isStudioWall(wall)) {
-      const along = wallAlongDelta(wall.yawDeg ?? 0, sign * wall.width)
+      const along = wallAlongDelta(wall.yawDeg ?? 0, sign * (wall.width + DUPLICATE_GAP_CM))
       cloned.originX = (wall.originX ?? wall.x) + along.x
       cloned.originZ = (wall.originZ ?? 0) + along.z
       // Studio-Layout-X folgt der wandlokalen Verschiebung, nicht dem Modul-Bounds-Offset.
-      cloned.x = wall.x + sign * wall.width
+      cloned.x = wall.x + sign * (wall.width + DUPLICATE_GAP_CM)
       cloned.planLinked = opts?.planLinked === true
     }
 
@@ -418,7 +418,13 @@ export function duplicateWalls(
   return updateBuilding(state, building.id, (b) => {
     let walls = b.walls
     if (shouldInsertInChain) {
-      walls = shiftCollinearNeighborsForInsert(walls, refWall, insertEnd, insertWidthCm, idSet)
+      walls = shiftCollinearNeighborsForInsert(
+        walls,
+        refWall,
+        insertEnd,
+        insertWidthCm + DUPLICATE_GAP_CM,
+        idSet,
+      )
     }
     return rebuildBuildingNeighbors({ ...b, walls: [...walls, ...clones] })
   })

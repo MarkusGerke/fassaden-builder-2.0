@@ -107,6 +107,12 @@ describe('expandWallMoveIds', () => {
     const og = wall({ id: 'og', y: 448, originX: 0, originZ: 0, width: 192, planLinked: true })
     expect(expandWallMoveIds([eg, og], ['eg'], 448).sort()).toEqual(['eg', 'og'])
   })
+
+  it('planLinked false lässt den Grundriss-Ring aus', () => {
+    const a = wall({ id: 'a', y: 0, originX: 0, originZ: 0, width: 192, planLinked: true, yawDeg: 0 })
+    const b = wall({ id: 'b', y: 0, originX: 192, originZ: 0, width: 192, planLinked: true, yawDeg: 90 })
+    expect(expandWallMoveIds([a, b], ['a'], 448, { planLinked: false })).toEqual(['a'])
+  })
 })
 
 describe('normalizeStudioWall openings', () => {

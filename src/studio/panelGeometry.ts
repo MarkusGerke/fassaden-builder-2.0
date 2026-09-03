@@ -301,6 +301,23 @@ function addQuad(
   indices.push(base, base + 3, base + 2, base, base + 2, base + 1)
 }
 
+/** Dicke-Kappe für FrontSide: Vertex-Order ist für outerZ < innerZ (panelFlip true) ausgelegt.
+ * Bei panelFlip false (outerZ > innerZ) die Windung umkehren — sonst zeigen Deckel/Stirn nach innen und werden gecullt.
+ */
+function addThicknessCapQuad(
+  positions: number[],
+  normals: number[],
+  indices: number[],
+  a: THREE.Vector3,
+  b: THREE.Vector3,
+  c: THREE.Vector3,
+  d: THREE.Vector3,
+  reverse: boolean,
+) {
+  if (reverse) addQuad(positions, normals, indices, a, d, c, b)
+  else addQuad(positions, normals, indices, a, b, c, d)
+}
+
 /** Rest über der Kurve: wenn die Kurve über dem Stein liegt, ist die Spalte das Fensterloch. */
 function bottomArcHasStone(arcY: number, yTop: number, eps = 0.05): boolean {
   return arcY < yTop - eps
@@ -3034,6 +3051,7 @@ function createArcBayWallGeometry(wall: Wall): THREE.BufferGeometry {
   const yBottom = -halfH
   const yTop = halfH
   const depth = Math.max(wall.depth, 1e-6)
+  const capReverse = !(wall.panelFlip ?? true)
 
   const outerRing: THREE.Vector3[] = []
   const innerRing: THREE.Vector3[] = []
@@ -3062,7 +3080,7 @@ function createArcBayWallGeometry(wall: Wall): THREE.BufferGeometry {
   }
 
   for (let i = 0; i < strips; i += 1) {
-    addQuad(
+    addThicknessCapQuad(
       positions,
       normals,
       indices,
@@ -3070,8 +3088,9 @@ function createArcBayWallGeometry(wall: Wall): THREE.BufferGeometry {
       outerRing[i + 1]!.clone().setY(yTop),
       innerRing[i + 1]!.clone().setY(yTop),
       innerRing[i]!.clone().setY(yTop),
+      capReverse,
     )
-    addQuad(
+    addThicknessCapQuad(
       positions,
       normals,
       indices,
@@ -3079,6 +3098,7 @@ function createArcBayWallGeometry(wall: Wall): THREE.BufferGeometry {
       innerRing[i]!,
       innerRing[i + 1]!,
       outerRing[i + 1]!,
+      capReverse,
     )
   }
 
@@ -3086,7 +3106,7 @@ function createArcBayWallGeometry(wall: Wall): THREE.BufferGeometry {
   const iStart = arcWallLocalPoint(wall, 0, 0, depth)
   const oEnd = arcWallLocalPoint(wall, wall.width, 0, 0)
   const iEnd = arcWallLocalPoint(wall, wall.width, 0, depth)
-  addQuad(
+  addThicknessCapQuad(
     positions,
     normals,
     indices,
@@ -3094,8 +3114,9 @@ function createArcBayWallGeometry(wall: Wall): THREE.BufferGeometry {
     new THREE.Vector3(iStart.x, yBottom, iStart.z),
     new THREE.Vector3(iStart.x, yTop, iStart.z),
     new THREE.Vector3(oStart.x, yTop, oStart.z),
+    capReverse,
   )
-  addQuad(
+  addThicknessCapQuad(
     positions,
     normals,
     indices,
@@ -3103,6 +3124,7 @@ function createArcBayWallGeometry(wall: Wall): THREE.BufferGeometry {
     new THREE.Vector3(oEnd.x, yBottom, oEnd.z),
     new THREE.Vector3(oEnd.x, yTop, oEnd.z),
     new THREE.Vector3(iEnd.x, yTop, iEnd.z),
+    capReverse,
   )
 
   const exteriorIndexCount = indices.length
@@ -3137,6 +3159,8 @@ export function createStudioWallGeometry(wall: Wall, allWalls: Wall[] = []): THR
   const outerZ = studioWallOuterLocalZ(wall)
   const innerZ = studioWallInnerLocalZ(wall)
   const panelsOn = wallHasPanels(wall)
+  // Kappen-Order: outer→inner liefert +Y/−X/+X nur wenn outerZ < innerZ (panelFlip true).
+  const capReverse = outerZ > innerZ
 
   // Außenfläche immer — auch bei Paneelen (z. B. ausgeblendete Reihen). Leicht nach innen versetzt, damit
   // keine Z-Fights mit Mörtel/Steinrücken entstehen (Moiré). Im oberen Freistreifen volle Tiefe — sonst kein Bodenschatten.
@@ -3161,7 +3185,7 @@ export function createStudioWallGeometry(wall: Wall, allWalls: Wall[] = []): THR
   const hideEndSide = Boolean(endAdj && isCollinearDock(wall, endAdj))
 
   if (!hideStartSide) {
-    addQuad(
+    addThicknessCapQuad(
       positions,
       normals,
       indices,
@@ -3169,10 +3193,11 @@ export function createStudioWallGeometry(wall: Wall, allWalls: Wall[] = []): THR
       new THREE.Vector3(startOuter, yTop, outerZ),
       new THREE.Vector3(startInner, yTop, innerZ),
       new THREE.Vector3(startInner, yBottom, innerZ),
+      capReverse,
     )
   }
   if (!hideEndSide) {
-    addQuad(
+    addThicknessCapQuad(
       positions,
       normals,
       indices,
@@ -3180,9 +3205,10 @@ export function createStudioWallGeometry(wall: Wall, allWalls: Wall[] = []): THR
       new THREE.Vector3(endInner, yBottom, innerZ),
       new THREE.Vector3(endInner, yTop, innerZ),
       new THREE.Vector3(endOuter, yTop, outerZ),
+      capReverse,
     )
   }
-  addQuad(
+  addThicknessCapQuad(
     positions,
     normals,
     indices,
@@ -3190,6 +3216,7 @@ export function createStudioWallGeometry(wall: Wall, allWalls: Wall[] = []): THR
     new THREE.Vector3(endOuter, yTop, outerZ),
     new THREE.Vector3(endInner, yTop, innerZ),
     new THREE.Vector3(startInner, yTop, innerZ),
+    capReverse,
   )
 
   // Unterseite der Wandstärke: Lücken nur unter Bodentüren (früher: ganz ohne Boden bei Tür).
@@ -3203,7 +3230,7 @@ export function createStudioWallGeometry(wall: Wall, allWalls: Wall[] = []): THR
     const i0 = wallLocalX(wall, xStart, innerZ)
     const o1 = wallLocalX(wall, xEnd, outerZ)
     const i1 = wallLocalX(wall, xEnd, innerZ)
-    addQuad(
+    addThicknessCapQuad(
       positions,
       normals,
       indices,
@@ -3211,6 +3238,7 @@ export function createStudioWallGeometry(wall: Wall, allWalls: Wall[] = []): THR
       new THREE.Vector3(o1, yBottom, outerZ),
       new THREE.Vector3(i1, yBottom, innerZ),
       new THREE.Vector3(i0, yBottom, innerZ),
+      capReverse,
     )
   }
   let bottomCursor = 0
@@ -3227,11 +3255,37 @@ export function createStudioWallGeometry(wall: Wall, allWalls: Wall[] = []): THR
   return wallBodyGeometryWithGroups(positions, normals, indices, exteriorIndexCount)
 }
 
+/** Abstand Shadow-Kappe hinter sichtbarer Nischen-/Konchen-Rückwand (cm). */
+const NICHE_SHADOW_SEAL_INSET_CM = 2
+
+/**
+ * Lokales Z hinter der Nischenrückwand für den Shadow-Tunnel-Abschluss.
+ * Muss hinter der sichtbaren Fläche liegen — sonst schwärzt die Kappe den Empfang.
+ */
+function nicheShadowSealBackLocalZ(wall: Wall, opening: Opening, depthCm: number): number {
+  const zOuter = studioOpeningRevealOuterZ(wall, opening)
+  const outward = studioWindowDepthForwardSign(wall)
+  return zOuter - outward * (Math.max(1, depthCm) + NICHE_SHADOW_SEAL_INSET_CM)
+}
+
+/** True wenn die Nischenrückwand hinter der Wandinnenkante liegt (Tiefe > Wanddicke). */
+function nicheBackPastWallInner(wall: Wall, opening: Opening, depthCm: number): boolean {
+  const zOuter = studioOpeningRevealOuterZ(wall, opening)
+  const outward = studioWindowDepthForwardSign(wall)
+  const nicheBack = zOuter - outward * Math.max(1, depthCm)
+  const wallInner = studioWallInnerLocalZ(wall)
+  // Entlang der Innenrichtung (entgegen outward) weiter als die Innenkante.
+  return outward < 0 ? nicheBack > wallInner + 0.5 : nicheBack < wallInner - 0.5
+}
+
 /**
  * Unsichtbarer Öffnungs-Tunnel nur für die Shadow-Map.
  * Reicht von der Fassadenaußenfläche (inkl. Paneel-Vorstand) bis zur Wandinnenseite —
  * sonst leckt Licht durch die Paneeltiefe am Sturz/an den Laibungen (helle Linie über Türen).
  * Nicht in den sichtbaren Wandkörper: sonst Z-Fight mit Laibung/Paneelen.
+ *
+ * Nische tiefer als Wanddicke: Tunnel bis hinter die Rückwand, **keine** Kappe an der
+ * Wandinnenkante (die würde mitten in der Nische sitzen und Licht/Schatten abschneiden).
  */
 /** Leichte Aufweitung gegen Shadow-Bias / Peter-Panning an der Kontur (cm). */
 const OPENING_SHADOW_TUNNEL_INFLATE_CM = 2.5
@@ -3241,7 +3295,7 @@ export function createStudioOpeningShadowTunnelGeometry(wall: Wall): THREE.Buffe
   const normals: number[] = []
   const indices: number[] = []
   const facadeZ = studioFacadeOutwardLocalZ(wall)
-  const innerZ = studioWallInnerLocalZ(wall)
+  const wallInnerZ = studioWallInnerLocalZ(wall)
   const forward = studioWindowDepthForwardSign(wall)
   let quads = 0
   for (const opening of wall.openings) {
@@ -3249,7 +3303,17 @@ export function createStudioOpeningShadowTunnelGeometry(wall: Wall): THREE.Buffe
     if (opening.hidden || !openingCutsShell(opening)) continue
     const revealZ = studioOpeningRevealOuterZ(wall, opening)
     const outerZ = forward >= 0 ? Math.max(facadeZ, revealZ) : Math.min(facadeZ, revealZ)
-    if (Math.abs(outerZ - innerZ) < 0.35) continue
+    const fill = normalizeOpeningFill(opening.fill)
+    const isNicheLike =
+      openingIsConch(opening) || openingFillMode(opening) === 'niche'
+    const nicheDepth = Math.max(1, fill.nicheDepthCm ?? 10)
+    const deepNiche = isNicheLike && nicheBackPastWallInner(wall, opening, nicheDepth)
+    const sealBackZ = isNicheLike
+      ? nicheShadowSealBackLocalZ(wall, opening, nicheDepth)
+      : wallInnerZ
+    // Tunnel-Ende: bei tiefer Nische bis hinter die Rückwand, sonst Wandinnenkante.
+    const tunnelEndZ = deepNiche ? sealBackZ : wallInnerZ
+    if (Math.abs(outerZ - tunnelEndZ) < 0.35) continue
     const poly = openingMaskPolyline(openingForShellCut(opening), OPENING_SHADOW_TUNNEL_INFLATE_CM)
     if (poly.length < 3) continue
     const n = poly.length
@@ -3262,38 +3326,29 @@ export function createStudioOpeningShadowTunnelGeometry(wall: Wall): THREE.Buffe
         indices,
         new THREE.Vector3(wallLocalX(wall, a.x, outerZ), localY(a.y, wall), outerZ),
         new THREE.Vector3(wallLocalX(wall, b.x, outerZ), localY(b.y, wall), outerZ),
-        new THREE.Vector3(wallLocalX(wall, b.x, innerZ), localY(b.y, wall), innerZ),
-        new THREE.Vector3(wallLocalX(wall, a.x, innerZ), localY(a.y, wall), innerZ),
+        new THREE.Vector3(wallLocalX(wall, b.x, tunnelEndZ), localY(b.y, wall), tunnelEndZ),
+        new THREE.Vector3(wallLocalX(wall, a.x, tunnelEndZ), localY(a.y, wall), tunnelEndZ),
       )
       quads += 1
     }
     if (openingIsConch(opening)) {
-      const fill = normalizeOpeningFill(opening.fill)
-      const depth = Math.max(1, fill.nicheDepthCm ?? 10)
-      const zOuter = studioOpeningRevealOuterZ(wall, opening)
-      const outward = studioWindowDepthForwardSign(wall)
-      // +1 cm hinter sichtbarer Kalotte — kein koplanarer Okkluder.
-      const sealBackZ = zOuter - outward * (depth + 1)
-      appendOpeningMaskCap(wall, poly, innerZ, positions, normals, indices)
       appendOpeningMaskCap(wall, poly, outerZ, positions, normals, indices)
-      if (Math.abs(sealBackZ - innerZ) > 0.35) {
-        appendOpeningMaskCap(wall, poly, sealBackZ, positions, normals, indices)
-      }
-      quads += 3
-    } else if (openingFillMode(opening) === 'niche') {
-      // Nische: sichtbare Rückwand reicht nur `depth` cm — Shadow-Tunnel braucht
-      // Kappen hinter der Rückwand (+1 cm) und an der Innenkante, sonst leckt
-      // Punktlicht durchs Wandloch. Koplanar zur sichtbaren Rückwand würde sie schwärzen.
-      const fill = normalizeOpeningFill(opening.fill)
-      const depth = Math.max(1, fill.nicheDepthCm ?? 10)
-      const zOuter = studioOpeningRevealOuterZ(wall, opening)
-      const outward = studioWindowDepthForwardSign(wall)
-      const sealBackZ = zOuter - outward * (depth + 1)
       appendOpeningMaskCap(wall, poly, sealBackZ, positions, normals, indices)
-      appendOpeningMaskCap(wall, poly, innerZ, positions, normals, indices)
-      quads += 2
+      // Flache Konche innerhalb der Wand: Durchgangsloch zur Innenkante zusätzlich dichten.
+      if (!deepNiche && Math.abs(sealBackZ - wallInnerZ) > 0.35) {
+        appendOpeningMaskCap(wall, poly, wallInnerZ, positions, normals, indices)
+      }
+      quads += deepNiche ? 2 : 3
+    } else if (openingFillMode(opening) === 'niche') {
+      appendOpeningMaskCap(wall, poly, sealBackZ, positions, normals, indices)
+      if (!deepNiche) {
+        appendOpeningMaskCap(wall, poly, wallInnerZ, positions, normals, indices)
+        quads += 2
+      } else {
+        quads += 1
+      }
     } else if (basementWindowEnabled(opening)) {
-      appendOpeningMaskCap(wall, poly, innerZ, positions, normals, indices)
+      appendOpeningMaskCap(wall, poly, wallInnerZ, positions, normals, indices)
       const yCap = opening.y + opening.height + OPENING_SHADOW_TUNNEL_INFLATE_CM
       const x0 = opening.x - OPENING_SHADOW_TUNNEL_INFLATE_CM
       const x1 = opening.x + opening.width + OPENING_SHADOW_TUNNEL_INFLATE_CM
@@ -3303,8 +3358,8 @@ export function createStudioOpeningShadowTunnelGeometry(wall: Wall): THREE.Buffe
         indices,
         new THREE.Vector3(wallLocalX(wall, x0, outerZ), localY(yCap, wall), outerZ),
         new THREE.Vector3(wallLocalX(wall, x1, outerZ), localY(yCap, wall), outerZ),
-        new THREE.Vector3(wallLocalX(wall, x1, innerZ), localY(yCap, wall), innerZ),
-        new THREE.Vector3(wallLocalX(wall, x0, innerZ), localY(yCap, wall), innerZ),
+        new THREE.Vector3(wallLocalX(wall, x1, wallInnerZ), localY(yCap, wall), wallInnerZ),
+        new THREE.Vector3(wallLocalX(wall, x0, wallInnerZ), localY(yCap, wall), wallInnerZ),
       )
       quads += 1
     }

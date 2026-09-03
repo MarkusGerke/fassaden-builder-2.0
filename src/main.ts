@@ -176,9 +176,12 @@ import {
 } from './utils/archForms'
 import { scaleProfileSectionAxes, transformProfileSection, transformProfileSectionAnchored } from './utils/profilePaths'
 import {
-  clampCorniceScale,
   normalizeWallCornice,
+  snapCorniceDepthCm,
+  snapCorniceHeightCm,
   updateWallCornice,
+  updateWallCorniceDepthCm,
+  updateWallCorniceHeightCm,
   wallCornice,
 } from './utils/cornice'
 import {
@@ -320,7 +323,7 @@ import {
   showFloorResizeGrid,
   showWallFacePlacementGrid,
 } from './studio/placementGrid'
-import { computeWallMoveGuides } from './studio/wallGuides'
+import { computeSegmentAlignGuides, computeWallMoveGuides, snapPointToWallEdges } from './studio/wallGuides'
 import {
   applyDirectionalSun,
   applyYawAroundYToBox,
@@ -426,7 +429,7 @@ import {
   normalizeOpeningInteriorShade,
 } from './windows/openingExtras'
 import { facadeOutward, facadeSunIsGrazing, wallsForYaw, type ElevationFilter } from './studio/elevation'
-import { normalizeYawDeg, snapYawTo10, snapYawTo45, solarAzimuthToWallYaw, viewedFacadeYaw, wallCompassLabel, wallDockAxisFromFacadeYaw, yawFromCompassSvgPoint } from './studio/compass'
+import { normalizeYawDeg, snapYawTo1, snapYawTo45, solarAzimuthToWallYaw, viewedFacadeYaw, wallCompassLabel, wallDockAxisFromFacadeYaw, yawFromCompassSvgPoint } from './studio/compass'
 import { computeOpeningGuidesForRefs, computeOpeningDistanceLinesForRefs } from './studio/openingGuides'
 import { panelCourseCount, visiblePanelRowRange } from './studio/panelLayout'
 import {
@@ -1994,6 +1997,10 @@ function updateWallDockPreviewAtClient(clientX: number, clientY: number, presetI
   floorPlanView.clearWallDockPreview()
   setWallDockSceneGhostWorld(segments, place.valid)
   const floorY = currentFloor * activeWallHeight()
+  const floorWalls = activeBuilding().walls.filter(
+    (w) => isStudioWall(w) && Math.abs((w.y ?? 0) - floorY) < 1,
+  )
+  floorPlanView.showWallMoveGuides(computeSegmentAlignGuides(segments, floorWalls))
   showPlacementGridForDockTargets(
     place.gx * PLAN_GRID,
     place.gz * PLAN_GRID,
@@ -2208,11 +2215,15 @@ function wallIdsForMoveDrag(
   facadeState: FacadeState,
   seedWallIds: string[],
   singleFloor: boolean,
+  opts?: { planLinked?: boolean },
 ): string[] {
   const building =
     facadeState.buildings.find((b) => b.id === facadeState.activeBuildingId) ?? facadeState.buildings[0]
   if (!building) return seedWallIds
-  return expandWallMoveIds(building.walls, seedWallIds, building.wallHeight, { singleFloor })
+  return expandWallMoveIds(building.walls, seedWallIds, building.wallHeight, {
+    singleFloor,
+    planLinked: opts?.planLinked,
+  })
 }
 
 function commitNewStudioWalls(
@@ -2507,7 +2518,7 @@ function rotateSelectedStudioWalls(direction: 1 | -1, stepDeg = 90) {
 }
 
 function setSelectedStudioWallsYaw(nextYaw: number) {
-  const snapped = snapYawTo10(nextYaw)
+  const snapped = snapYawTo1(nextYaw)
   applyStudioWallYawChange(
     editor.selectedWallIds,
     () => snapped,
@@ -3239,14 +3250,18 @@ function applyWallResizePreview(
     const step = frontMoveStepCm(wall)
     const dist = Math.round(along / step) * step
     if (Math.abs(dist) < 0.5) return drag.baseState
+    // Nur Auswahl (+ kollinear / Etagen) — nicht den ganzen Ring (`expandPlanLinkedWallIds`).
     const seeds =
       drag.frontMoveSeedIds ??
       expandCollinearPlanLinkedIds(
         activeBuilding(drag.baseState).walls,
         drag.moveWallIds ?? [drag.wallId],
       )
-    const moveIds = wallIdsForMoveDrag(drag.baseState, seeds, Boolean(opts?.shift))
-    const next = offsetStudioWallsAlongFront(drag.baseState, drag.wallId, moveIds, dist)
+    const singleFloor = Boolean(opts?.shift)
+    const moveIds = wallIdsForMoveDrag(drag.baseState, seeds, singleFloor, { planLinked: false })
+    const next = offsetStudioWallsAlongFront(drag.baseState, drag.wallId, seeds, dist, {
+      singleFloor,
+    })
     const building = next.buildings.find((item) => item.id === next.activeBuildingId) ?? next.buildings[0]
     const idSet = new Set(moveIds)
     for (const item of building?.walls ?? []) {
@@ -3264,8 +3279,30 @@ function applyWallResizePreview(
     const yaw = snapBranchYawDeg(wall.yawDeg ?? 0, wallEnd, dx, dz)
     if (yaw === null) return drag.baseState
     const presetSeg = armedDraftSegmentCm()
-    const width = presetSeg ?? snapWallWidthCm(Math.hypot(dx, dz), yaw)
+    const joint = wallEnd === 'start' ? wallStartPoint(wall) : wallEndPoint(wall)
+    const away = wallAlongDelta(yaw, 1)
+    const awayLen = Math.hypot(away.x, away.z) || 1
+    const ux = away.x / awayLen
+    const uz = away.z / awayLen
+    let rawLen = Math.hypot(dx, dz)
+    // Projektion auf Abzweig-Richtung (Maus kann leicht abweichen).
+    const alongMouse = dx * ux + dz * uz
+    if (alongMouse > 0) rawLen = alongMouse
+    let width = presetSeg ?? snapWallWidthCm(rawLen, yaw)
     if (width < wallWidthStepCm(yaw) && presetSeg == null) return drag.baseState
+    const freeGuess = { x: joint.x + ux * width, z: joint.z + uz * width }
+    const building0 = activeBuilding(drag.baseState)
+    const floorY = wall.y ?? 0
+    const floorWalls = building0.walls.filter(
+      (w) => isStudioWall(w) && Math.abs((w.y ?? 0) - floorY) < 1,
+    )
+    const snapped = snapPointToWallEdges(freeGuess, floorWalls, [wall.id, drag.branchWallId].filter(Boolean) as string[])
+    if (snapped.guides.length > 0) {
+      const proj = (snapped.point.x - joint.x) * ux + (snapped.point.z - joint.z) * uz
+      if (proj >= wallWidthStepCm(yaw) * 0.5) {
+        width = presetSeg ?? snapWallWidthCm(proj, yaw)
+      }
+    }
     if (!drag.branchWallId) drag.branchWallId = createId()
     return withDraftPresetOpeningsAfterResize(
       finalizeStudioGeometry(
@@ -3401,6 +3438,10 @@ function beginWallResizeDrag(wall: Wall, grip: WallResizeGrip, event: PointerEve
     showWallResizeFloorGrid(getWall(next, wallResizeDrag.wallId) ?? wall)
     updateWallResizeGizmos()
     updateWallResizeBranchCloseHint(next, wallResizeDrag, moveEvent.shiftKey)
+    const guideIds = wallResizeDrag.branchWallId
+      ? [wallResizeDrag.branchWallId]
+      : wallResizeDrag.moveWallIds ?? [wallResizeDrag.wallId]
+    refreshWallMoveGuides(guideIds)
     markViewportDirty()
   }
   wallResizePointerUp = (upEvent: PointerEvent) => {
@@ -3460,6 +3501,7 @@ function finishWallResizeDrag(event: PointerEvent) {
   setOrbitLite(false)
   clearWallDockSceneGhost()
   floorPlanView.clearWallDockPreview()
+  floorPlanView.clearWallMoveGuides()
   updateWallResizeGizmos()
   markViewportDirty()
   try {
@@ -4952,13 +4994,12 @@ const studioStretchStartMinus = document.querySelector<HTMLButtonElement>('#stud
 const studioStretchStartPlus = document.querySelector<HTMLButtonElement>('#studio-stretch-start-plus')!
 const studioStretchEndMinus = document.querySelector<HTMLButtonElement>('#studio-stretch-end-minus')!
 const studioStretchEndPlus = document.querySelector<HTMLButtonElement>('#studio-stretch-end-plus')!
+const studioWallWidthInput = document.querySelector<HTMLInputElement>('#studio-wall-width')!
 const studioHeightMinus = document.querySelector<HTMLButtonElement>('#studio-height-minus')!
 const studioHeightPlus = document.querySelector<HTMLButtonElement>('#studio-height-plus')!
 const studioWallHeightInput = document.querySelector<HTMLInputElement>('#studio-wall-height')!
 const studioWallDepthInput = document.querySelector<HTMLInputElement>('#studio-wall-depth')!
 const studioWallYawInput = document.querySelector<HTMLInputElement>('#studio-wall-yaw')!
-const studioWallYawMinus = document.querySelector<HTMLButtonElement>('#studio-wall-yaw-minus')!
-const studioWallYawPlus = document.querySelector<HTMLButtonElement>('#studio-wall-yaw-plus')!
 const studioEndPieceSection = document.querySelector<HTMLDivElement>('#studio-end-piece-section')!
 const studioEndPieceAngle = document.querySelector<HTMLInputElement>('#studio-end-piece-angle')!
 const studioEndPieceMinus = document.querySelector<HTMLButtonElement>('#studio-end-piece-minus')!
@@ -6317,6 +6358,10 @@ function syncStudioToolbar(wall: Wall) {
   studioWallHeightInput.value = String(wall.height)
   studioWallHeightInput.min = String(STUDIO_MIN_SIZE)
   studioWallHeightInput.step = String(STUDIO_WALL_HEIGHT_STEP)
+  const widthStep = wallWidthStepCm(wall.yawDeg ?? 0)
+  studioWallWidthInput.value = String(Math.round(wall.width))
+  studioWallWidthInput.min = String(STUDIO_MIN_SIZE)
+  studioWallWidthInput.step = String(widthStep)
   studioWallDepthInput.value = String(activeBuilding().wallDepth ?? WALL_DEPTH)
   studioWallYawInput.value = String(Math.round(wall.yawDeg ?? 0))
   syncEndPieceControls(wall)
@@ -7789,7 +7834,7 @@ function initOpeningLibrary() {
   if (libraryTab === 'niches') {
     appendLibraryIdleNoneCard(host, 'Keines')
     for (const preset of WALL_OPENING_PRESETS.filter(
-      (p) => p.type === 'cutout' || p.type === 'conch',
+      (p) => (p.type === 'cutout' || p.type === 'conch') && p.id !== 'opening-empty-96',
     )) {
       appendOpeningPresetCard(preset)
     }
@@ -7799,6 +7844,10 @@ function initOpeningLibrary() {
 
   appendLibraryIdleNoneCard(host, 'Keines')
   const openingType = libraryTab === 'doors' ? 'door' : 'window'
+  if (libraryTab === 'windows') {
+    const empty = WALL_OPENING_PRESETS.find((p) => p.id === 'opening-empty-96')
+    if (empty) appendOpeningPresetCard(empty)
+  }
   for (const preset of WALL_OPENING_PRESETS.filter((p) => p.type === openingType)) {
     appendOpeningPresetCard(preset)
   }
@@ -8441,6 +8490,35 @@ function flushSunShadowMap() {
   markViewportDirty()
 }
 
+/** Nur Shadow-Maps (Sonne + Punktlicht) — ohne EnvMap-Bake. Für Licht-only-Commits. */
+function flushShadowMapsOnly() {
+  if (sunShadowMapTimer) {
+    window.clearTimeout(sunShadowMapTimer)
+    sunShadowMapTimer = 0
+  }
+  sunShadowMapQueued = false
+  renderer.shadowMap.needsUpdate = true
+  markViewportDirty()
+}
+
+function scheduleShadowMapUpdate(opts?: { reflections?: boolean }) {
+  sunShadowMapQueued = true
+  if (sunShadowMapTimer) return
+  sunShadowMapTimer = window.setTimeout(() => {
+    sunShadowMapTimer = 0
+    if (!sunShadowMapQueued) return
+    sunShadowMapQueued = false
+    renderer.shadowMap.needsUpdate = true
+    if (opts?.reflections !== false) markSceneReflectionsDirty()
+    markViewportDirty()
+  }, SUN_SHADOW_MAP_MIN_INTERVAL_MS)
+}
+
+/** Shadow-Map während Slider/Animation gedrosselt — Licht sofort, Bake später. */
+function scheduleSunShadowMapUpdate() {
+  scheduleShadowMapUpdate({ reflections: true })
+}
+
 function dismissAppLoading() {
   const el = document.querySelector('#app-loading')
   if (!el) return
@@ -8467,20 +8545,6 @@ function bootstrapSceneLighting(): Promise<void> {
   })
 }
 
-/** Shadow-Map während Slider/Animation gedrosselt — Licht sofort, Bake später. */
-function scheduleSunShadowMapUpdate() {
-  sunShadowMapQueued = true
-  if (sunShadowMapTimer) return
-  sunShadowMapTimer = window.setTimeout(() => {
-    sunShadowMapTimer = 0
-    if (!sunShadowMapQueued) return
-    sunShadowMapQueued = false
-    renderer.shadowMap.needsUpdate = true
-    markSceneReflectionsDirty()
-    markViewportDirty()
-  }, SUN_SHADOW_MAP_MIN_INTERVAL_MS)
-}
-
 function sceneLightRoomOcclusionActive(): boolean {
   if (presentationMode !== 'render') return false
   if (currentView !== '3d' && currentView !== 'front') return false
@@ -8493,13 +8557,11 @@ function sceneLightShadowFarCm(): number {
   for (const light of lights) {
     const d = light.distance ?? 0
     if (d <= 0) {
-      // Unbegrenzte Lichtreichweite: Far weit hinter der Szene — keine sichtbare Würfelkante.
-      far = Math.max(far, 50000)
-    } else {
-      far = Math.max(far, d * 1.05)
+      // Unbegrenzte Reichweite: Far folgt der Site (unten), nicht 500 m — sonst dauert jeder Bake Sekunden.
+      continue
     }
+    far = Math.max(far, d * 1.05)
   }
-  if (far <= 0) far = 2400
   const box = buildingWorldBox(getAllWalls(state))
   if (!box.isEmpty()) {
     const diagonal = Math.hypot(
@@ -8509,6 +8571,7 @@ function sceneLightShadowFarCm(): number {
     )
     far = Math.max(far, diagonal + 1200)
   }
+  if (far <= 0) far = 2400
   return far
 }
 
@@ -8516,7 +8579,7 @@ function sceneLightsActive(): boolean {
   return normalizeSceneLights(state.sceneLights).some((item) => item.enabled)
 }
 
-function syncSceneLightRuntime(opts?: { flushShadows?: boolean }): void {
+function syncSceneLightRuntime(opts?: { flushShadows?: boolean; scheduleShadows?: boolean }): void {
   const roomOcclusion = sceneLightRoomOcclusionActive()
   const lightsActive = sceneLightsActive()
   const frontView = currentView === 'front'
@@ -8531,11 +8594,18 @@ function syncSceneLightRuntime(opts?: { flushShadows?: boolean }): void {
   })
   if (!facadeReady) return
   facade.syncPointLightOccluders(roomOcclusion, lightsActive)
-  // Frische Punktlichter haben noch keine Cube-Map — ohne Bake wirken receiveShadow-
-  // Flächen (Paneele/Fugen) schwarz. Undo nach Löschen: sofort flushen, nicht nur 90 ms später.
-  if (opts?.flushShadows || roomOcclusion) {
-    if (opts?.flushShadows) flushSunShadowMap()
-    else scheduleSunShadowMapUpdate()
+  // Frische Punktlichter: Cube-Map einmal backen (ohne EnvMap). Nicht bei bloßer Auswahl.
+  if (opts?.flushShadows) flushShadowMapsOnly()
+  else if (opts?.scheduleShadows) scheduleShadowMapUpdate({ reflections: false })
+}
+
+function syncIndoorFillForSceneLights(): void {
+  if (sceneLightRoomOcclusionActive()) {
+    dirLightIndoor.visible = true
+    dirLightIndoor.intensity = Math.max(0.28, hemiLight.intensity * 0.9)
+    dirLightIndoor.color.copy(dirLight.color)
+  } else {
+    dirLightIndoor.visible = false
   }
 }
 
@@ -8549,7 +8619,6 @@ function insertSceneLightFromLibrary(
   const { state: next, lightId } = addSceneLight(state, position, presetId)
   commitState(next)
   selectSceneLight(lightId)
-  syncSceneLightRuntime()
   const label = presetId
     ? SCENE_LIGHT_PRESETS.find((p) => p.id === presetId)?.label ?? 'Licht'
     : 'Punktlicht'
@@ -8874,15 +8943,16 @@ function applyState(nextState: FacadeState, nextEditor = editor) {
   const geometryUnchanged = rebuildIds !== null && rebuildIds.length === 0
   let geometryChanged = false
   const lightsChanged =
-    JSON.stringify(normalizeSceneLights(prevState.sceneLights)) !==
-    JSON.stringify(normalizeSceneLights(state.sceneLights))
+    JSON.stringify(normalizeSceneLightState(prevState)) !==
+    JSON.stringify(normalizeSceneLightState(state))
 
   if (labelOnly) {
     facade.setState(state, { rebuildBuildingIds: [] })
     facade.refreshWallLabels()
     applySunLighting({ updateShadowMap: true })
   } else if (geometryUnchanged) {
-    // Nur Editor/Selektion/Lichter — kein Geometrie-Rebuild, kein svgView.
+    // Nur Editor/Selektion/Lichter — kein Geometrie-Rebuild.
+    facade.setState(state, { rebuildBuildingIds: [] })
   } else if (rebuildIds !== null) {
     geometryChanged = rebuildIds.length > 0
     facade.setState(state, { rebuildBuildingIds: rebuildIds })
@@ -8899,11 +8969,21 @@ function applyState(nextState: FacadeState, nextEditor = editor) {
   reapplyOpeningMotionPlayback()
   reapplyRollerShutterPlayback()
 
-  syncSiteTransform()
-  updateGroundPlane()
-  syncCameraDistanceLimits()
-  if (geometryChanged || openingDragCommit || lightsChanged) {
+  if (geometryChanged || openingDragCommit) {
+    syncSiteTransform()
+    updateGroundPlane()
+    syncCameraDistanceLimits()
     applySunLighting({ updateShadowMap: true })
+    syncSceneLightRuntime()
+  } else if (lightsChanged) {
+    // Licht-only: kein Sonnen-/EnvMap-/Boden-Pfad, nur Punktlicht-Shadows + Innen-Fill.
+    syncIndoorFillForSceneLights()
+    syncSceneLightRuntime({ flushShadows: true })
+  } else {
+    syncSiteTransform()
+    updateGroundPlane()
+    syncCameraDistanceLimits()
+    syncSceneLightRuntime()
   }
   if (currentView === 'front') {
     syncFrontView()
@@ -8919,11 +8999,9 @@ function applyState(nextState: FacadeState, nextEditor = editor) {
     facade.updatePerformanceLod(camera, viewportRenderHeight())
   }
   schedulePersistApp()
-  renderUi({ skipLayerList: geometryUnchanged && !labelOnly })
+  renderUi({ skipLayerList: geometryUnchanged && !labelOnly && !lightsChanged })
   updateHistoryButtons()
   updateWallLibraryGizmos()
-  // Licht-Änderung: applySunLighting hat bereits geflusht; hier nicht nochmal schedule.
-  syncSceneLightRuntime({ flushShadows: lightsChanged && !geometryChanged && !openingDragCommit })
   markViewportDirty()
 }
 
@@ -8963,6 +9041,21 @@ function discardLiveGeometryPreview() {
   liveRebuildIds = []
 }
 
+function syncLiveLayerListMetrics() {
+  for (const el of layerList.querySelectorAll<HTMLElement>('[data-layer-wall-id]')) {
+    const wall = getWall(state, el.dataset.layerWallId!)
+    if (wall) el.textContent = layerWidthMeta(wall.width)
+  }
+  for (const el of layerList.querySelectorAll<HTMLElement>('[data-layer-opening-ref]')) {
+    const ref = el.dataset.layerOpeningRef
+    if (!ref) continue
+    const [wallId, openingId] = ref.split(':')
+    const wall = wallId ? getWall(state, wallId) : undefined
+    const opening = wall?.openings.find((o) => o.id === openingId)
+    if (opening) el.textContent = layerOpeningWidthMeta(opening)
+  }
+}
+
 function flushLiveGeometryPreview() {
   liveGeomRaf = 0
   if (!liveGeomDirty) return
@@ -8986,6 +9079,15 @@ function flushLiveGeometryPreview() {
   // Frustum an neue Wand-Ausdehnung anpassen — sonst fehlen Schatten an neuen Flügeln.
   applySunLighting({ live: true })
   updateWallLibraryGizmos()
+  syncLiveLayerListMetrics()
+  // Breite in der rechten Toolbar live mitziehen
+  if (editor.selectedWallIds.length === 1) {
+    const liveWall = getWall(state, editor.selectedWallIds[0]!)
+    if (liveWall) {
+      studioWallWidthInput.value = String(Math.round(liveWall.width))
+      studioWallHeightInput.value = String(Math.round(liveWall.height))
+    }
+  }
   markViewportDirty()
 }
 
@@ -11009,6 +11111,9 @@ function renderLayerList() {
           wallName.textContent = entry.kind === 'group' ? entry.group.name : ''
           const wallMeta = document.createElement('span')
           wallMeta.className = 'layer-meta'
+          if (entry.kind !== 'group') {
+            wallMeta.dataset.layerWallId = primaryWall.id
+          }
           wallMeta.textContent =
             entry.kind === 'group'
               ? `${wallsForEntry.length} Wände`
@@ -11068,7 +11173,9 @@ function renderLayerList() {
                 opening.type === 'door'
                   ? 'Tür'
                   : opening.type === 'cutout'
-                    ? 'Nische'
+                    ? opening.fill?.mode === 'opening'
+                      ? 'Öffnung'
+                      : 'Nische'
                     : opening.type === 'conch'
                       ? 'Konche'
                       : 'Fenster'
@@ -11077,6 +11184,7 @@ function renderLayerList() {
               openingLabel.textContent = ''
               const openingMeta = document.createElement('span')
               openingMeta.className = 'layer-meta'
+              openingMeta.dataset.layerOpeningRef = `${wall.id}:${opening.id}`
               openingMeta.textContent = layerOpeningWidthMeta(opening)
               openingBtn.append(openingKind, openingLabel, openingMeta)
               openingBtn.addEventListener('click', (e) => {
@@ -12458,8 +12566,10 @@ function applyBayWindowOnWall(
   }
   let attachCenter = localX
   if (mode === 'left' || mode === 'right') {
+    const attachW =
+      preset.shape === 'angled45' ? preset.frontWidthCm + 2 * preset.depthCm : preset.frontWidthCm
     const end = visualSideToWallEnd(wall, mode)
-    attachCenter = end === 'start' ? preset.frontWidthCm / 2 : wall.width - preset.frontWidthCm / 2
+    attachCenter = end === 'start' ? attachW / 2 : wall.width - attachW / 2
   } else if (mode === 'above') {
     attachCenter = wall.width / 2
   }
@@ -13153,9 +13263,15 @@ function syncOpeningPositionControls() {
   const isCutout = sel.opening.type === 'cutout'
   const isConch = openingIsConch(sel.opening)
   const lacksChrome = openingLacksWindowChrome(sel.opening)
-  openingTypeSection.hidden = isCutout
+  openingTypeSection.hidden = false
   openingTypeSelect.value =
-    sel.opening.type === 'door' ? 'door' : sel.opening.type === 'conch' ? 'conch' : 'window'
+    sel.opening.type === 'door'
+      ? 'door'
+      : sel.opening.type === 'conch'
+        ? 'conch'
+        : sel.opening.type === 'cutout'
+          ? 'cutout'
+          : 'window'
   // Konche steuert Form über Kalotte — kein Cutout-Shape, Flush entfällt.
   const openingOpt = openingFillMode.querySelector<HTMLOptionElement>('option[value="opening"]')
   if (openingOpt) {
@@ -16096,7 +16212,9 @@ openingTypeSelect.addEventListener('change', () => {
       ? 'door'
       : openingTypeSelect.value === 'conch'
         ? 'conch'
-        : 'window'
+        : openingTypeSelect.value === 'cutout'
+          ? 'cutout'
+          : 'window'
   let next = state
   for (const ref of refs) {
     const wall = getWall(next, ref.wallId)
@@ -16127,7 +16245,16 @@ openingTypeSelect.addEventListener('change', () => {
               cutoutShape: undefined,
               basementWindow: undefined,
             }
-          : {
+          : type === 'cutout'
+            ? {
+                type: 'cutout',
+                fill: { mode: 'opening' },
+                cutoutShape: opening.cutoutShape === 'round' ? 'round' : 'rect',
+                basementWindow: undefined,
+                stairs: undefined,
+                revealFrame: undefined,
+              }
+            : {
               type: 'window',
               fill: { mode: 'opening' },
               cutoutShape: undefined,
@@ -17265,7 +17392,7 @@ canvas.addEventListener('pointermove', (event) => {
       if (!pos) return
       state = updateSceneLight(state, drag3dSceneLight.lightId, { x: pos.x, z: pos.z })
     }
-    syncSceneLightRuntime()
+    syncSceneLightRuntime({ scheduleShadows: true })
     syncSceneLightToolbar()
     markViewportDirty()
     if (currentView === '3d') render3dFrame()
@@ -19437,12 +19564,32 @@ studioStretchEndPlus.addEventListener('click', () => {
   stretchSelectedWall('end', 1)
 })
 
+studioWallWidthInput.addEventListener('change', () => {
+  if (editor.selectedWallIds.length !== 1) return
+  const wallId = editor.selectedWallIds[0]!
+  const wall = getWall(state, wallId)
+  if (!wall || !isStudioWall(wall)) return
+  if (selectionLockedToUnselected(activeBuilding().walls, [wallId])) {
+    planStatus.textContent = 'Zuerst Wand lösen (Rechtsklick)'
+    studioWallWidthInput.value = String(Math.round(wall.width))
+    return
+  }
+  const yaw = wall.yawDeg ?? 0
+  const nextWidth = snapWallWidthCm(Number(studioWallWidthInput.value), yaw)
+  if (!Number.isFinite(nextWidth) || nextWidth < STUDIO_MIN_SIZE) {
+    studioWallWidthInput.value = String(Math.round(wall.width))
+    return
+  }
+  const delta = nextWidth - wall.width
+  if (Math.abs(delta) < 0.5) return
+  studioWallWidthInput.value = String(nextWidth)
+  commitState(finalizeStudioGeometry(stretchStudioFacade(state, wallId, 'end', delta)))
+})
+
 studioHeightMinus.addEventListener('click', () => {
   resizeSelectedStoreyHeight(-STUDIO_WALL_HEIGHT_STEP)
 })
 
-studioWallYawMinus?.addEventListener('click', () => rotateSelectedStudioWalls(-1, 10))
-studioWallYawPlus?.addEventListener('click', () => rotateSelectedStudioWalls(1, 10))
 studioWallYawInput?.addEventListener('change', () => {
   setSelectedStudioWallsYaw(Number(studioWallYawInput.value))
 })
@@ -20083,11 +20230,6 @@ function cornicePanelStep(_wall?: Wall): number {
   return STUDIO_MASONRY
 }
 
-function snapCorniceHeightCm(heightCm: number, step: number): number {
-  if (!Number.isFinite(heightCm) || heightCm <= 0) return step
-  return Math.max(step, Math.round(heightCm / step) * step)
-}
-
 function syncCorniceHeightInputs(wall: Wall, cornice: WallCorniceConfig) {
   const profileId = cornice.profileId ?? 'traufgesims70x150'
   const step = cornicePanelStep(wall)
@@ -20103,23 +20245,25 @@ function syncCorniceHeightInputs(wall: Wall, cornice: WallCorniceConfig) {
   studioCorniceOffsetForward.value = String(depthCm)
 }
 
-function snapCorniceDepthCm(depthCm: number): number {
-  if (!Number.isFinite(depthCm) || depthCm <= 0) return 4
-  return Math.max(4, Math.round(depthCm / 4) * 4)
-}
-
 function commitCorniceScale(input: HTMLInputElement) {
   const wall = selectedWalls()[0]
-  const cornice = selectedCornice()
-  const profileId = cornice.profileId ?? 'traufgesims70x150'
+  if (!wall) return
   const step = cornicePanelStep(wall)
   const heightCm = snapCorniceHeightCm(Number(input.value), step)
-  const native = corniceNativeHeightCm(profileId)
-  const scale = clampCorniceScale(heightCm / native)
   input.value = String(heightCm)
   studioCorniceScale.value = String(heightCm)
   wallCorniceScale.value = String(heightCm)
-  commitCornicePatch({ enabled: true, scale })
+  const ids = corniceTargetWallIds()
+  if (ids.length === 0) return
+  commitState(
+    updateWallCorniceHeightCm(
+      state,
+      ids,
+      heightCm,
+      (profileId) => corniceNativeHeightCm(profileId),
+      step,
+    ),
+  )
 }
 
 studioCorniceScale.addEventListener('change', () => {
@@ -20161,13 +20305,18 @@ wallCorniceFlipForward.addEventListener('click', () => {
 })
 
 studioCorniceOffsetForward.addEventListener('change', () => {
-  const cornice = selectedCornice()
-  const profileId = cornice.profileId ?? 'traufgesims70x150'
-  const native = corniceNativeForwardCm(profileId)
-  const depthCm = snapCorniceDepthCm(Number(studioCorniceOffsetForward.value) || native)
-  const sectionScaleForward = clampCorniceScale(depthCm / native)
+  const depthCm = snapCorniceDepthCm(Number(studioCorniceOffsetForward.value) || 4)
   studioCorniceOffsetForward.value = String(depthCm)
-  commitCornicePatch({ enabled: true, sectionScaleForward })
+  const ids = corniceTargetWallIds()
+  if (ids.length === 0) return
+  commitState(
+    updateWallCorniceDepthCm(
+      state,
+      ids,
+      depthCm,
+      (profileId) => corniceNativeForwardCm(profileId),
+    ),
+  )
 })
 wallCorniceOffsetForward.addEventListener('change', () => {
   commitCornicePatch({ offsetForward: Number(wallCorniceOffsetForward.value) || 0 })

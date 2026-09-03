@@ -6,7 +6,8 @@ Vorsprünge aus der Bibliothek (Tabs **Erker** / **Balkon** / **Loggia**). QA-Ra
 
 - Bibliothek-Karten nach `kind` aufgeteilt; Tab **Wände** zeigt nur Längen, Endstücke und Wände mit Standardöffnung.
 - Platzieren: Ghost-Wandgeometrie + orange Andockfläche (kein Thumbnail).
-- Formen: U, 45°, rund (Erker). Balkon/Loggia: schmale Front, Seiten volle Höhe, Standalone mit Hauswand-Rückseite.
+- **Erker (v2.0.137):** nur zwei Presets — **384 cm Front** mit 90°-Schenkeln (`bay-384-rect`) bzw. **45°-Schenkeln** (`bay-384-45`), Tiefe 144 cm. Beim 45°-Erker ist `frontWidthCm` die **vordere** Wand; der Ansatz am Parent ist breiter (`W + 2×D`). Runde Erker entfallen in der Bibliothek (Alt-Saves mit `shape: round` / `arcBay` bleiben ladbar).
+- Balkon/Loggia: schmale Front, Seiten volle Höhe, Standalone mit Hauswand-Rückseite.
 
 ## Daten
 
@@ -17,19 +18,20 @@ Vorsprünge aus der Bibliothek (Tabs **Erker** / **Balkon** / **Loggia**). QA-Ra
 | `frontWidthCm` / `depthCm` | Frontbreite / Tiefe |
 | `shape` | `rect` \| `angled45` \| `round` |
 | `kind` | `bay` \| `balcony` \| `loggia` (Default `bay` bei Alt-Saves) |
-| `wallIds` | Kind-Wände (3 bei U-Form, mehr bei rundem Erker) |
+| `wallIds` | Kind-Wände (3 bei U-Form, 1 bei rundem Legacy-Erker) |
 
 Kinder: `bayParentId`, `bayRole`: `side` \| `front` \| `return` \| `arc` \| `back`.
 
-### `Wall.arcBay` (runder Erker)
+### `Wall.arcBay` (runder Erker, Legacy)
 
 Eine Wand mit Ellipsenbogen-Geometrie (Paneele/Profile folgen der Krümmung): `frontWidthCm`, `depthCm`, optional `inward`.
 
 ## Geometrie / Konventionen
 
-- U- und 45°-Formen schließen an der Host-Außenfläche mit **Gehrung**.
-- 45°-Seiten: links +45°, rechts +135°.
-- `panelFlip` je Wandfläche zur Außenseite (`outwardPerpendicularAtCorner` in `bayWindow.ts`).
+- U- und 45°-Formen schließen an der Host-**Planlinie** (Außenkante) mit **Gehrung** — kein zusätzlicher half-depth-Versatz.
+- Aufbau wie manuell: Front in der Mitte, Schenkel vom Parent-Ansatz zur Front („nach hinten“).
+- 45°-Seiten: Ansatz `W+2D`, Front `W`; Schenkellänge `D/cos(45°)`.
+- `panelFlip` je Wandfläche zur Außenseite (weg vom Erker-Innenraum).
 - Erker-Wände `planLinked` für Gehrung.
 - Balkon/Loggia: Front typisch 96×16 cm; `bayRole: back` = Hauswand.
 
@@ -47,5 +49,6 @@ Presets: `BAY_WINDOW_PRESETS` (Galerie/Katalog).
 ## Fallstricke
 
 - Ohne korrekte `panelFlip` je Seite zeigen Paneele nach innen.
-- Runder Erker = **eine** `arcBay`-Wand, nicht viele Plan-Segmente.
+- Runder Erker (Legacy) = **eine** `arcBay`-Wand, nicht viele Plan-Segmente.
+- 45°-Erker braucht am Parent mindestens `frontWidthCm + 2×depthCm` Platz.
 - Kollinear angedockte Bibliothek-Wände können zu einer Wand verschmelzen (`mergeCollinearDockedWalls`) — Erker-Gruppen nicht unbedacht „auflösen“.

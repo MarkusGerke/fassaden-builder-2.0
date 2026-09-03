@@ -7,10 +7,10 @@ Dekor und Öffnungsarten an `Opening`. **Fenster-/Türteilung (Gründerzeit):** 
 | `Opening.type` | Bedeutung |
 |---|---|
 | `window` / `door` | Öffnung mit Rahmen/Glas (außer Fake-Einbettung) |
-| `cutout` | Flache Nische oder Durchbruch; Form `cutoutShape`: `rect` \| `round` |
+| `cutout` | Flache Nische, Durchbruch oder **leere Öffnung**; Form `cutoutShape`: `rect` \| `round` |
 | `conch` | Konche: Halbzylinder + Viertelkugel-Kalotte; Maske immer Rundbogen |
 
-Typ-Select `#opening-type-select`: Fenster / Tür / Konche (bei flachem Cutout ausgeblendet). Bibliothek-Tab **Nischen**.
+Typ-Select `#opening-type-select`: Fenster / Tür / **Keines (leer)** / Konche. Bibliothek Fenster: Karte **Keines (leer)** (`opening-empty-96`). Tab **Nischen** für Nischen/Durchbrüche/Konchen.
 
 ## Maße, Einbettung, Freiraum, Bogen
 
@@ -20,7 +20,7 @@ Toolbar **Maße** (Auszug):
 |---|---|
 | Breite / Höhe / Position | Modulverband: **Ziehen** rastet an Fuge (+ Wandmitte-Magnet ±8 cm), Magnet-Radius 7 cm — sonst frei; **Pfeile** Fuge / Steinmitte / Wandmitte. Bei Zwei-Bändern Modul der Zone an Öffnungsmitte-Y. Sonst 8-cm-Raster. Abstand zwischen Öffnungen 32 cm; kein Pflicht-Randabstand zur Wandkante |
 | Fenstertiefe | UI **Frontlage (cm von Außenkante)** unter Maße; speichert `Opening.depthOffset` pro Öffnung (Gültigkeitsbereich). Fehlt → `Building.windowDepthOffset`. Standard 24 cm Laibung + Offset |
-| Öffnungsart | Fenster/Tür: durchgehend · Wandfläche (bündig) · Nische. Cutout: Durchbruch oder Nische (+ Tiefe). Konche: immer Kalotte, Tiefe steuerbar. **v2.0.123:** Nische lichtdicht — Shadow-Tunnel-Kappen. **v2.0.127 / v2.0.130:** Nischenwände empfangen/spiegeln Licht (`DoubleSide`, EnvMap wie Innenwand, kein Gegenlicht-Shader; kein Shadow-Map-Empfang/Selbstwurf — Tunnel-Kappe 1 cm hinter Rückwand) |
+| Öffnungsart | Fenster/Tür: durchgehend · Wandfläche (bündig) · Nische. Cutout: Durchbruch oder Nische (+ Tiefe). Konche: immer Kalotte, Tiefe steuerbar. **v2.0.123:** Nische lichtdicht — Shadow-Tunnel-Kappen. **v2.0.127 / v2.0.130:** Nischenwände EnvMap wie Innenwand, kein Selbstwurf. **v2.0.133:** Bei Nischentiefe **größer als Wanddicke** Tunnel bis hinter die Rückwand (keine Mittelkappe an der Innenkante); Nischen empfangen wieder Sonne-/Punktlicht-Schatten |
 | In Wand eingebettet | `revealFrame.enabled` → kein Wandloch, kein Rahmen/Glas; Bänke/Profile/Bogen/Verdachung bleiben. Nicht bei Cutouts |
 | Freiraum | `panelClearance`: Abstand in ganzen cm, Tiefe +/−/0; optional `finish: 'taper'` nur mit Paneelen |
 | Bogenform | Karten `#opening-arch-form-cards`: eckig, Rund, Spitz, Stich, Lanzett, Ellipse, Tudor. Legacy `basket` → Ellipse. Stichmaß `#opening-arch-rise-row` (8er-Raster, **Auto** löscht `riseCm`). Form/Stichmaß scoped über `editArchOpeningTargets` (Fenster **und** Türen) |

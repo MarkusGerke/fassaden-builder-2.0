@@ -32,6 +32,7 @@ Bloom und Gobo-Schatten: frühere Laub-Gobo-UI entfernt (v0.7.341). **Unreal Blo
 - Bei an: `ACESFilmicToneMapping`, `toneMappingExposure = exposure ** 3` (OutputPass). Persistenz: `PersistedAppState.bloom`.
 - HDR-Lichtkerne an Punktlichtern bleiben optional (`enableBloomLayer`); Full-Scene-Bloom erfasst sie ohnehin.
 - **Schattenseiten Hauptfläche (v2.0.57):** `dimMask = 1 − sideOrTop` — bei Gegenlicht werden auch große Wandflächen (Ost/Nord bei Südsonne) abgedunkelt; Seiten/Oberkanten der Geometrie bleiben hell. Datei: `facadeShade.ts`.
+- **Nacht (v2.0.140):** Bei `elevationRad ≤ 0.02` setzt `facadeShadeParamsFromSun` alle Dim-Faktoren auf **1** — sonst dämpft der Gegenlicht-Shader auch Punktlicht und Wände wirken dunkelgrau.
 - **Flackern (v0.7.260):** Takram-Himmel mit reduzierter Display-Exposure bei Bloom; Glas-CubeCamera-Bake pausiert während Orbit-Lite (HDR-Himmel + 6 Extra-Renders blitzten sonst weiß).
 
 ### Nebel (3D)
@@ -173,6 +174,7 @@ Glas: dunkles Klarglas, CubeCamera-EnvMap der Szene von außerhalb. `transmissio
 - **Undo nach Licht-Löschen → Paneele dunkelgrau (v2.0.122):** Reine `sceneLights`-Diffs backten die Map nicht (kein Geometrie-Rebuild → kein `applySunLighting({ updateShadowMap: true })`). Frische PointLights mit `castShadow` ohne Cube-Map verdunkelten `receiveShadow`-Flächen. Jetzt Licht-Diff → sofort `flushSunShadowMap`.
 - **Nische lässt Licht durch (v2.0.123):** Sichtbare Rückwand nur `nicheDepth` tief; Shadow-Tunnel hatte keine Kappe — Cube-Map leckte durchs Wandloch. Fix: Kappen an Rückwand + Innenkante; `sealedNiche` → `shadowSide: DoubleSide`.
 - **Nische schwarz (v2.0.127):** Laibung/`sealedNiche` bekam Fassaden-Gegenlicht-Shader und `FrontSide` — Seiten/Rückwand wirkten schwarz. Fix: `side`+`shadowSide` DoubleSide, `skipFacadeShade`, Rückwand-Winding zur Öffnung.
+- **Tiefe Nische ohne Schatten (v2.0.133):** Bei `nicheDepth` > Wanddicke saß die Innenkanten-Kappe mitten in der Nische und schnitt Licht/Schatten ab. Tunnel-Seiten gehen dann bis hinter die Rückwand; Mittelkappe entfällt; Nischen empfangen wieder Shadow-Maps (Kappe 2 cm hinter Rückwand).
 - **Render + „sieht hart aus“ (v0.7.328):** Zu kleine Lichtfläche/UV und falsche Near-Skala ließen PCSS wie Basic wirken. Scale 8 + Softness-Slider in **Render** (Boden/lange Schatten).
 - **Custom-Shader:** `facadeShade` und Standard-Materialien nutzen PCSS über `getShadow`. Boden (`groundMood`) nur Fill-Override — **kein** zweites Schatten-Sampling (v0.7.330 / v2.0.99).
 - Wandkörper empfängt wieder Schatten (**v0.7.237** / **v0.7.285**, auch ohne Schrift). **v2.0.90:** Paneele empfangen auch in **3D** (Farbe); Zeichnung und Streiflicht-Ost/West weiter aus. **2D-Front (v0.7.285):** Paneele empfangen Werfschatten (`setCladdingReceiveShadows`).

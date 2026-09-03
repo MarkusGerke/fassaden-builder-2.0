@@ -76,6 +76,13 @@ describe('facadeShade', () => {
     expect(params.labelHemiDim).toBeLessThanOrEqual(0.32)
   })
 
+  it('nachts kein Gegenlicht-Dim (Punktlicht bleibt hell)', () => {
+    const night = facadeShadeParamsFromSun({ ...DEFAULT_SUN_SETTINGS, elevationRad: -0.2 })
+    expect(night.directDim).toBe(1)
+    expect(night.hemiDim).toBe(1)
+    expect(night.labelDirectDim).toBe(1)
+  })
+
   it('setFacadeShadeParams schreibt Schrift-Uniforms', () => {
     const restore = facadeShadeParamsFromSun(DEFAULT_SUN_SETTINGS)
     const mat = new THREE.MeshStandardMaterial()

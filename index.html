@@ -733,6 +733,7 @@
                 <div class="preset-group">
                   <button id="studio-stretch-start-minus" class="preset-btn" type="button">Links −</button>
                   <button id="studio-stretch-start-plus" class="preset-btn" type="button">Links +</button>
+                  <input id="studio-wall-width" type="number" min="48" step="48" value="192" aria-label="Wandbreite in cm" />
                   <button id="studio-stretch-end-minus" class="preset-btn" type="button">Rechts −</button>
                   <button id="studio-stretch-end-plus" class="preset-btn" type="button">Rechts +</button>
                 </div>
@@ -750,12 +751,8 @@
                 <input id="studio-wall-depth" type="number" min="8" max="80" step="8" value="32" aria-label="Wandstärke in cm" />
               </div>
               <div class="toolbar-group">
-                <span class="toolbar-label">Feindrehung (10°-Schritte)</span>
-                <div class="preset-group">
-                  <button id="studio-wall-yaw-minus" class="preset-btn" type="button" title="10° gegen Uhrzeigersinn">−10°</button>
-                  <input id="studio-wall-yaw" type="number" min="0" max="350" step="10" value="0" aria-label="Wand-Ausrichtung in Grad" />
-                  <button id="studio-wall-yaw-plus" class="preset-btn" type="button" title="10° im Uhrzeigersinn">+10°</button>
-                </div>
+                <span class="toolbar-label">Feindrehung</span>
+                <input id="studio-wall-yaw" type="number" step="1" value="0" aria-label="Wand-Ausrichtung in Grad" />
                 <p class="toolbar-hint compact-hint">90°-Drehung: Rechtsklick auf die Wand → Drehen.</p>
               </div>
               <div id="studio-end-piece-section" class="toolbar-group" hidden>
@@ -1343,6 +1340,7 @@
                 <select id="opening-type-select">
                   <option value="window">Fenster</option>
                   <option value="door">Tür</option>
+                  <option value="cutout">Keines (leer)</option>
                   <option value="conch">Konche</option>
                 </select>
               </div>

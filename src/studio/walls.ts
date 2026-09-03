@@ -552,11 +552,30 @@ export function repairPlanLinkedWallFronts(state: FacadeState): FacadeState {
 
 /** Magnet entlang der Abzweig: ein Rasterschritt der Zugrichtung (48 cm bzw. 48√2). */
 export const BRANCH_CLOSE_MAGNET_CM = PLAN_GRID
+/** Exakte Ecken / achsparallele Stoßpunkte (cm). */
 const CORNER_EPS = 2
+/**
+ * Quer-Toleranz am Abzweig-Strahl für Endpunkte (cm).
+ * Bei langen 45°-Wänden reichen winzige Winkel-/Rasterreste, um CORNER_EPS zu sprengen.
+ * Länge wird weiterhin als Projektion `t` entlang des Strahls gesetzt.
+ */
+const BRANCH_CLOSE_PERP_EPS = 24
+/**
+ * Join-Toleranz wenn mind. eine Wand diagonal ist (cm).
+ * Nach Längen-Snap bleibt der Querversatz bis BRANCH_CLOSE_PERP_EPS;
+ * Gehrung/Nachbarschaft müssen denselben Near-Miss noch treffen.
+ * Achsparallele Paare behalten CORNER_EPS — 90°-Tests unverändert.
+ */
+const DIAGONAL_JOIN_EPS = BRANCH_CLOSE_PERP_EPS
 
 export type BranchCloseSnap = {
   widthCm: number
   split?: { wallId: string; atCm: number }
+  /**
+   * Exakte Ziel-Ecke (Endpunkt-Snap). Die Abzweig wird darauf ausgerichtet
+   * (Yaw kann minimal von 45°/90° abweichen), damit kein sichtbarer Versatz bleibt.
+   */
+  meet?: { x: number; z: number }
 }
 
 function rayHitSegment(
@@ -656,12 +675,21 @@ export function snapBranchClose(
   const exclude = new Set(opts.excludeIds)
   const step = wallWidthStepCm(awayYawDeg)
   const minT = step - 0.5
+  const perpEps = isDiagonalPlanYaw(awayYawDeg)
+    ? Math.max(BRANCH_CLOSE_PERP_EPS, widthCm * 0.02)
+    : CORNER_EPS
   let bestDist = Infinity
   let bestWidth = 0
   let bestRank = 9
   let bestSplit: { wallId: string; atCm: number } | undefined
+  let bestMeet: { x: number; z: number } | undefined
 
-  const consider = (t: number, rank: number, split?: { wallId: string; atCm: number }) => {
+  const consider = (
+    t: number,
+    rank: number,
+    split?: { wallId: string; atCm: number },
+    meet?: { x: number; z: number },
+  ) => {
     if (t < minT) return
     const dist = Math.abs(t - widthCm)
     if (dist > step + 1e-6) return
@@ -670,6 +698,7 @@ export function snapBranchClose(
       bestWidth = t
       bestRank = rank
       bestSplit = split
+      bestMeet = meet
     }
   }
 
@@ -682,8 +711,9 @@ export function snapBranchClose(
       const vz = pt.z - joint.z
       const t = vx * dir.x + vz * dir.z
       const perp = Math.hypot(vx - dir.x * t, vz - dir.z * t)
-      if (perp > CORNER_EPS) continue
-      consider(t, 0)
+      if (perp > perpEps) continue
+      // Länge entlang des Wunsch-Strahls; `meet` zieht den Endpunkt exakt auf die Ecke.
+      consider(t, 0, undefined, pt)
     }
   }
 
@@ -699,7 +729,11 @@ export function snapBranchClose(
   }
 
   if (bestDist === Infinity) return null
-  return bestSplit ? { widthCm: bestWidth, split: bestSplit } : { widthCm: bestWidth }
+  const snap: BranchCloseSnap = bestSplit
+    ? { widthCm: bestWidth, split: bestSplit }
+    : { widthCm: bestWidth }
+  if (bestMeet) snap.meet = bestMeet
+  return snap
 }
 
 /** Freies Ende der Abzweig-Wand trifft eine andere Wand als die Quelle. */
@@ -737,7 +771,7 @@ export function attachAngledWallFromEnd(
     excludeIds: [sourceId, newId],
   })
   const width = Math.max(step, close?.widthCm ?? requested)
-  const pose = poseAngledWallFromEnd(source, wallEnd, yawDeg, width)
+  let pose = poseAngledWallFromEnd(source, wallEnd, yawDeg, width)
   let wall = buildStudioWallAt({
     originX: pose.originX,
     originZ: pose.originZ,
@@ -747,6 +781,21 @@ export function attachAngledWallFromEnd(
     panelFlip: pose.panelFlip,
     styleFrom: source,
   })
+  // Ecken-Snap: freies Ende exakt auf Ziel (Yaw ggf. leicht korrigiert).
+  if (close?.meet) {
+    const freeEnd: 'start' | 'end' =
+      pointsMeet({ x: pose.originX, z: pose.originZ }, joint) ? 'end' : 'start'
+    const pulled = poseWallEndAt(wall, freeEnd, close.meet, { lockYaw: false })
+    if (pulled) {
+      wall = pulled
+      pose = {
+        originX: pulled.originX ?? pulled.x,
+        originZ: pulled.originZ ?? 0,
+        yawDeg: pulled.yawDeg ?? yawDeg,
+        panelFlip: pose.panelFlip,
+      }
+    }
+  }
   wall = {
     ...wall,
     id: newId,
@@ -915,6 +964,7 @@ export function offsetStudioWallsAlongFront(
   seedId: string,
   moveIds: string[],
   distanceCm: number,
+  opts?: { singleFloor?: boolean },
 ): FacadeState {
   if (Math.abs(distanceCm) < 0.5) return state
   const building = findBuildingForWall(state, seedId)
@@ -925,13 +975,15 @@ export function offsetStudioWallsAlongFront(
   const dx = out.x * distanceCm
   const dz = out.z * distanceCm
   const moveSet = new Set(expandCollinearPlanLinkedIds(building.walls, moveIds))
-  for (const id of [...moveSet]) {
-    const item = building.walls.find((w) => w.id === id)
-    if (!item || !isStudioWall(item)) continue
-    for (const upper of findVerticalAlignedWalls(item, building.walls, building.wallHeight)) {
-      moveSet.add(upper.id)
-      for (const linked of expandCollinearPlanLinkedIds(building.walls, [upper.id])) {
-        moveSet.add(linked)
+  if (!opts?.singleFloor) {
+    for (const id of [...moveSet]) {
+      const item = building.walls.find((w) => w.id === id)
+      if (!item || !isStudioWall(item)) continue
+      for (const upper of findVerticalAlignedWalls(item, building.walls, building.wallHeight)) {
+        moveSet.add(upper.id)
+        for (const linked of expandCollinearPlanLinkedIds(building.walls, [upper.id])) {
+          moveSet.add(linked)
+        }
       }
     }
   }
@@ -1692,8 +1744,16 @@ export function wallHasPanels(wall: Wall): boolean {
 export function pointsMeet(
   a: { x: number; z: number },
   b: { x: number; z: number },
+  eps = CORNER_EPS,
 ): boolean {
-  return Math.hypot(a.x - b.x, a.z - b.z) <= CORNER_EPS
+  return Math.hypot(a.x - b.x, a.z - b.z) <= eps
+}
+
+/** Join-Epsilon: größer, sobald mind. eine Wand diagonal ist. */
+function joinEpsForWalls(a: Wall, b: Wall): number {
+  return isDiagonalPlanYaw(a.yawDeg ?? 0) || isDiagonalPlanYaw(b.yawDeg ?? 0)
+    ? DIAGONAL_JOIN_EPS
+    : CORNER_EPS
 }
 
 /** Fehlt `planLinked`, gilt die Wand als verknüpft (Bestandsprojekte). */
@@ -1706,11 +1766,12 @@ export function wallsShareEndpoint(a: Wall, b: Wall): boolean {
   const aEnd = wallEndPoint(a)
   const bStart = wallStartPoint(b)
   const bEnd = wallEndPoint(b)
+  const eps = joinEpsForWalls(a, b)
   return (
-    pointsMeet(aStart, bStart) ||
-    pointsMeet(aStart, bEnd) ||
-    pointsMeet(aEnd, bStart) ||
-    pointsMeet(aEnd, bEnd)
+    pointsMeet(aStart, bStart, eps) ||
+    pointsMeet(aStart, bEnd, eps) ||
+    pointsMeet(aEnd, bStart, eps) ||
+    pointsMeet(aEnd, bEnd, eps)
   )
 }
 
@@ -1739,7 +1800,8 @@ export function findAdjacentWalls(
     if (other.id === wall.id) continue
     if (requireLink && isStudioWall(other) && !isWallPlanLinked(other)) continue
     if (Math.abs((other.y ?? 0) - (wall.y ?? 0)) > 1) continue
-    if (pointsMeet(pt, wallStartPoint(other)) || pointsMeet(pt, wallEndPoint(other))) {
+    const eps = joinEpsForWalls(wall, other)
+    if (pointsMeet(pt, wallStartPoint(other), eps) || pointsMeet(pt, wallEndPoint(other), eps)) {
       found.push(other)
     }
   }
@@ -1811,7 +1873,11 @@ export function collinearChainFromEnd(
     if (!neighbor || exclude.has(neighbor.id) || ids.includes(neighbor.id)) break
     ids.push(neighbor.id)
     const joint = fromEnd === 'start' ? wallStartPoint(current) : wallEndPoint(current)
-    const neighborAtStart = pointsMeet(joint, wallStartPoint(neighbor))
+    const neighborAtStart = pointsMeet(
+      joint,
+      wallStartPoint(neighbor),
+      joinEpsForWalls(current, neighbor),
+    )
     current = neighbor
     fromEnd = neighborAtStart ? 'end' : 'start'
   }
@@ -1829,7 +1895,7 @@ function miterInsetAgainstNeighbor(wall: Wall, end: 'start' | 'end', adj: Wall):
   const along = wallUnitDir(wall)
   const incoming = end === 'start' ? { dx: -along.dx, dz: -along.dz } : along
   const adjAlong = wallUnitDir(adj)
-  const outgoing = pointsMeet(wallStartPoint(adj), joint)
+  const outgoing = pointsMeet(wallStartPoint(adj), joint, joinEpsForWalls(wall, adj))
     ? adjAlong
     : { dx: -adjAlong.dx, dz: -adjAlong.dz }
   const depth = wall.depth ?? WALL_DEPTH
@@ -1891,12 +1957,13 @@ export function findVerticalStackWalls(wall: Wall, walls: Wall[], wallHeight: nu
 /**
  * Erweitert die Seed-Wände um plan-verknüpfte Nachbarn und optional vertikale Stapel
  * (gleicher Fußabdriff auf allen Etagen). `singleFloor: true` = nur die aktuelle Etage.
+ * `planLinked: false` = nur Seeds (+ Etagen), nicht den ganzen Grundriss-Ring.
  */
 export function expandWallMoveIds(
   walls: Wall[],
   seedIds: string[],
   wallHeight: number,
-  opts?: { singleFloor?: boolean },
+  opts?: { singleFloor?: boolean; planLinked?: boolean },
 ): string[] {
   let ids = [...seedIds]
   if (!opts?.singleFloor) {
@@ -1910,6 +1977,7 @@ export function expandWallMoveIds(
     }
     ids = [...stacked]
   }
+  if (opts?.planLinked === false) return ids
   return expandPlanLinkedWallIds(walls, ids)
 }
 

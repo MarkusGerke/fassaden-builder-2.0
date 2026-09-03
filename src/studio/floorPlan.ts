@@ -801,6 +801,41 @@ export function floorPlanFromWalls(walls: Wall[]): FloorPlan {
   return plan
 }
 
+/**
+ * Übernimmt Node-/Edge-IDs aus dem vorherigen Plan bei gleichen Rasterpunkten.
+ * Verhindert, dass `syncFloorPlansFromWalls` bei unveränderter Geometrie neue UUIDs
+ * erzeugt und damit einen vollen Fassaden-Rebuild auslöst (z. B. nur Licht ändern).
+ */
+export function stabilizeFloorPlanIds(prev: FloorPlan | undefined, generated: FloorPlan): FloorPlan {
+  if (!prev || prev.nodes.length === 0) return generated
+  const stableNodeIdByKey = new Map(prev.nodes.map((n) => [`${n.gx},${n.gz}`, n.id]))
+  const generatedKeyById = new Map(generated.nodes.map((n) => [n.id, `${n.gx},${n.gz}`]))
+  const nodes = generated.nodes.map((n) => ({
+    ...n,
+    id: stableNodeIdByKey.get(`${n.gx},${n.gz}`) ?? n.id,
+  }))
+  const nodeIdByKey = new Map(nodes.map((n) => [`${n.gx},${n.gz}`, n.id]))
+  const edgeIdByKey = new Map<string, string>()
+  for (const edge of prev.edges) {
+    const a = prev.nodes.find((n) => n.id === edge.fromId)
+    const b = prev.nodes.find((n) => n.id === edge.toId)
+    if (!a || !b) continue
+    const ka = `${a.gx},${a.gz}`
+    const kb = `${b.gx},${b.gz}`
+    edgeIdByKey.set(ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`, edge.id)
+  }
+  const edges = generated.edges.map((edge) => {
+    const fromKey = generatedKeyById.get(edge.fromId)
+    const toKey = generatedKeyById.get(edge.toId)
+    if (!fromKey || !toKey) return edge
+    const fromId = nodeIdByKey.get(fromKey) ?? edge.fromId
+    const toId = nodeIdByKey.get(toKey) ?? edge.toId
+    const edgeKey = fromKey < toKey ? `${fromKey}|${toKey}` : `${toKey}|${fromKey}`
+    return { id: edgeIdByKey.get(edgeKey) ?? edge.id, fromId, toId }
+  })
+  return { nodes, edges }
+}
+
 function syncBuildingFloorPlansFromWalls(building: Building): Building {
   const byFloor = new Map<number, Wall[]>()
   for (const wall of building.walls) {
@@ -824,12 +859,13 @@ function syncBuildingFloorPlansFromWalls(building: Building): Building {
     const studioWalls = walls.filter(isStudioWall)
     if (studioWalls.length > 0) {
       const prev = floors[idx]
-        floors[idx] = {
-          ...floorPlanFromWalls(studioWalls),
-          showCeiling: prev?.showCeiling,
-          ceilingColor: prev?.ceilingColor,
-          hidden: prev?.hidden,
-        }
+      const generated = floorPlanFromWalls(studioWalls)
+      floors[idx] = {
+        ...stabilizeFloorPlanIds(prev, generated),
+        showCeiling: prev?.showCeiling,
+        ceilingColor: prev?.ceilingColor,
+        hidden: prev?.hidden,
+      }
     }
   }
   return { ...building, floors }

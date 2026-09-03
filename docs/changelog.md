@@ -2,6 +2,42 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Lichter schnell (2026-09-04) — v2.0.141
+
+Licht hinzufügen/ausblenden/löschen backte fälschlich die ganze Fassade: `syncFloorPlansFromWalls` vergab neue Node-/Edge-UUIDs → `buildingIdsNeedingRebuild` → voller Rebuild + Indoor + Sonne + EnvMap. Fix: `stabilizeFloorPlanIds`; Licht-only-Pfad ohne `applySunLighting`/`updateGroundPlane`; Occluder nur bei Okklusion-Toggle; Shadow-Far an Site statt 50 000 cm; Auswahl backt keine Maps mehr. Dateien: `floorPlan.ts`, `main.ts`, `FacadeController.ts`, Docs.
+
+### Auswahl, Hilfslinien, Maße, Duplizieren, Leer-Öffnung, Nachtlicht, Decke (2026-09-03) — v2.0.140
+
+Front-Pfeil: nur Auswahl (+ kollinear/Etagen), nicht `expandPlanLinkedWallIds`. Wandzeichnen: Align-Hilfslinien + Kanten-Snap (`wallGuides.ts`). `#studio-wall-width`; Ebenen-Maße live (`syncLiveLayerListMetrics`). Duplizieren: `DUPLICATE_GAP_CM = 48`. Leer-Öffnung `opening-empty-96` / Typ „Keines“. Nachts Shade-Dim = 1. Decke/Boden: `innerFaceRingFromWalls`. Dateien: `main.ts`, `walls.ts`, `wallGuides.ts`, `openings.ts`, `facadeShade.ts`, `FacadeController.ts`, `index.html`, Docs.
+
+### Wandkappen panelFlip (2026-09-03) — v2.0.139
+
+Dicke-Kappen (Top/Stirn/Boden) hatten feste Vertex-Order für `panelFlip: true`. Bei manuellen Wänden (`panelFlip: false`) zeigten sie nach innen und wurden unter `FrontSide` weggecullt. Fix: `addThicknessCapQuad` kehrt die Windung um, wenn `outerZ > innerZ`. Dateien: `panelGeometry.ts`, Tests, Docs.
+
+### Erker-Geometrie korrigiert (2026-09-03) — v2.0.138
+
+Erker setzten um eine halbe Wandstärke zu weit außen an (`outerFaceOffset`), obwohl die Planlinie bereits die Außenkante ist — Frontseite und Gehrung an den Ecken wirkten falsch. Neu: Ansatz auf Parent-Planlinie; Front 384 cm in der Mitte, Schenkel 90°/45° nach hinten zu den Ansatzpunkten; `panelFlip` wie bei manuellen Wänden. Dateien: `bayWindow.ts`, `main.ts`, Tests, Docs.
+
+### Wandkappen, 45°-Schluss, Erker 384 (2026-09-03) — v2.0.137
+
+Dicke-Kappen (Top/Stirn/Boden) beidseitig versiegelt (`addSealedQuad`). 45°-Pfad schließen: größere Quer-Toleranz + Endpunkt auf Ziel-Ecke. Erker-Bibliothek nur noch 384 rect / 384 45° (Front = Preset, Ansatz bei 45° = W+2D). Dateien: `panelGeometry.ts`, `walls.ts`, `bayWindow.ts`, Tests, Docs.
+
+### Feindrehung 1° (2026-09-03) — v2.0.136
+
+Wand-Feindrehung (`#studio-wall-yaw`): nur Eingabefeld, 1°-Schritte (`snapYawTo1`), ±10°-Buttons und 10°-Raster entfernt. Dateien: `index.html`, `main.ts`, `compass.ts`, Docs.
+
+### Rollläden an Bogenfenstern (2026-09-03) — v2.0.135
+
+Lamellen waren volle Rechteckbreite und ragten am Bogensturz in die Wand. Jetzt folgt jede Lamelle der Öffnungsmaske (`openingMaskXRangesAtY`); der Schatten-Okkluder die abgedeckte Kontur. Dateien: `rollerShutter.ts`, `FacadeController.ts`, Tests, Docs.
+
+### Gesims-Größe unter Etage/Fassade/Typ (2026-09-03) — v2.0.134
+
+Gesims-Höhe/Tiefe (UI in cm) wurde am Ankerprofil in **einen** `scale`-Faktor umgerechnet und 1:1 auf alle Zielwände geschrieben — Wände mit anderem Profil oder abweichendem `scale` wirkten unverändert bzw. hatten andere sichtbare cm. Fix: `updateWallCorniceHeightCm` / `updateWallCorniceDepthCm` rechnen pro Zielwand aus dem jeweiligen Querschnitt. Dateien: `cornice.ts`, `main.ts`, Tests, Docs.
+
+### Tiefe Nischen mit Schatten (2026-09-03) — v2.0.133
+
+Wenn die Nischentiefe die Wanddicke übersteigt, verlängert der Shadow-Tunnel bis hinter die Rückwand; die frühere Kappe an der Wandinnenkante (mitten in der Nische) entfällt. Nischen/Konchen empfangen wieder Schatten. Dateien: `panelGeometry.ts`, `FacadeController.ts`. Docs: [opening-features.md](opening-features.md), [shadows.md](shadows.md).
+
 ### Bühnenmodus / LAN (2026-09-03) — v2.0.132
 
 `?stage=1` bzw. `?view=stage`: nur Zeichenfläche (3D), Tageszeit-Slider und „Animationen pausieren“. `npm run dev:lan` lauscht auf `0.0.0.0:5173` fürs lokale Netz. Dateien: `main.ts`, `index.html`, `style.css`, `package.json`. Docs: [ux.md](ux.md).
