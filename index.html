@@ -10,7 +10,7 @@
       #app { display: grid; grid-template-columns: 320px minmax(0, 1fr) 280px; grid-template-rows: minmax(0, 1fr); height: 100vh; overflow: hidden; }
       #app.ui-left-collapsed { grid-template-columns: 0 minmax(0, 1fr) 280px; }
       #app.ui-left-collapsed #ui { overflow: hidden; border-right: none; padding: 0; pointer-events: none; }
-      #app.ui-bottom-collapsed #opening-library { display: none !important; }
+      #app.ui-bottom-collapsed #library-dock { display: none !important; }
       #app.view-export #export-sidebar { display: block; }
       #app.view-export #ui-right-main { display: none !important; }
       #ui { grid-column: 1; grid-row: 1; }
@@ -401,24 +401,26 @@
         </div>
         </div>
 
-        <div id="opening-library" aria-label="Bibliothek">
-          <div id="library-mode" class="bottom-bar-mode">
-            <div class="library-chrome">
-              <div class="library-tabs" role="tablist" aria-label="Elemente">
-                <button type="button" class="library-tab active" role="tab" aria-selected="true" data-library-tab="walls" id="library-tab-walls">Wände</button>
-                <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="bay" id="library-tab-bay">Erker</button>
-                <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="balcony" id="library-tab-balcony">Balkon</button>
-                <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="loggia" id="library-tab-loggia">Loggia</button>
-                <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="windows" id="library-tab-windows">Fenster</button>
-                <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="doors" id="library-tab-doors">Türen</button>
-                <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="niches" id="library-tab-niches">Nischen</button>
-                <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="panels" id="library-tab-panels">Paneele</button>
-                <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="profiles" id="library-tab-profiles">Profile</button>
-                <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="pediment" id="library-tab-pediment">Verdachung</button>
-                <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="lights" id="library-tab-lights">Licht</button>
-              </div>
+        <div id="library-dock" aria-label="Element-Bibliothek">
+          <div class="library-chrome">
+            <div class="library-tabs" role="tablist" aria-label="Elemente">
+              <button type="button" class="library-tab active" role="tab" aria-selected="true" data-library-tab="walls" id="library-tab-walls">Wände</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="bay" id="library-tab-bay">Erker</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="balcony" id="library-tab-balcony">Balkon</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="loggia" id="library-tab-loggia">Loggia</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="windows" id="library-tab-windows">Fenster</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="doors" id="library-tab-doors">Türen</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="niches" id="library-tab-niches">Nischen</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="panels" id="library-tab-panels">Paneele</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="profiles" id="library-tab-profiles">Profile</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="pediment" id="library-tab-pediment">Verdachung</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="lights" id="library-tab-lights">Licht</button>
             </div>
-            <div id="opening-library-items" class="opening-library-items"></div>
+          </div>
+          <div id="opening-library" aria-label="Bibliothek">
+            <div id="library-mode" class="bottom-bar-mode">
+              <div id="opening-library-items" class="opening-library-items"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -2170,11 +2172,50 @@
                 <input id="sun-color-temp" type="range" min="2700" max="8000" step="100" value="4500" />
                 <p class="toolbar-hint compact-hint">Manuell verstellbar; wird bei Datum/Tageszeit wieder aus dem Sonnenstand gesetzt.</p>
 
+                <label class="toolbar-check" id="view-all-scene-lights-row">
+                  <input id="view-all-scene-lights" type="checkbox" checked />
+                  Alle Lichter an
+                </label>
+                <p class="toolbar-hint compact-hint">Schaltet alle platzierten Punktlichter mit einem Klick ein oder aus.</p>
+
                 <label class="toolbar-check" id="view-show-light-markers-row">
                   <input id="view-show-light-markers" type="checkbox" checked />
                   Lichtpunkte anzeigen
                 </label>
                 <p class="toolbar-hint compact-hint">Glühen der platzierten Punktlichter — nur Anzeige, die Lichtwirkung bleibt.</p>
+
+                <div class="toolbar-group">
+                  <label class="toolbar-check">
+                    <input id="bloom-enabled" type="checkbox" />
+                    Bloom an
+                  </label>
+                </div>
+                <div id="bloom-options" hidden>
+                  <label class="slider-label">
+                    <span>Schwelle</span>
+                    <output id="bloom-threshold-value">0.720</output>
+                  </label>
+                  <input id="bloom-threshold" type="range" min="0" max="1.2" step="0.001" value="0.72" />
+                  <input id="bloom-threshold-num" type="number" min="0" max="1.2" step="0.001" value="0.72" />
+                  <label class="slider-label">
+                    <span>Stärke</span>
+                    <output id="bloom-strength-value">0.280</output>
+                  </label>
+                  <input id="bloom-strength" type="range" min="0" max="1.5" step="0.001" value="0.28" />
+                  <input id="bloom-strength-num" type="number" min="0" max="1.5" step="0.001" value="0.28" />
+                  <label class="slider-label">
+                    <span>Radius</span>
+                    <output id="bloom-radius-value">0.600</output>
+                  </label>
+                  <input id="bloom-radius" type="range" min="0" max="1" step="0.001" value="0.6" />
+                  <input id="bloom-radius-num" type="number" min="0" max="1" step="0.001" value="0.6" />
+                  <label class="slider-label">
+                    <span>Belichtung</span>
+                    <output id="bloom-exposure-value">1.116</output>
+                  </label>
+                  <input id="bloom-exposure" type="range" min="0.75" max="1.45" step="0.001" value="1.116" />
+                  <input id="bloom-exposure-num" type="number" min="0.75" max="1.45" step="0.001" value="1.116" />
+                </div>
               </div>
 
               <div class="settings-section" data-settings-section="anim" data-settings-label="Animation" data-settings-order="20">
@@ -2282,39 +2323,6 @@
                   <div id="scene-sky-color-host">
                     <input id="scene-sky-color" type="color" value="#3A6084" />
                   </div>
-                </div>
-
-                <div class="toolbar-group">
-                  <label class="toolbar-check">
-                    <input id="bloom-enabled" type="checkbox" />
-                    Bloom an
-                  </label>
-                </div>
-                <div id="bloom-options" hidden>
-                  <label class="slider-label">
-                    <span>Schwelle</span>
-                    <output id="bloom-threshold-value">0.720</output>
-                  </label>
-                  <input id="bloom-threshold" type="range" min="0" max="1.2" step="0.001" value="0.72" />
-                  <input id="bloom-threshold-num" type="number" min="0" max="1.2" step="0.001" value="0.72" />
-                  <label class="slider-label">
-                    <span>Stärke</span>
-                    <output id="bloom-strength-value">0.280</output>
-                  </label>
-                  <input id="bloom-strength" type="range" min="0" max="1.5" step="0.001" value="0.28" />
-                  <input id="bloom-strength-num" type="number" min="0" max="1.5" step="0.001" value="0.28" />
-                  <label class="slider-label">
-                    <span>Radius</span>
-                    <output id="bloom-radius-value">0.600</output>
-                  </label>
-                  <input id="bloom-radius" type="range" min="0" max="1" step="0.001" value="0.6" />
-                  <input id="bloom-radius-num" type="number" min="0" max="1" step="0.001" value="0.6" />
-                  <label class="slider-label">
-                    <span>Belichtung</span>
-                    <output id="bloom-exposure-value">1.116</output>
-                  </label>
-                  <input id="bloom-exposure" type="range" min="0.75" max="1.45" step="0.001" value="1.116" />
-                  <input id="bloom-exposure-num" type="number" min="0.75" max="1.45" step="0.001" value="1.116" />
                 </div>
 
                 <div class="toolbar-group">

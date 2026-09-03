@@ -2,6 +2,22 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Bloom unter Licht + Bibliotheks-Tabs (2026-09-03) — v2.0.110
+
+„Bloom an“ (+ Optionen) von Szene-Farben nach Szene → Licht unter „Lichtpunkte anzeigen“. Bibliotheks-Tabs in `#library-dock` oberhalb von `#opening-library`. Dateien: `index.html`, `style.css`. Docs: [ux.md](ux.md).
+
+### Alle Lichter ein/aus (2026-09-03) — v2.0.109
+
+Toggle **Alle Lichter an** in Bibliothek → Licht und Szene → Licht; Ebenenbaum-Mehr-Menü. Dateien: `sceneLights.ts`, `main.ts`, `index.html`. Docs: [scene-lights.md](scene-lights.md).
+
+### Punktlicht: Drag horizontal / Shift vertikal (2026-09-03) — v2.0.108
+
+Punktlicht-Ziehen in 3D und Front: standardmäßig nur horizontal (X/Z); mit **Shift** nur vertikal (Y). Datei: `main.ts`. Docs: [scene-lights.md](scene-lights.md).
+
+### Geschoss-Dichtung gegen Punktlicht-Leak (2026-09-03) — v2.0.107
+
+Licht aus dem Untergeschoss leckte trotz Decke/Boden in die Etage darüber (weiche Cube-Schatten + `normalBias`). Okkluder jetzt 100 cm / Stoß 160 cm; `normalBias` 0,25 cm; Indoor-Platten und `sunCeilingOccluder` casten bei Raum-Okklusion immer mit `customDistanceMaterial`. Dateien: `pointLightRoomOccluders.ts`, `FacadeController.ts`, `sceneLightRuntime.ts`. Docs: [scene-lights.md](scene-lights.md), [shadows.md](shadows.md).
+
 ### Weiche Punktlicht-Schatten + Geschoss-Dichtung (2026-09-03) — v2.0.106
 
 Weichheit-Slider steuert Punktlicht-`shadow.radius` inkl. Soft-Taps unter BasicShadowMap (PCSS bleibt für Sonne). Punktlicht-Okkluder 24 cm + Etagenstoß-Platte; geringeres `normalBias`. Dateien: `pcssShadows.ts`, `sceneLightRuntime.ts`, `pointLightRoomOccluders.ts`, `main.ts`. Docs: [scene-lights.md](scene-lights.md), [shadows.md](shadows.md).

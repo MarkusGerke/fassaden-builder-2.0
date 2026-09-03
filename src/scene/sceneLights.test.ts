@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createDefaultFacadeState } from '../types/facade'
 import { clampFacadeState } from '../utils/walls'
-import { addSceneLight, duplicateSceneLight, normalizeSceneLights, updateSceneLight } from './sceneLights'
+import { addSceneLight, duplicateSceneLight, normalizeSceneLights, setAllSceneLightsEnabled, updateSceneLight } from './sceneLights'
 
 describe('sceneLights', () => {
   it('fügt Punktlicht mit Default-Position ein', () => {
@@ -54,5 +54,17 @@ describe('sceneLights', () => {
     expect(copy?.markerSizeCm).toBe(24)
     expect(copy?.color).toBe('#aabbcc')
     expect(copy!.x - lights.find((item) => item.id === lightId)!.x).toBe(48)
+  })
+
+  it('schaltet alle Lichter gemeinsam', () => {
+    let { state, lightId } = addSceneLight(createDefaultFacadeState())
+    const second = addSceneLight(state)
+    state = second.state
+    state = updateSceneLight(state, lightId, { enabled: false })
+    expect(normalizeSceneLights(state.sceneLights).some((l) => l.enabled)).toBe(true)
+    state = setAllSceneLightsEnabled(state, false)
+    expect(normalizeSceneLights(state.sceneLights).every((l) => !l.enabled)).toBe(true)
+    state = setAllSceneLightsEnabled(state, true)
+    expect(normalizeSceneLights(state.sceneLights).every((l) => l.enabled)).toBe(true)
   })
 })

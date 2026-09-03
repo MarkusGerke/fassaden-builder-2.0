@@ -565,8 +565,10 @@ export class FacadeController {
   private rebuildPointLightRoomOccluders(): void {
     this.clearPointLightRoomOccluders()
     if (!this.pointLightOccludersEnabled) return
-    const meshes = buildPointLightRoomOccluders(this.state.buildings, this.shadowOccluderMaterial)
-    for (const mesh of meshes) {
+    const built = buildPointLightRoomOccluders(this.state.buildings, this.shadowOccluderMaterial)
+    while (built.children.length > 0) {
+      const mesh = built.children[0] as THREE.Mesh
+      built.remove(mesh)
       this.tagPointLightShadowOccluder(mesh)
       this.pointLightOccluderGroup.add(mesh)
     }
@@ -582,16 +584,23 @@ export class FacadeController {
     for (const child of this.indoorFloorGroup.children) {
       if (!(child instanceof THREE.Mesh)) continue
       if (child.userData.kind === 'sunCeilingOccluder') {
-        child.castShadow = child.visible
+        // Sonne: Layer 0. Bei Punktlicht-Okklusion auch Distance-Material + Cast.
+        child.castShadow = child.visible || enable
         child.receiveShadow = false
         child.layers.set(SHADOW_LAYER_EXTERIOR)
+        if (enable) {
+          child.customDistanceMaterial = this.shadowDistanceMaterial
+        } else if (child.customDistanceMaterial === this.shadowDistanceMaterial) {
+          child.customDistanceMaterial = undefined
+        }
         continue
       }
       // Sichtbare Platten: nur Innen-Layer (keine Fassadenstreifen). Sonne: sunCeilingOccluder.
-      child.castShadow = child.visible
+      // Bei Raum-Okklusion immer casten (auch wenn unsichtbar — Backup neben AABB-Okkludern).
+      child.castShadow = child.visible || enable
       child.receiveShadow = child.visible
       child.layers.set(SHADOW_LAYER_INTERIOR)
-      if (enable && child.visible) {
+      if (enable) {
         child.customDistanceMaterial = this.shadowDistanceMaterial
       } else if (child.customDistanceMaterial === this.shadowDistanceMaterial) {
         child.customDistanceMaterial = undefined

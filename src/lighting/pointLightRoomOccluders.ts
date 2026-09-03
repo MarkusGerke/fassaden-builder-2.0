@@ -1,29 +1,33 @@
 import * as THREE from 'three'
 import type { Building } from '../types/facade'
 import { planFacesWithHoles, planNodeWorld } from '../studio/floorPlan'
-import { SHADOW_LAYER_OCCLUDER } from '../utils/sunLighting'
 import { storeyFloorSurfaceY, storeyTopY } from '../utils/layers'
+import { SHADOW_LAYER_OCCLUDER } from '../utils/sunLighting'
 
 /**
- * Dicke der Punktlicht-Geschoss-Okkluder (cm). Dicker als sichtbare Platten (8 cm),
- * damit Licht aus dem Untergeschoss nicht an der Sockelhöhe der Etage darüber leckt.
+ * Dicke Geschoss-Dichtung (cm) für Point-Light-Cube-Schatten.
+ * Weiche Schatten (radius) und normalBias lecken an dünnen Platten —
+ * deshalb deutlich dicker als die sichtbaren Indoor-Platten (8 cm).
  */
-export const POINT_LIGHT_OCCLUDER_THICKNESS = 24
+export const POINT_LIGHT_OCCLUDER_THICKNESS = 100
+
+/** Extra-Dicke der Stoß-Dichtung zwischen zwei Geschossen (cm). */
+export const POINT_LIGHT_JUNCTION_THICKNESS = 160
 
 /**
  * Unsichtbare Boden-/Deckenplatten auf dem **Außenring** (Wandaußenkante).
  * Nur für Punktlicht-Cube-Shadows (Layer 3) — Hauptkamera und Sonne sehen sie nicht.
  *
- * Sichtbare Indoor-Platten liegen ebenfalls auf dem Außenring (v2.0.92). Die Okkluder
- * bleiben als Backup, wenn Decke/Boden ausgeblendet sind (`showCeiling === false`),
- * und sind dicker (v2.0.106), damit Etagenübergänge lichtdicht bleiben.
+ * Extrude + Rotation bleibt formtreu (Höfe/Löcher). Dicke + Stoßplatte dichten
+ * weiche Cube-Schatten zwischen Etagen ab.
  */
 export function buildPointLightRoomOccluders(
   buildings: Building[],
   material: THREE.Material,
   slabThickness = POINT_LIGHT_OCCLUDER_THICKNESS,
-): THREE.Mesh[] {
-  const meshes: THREE.Mesh[] = []
+): THREE.Group {
+  const group = new THREE.Group()
+  group.name = 'pointLightRoomOccluders'
 
   const ringToShapeXY = (pts: Array<{ x: number; z: number }>) => {
     if (pts.length < 3) return null
@@ -36,14 +40,24 @@ export function buildPointLightRoomOccluders(
     return shape
   }
 
-  const addSlab = (shape: THREE.Shape, y: number, buildingId: string, role: string) => {
+  const addSlab = (
+    shape: THREE.Shape,
+    yTop: number,
+    thickness: number,
+    buildingId: string,
+    role: string,
+    fi: number,
+  ) => {
+    const depth = Math.max(8, thickness)
     const geo = new THREE.ExtrudeGeometry(shape, {
-      depth: slabThickness,
+      depth,
       bevelEnabled: false,
     })
+    // Extrude +Z → nach rotation.x = −π/2 Welt +Y. position.y = Unterkante; Oberkante = yTop.
     const mesh = new THREE.Mesh(geo, material)
+    mesh.name = `plOcc_${role}_${buildingId}_${fi}`
     mesh.rotation.x = -Math.PI / 2
-    mesh.position.set(0, y, 0)
+    mesh.position.set(0, yTop - depth, 0)
     mesh.castShadow = true
     mesh.receiveShadow = false
     mesh.frustumCulled = false
@@ -54,7 +68,7 @@ export function buildPointLightRoomOccluders(
       indoorRole: role,
       buildingId,
     }
-    meshes.push(mesh)
+    group.add(mesh)
   }
 
   for (const building of buildings) {
@@ -80,19 +94,25 @@ export function buildPointLightRoomOccluders(
           path.closePath()
           shape.holes.push(path)
         }
-        const floorY = storeyFloorSurfaceY(building, fi) - slabThickness
-        const ceilingY = storeyTopY(building, fi) - slabThickness
-        addSlab(shape.clone(), floorY, building.id, 'floor')
-        addSlab(shape.clone(), ceilingY, building.id, 'ceiling')
 
-        // Zusätzliche Dichtung am Etagenstoß: überlappt Decke dieser und Boden der nächsten Etage.
+        // Extrude geht nach Rotation nach −Y → Mesh.position.y = Oberkante der Platte.
+        addSlab(shape.clone(), storeyFloorSurfaceY(building, fi), slabThickness, building.id, 'floor', fi)
+        addSlab(shape.clone(), storeyTopY(building, fi), slabThickness, building.id, 'ceiling', fi)
+
         if (fi + 1 < floors.length && floors[fi + 1] && !floors[fi + 1]!.hidden) {
-          const junctionTop = Math.max(storeyTopY(building, fi), storeyFloorSurfaceY(building, fi + 1))
-          const junctionY = junctionTop - slabThickness * 0.5
-          addSlab(shape.clone(), junctionY, building.id, 'junction')
+          const yLo = storeyTopY(building, fi)
+          const yHi = storeyFloorSurfaceY(building, fi + 1)
+          const mid = (yLo + yHi) * 0.5
+          const span = Math.max(
+            POINT_LIGHT_JUNCTION_THICKNESS,
+            Math.abs(yHi - yLo) + slabThickness,
+          )
+          // Stoßplatte zentriert: Oberkante = mid + span/2
+          addSlab(shape.clone(), mid + span * 0.5, span, building.id, 'junction', fi)
         }
       }
     }
   }
-  return meshes
+
+  return group
 }

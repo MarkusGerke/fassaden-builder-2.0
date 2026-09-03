@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.106'
+export const APP_VERSION = '2.0.110'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,46 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.110',
+    date: '2026-09-03',
+    title: 'Bloom unter Licht, Bibliotheks-Tabs oben',
+    changes: [
+      '„Bloom an“ steht jetzt unter Szene → Licht bei „Lichtpunkte anzeigen“',
+      'Bibliotheks-Register (Wände, Fenster, …) liegen oberhalb der Kartenleiste',
+      'Bitte hart neu laden, bis v2.0.110 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.109',
+    date: '2026-09-03',
+    title: 'Alle Lichter mit einem Klick',
+    changes: [
+      'Unter Licht: „Alle Lichter an“ schaltet alle Punktlichter gemeinsam ein oder aus',
+      'Auch im Ebenenbaum unter Lichter → Mehr-Menü',
+      'Bitte hart neu laden, bis v2.0.109 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.108',
+    date: '2026-09-03',
+    title: 'Licht ziehen: horizontal oder mit Shift vertikal',
+    changes: [
+      'Punktlicht per Drag nur noch horizontal verschieben',
+      'Shift gedrückt halten und ziehen verschiebt das Licht in der Höhe',
+      'Bitte hart neu laden, bis v2.0.108 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.107',
+    date: '2026-09-03',
+    title: 'Geschosse lichtdicht gegen Punktlicht',
+    changes: [
+      'Licht aus dem Untergeschoss scheint nicht mehr durch Decke/Boden in die Etage darüber',
+      'Dickerer Geschoss-Verschluss und geringeres Schatten-Bias für weiche Punktlicht-Schatten',
+      'Bitte hart neu laden, bis v2.0.107 in der Titelleiste steht',
+    ],
+  },
   {
     version: '2.0.106',
     date: '2026-09-03',

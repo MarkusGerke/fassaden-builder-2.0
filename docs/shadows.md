@@ -77,7 +77,7 @@ planFacesWithHoles(plan)
 | `floor` (sichtbar) | ja (Layer 1) | ja |
 | Wandkörper (Studio) | ja | ja (**v0.7.237** / **v0.7.285**; immer, nicht nur bei Schrift) |
 | Öffnungs-Tunnel (unsichtbar) | ja | nein (nur Shadow-Map; bis Fassadenfront inkl. Paneeltiefe, v0.7.192) |
-| Punktlicht-Raum-Okkluder (Außenring, Layer 3) | ja (nur Punktlicht-Cube-Map, `customDistanceMaterial`; **v2.0.106:** 24 cm + Etagenstoß) | nein — unsichtbar für Kamera und Sonne |
+| Punktlicht-Raum-Okkluder (Außenring, Layer 3) | ja (nur Punktlicht-Cube-Map, `customDistanceMaterial`; **v2.0.107:** 100 cm + Stoß 160 cm) | nein — unsichtbar für Kamera und Sonne |
 | Paneele / Mörtel | ja | **2D-Front: ja** (v0.7.285 Werfschatten); **3D/Oben: nein** (v0.7.183 / v0.7.140 — Empfang = Schraffur) |
 | Laibung | ja | **nein** (v0.7.140) |
 | Dach | ja | ja |

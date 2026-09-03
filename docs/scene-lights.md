@@ -6,12 +6,12 @@ Platzierbare Punktlichter aus der Element-Bibliothek — unabhängig von Sonne u
 
 1. Unten in der Bibliothek den Tab **Licht** wählen.
 2. **Punktlicht** anklicken **oder** in die Szene (3D/Front/Oben) **hineinziehen**.
-3. Unter **Anzeige** (Bibliothek) oder **Szene → Licht**: **Lichtpunkte anzeigen** schaltet alle Editor-Glühen global ein/aus (Lichtwirkung bleibt).
-4. **3D:** leuchtende Kugel anklicken und per **Drag** verschieben.
-4. **2D-Front:** Kugel per **Drag** in der Bildebene verschieben; **Tiefe (Blickrichtung)** per Slider vor/zurück entlang der Blickachse.
-5. **Ebenenbaum (links):** Sektion **Lichter** — Klick wählt, Mehr-Menü **Ausblenden/Einblenden**, Duplizieren, Entfernen.
-6. **Rechtsklick** in der Szene: **Duplizieren** oder **Licht entfernen**.
-7. Rechts in `#toolbar-scene-light`: Position, Farbe, Leistung (Watt LED), Marker, Reichweite, Abfall, Schatten.
+3. Unter **Anzeige** (Bibliothek) oder **Szene → Licht**: **Alle Lichter an** schaltet alle Punktlichter ein/aus; **Lichtpunkte anzeigen** schaltet nur die Editor-Glühen (Lichtwirkung bleibt).
+4. **3D / 2D-Front:** leuchtende Kugel anklicken und **ziehen** — bewegt sich nur **horizontal** (Höhe bleibt). **Shift** halten und ziehen = nur **vertikal** (Höhe).
+5. **2D-Front:** zusätzlich **Tiefe (Blickrichtung)** per Slider vor/zurück entlang der Blickachse.
+6. **Ebenenbaum (links):** Sektion **Lichter** — Klick wählt, Mehr-Menü **Ausblenden/Einblenden**, Duplizieren, Entfernen; Sektions-Mehr-Menü: **Punktlicht einfügen**, **Alle Lichter an/aus**.
+7. **Rechtsklick** in der Szene: **Duplizieren** oder **Licht entfernen**.
+8. Rechts in `#toolbar-scene-light`: Position, Farbe, Leistung (Watt LED), Marker, Reichweite, Abfall, Schatten.
 
 Lichter drehen mit dem Grundstück (`siteOffset`).
 
@@ -30,10 +30,10 @@ Im **Render**-Modus (3D/Front) ist die Okklusion **automatisch aktiv**, sobald m
 
 **v2.0.102 — physikalisch:** Punktlicht beleuchtet **Fassade und Innenraum** (beide Layer). Lichtdichte nur über **Cube-Shadows** und Okkluder — nicht mehr über Shader-Skip der Außenflächen. Innenwände/Böden/Decken empfangen wieder Punktlicht-Schatten (Wände, Sprossen, Rahmen).
 
-1. **Cube-Shadows:** Wände, Verkleidung, Rahmen, Laibung, Geschossplatten und unsichtbare Außenring-Okkluder (`SHADOW_LAYER_OCCLUDER`) werfen in die Punktlicht-Cube-Map (`customDistanceMaterial` wo nötig). **v2.0.106:** Okkluder 24 cm dick + zusätzliche Stoßplatte zwischen Etagen; `normalBias` ~0,8 cm. Weichheit-Slider setzt `shadow.radius` (Soft-Taps trotz BasicShadowMap/PCSS-Sonne).
+1. **Cube-Shadows:** Wände, Verkleidung, Rahmen, Laibung, Geschossplatten und unsichtbare Außenring-Okkluder (`SHADOW_LAYER_OCCLUDER`) werfen in die Punktlicht-Cube-Map (`customDistanceMaterial` wo nötig). **v2.0.107:** Okkluder 100 cm dick + Stoßplatte 160 cm zwischen Etagen; `normalBias` 0,25 cm; Indoor-Platten und `sunCeilingOccluder` casten bei Raum-Okklusion immer. Weichheit-Slider setzt `shadow.radius` (Soft-Taps trotz BasicShadowMap/PCSS-Sonne).
 2. **Konche:** sichtbare Kalotte ohne flache Okklusions-Kappen; Dichtung nur im unsichtbaren Shadow-Tunnel (`OPENING_SHADOW_TUNNEL_INFLATE_CM = 2,5`).
 3. **Unsichtbare Okkluder** (`SHADOW_LAYER_OCCLUDER = 3`): Boden/Decke auf dem **Grundriss-Außenring**, mit `customDistanceMaterial` in der Punktlicht-Cube-Map.
-4. **Sichtbare Böden/Decken (v2.0.92)** reichen bis zur **Fassaden-Außenkante** (Plan-Ring); sie casten wenn sichtbar und nutzen bei Raum-Okklusion `customDistanceMaterial`. Nicht durch Kellerfenster angehoben (`storeyFloorSurfaceY`).
+4. **Sichtbare Böden/Decken (v2.0.92)** reichen bis zur **Fassaden-Außenkante** (Plan-Ring); sie casten bei Raum-Okklusion immer (auch ausgeblendet) und nutzen `customDistanceMaterial`. Nicht durch Kellerfenster angehoben (`storeyFloorSurfaceY`).
 5. **Wände** sind **ein Mesh** mit zwei Materialien (außen/innen). Wandunterseite bleibt neben Bodentüren geschlossen (nur unter der Schwelle offen).
 6. **Marker im Render:** kein additives Billboard-Glühen (sticht durch Wände). Stattdessen eine kleine **opake Kugel** mit Tiefentest. Additive Glühen nur in Vorschau/Entwurf.
 7. **Innen-Fill:** Bei aktivem Punktlicht im Render zusätzlich schwaches `dirLightIndoor` (nur Layer Innen).
@@ -54,7 +54,9 @@ Im **Render**-Modus (3D/Front) ist die Okklusion **automatisch aktiv**, sobald m
 | Farbe / Farbtemperatur | `3000 K` | Slider 2000–6500 K (warm → kalt); steuert Licht- und Markerfarbe live |
 | Leistung (Watt LED) | `12` | Helligkeit wie LED-Lampe (10 W ≈ 800 lm); **Übernahme erst bei Enter oder Fokus-Verlust** |
 | Marker anzeigen | an | Pro Licht: Editor-Glühen ausblenden |
+| **Alle Lichter an** (Szene → Licht / Bibliothek → Licht) | an (wenn Lichter existieren) | Schaltet alle `sceneLights[].enabled` gemeinsam (`setAllSceneLightsEnabled`) |
 | **Lichtpunkte anzeigen** (Szene → Licht / Bibliothek → Licht) | an | Global alle Glühen ein/aus (`viewOptions.showLightMarkers`) |
+| **Bloom an** (Szene → Licht, unter Lichtpunkten) | aus | Full-Scene-Bloom; Optionen ausgeblendet wenn aus |
 | Marker-Größe | `40` cm | Durchmesser des Glühens (8–200 cm) |
 | Reichweite | `0` | Three.js `distance` in cm; `0` = unbegrenzt |
 | Abfall | `2` | Three.js `decay` (0–3); höher = schnelleres Abklingen mit Entfernung |

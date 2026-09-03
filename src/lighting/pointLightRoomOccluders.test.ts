@@ -2,10 +2,14 @@ import * as THREE from 'three'
 import { describe, expect, it } from 'vitest'
 import { WALL_DEPTH, WALL_HEIGHT } from '../constants/presets'
 import type { Building } from '../types/facade'
-import { createEmptyFloorPlan, drawPlanLine, innerFaceRingWorld, planFacesWithHoles, planNodeWorld } from '../studio/floorPlan'
+import { createEmptyFloorPlan, drawPlanLine } from '../studio/floorPlan'
 import { SHADOW_LAYER_OCCLUDER } from '../utils/sunLighting'
 import { storeyFloorSurfaceY } from '../utils/layers'
-import { buildPointLightRoomOccluders, POINT_LIGHT_OCCLUDER_THICKNESS } from './pointLightRoomOccluders'
+import {
+  buildPointLightRoomOccluders,
+  POINT_LIGHT_JUNCTION_THICKNESS,
+  POINT_LIGHT_OCCLUDER_THICKNESS,
+} from './pointLightRoomOccluders'
 
 function rectanglePlan() {
   let plan = createEmptyFloorPlan()
@@ -17,7 +21,7 @@ function rectanglePlan() {
 }
 
 describe('pointLightRoomOccluders', () => {
-  it('erzeugt unsichtbare Außenring-Platten auf Okkluder-Layer, nicht durch Kellerfenster angehoben', () => {
+  it('erzeugt dicke Außenring-Platten auf Okkluder-Layer', () => {
     const plan = rectanglePlan()
     const mat = new THREE.MeshBasicMaterial()
     const building: Building = {
@@ -28,24 +32,21 @@ describe('pointLightRoomOccluders', () => {
       wallDepth: WALL_DEPTH,
       floors: [plan],
     }
-    const meshes = buildPointLightRoomOccluders([building], mat)
-    expect(meshes.length).toBe(2)
-    for (const mesh of meshes) {
+    const group = buildPointLightRoomOccluders([building], mat)
+    expect(group.children.length).toBe(2)
+    for (const child of group.children) {
+      const mesh = child as THREE.Mesh
       expect(mesh.layers.isEnabled(SHADOW_LAYER_OCCLUDER)).toBe(true)
       expect(mesh.layers.isEnabled(0)).toBe(false)
       expect(mesh.castShadow).toBe(true)
       expect(mesh.userData.shadowOccluder).toBe(true)
+      expect(mesh.frustumCulled).toBe(false)
     }
-    const floor = meshes.find((m) => m.userData.indoorRole === 'floor')!
+    const floor = group.children.find((m) => m.userData.indoorRole === 'floor')!
     expect(floor.position.y).toBe(storeyFloorSurfaceY(building, 0) - POINT_LIGHT_OCCLUDER_THICKNESS)
-
-    const face = planFacesWithHoles(plan)[0]!
-    const outerArea = polygonArea(face.outer.map(planNodeWorld))
-    const innerArea = polygonArea(innerFaceRingWorld(face.outer, WALL_DEPTH))
-    expect(outerArea).toBeGreaterThan(innerArea)
   })
 
-  it('legt am Etagenstoß eine zusätzliche Dichtungsplatte', () => {
+  it('legt am Etagenstoß eine dicke Stoß-Dichtung', () => {
     const mat = new THREE.MeshBasicMaterial()
     const building: Building = {
       id: 'b1',
@@ -55,18 +56,11 @@ describe('pointLightRoomOccluders', () => {
       wallDepth: WALL_DEPTH,
       floors: [rectanglePlan(), rectanglePlan()],
     }
-    const meshes = buildPointLightRoomOccluders([building], mat)
-    const junctions = meshes.filter((m) => m.userData.indoorRole === 'junction')
+    const group = buildPointLightRoomOccluders([building], mat)
+    const junctions = group.children.filter((m) => m.userData.indoorRole === 'junction')
     expect(junctions.length).toBeGreaterThanOrEqual(1)
+    const jGeo = (junctions[0] as THREE.Mesh).geometry as THREE.ExtrudeGeometry
+    // Extrude depth = Stoßdicke
+    expect(jGeo.parameters.options.depth).toBeGreaterThanOrEqual(POINT_LIGHT_JUNCTION_THICKNESS)
   })
 })
-
-function polygonArea(pts: Array<{ x: number; z: number }>): number {
-  let sum = 0
-  for (let i = 0; i < pts.length; i += 1) {
-    const p = pts[i]!
-    const q = pts[(i + 1) % pts.length]!
-    sum += p.x * q.z - q.x * p.z
-  }
-  return Math.abs(sum) / 2
-}

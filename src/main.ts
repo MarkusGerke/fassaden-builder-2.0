@@ -554,6 +554,7 @@ import {
   normalizeSceneLights,
   removeSceneLight,
   sceneLightById,
+  setAllSceneLightsEnabled,
   updateSceneLight,
 } from './scene/sceneLights'
 import {
@@ -1225,6 +1226,32 @@ function pickWorldOnHorizontalPlane(
   return sceneLightPositionFromWorld(hit)
 }
 
+/**
+ * Vertikale Verschiebung eines Punktlichts: Schnitt mit vertikaler Ebene durch den Anker
+ * (Normal = Blickrichtung in der XZ-Ebene). Nur Y auswerten; X/Z bleiben unverändert.
+ */
+function pickSceneLightVerticalY(
+  clientX: number,
+  clientY: number,
+  anchorWorld: THREE.Vector3,
+): number | null {
+  setRaycasterFromClient(clientX, clientY)
+  getActiveCamera().getWorldDirection(_frontPanForward)
+  const flatLen = Math.hypot(_frontPanForward.x, _frontPanForward.z)
+  if (flatLen < 1e-4) {
+    // Kamera fast senkrecht: Bildebene senkrecht zur Blickrichtung
+    const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(_frontPanForward, anchorWorld)
+    const hit = new THREE.Vector3()
+    if (!raycaster.ray.intersectPlane(plane, hit)) return null
+    return sceneLightPositionFromWorld(hit).y
+  }
+  const normal = _frontPanRight.set(_frontPanForward.x / flatLen, 0, _frontPanForward.z / flatLen)
+  const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(normal, anchorWorld)
+  const hit = new THREE.Vector3()
+  if (!raycaster.ray.intersectPlane(plane, hit)) return null
+  return sceneLightPositionFromWorld(hit).y
+}
+
 function sceneLightLocalToWorld(
   light: Pick<SceneLight, 'x' | 'y' | 'z'>,
   target = _sceneLightWorld,
@@ -1253,19 +1280,6 @@ function sceneLightViewDepthCm(light: Pick<SceneLight, 'x' | 'y' | 'z'>): number
   const dy = _sceneLightWorld.y - _frontPanRight.y
   const dz = _sceneLightWorld.z - _frontPanRight.z
   return dx * _frontPanForward.x + dy * _frontPanForward.y + dz * _frontPanForward.z
-}
-
-function pickSceneLightOnViewPlane(
-  clientX: number,
-  clientY: number,
-  planePointWorld: THREE.Vector3,
-): Pick<SceneLight, 'x' | 'y' | 'z'> | null {
-  setRaycasterFromClient(clientX, clientY)
-  getActiveCamera().getWorldDirection(_frontPanForward)
-  const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(_frontPanForward, planePointWorld)
-  const hit = new THREE.Vector3()
-  if (!raycaster.ray.intersectPlane(plane, hit)) return null
-  return sceneLightPositionFromWorld(hit)
 }
 
 /** Weltpunkt (Raycast) → siteOffset-Lokal (wie Wand-Meshes). */
@@ -4679,6 +4693,7 @@ const editScopeFacadeYaws = document.querySelector<HTMLDivElement>('#edit-scope-
 const viewShowCeiling = document.querySelector<HTMLInputElement>('#view-show-ceiling')
 const viewShowIntermediateFloors = document.querySelector<HTMLInputElement>('#view-show-intermediate-floors')
 const viewShowLightMarkers = document.querySelector<HTMLInputElement>('#view-show-light-markers')
+const viewAllSceneLights = document.querySelector<HTMLInputElement>('#view-all-scene-lights')
 const toolbarRoof = document.querySelector<HTMLDivElement>('#toolbar-roof')!
 const toolbarCeiling = document.querySelector<HTMLDivElement>('#toolbar-ceiling')!
 const toolbarSceneLight = document.querySelector<HTMLDivElement>('#toolbar-scene-light')!
@@ -5836,6 +5851,26 @@ function syncViewOptionsControls() {
   if (viewShowLightMarkers) {
     viewShowLightMarkers.checked = state.viewOptions?.showLightMarkers !== false
   }
+  syncAllSceneLightsEnabledControl()
+}
+
+function syncAllSceneLightsEnabledControl(): void {
+  const lights = normalizeSceneLights(state.sceneLights)
+  const hasLights = lights.length > 0
+  const allOn = hasLights && lights.every((item) => item.enabled)
+  const anyOn = lights.some((item) => item.enabled)
+  const apply = (el: HTMLInputElement | null) => {
+    if (!el) return
+    el.disabled = !hasLights
+    el.checked = allOn
+    el.indeterminate = hasLights && anyOn && !allOn
+  }
+  apply(viewAllSceneLights)
+  apply(document.querySelector<HTMLInputElement>('#library-all-scene-lights'))
+}
+
+function commitAllSceneLightsEnabled(enabled: boolean): void {
+  commitState(setAllSceneLightsEnabled(state, enabled))
 }
 
 function syncRoofUI() {
@@ -7573,6 +7608,16 @@ function initOpeningLibrary() {
     })
     host.appendChild(card)
     appendLibraryGroupLabel(host, 'Anzeige')
+    const allLightsToggle = document.createElement('label')
+    allLightsToggle.className = 'library-lights-option toolbar-check'
+    const allLightsCheckbox = document.createElement('input')
+    allLightsCheckbox.type = 'checkbox'
+    allLightsCheckbox.id = 'library-all-scene-lights'
+    allLightsCheckbox.addEventListener('change', () => {
+      commitAllSceneLightsEnabled(allLightsCheckbox.checked)
+    })
+    allLightsToggle.append(allLightsCheckbox, document.createTextNode(' Alle Lichter an'))
+    host.appendChild(allLightsToggle)
     const markerToggle = document.createElement('label')
     markerToggle.className = 'library-lights-option toolbar-check'
     const markerCheckbox = document.createElement('input')
@@ -7584,6 +7629,7 @@ function initOpeningLibrary() {
     })
     markerToggle.append(markerCheckbox, document.createTextNode(' Lichtpunkte anzeigen'))
     host.appendChild(markerToggle)
+    syncAllSceneLightsEnabledControl()
     syncLibraryAppliedOutline()
     return
   }
@@ -10177,12 +10223,21 @@ function removeStoreyAtFloor(floor: number) {
 }
 
 function sceneLightsLayerContextItems(): MenuItem[] {
-  return [
+  const lights = normalizeSceneLights(state.sceneLights)
+  const allOn = lights.length > 0 && lights.every((item) => item.enabled)
+  const items: MenuItem[] = [
     {
       label: 'Punktlicht einfügen',
       action: () => insertSceneLightFromLibrary(),
     },
   ]
+  if (lights.length > 0) {
+    items.push({
+      label: allOn ? 'Alle Lichter aus' : 'Alle Lichter an',
+      action: () => commitAllSceneLightsEnabled(!allOn),
+    })
+  }
+  return items
 }
 
 function renderSceneLightsLayerSection() {
@@ -16283,9 +16338,8 @@ let drag3dLabel: { wallId: string } | null = null
 let drag3dLabelMoved = false
 let drag3dSceneLight: {
   lightId: string
+  /** Start-Höhe (cm, siteOffset-Lokal) — horizontales Drag bleibt auf dieser Y-Ebene bis Shift. */
   planeY: number
-  /** 2D-Front: Ebene senkrecht zur Blickrichtung (Tiefe bleibt fix). */
-  anchorWorld: THREE.Vector3 | null
   startState: FacadeState
 } | null = null
 let drag3dSceneLightMoved = false
@@ -16659,8 +16713,6 @@ canvas.addEventListener('pointerdown', (event) => {
       drag3dSceneLight = {
         lightId: hit.sceneLightId,
         planeY: light.y,
-        anchorWorld:
-          currentView === 'front' ? sceneLightLocalToWorld(light, new THREE.Vector3()) : null,
         startState: cloneFacadeState(state),
       }
       drag3dSceneLightMoved = false
@@ -16793,17 +16845,25 @@ canvas.addEventListener('pointermove', (event) => {
   if (currentView === 'top' && moveNav3d(event)) return
 
   if (isSceneEditView() && drag3dSceneLight) {
-    const pos =
-      currentView === 'front' && drag3dSceneLight.anchorWorld
-        ? pickSceneLightOnViewPlane(
-            event.clientX,
-            event.clientY,
-            drag3dSceneLight.anchorWorld,
-          )
-        : pickWorldOnHorizontalPlane(event.clientX, event.clientY, drag3dSceneLight.planeY)
-    if (!pos) return
+    const light = sceneLightById(state, drag3dSceneLight.lightId)
+    if (!light) return
     drag3dSceneLightMoved = true
-    state = updateSceneLight(state, drag3dSceneLight.lightId, { x: pos.x, z: pos.z })
+    if (event.shiftKey) {
+      // Shift: nur vertikal (Y); X/Z bleiben
+      const y = pickSceneLightVerticalY(
+        event.clientX,
+        event.clientY,
+        sceneLightLocalToWorld(light, _sceneLightWorld),
+      )
+      if (y == null) return
+      drag3dSceneLight.planeY = y
+      state = updateSceneLight(state, drag3dSceneLight.lightId, { y })
+    } else {
+      // Default: nur horizontal (X/Z) auf aktueller Höhe
+      const pos = pickWorldOnHorizontalPlane(event.clientX, event.clientY, light.y)
+      if (!pos) return
+      state = updateSceneLight(state, drag3dSceneLight.lightId, { x: pos.x, z: pos.z })
+    }
     syncSceneLightRuntime()
     syncSceneLightToolbar()
     markViewportDirty()
@@ -20312,6 +20372,9 @@ viewShowIntermediateFloors?.addEventListener('change', () => {
 })
 viewShowLightMarkers?.addEventListener('change', () => {
   commitViewOptions({ showLightMarkers: viewShowLightMarkers!.checked })
+})
+viewAllSceneLights?.addEventListener('change', () => {
+  commitAllSceneLightsEnabled(viewAllSceneLights!.checked)
 })
 
 roofEnabled.addEventListener('change', () => {

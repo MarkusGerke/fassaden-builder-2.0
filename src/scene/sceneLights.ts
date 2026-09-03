@@ -134,6 +134,17 @@ export function updateSceneLight(
   return { ...state, sceneLights: lights }
 }
 
+/** Schaltet alle Bibliotheks-Punktlichter gemeinsam ein oder aus. */
+export function setAllSceneLightsEnabled(state: FacadeState, enabled: boolean): FacadeState {
+  const lights = normalizeSceneLights(state.sceneLights)
+  if (lights.length === 0) return state
+  if (lights.every((item) => item.enabled === enabled)) return state
+  return {
+    ...state,
+    sceneLights: lights.map((item) => normalizeSceneLight({ ...item, enabled })),
+  }
+}
+
 export function removeSceneLight(state: FacadeState, lightId: string): FacadeState {
   const lights = normalizeSceneLights(state.sceneLights).filter((item) => item.id !== lightId)
   return { ...state, sceneLights: lights }

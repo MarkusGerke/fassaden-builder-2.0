@@ -90,7 +90,7 @@ export class SceneLightRuntime {
     light.castShadow = true
     // Weniger normalBias: zu groß → Lichtlecks an Decken-/Bodenstößen (Geschosse).
     light.shadow.bias = -0.001
-    light.shadow.normalBias = 0.8
+    light.shadow.normalBias = 0.25
     light.shadow.mapSize.setScalar(POINT_SHADOW_MAP)
     light.shadow.radius = 1
     light.shadow.camera.near = POINT_SHADOW_NEAR_CM
