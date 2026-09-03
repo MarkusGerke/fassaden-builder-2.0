@@ -28,11 +28,9 @@ Ein Raum wird durch **Wände, Boden, Decke und Laibungen** begrenzt. Punktlicht 
 
 Im **Render**-Modus (3D/Front) ist die Okklusion **automatisch aktiv**, sobald mindestens ein Punktlicht eingeschaltet ist.
 
-**Warum keine Layer-Trennung fürs Licht:** Three.js WebGLRenderer beleuchtet jedes sichtbare Mesh mit jedem Licht, dessen Layer mit dem Objekt-Layer überlappt. Objekt-Layer steuern das — Material allein nicht.
+**v2.0.102 — physikalisch:** Punktlicht beleuchtet **Fassade und Innenraum** (beide Layer). Lichtdichte nur über **Cube-Shadows** und Okkluder — nicht mehr über Shader-Skip der Außenflächen. Innenwände/Böden/Decken empfangen wieder Punktlicht-Schatten (Wände, Sprossen, Rahmen).
 
-**Wandkörper (v2.0.60):** Studio-Wand-Meshes liegen auf Außen- **und** Innen-Layer, sobald mindestens ein Punktlicht aktiv ist. Außen-Material (`wallMaterials`) nutzt `uSkipPointLights` — kein Punktlicht auf der Fassade. Innen-Material empfängt Punktlicht und EnvMap-Fill (`applyRenderInteriorSurfaceLook`). Außen-Paneele: `applyRenderExteriorSurfaceLook` (EnvMap ~0,58, Rauheit ≤ 0,78) im Render-Modus.
-
-1. **Shader-Maske** (`skipPointLights.ts`): Außen-Materialien (Paneele, Sockel, Gesimse, äußere Fensterbänke, Wand-Außenmaterial, Fensterrahmen, **Konche/Nische-Außenmaterial**) bekommen **kein Punktlicht**. **Innenwand** (Materialgruppe 1), Böden, Decken, Glas und Laibungs-Innenseite schon — sichtbar durch Fenster in 2D/Front. Innenwände nutzen **kein** Gegenlicht-Shader (`applyFacadeShadeShader`). Der Patch sitzt in `getPointLightInfo` (Three.js-Lichtfunktion), nicht nur im Fragment-Include.
+1. **Cube-Shadows:** Wände, Verkleidung, Rahmen, Laibung, Geschossplatten und unsichtbare Außenring-Okkluder (`SHADOW_LAYER_OCCLUDER`) werfen in die Punktlicht-Cube-Map (`customDistanceMaterial` wo nötig). `normalBias` ~2,5 cm gegen Peter-Panning an dünnen Wänden.
 2. **Konche:** sichtbare Kalotte ohne flache Okklusions-Kappen; Dichtung nur im unsichtbaren Shadow-Tunnel (`OPENING_SHADOW_TUNNEL_INFLATE_CM = 2,5`).
 3. **Unsichtbare Okkluder** (`SHADOW_LAYER_OCCLUDER = 3`): Boden/Decke auf dem **Grundriss-Außenring**, mit `customDistanceMaterial` in der Punktlicht-Cube-Map.
 4. **Sichtbare Böden/Decken (v2.0.92)** reichen bis zur **Fassaden-Außenkante** (Plan-Ring); sie casten wenn sichtbar und nutzen bei Raum-Okklusion `customDistanceMaterial`. Nicht durch Kellerfenster angehoben (`storeyFloorSurfaceY`).
@@ -41,10 +39,11 @@ Im **Render**-Modus (3D/Front) ist die Okklusion **automatisch aktiv**, sobald m
 7. **Innen-Fill:** Bei aktivem Punktlicht im Render zusätzlich schwaches `dirLightIndoor` (nur Layer Innen).
 8. **Wand-Normalen:** Außenfläche nach außen, Innenfläche in den Raum (`wallFaceNormalReverse`). Sonst ist der Freistreifen über den Paneelen ein Loch, und Innenwände erscheinen schwarz.
 9. **2D-Glas:** Orthografische Front nutzt dünne Alpha-Transparenz (opacity ~0,06) statt Physical-Transmission (`setOrthographicGlassSeeThrough`).
-10. **Innen-Schatten:** Innenwände bekommen Punktlicht, aber keine Cube-Selbstabschattung (`bindSkipPointShadows`).
-11. **Decke/Boden:** Innenfläche wie Wände (`createIndoorSlabMaterial`: EnvMap, kein Gegenlicht-Dim, kein Punktlicht-Cube-Empfang). Default weiß; `FloorPlan.ceilingColor` steuert die Albedo.
+10. **Innen-Schatten:** Innenwände, Böden und Decken empfangen Cube-Shadows (seit v2.0.102; früher `bindSkipPointShadows`-Workaround entfernt).
+11. **Decke/Boden:** Innenfläche wie Wände (`createIndoorSlabMaterial`: EnvMap, kein Gegenlicht-Dim). Default weiß; `FloorPlan.ceilingColor` steuert die Albedo.
+12. **Legacy:** `uSkipPointLights` / `bindSkipPointLights` bleiben im Code, sind aber standardmäßig **aus** (`setSkipPointLights(false)`).
 
-**Selective Bloom:** Nur Objekte auf **BLOOM_LAYER (2)** erzeugen Bloom — im Render mit Raum-Okklusion eine kleine **HDR-Kugel** am Licht (Tiefentest, kein Billboard durch Wände). **EnvMap** nur aus dem Außen-Layer. Sonne/Hemisphere auf der Außenfassade bleiben unbeeinflusst von `uSkipPointLights`.
+**Selective Bloom:** Nur Objekte auf **BLOOM_LAYER (2)** erzeugen Bloom — im Render mit Raum-Okklusion eine kleine **HDR-Kugel** am Licht (Tiefentest, kein Billboard durch Wände). **EnvMap** nur aus dem Außen-Layer.
 
 ## Einstellungen (Toolbar)
 
@@ -71,8 +70,8 @@ Persistiert in `FacadeState.sceneLights`. Hydrate: `normalizeSceneLights` in `sr
 | Datei | Rolle |
 |---|---|
 | `src/scene/sceneLights.ts` | CRUD, Duplizieren, Normalisierung |
-| `src/FacadeController.ts` | Wandkörper, Indoor-Böden, Okkluder-Gruppe, Shader-Maske |
-| `src/lighting/skipPointLights.ts` | Außen-Materialien ohne Punktlicht (WebGL-Limit) |
+| `src/FacadeController.ts` | Wandkörper, Indoor-Böden, Okkluder-Gruppe, Distance-Material |
+| `src/lighting/skipPointLights.ts` | Legacy-Shader-Maske (Default aus) |
 | `src/lighting/pointLightRoomOccluders.ts` | Unsichtbare Außenring-Platten (Layer 3) |
 | `src/studio/panelGeometry.ts` | Öffnungs-Shadow-Tunnel (Konche, Keller) |
 | `src/utils/layers.ts` | `effectiveStoreyFloorCapY` (Kellerfenster-Oberkante) |
@@ -100,7 +99,6 @@ Noch **nicht** umgesetzt — bei Bedarf separat planen:
 
 - Nur Punktlicht (kein Spot/Area).
 - Schatten nur im **Render**-Darstellungsmodus; Checkbox **Schatten werfen** muss an sein.
-- In **2D-Front** und **3D** bleibt Licht im Raum: Wände, Böden, Decken und Laibungen sind lichtdicht. Durch Fensteröffnungen und Glas sieht man den **Innenraum**; Paneele, Sockel und Gesimse werden vom Innenlicht nicht direkt angestrahlt.
-- Three.js-Layer allein isolieren Punktlicht **nicht** — Isolation über Shader-Maske und Shadow-Okkluder.
+- In **2D-Front** und **3D** bleibt Licht im Raum bzw. vor der Fassade: Wände, Böden, Decken und Laibungen sind lichtdicht. Durch Fensteröffnungen und Glas sieht man den **Innenraum**; Außenlicht erhellt die Fassade sichtbar.
 - Marker aus: Pick-Kugel bleibt unsichtbar, Auswahl per Klick in der Nähe weiter möglich.
 - Im **Render** (Raumhülle an): kein additives Billboard-Glühen — das sticht durch Wände. Stattdessen eine kleine opake Kugel. Additive Glühen nur in Vorschau/Entwurf, dort weiterhin `depthTest` gegen opake Geometrie; **Klarglas** schreibt keine Tiefe.

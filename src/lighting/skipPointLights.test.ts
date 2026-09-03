@@ -68,15 +68,11 @@ describe('skipPointLights', () => {
     expect(mat.userData.skipPointLightsBound).toBeUndefined()
   })
 
-  it('nimmt Innenwänden die Punktlicht-Selbstabschattung', () => {
+  it('bindSkipPointShadows ist No-Op (Schattenempfang aktiv)', () => {
     const mat = new THREE.MeshStandardMaterial()
+    const before = mat.onBeforeCompile
     bindSkipPointShadows(mat)
-    const shader = stubShader()
-    mat.onBeforeCompile!(
-      shader as unknown as THREE.WebGLProgramParametersWithUniforms,
-      {} as THREE.WebGLRenderer,
-    )
-    expect(shader.fragmentShader).toContain('directLight.color *= 1.0; // getPointShadow(')
-    expect(shader.fragmentShader).not.toContain('#include <lights_fragment_begin>')
+    expect(mat.userData.skipPointShadowsBound).toBeUndefined()
+    expect(mat.onBeforeCompile).toBe(before)
   })
 })

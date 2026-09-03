@@ -20,7 +20,7 @@ Die Sonne darf **ausschließlich durch Wandöffnungen und Glas** scheinen.
 | Glas (`castShadow: false`) | Fensterrahmen, Sprossen, Konsolen, Türfüllung |
 | | Decken- und Bodenplatten, Dach, Sockel, Gesims |
 
-Glas bleibt ohne Cast, damit die Öffnung hell bleibt. Alles Opake in der Hülle wirft in der Sonnen-Shadow-Map. Geschossplatten bleiben lichtdicht, solange sie sichtbar sind (Ausblenden = bewusstes Oberlicht). **v2.0.100:** Sichtbare Decke/Boden nur Layer 1 (kein Streifen auf der Fassade); unsichtbarer `sunCeilingOccluder` an der Innenkante wirft in Layer 0 und blockiert die Sonne.
+Glas bleibt ohne Cast, damit die Öffnung hell bleibt. Alles Opake in der Hülle wirft in der Sonnen-Shadow-Map. Geschossplatten bleiben lichtdicht, solange sie sichtbar sind (Ausblenden = bewusstes Oberlicht). **v2.0.100:** Sichtbare Decke/Boden nur Layer 1 (kein Streifen auf der Fassade); unsichtbarer `sunCeilingOccluder` an der Innenkante wirft in Layer 0 und blockiert die Sonne. **v2.0.102:** Bibliotheks-Punktlicht beleuchtet Fassade und Innenraum; Lichtdichte über Cube-Shadows (nicht Shader-Skip) — siehe [scene-lights.md](scene-lights.md).
 
 ---
 Bloom und Gobo-Schatten: frühere Laub-Gobo-UI entfernt (v0.7.341). **Unreal Bloom** und **Nebel** unter **Szene**, in **3D** und **2D-Front** (nicht Oben/Plan).

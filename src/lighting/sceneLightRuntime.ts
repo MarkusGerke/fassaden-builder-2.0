@@ -85,14 +85,16 @@ export class SceneLightRuntime {
     const color = new THREE.Color(colorHex)
     const light = new THREE.PointLight(color, 2800, 0, 2)
     light.castShadow = true
-    light.shadow.bias = -0.002
-    light.shadow.normalBias = 0.015
+    // cm-Maßstab: etwas Bias gegen Acne, normalBias in cm gegen Peter-Panning an dünnen Wänden
+    light.shadow.bias = -0.001
+    light.shadow.normalBias = 2.5
     light.shadow.mapSize.setScalar(POINT_SHADOW_MAP)
     light.shadow.radius = 1
     light.shadow.camera.near = POINT_SHADOW_NEAR_CM
     light.shadow.camera.far = POINT_SHADOW_FAR_DEFAULT_CM
-    // Nur Innen-Layer — Außen (Gesimse, Sockel, Paneele) werden nicht direkt beleuchtet.
-    light.layers.set(SHADOW_LAYER_INTERIOR)
+    // Außen + Innen: Fassade und Raum werden beleuchtet; Schatten okkludieren durch Wände.
+    light.layers.enable(SHADOW_LAYER_INTERIOR)
+    light.layers.enable(SHADOW_LAYER_EXTERIOR)
     light.shadow.camera.layers.enable(SHADOW_LAYER_INTERIOR)
     light.shadow.camera.layers.enable(SHADOW_LAYER_EXTERIOR)
     light.shadow.camera.layers.enable(SHADOW_LAYER_OCCLUDER)
@@ -125,7 +127,8 @@ export class SceneLightRuntime {
     entry.light.color.set(spec.color)
     entry.light.distance = spec.distance ?? 0
     entry.light.decay = spec.decay ?? 2
-    entry.light.castShadow = spec.enabled && options.roomOcclusion !== false
+    entry.light.castShadow =
+      spec.enabled && spec.castShadow !== false && options.roomOcclusion !== false
     const shadowFar = options.shadowFarCm ?? POINT_SHADOW_FAR_DEFAULT_CM
     if (entry.light.shadow.camera.far !== shadowFar) {
       entry.light.shadow.camera.far = shadowFar

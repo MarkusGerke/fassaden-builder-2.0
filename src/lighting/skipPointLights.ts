@@ -1,13 +1,10 @@
 import * as THREE from 'three'
 
 /**
- * Three.js WebGLRenderer filtert Punktlichter **nicht** nach Objekt-Layern.
- * Ein Licht, das die Kamera „sieht“, beleuchtet jedes gerenderte Mesh —
- * deshalb leuchteten Paneele, Sockel, Gesimse und Konchen trotz Layer-Trennung.
- *
- * Außen-Materialien multiplizieren die Punktlicht-Farbe in `getPointLightInfo`
- * mit (1 − uSkipPointLights). Sonne / Hemisphere bleiben. Glas und Innenwand
- * bekommen das nicht.
+ * Optional: Außen-Materialien multiplizieren Punktlicht mit (1 − uSkipPointLights).
+ * Seit v2.0.102 standardmäßig **aus** (0): Punktlicht beleuchtet Fassade und Innenraum;
+ * lichtdicht über Cube-Shadows / Okkluder. Sonne / Hemisphere bleiben unberührt.
+ * Glas wird nie gebunden.
  */
 const skipUniform = { value: 0 }
 
@@ -56,39 +53,13 @@ ${SKIP_POINT_LIGHTS_MARKER}
 `
 }
 
-const POINT_SHADOW_LINE =
-  'directLight.color *= ( directLight.visible && receiveShadow ) ? getPointShadow('
-
-function patchedLightsFragmentBeginNoPointShadow(): string {
-  return THREE.ShaderChunk.lights_fragment_begin.replaceAll(
-    POINT_SHADOW_LINE,
-    'directLight.color *= 1.0; // getPointShadow(',
-  )
-}
-
-export function bindSkipPointShadows(material: THREE.Material): void {
-  if (!(material instanceof THREE.MeshStandardMaterial)) return
-  if (material.userData.skipPointShadowsBound) return
-  material.userData.skipPointShadowsBound = true
-  const prevKey = material.customProgramCacheKey?.bind(material)
-  material.customProgramCacheKey = () => `${prevKey ? prevKey() : ''}|skip-pt-shadow-v1`
-  const prevCompile = material.onBeforeCompile
-  material.onBeforeCompile = (shader, renderer) => {
-    prevCompile?.call(material, shader, renderer)
-    if (shader.fragmentShader.includes('#include <lights_fragment_begin>')) {
-      shader.fragmentShader = shader.fragmentShader.replace(
-        '#include <lights_fragment_begin>',
-        patchedLightsFragmentBeginNoPointShadow(),
-      )
-      return
-    }
-    if (!shader.fragmentShader.includes(POINT_SHADOW_LINE)) return
-    shader.fragmentShader = shader.fragmentShader.replaceAll(
-      POINT_SHADOW_LINE,
-      'directLight.color *= 1.0; // getPointShadow(',
-    )
-  }
-  material.needsUpdate = true
+/**
+ * Früher: Cube-Selbstschatten auf Innenwänden abschalten (Acne-Workaround).
+ * Seit v2.0.102 No-Op — Innenwände/Böden empfangen Punktlicht-Schatten (Rahmen, Sprossen, Wände).
+ * Alte Materialien mit `skipPointShadowsBound` werden beim nächsten Material-Rebuild neu erzeugt.
+ */
+export function bindSkipPointShadows(_material: THREE.Material): void {
+  // bewusst leer — Schattenempfang wieder aktiv
 }
 
 export function bindSkipPointLights(material: THREE.Material): void {

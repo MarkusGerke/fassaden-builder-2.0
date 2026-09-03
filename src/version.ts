@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.101'
+export const APP_VERSION = '2.0.102'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,16 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.102',
+    date: '2026-09-03',
+    title: 'Punktlicht beleuchtet Fassade, Schatten im Raum',
+    changes: [
+      'Punktlicht vor der Außenwand erhellt Fassade und Reflexion — scheint nicht mehr durch die Wand',
+      'Innen: Schatten von Wänden, Sprossen und Rahmen wieder sichtbar',
+      'Bitte hart neu laden, bis v2.0.102 in der Titelleiste steht',
+    ],
+  },
   {
     version: '2.0.101',
     date: '2026-09-03',

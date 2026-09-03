@@ -128,7 +128,7 @@ import {
   SHADOW_LAYER_EXTERIOR,
   SHADOW_LAYER_INTERIOR,
 } from './utils/sunLighting'
-import { bindSkipPointLights, bindSkipPointShadows, setSkipPointLights } from './lighting/skipPointLights'
+import { setSkipPointLights } from './lighting/skipPointLights'
 import { buildPointLightRoomOccluders } from './lighting/pointLightRoomOccluders'
 
 export class FacadeController {
@@ -543,22 +543,6 @@ export class FacadeController {
 
   private sceneLightsActive = false
 
-  private bindSkipPointLightsOn(
-    material: THREE.Material | THREE.Material[] | undefined,
-    allLayers = false,
-  ): void {
-    if (!material) return
-    if (Array.isArray(material)) {
-      if (allLayers) {
-        for (const item of material) bindSkipPointLights(item)
-        return
-      }
-      bindSkipPointLights(material[0]!)
-      return
-    }
-    bindSkipPointLights(material)
-  }
-
   private tagPointLightShadowOccluder(mesh: THREE.Mesh): void {
     mesh.customDistanceMaterial = this.shadowDistanceMaterial
     mesh.castShadow = true
@@ -585,8 +569,10 @@ export class FacadeController {
 
   private applyPointLightOccluders(): void {
     const enable = this.pointLightOccludersEnabled
-    setSkipPointLights(this.sceneLightsActive)
+    // Punktlicht auf Fassade + Innen; Lichtdichte über Cube-Shadows (nicht Shader-Skip).
+    setSkipPointLights(false)
     this.rebuildPointLightRoomOccluders()
+    this.refreshInteriorMaterialsAfterPointShadowFix()
 
     for (const child of this.indoorFloorGroup.children) {
       if (!(child instanceof THREE.Mesh)) continue
@@ -605,37 +591,36 @@ export class FacadeController {
       } else if (child.customDistanceMaterial === this.shadowDistanceMaterial) {
         child.customDistanceMaterial = undefined
       }
-      const mats = Array.isArray(child.material) ? child.material : [child.material]
-      for (const mat of mats) {
-        if (mat instanceof THREE.MeshStandardMaterial) bindSkipPointShadows(mat)
-      }
     }
 
     const wallShadowSide = enable ? THREE.DoubleSide : THREE.FrontSide
     for (const mat of this.wallMaterials.values()) {
       mat.shadowSide = wallShadowSide
-      this.bindSkipPointLightsOn(mat)
     }
     for (const mat of this.wallInteriorMaterials.values()) {
       mat.shadowSide = THREE.FrontSide
-      bindSkipPointShadows(mat)
     }
 
     for (const mesh of this.meshes.values()) {
       mesh.castShadow = true
+      mesh.receiveShadow = true
       this.syncWallMeshLightLayers(mesh)
+      if (enable) {
+        mesh.customDistanceMaterial = this.shadowDistanceMaterial
+      } else if (mesh.customDistanceMaterial === this.shadowDistanceMaterial) {
+        mesh.customDistanceMaterial = undefined
+      }
     }
     for (const tunnel of this.openingShadowTunnelMeshes.values()) {
       this.tagPointLightShadowOccluder(tunnel)
     }
     for (const mesh of this.revealMeshes) {
       mesh.castShadow = true
-      const sealed = mesh.userData.sealedNiche === true
-      this.bindSkipPointLightsOn(mesh.material, sealed)
-      this.bindSkipPointLightsOn(
-        mesh.userData.originalMaterial as THREE.Material | THREE.Material[] | undefined,
-        sealed,
-      )
+      if (enable) {
+        mesh.customDistanceMaterial = this.shadowDistanceMaterial
+      } else if (mesh.customDistanceMaterial === this.shadowDistanceMaterial) {
+        mesh.customDistanceMaterial = undefined
+      }
     }
     for (const mesh of this.innerSillMeshes) {
       mesh.castShadow = true
@@ -652,9 +637,11 @@ export class FacadeController {
     for (const list of exteriorLists) {
       for (const mesh of list) {
         mesh.castShadow = true
-        this.bindSkipPointLightsOn(mesh.material)
-        const original = mesh.userData.originalMaterial as THREE.Material | THREE.Material[] | undefined
-        this.bindSkipPointLightsOn(original)
+        if (enable) {
+          mesh.customDistanceMaterial = this.shadowDistanceMaterial
+        } else if (mesh.customDistanceMaterial === this.shadowDistanceMaterial) {
+          mesh.customDistanceMaterial = undefined
+        }
       }
     }
     const applyOpeningTree = (root: THREE.Object3D) => {
@@ -663,7 +650,11 @@ export class FacadeController {
         if (child.userData.role === 'guideRail') return
         if (!this.openingMeshCastsPointShadow(child)) return
         child.castShadow = true
-        this.bindSkipPointLightsOn(child.material)
+        if (enable) {
+          child.customDistanceMaterial = this.shadowDistanceMaterial
+        } else if (child.customDistanceMaterial === this.shadowDistanceMaterial) {
+          child.customDistanceMaterial = undefined
+        }
       })
     }
     for (const instance of this.windowInstances) applyOpeningTree(instance)
@@ -671,12 +662,36 @@ export class FacadeController {
     for (const instance of this.casingInstances) applyOpeningTree(instance)
     for (const group of this.rollerShutterGroups) {
       applyOpeningTree(group)
-      group.traverse((child) => {
-        if (child instanceof THREE.Mesh) this.bindSkipPointLightsOn(child.material)
-      })
     }
 
+    this.syncLabelShadowReceivers()
     if (!enable) this.applyIndoorShadowCasting()
+  }
+
+  /**
+   * Materialien mit altem `skipPointShadowsBound`-Shader neu erzeugen,
+   * damit Cube-Schatten wieder greifen (Hot-Reload / Alt-Session).
+   */
+  private refreshInteriorMaterialsAfterPointShadowFix(): void {
+    let dirty = false
+    for (const id of [...this.wallInteriorMaterials.keys()]) {
+      const mat = this.wallInteriorMaterials.get(id)
+      if (!mat?.userData.skipPointShadowsBound) continue
+      mat.dispose()
+      this.wallInteriorMaterials.delete(id)
+      dirty = true
+    }
+    if (dirty) {
+      for (const wall of getVisibleWalls(this.state)) {
+        this.syncWallBodyMeshes(wall)
+      }
+    }
+    const slabNeedsRebuild = this.indoorFloorGroup.children.some((child) => {
+      if (!(child instanceof THREE.Mesh)) return false
+      const mats = Array.isArray(child.material) ? child.material : [child.material]
+      return mats.some((mat) => mat instanceof THREE.Material && mat.userData.skipPointShadowsBound)
+    })
+    if (slabNeedsRebuild) this.rebuildIndoorFloor()
   }
 
   /**
@@ -1300,7 +1315,7 @@ export class FacadeController {
     }
   }
 
-  /** Decke/Boden: wie Innenwand — kein Gegenlicht-Shader, EnvMap-Fill, kein Punktlicht-Cube-Schatten. */
+  /** Decke/Boden: wie Innenwand — kein Gegenlicht-Shader, EnvMap-Fill. */
   private createIndoorSlabMaterial(hex: string): THREE.MeshStandardMaterial {
     const material = new THREE.MeshStandardMaterial({
       color: new THREE.Color(hex),
@@ -1311,7 +1326,6 @@ export class FacadeController {
     })
     material.userData.interiorWallSurface = true
     material.userData.skipFacadeShade = true
-    bindSkipPointShadows(material)
     const glassEnv = getGlassEnvironment()
     if (glassEnv) {
       material.envMap = glassEnv
@@ -2698,7 +2712,6 @@ export class FacadeController {
     interior.shadowSide = THREE.FrontSide
     interior.userData.interiorWallSurface = true
     interior.userData.skipFacadeShade = true
-    bindSkipPointShadows(interior)
     this.finishInteriorMaterial(interior)
 
     return isStudioWall(wall) ? [exterior, interior] : exterior
@@ -2806,7 +2819,6 @@ export class FacadeController {
         exteriorMaterial.shadowSide = THREE.FrontSide
         interiorMaterial.shadowSide = THREE.FrontSide
         interiorMaterial.userData.skipFacadeShade = true
-        bindSkipPointShadows(interiorMaterial)
         const materials =
           geometry.groups.length >= 2
             ? [exteriorMaterial, interiorMaterial]

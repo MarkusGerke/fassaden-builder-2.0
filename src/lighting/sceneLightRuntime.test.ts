@@ -4,7 +4,7 @@ import { SHADOW_LAYER_EXTERIOR, SHADOW_LAYER_INTERIOR, SHADOW_LAYER_OCCLUDER } f
 import { SceneLightRuntime } from './sceneLightRuntime'
 
 describe('sceneLightRuntime', () => {
-  it('Bibliotheks-Punktlicht nur auf Innen-Layer', () => {
+  it('Bibliotheks-Punktlicht auf Außen- und Innen-Layer', () => {
     const runtime = new SceneLightRuntime()
     runtime.sync(
       [
@@ -17,6 +17,7 @@ describe('sceneLightRuntime', () => {
           intensity: 12,
           enabled: true,
           showMarker: true,
+          castShadow: true,
         },
       ],
       { roomOcclusion: true },
@@ -26,7 +27,7 @@ describe('sceneLightRuntime', () => {
       | undefined
     expect(light).toBeDefined()
     expect(light!.layers.isEnabled(SHADOW_LAYER_INTERIOR)).toBe(true)
-    expect(light!.layers.isEnabled(SHADOW_LAYER_EXTERIOR)).toBe(false)
+    expect(light!.layers.isEnabled(SHADOW_LAYER_EXTERIOR)).toBe(true)
     expect(light!.shadow.camera.layers.isEnabled(SHADOW_LAYER_OCCLUDER)).toBe(true)
     const glow = light!.children.find((c) => (c as THREE.Sprite).isSprite)
     const solid = light!.children.find((c) => c.name === 'lightSolidMarker') as THREE.Mesh | undefined
@@ -50,6 +51,7 @@ describe('sceneLightRuntime', () => {
           intensity: 12,
           enabled: true,
           showMarker: true,
+          castShadow: true,
         },
       ],
       { roomOcclusion: true, bloomActive: true },
