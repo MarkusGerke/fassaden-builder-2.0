@@ -37,6 +37,7 @@ import {
 } from '../studio/taperedField'
 import { defaultOpeningStairs, syncStairsToDoorWidth } from '../studio/stairs'
 import { normalizeSceneLightState } from '../scene/sceneLights'
+import { normalizeGroundLeafState } from '../scene/groundLeaves'
 import { defaultOpeningRollerShutter, normalizeOpeningRollerShutter } from '../studio/rollerShutter'
 import { gruenderzeitConfigForOpening } from '../windows/gruenderzeit'
 import {
@@ -47,6 +48,7 @@ import {
 import { normalizeOpeningMotion } from './openingMotion'
 import { normalizeDaySchedule } from './daySchedule'
 import { normalizeStudioPanel, DEFAULT_STUDIO_PANEL } from '../studio/constants'
+import { clearPersistedCladdingZones, isTwoHorizontalBandCladding } from '../studio/facadeLayers'
 import { NEUTRAL_WALL_LABEL, nudgeWallLabelOffOpenings } from './wallLabel'
 import { normalizeWallTrimBand } from './trimBands'
 
@@ -277,12 +279,21 @@ export function hydrateOpening(
 
 /** Vervollständigt eine Wand inkl. Öffnungen. */
 export function hydrateWall(wall: Wall): Wall {
-  const cloned = cloneWall(wall)
+  let cloned = cloneWall(wall)
+  // Alt-Saves ohne kind → Studio (sonst isStudioWall false, Aufriss-Kamera ohne Wände).
+  if (cloned.kind !== 'module' && cloned.kind !== 'studio') {
+    cloned = { ...cloned, kind: 'studio' }
+  }
   const openings = cloned.openings.map((opening) => hydrateOpening(opening, cloned))
 
   let panel = cloned.panel
   if (isStudioKind(cloned)) {
     panel = normalizeStudioPanel(cloned.panel ?? DEFAULT_STUDIO_PANEL)
+  }
+
+  // UX v2.0.153: Zwei-Bänder-Verkleidung tot — persistierte Zonen verwerfen.
+  if (isTwoHorizontalBandCladding(cloned)) {
+    cloned = clearPersistedCladdingZones(cloned)
   }
 
   const cornice: WallCorniceConfig | undefined = cloned.cornice
@@ -325,6 +336,7 @@ export function hydrateWall(wall: Wall): Wall {
 
   return {
     ...cloned,
+    kind: cloned.kind,
     planLinked: cloned.planLinked !== false,
     panelFlip: cloned.panelFlip ?? true,
     originX: cloned.originX ?? cloned.x,
@@ -367,6 +379,7 @@ export function hydrateWall(wall: Wall): Wall {
 /** Hydriert alle Gebäude/Wände/Öffnungen eines FacadeState. */
 export function hydrateFacadeState(state: FacadeState): FacadeState {
   const lightState = normalizeSceneLightState(state)
+  const leafState = normalizeGroundLeafState(state)
   return {
     ...state,
     buildings: state.buildings.map((building) => ({
@@ -381,6 +394,7 @@ export function hydrateFacadeState(state: FacadeState): FacadeState {
     })),
     sceneLights: lightState.sceneLights,
     sceneLightGroups: lightState.sceneLightGroups,
+    groundLeaves: leafState.groundLeaves,
   }
 }
 

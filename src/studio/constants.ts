@@ -1,7 +1,6 @@
 import type {
   EndBossJoin,
   EndBossPattern,
-  StudioCornerJoin,
   StudioPanelConfig,
   StudioPanelKind,
   StudioPanelPattern,
@@ -112,14 +111,13 @@ export const PATTERN_LABELS: Record<StudioPanelPattern, string> = {
   runningBondDiagonal: 'Läuferverband (¼ versetzt, schräg)',
 }
 
-const CORNER_JOINS: StudioCornerJoin[] = ['none', 'miter', 'bond']
 
 export const DEFAULT_STUDIO_PANEL: StudioPanelConfig = {
   panelWidth: 32,
   panelHeight: 32,
   joint: 0.8,
   pattern: 'strip',
-  cornerJoin: 'miter',
+  cornerJoin: 'none',
   projectDepth: 4,
   taper: 1,
   jointDepth: 0.8,
@@ -235,9 +233,6 @@ function isPanelPattern(value: unknown): value is StudioPanelPattern {
   return typeof value === 'string' && PANEL_PATTERNS.includes(value as StudioPanelPattern)
 }
 
-function isCornerJoin(value: unknown): value is StudioCornerJoin {
-  return typeof value === 'string' && CORNER_JOINS.includes(value as StudioCornerJoin)
-}
 
 /** Alte Saves mit `unit` auf Breite/Höhe und Raster 8 cm bringen. */
 export function normalizeStudioPanel(
@@ -258,7 +253,8 @@ export function normalizeStudioPanel(
       ),
     ),
     pattern: isPanelPattern(raw?.pattern) ? raw.pattern : DEFAULT_STUDIO_PANEL.pattern,
-    cornerJoin: isCornerJoin(raw?.cornerJoin) ? raw.cornerJoin : DEFAULT_STUDIO_PANEL.cornerJoin,
+    // UX v2.0.153: Ecke-Dropdown tot — freie Enden immer stumpf (`none`); Andocken über Nachbar-Logik.
+    cornerJoin: 'none',
     projectDepth: Math.max(
       0,
       Math.min(
@@ -280,7 +276,8 @@ export function normalizeStudioPanel(
       DEFAULT_STUDIO_PANEL.taperDepth ?? 0,
     ),
     enabled: raw?.enabled !== false,
-    alternateFloors: raw?.alternateFloors === true,
+    // UX v2.0.153: Abwechselnde Ebenen entfernt.
+    alternateFloors: false,
     recessedProjectDepth: (() => {
       const legacy =
         raw?.recessedProjectDepth ??
@@ -340,7 +337,8 @@ export function normalizeStudioPanel(
     })(),
     plinthProfileFlipOutward: Boolean(raw?.plinthProfileFlipOutward),
     plinthProfileFlipForward: Boolean(raw?.plinthProfileFlipForward),
-    openingJoin: raw?.openingJoin === 'miter' ? 'miter' : 'flush',
+    // UX v2.0.153: Öffnungs-Gehrung entfernt — immer flush.
+    openingJoin: 'flush',
     endBossStart: normalizeEndBossPattern(raw?.endBossStart),
     endBossEnd: normalizeEndBossPattern(raw?.endBossEnd),
     endBossStartJoin: normalizeEndBossJoin(raw?.endBossStartJoin),

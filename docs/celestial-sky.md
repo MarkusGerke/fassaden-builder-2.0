@@ -12,6 +12,7 @@ Physikalischer Himmel in **3D** und **Oben** (Bruneton Precomputed Atmospheric S
 - **Szenenfarben**
   - **Bodenfarbe** (`#scene-ground-color`) färbt die Bodenplatte (Albedo). Licht folgt der Sonne wie beim Mauerwerk.
   - **Himmel/Hintergrund** steuern Glas-Reflexion bzw. `scene.background` (Fallback).
+- **Umgebung Neutral (v2.0.164):** Himmel aus; Schalen-Plattform mit Beige/Nacht — siehe [stage-environment.md](stage-environment.md).
 
 ## Technik
 

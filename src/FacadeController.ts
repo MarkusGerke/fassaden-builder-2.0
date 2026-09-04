@@ -43,6 +43,8 @@ import {
   openingHasRoundMask,
   openingMaskPolyline,
   openingMasonryRect,
+  openingForShellCut,
+  openingWallFaceMaskPolyline,
   openingGlazingArchEnabled,
   openingGlazingArchForm,
   openingShowsGlazing,
@@ -112,8 +114,7 @@ import {
 import { planFacesWithHoles } from './studio/floorPlan'
 import { notchSlabRingAtOpenings } from './studio/slabNotches'
 import { storeyFloorSurfaceY, storeyTopY } from './utils/layers'
-import { facadeOutward } from './studio/elevation'
-import { isStudioWall, leafOpenSignForWall, outerSillBoardPose, studioFacadeOutwardLocalZ, studioFacadeSelectionLocalZ, studioPanelFaceLocalZ, studioProfileAnchorLocalZ, studioWallOuterLocalZ, studioWallTransform, studioWindowOriginZ, wallAlongDelta, wallHasPanels, windowDepthForwardSign } from './studio/walls'
+import { isStudioWall, leafOpenSignForWall, outerSillBoardPose, studioFacadeOutwardLocalZ, studioFacadeSelectionLocalZ, studioPanelFaceLocalZ, studioProfileAnchorLocalZ, studioWallOuterLocalZ, studioWallTransform, studioWindowOriginZ, wallHasPanels, windowDepthForwardSign } from './studio/walls'
 import { buildMansardRoof } from './studio/roof'
 import {
   createWallLabelMeshSpec,
@@ -137,6 +138,25 @@ import {
 } from './utils/sunLighting'
 import { setSkipPointLights } from './lighting/skipPointLights'
 import { buildPointLightRoomOccluders } from './lighting/pointLightRoomOccluders'
+
+/**
+ * Tiefen-Reihenfolge der Fassadenschichten in Tiefenpuffer-Einheiten (`polygonOffsetUnits`).
+ * Stein-Front (+4 cm), Mörtel-Front (+0,8 cm), Stein-Rücken (0) und Wandschale (−0,15 cm) liegen
+ * geometrisch so dicht, dass sie ab ~40–60 m Kameraabstand innerhalb der Tiefenauflösung
+ * (24 Bit, near 1 cm) zusammenfallen → dunkle Mörtel-/Schalen-Streifen über den Steinen.
+ * Der Offset in ULPs ist distanzunabhängig: Steine gewinnen immer vor Mörtel, Mörtel vor der Schale.
+ * Basis-Material (Steine, Profile, …) = Factor 1 / Units 1.
+ */
+const DEPTH_LAYER_TILE_UNITS = 1
+const DEPTH_LAYER_MORTAR_UNITS = 4
+const DEPTH_LAYER_WALL_SHELL_UNITS = 8
+
+/** Nach `finish*`/`applyWorkModeSurfaceLook` aufrufen — die setzen Units auf 1 zurück. */
+function applyDepthLayerOffset(material: THREE.Material, units: number): void {
+  material.polygonOffset = true
+  material.polygonOffsetFactor = 1
+  material.polygonOffsetUnits = units
+}
 
 export class FacadeController {
   public readonly wallGroup: THREE.Group = new THREE.Group()
@@ -1288,15 +1308,9 @@ export class FacadeController {
   }
 
   private appendWallOpeningGuides(wall: Wall, guides: OpeningGuide[]) {
-    const yawDeg = wall.yawDeg ?? 0
-    const originX = wall.originX ?? wall.x
-    const originZ = wall.originZ ?? 0
-    const outward = facadeOutward(yawDeg, wall.panelFlip ?? true)
-    const offset = 2
+    const localZ = openingDragFloatLocalZ(wall)
     const padY = 2400
     const padX = 2400
-    const ox = outward.x * offset
-    const oz = outward.z * offset
 
     for (const guide of guides) {
       const material = isSelfGuide(guide)
@@ -1307,23 +1321,17 @@ export class FacadeController {
       let a: THREE.Vector3
       let b: THREE.Vector3
       if (guide.orientation === 'vertical') {
-        const along = wallAlongDelta(yawDeg, guide.value)
-        a = new THREE.Vector3(
-          originX + along.x + ox,
-          wall.y - padY,
-          originZ + along.z + oz,
-        )
-        b = new THREE.Vector3(
-          originX + along.x + ox,
-          wall.y + wall.height + padY,
-          originZ + along.z + oz,
-        )
+        const localX = guide.value - wall.width / 2
+        const wa = localToWorld(wall, localX, -padY - wall.height / 2, localZ)
+        const wb = localToWorld(wall, localX, wall.height / 2 + padY, localZ)
+        a = new THREE.Vector3(wa.x, wa.y, wa.z)
+        b = new THREE.Vector3(wb.x, wb.y, wb.z)
       } else {
-        const y = wall.y + guide.value
-        const along0 = wallAlongDelta(yawDeg, -padX)
-        const along1 = wallAlongDelta(yawDeg, wall.width + padX)
-        a = new THREE.Vector3(originX + along0.x + ox, y, originZ + along0.z + oz)
-        b = new THREE.Vector3(originX + along1.x + ox, y, originZ + along1.z + oz)
+        const localY = guide.value - wall.height / 2
+        const wa = localToWorld(wall, -padX - wall.width / 2, localY, localZ)
+        const wb = localToWorld(wall, wall.width / 2 + padX, localY, localZ)
+        a = new THREE.Vector3(wa.x, wa.y, wa.z)
+        b = new THREE.Vector3(wb.x, wb.y, wb.z)
       }
       const geom = new THREE.BufferGeometry().setFromPoints([a, b])
       const line = new THREE.Line(geom, material)
@@ -1334,13 +1342,7 @@ export class FacadeController {
   }
 
   private appendWallOpeningDistanceLines(wall: Wall, lines: OpeningDistanceLine[]) {
-    const yawDeg = wall.yawDeg ?? 0
-    const originX = wall.originX ?? wall.x
-    const originZ = wall.originZ ?? 0
-    const outward = facadeOutward(yawDeg, wall.panelFlip ?? true)
-    const offset = 2.5
-    const ox = outward.x * offset
-    const oz = outward.z * offset
+    const localZ = openingDragFloatLocalZ(wall)
     const capHalf = 6
 
     const addSegment = (a: THREE.Vector3, b: THREE.Vector3) => {
@@ -1351,29 +1353,30 @@ export class FacadeController {
       this.guideDistanceLines.push(line)
     }
 
-    const localToWorld = (localX: number, localY: number): THREE.Vector3 => {
-      const along = wallAlongDelta(yawDeg, localX)
-      return new THREE.Vector3(
-        originX + along.x + ox,
-        wall.y + localY,
-        originZ + along.z + oz,
+    const toWorld = (localX: number, localYFromBottom: number): THREE.Vector3 => {
+      const w = localToWorld(
+        wall,
+        localX - wall.width / 2,
+        localYFromBottom - wall.height / 2,
+        localZ,
       )
+      return new THREE.Vector3(w.x, w.y, w.z)
     }
 
     for (const dist of lines) {
-      const a = localToWorld(dist.fromX, dist.fromY)
-      const b = localToWorld(dist.toX, dist.toY)
+      const a = toWorld(dist.fromX, dist.fromY)
+      const b = toWorld(dist.toX, dist.toY)
       addSegment(a, b)
 
       const dx = dist.toX - dist.fromX
       const dy = dist.toY - dist.fromY
       const horizontal = Math.abs(dx) >= Math.abs(dy)
       if (horizontal) {
-        addSegment(localToWorld(dist.fromX, dist.fromY - capHalf), localToWorld(dist.fromX, dist.fromY + capHalf))
-        addSegment(localToWorld(dist.toX, dist.toY - capHalf), localToWorld(dist.toX, dist.toY + capHalf))
+        addSegment(toWorld(dist.fromX, dist.fromY - capHalf), toWorld(dist.fromX, dist.fromY + capHalf))
+        addSegment(toWorld(dist.toX, dist.toY - capHalf), toWorld(dist.toX, dist.toY + capHalf))
       } else {
-        addSegment(localToWorld(dist.fromX - capHalf, dist.fromY), localToWorld(dist.fromX + capHalf, dist.fromY))
-        addSegment(localToWorld(dist.toX - capHalf, dist.toY), localToWorld(dist.toX + capHalf, dist.toY))
+        addSegment(toWorld(dist.fromX - capHalf, dist.fromY), toWorld(dist.fromX + capHalf, dist.fromY))
+        addSegment(toWorld(dist.toX - capHalf, dist.toY), toWorld(dist.toX + capHalf, dist.toY))
       }
     }
   }
@@ -1877,6 +1880,11 @@ export class FacadeController {
         ? this.state.buildings.find((item) => item.id === buildingId)
         : undefined
       const floor = building && floorIndex !== undefined ? building.floors[floorIndex] : undefined
+      if (child.userData.kind === 'floor') {
+        // Fußboden bleibt sichtbar, solange die Etage nicht ausgeblendet ist.
+        child.visible = floor ? !floor.hidden : true
+        continue
+      }
       child.visible = floor ? floor.showCeiling !== false && !floor.hidden : true
     }
     this.applyPointLightOccluders()
@@ -2851,6 +2859,8 @@ export class FacadeController {
     exterior.side = THREE.FrontSide
     exterior.shadowSide = shadowSide
     this.finishExteriorMaterial(exterior)
+    // Schale liegt nur 0,15 cm hinter Steinrücken/Mörtel — Tiefenrang statt Geometrie-Abstand.
+    applyDepthLayerOffset(exterior, DEPTH_LAYER_WALL_SHELL_UNITS)
 
     let interior = this.wallInteriorMaterials.get(wall.id)
     if (!interior) {
@@ -3455,6 +3465,7 @@ export class FacadeController {
                 const material = createTintedMaterial(this.material, color, wall.claddingFinish)
                 if (this.isPreviewPresentation()) applyWorkModeSurfaceLook(material)
                 else this.finishExteriorMaterial(material)
+                applyDepthLayerOffset(material, DEPTH_LAYER_TILE_UNITS)
                 const mesh = new THREE.Mesh(geometry, material)
                 mesh.castShadow = true
                 mesh.userData.lodTier = 'low'
@@ -3484,6 +3495,7 @@ export class FacadeController {
                   )
                   if (this.isPreviewPresentation()) applyWorkModeSurfaceLook(mortarMaterial)
                   else this.finishMortarMaterial(mortarMaterial)
+                  applyDepthLayerOffset(mortarMaterial, DEPTH_LAYER_MORTAR_UNITS)
                   const mortarMesh = new THREE.Mesh(mortarGeometry, mortarMaterial)
                   mortarMesh.castShadow = true
                   mortarMesh.userData.lodTier = 'mortar'
@@ -3558,6 +3570,7 @@ export class FacadeController {
                 const color = palette[stageIndex] ?? claddingColor
                 const material = createTintedMaterial(this.material, color, wall.claddingFinish)
                 this.finishExteriorMaterial(material)
+                applyDepthLayerOffset(material, DEPTH_LAYER_TILE_UNITS)
                 const mesh = new THREE.Mesh(geometry, material)
                 mesh.castShadow = true
                 mesh.userData.lodTier = 'high'
@@ -3592,6 +3605,7 @@ export class FacadeController {
                     wall.claddingFinish ?? wall.wallFinish,
                   )
                   this.finishMortarMaterial(mortarMaterial)
+                  applyDepthLayerOffset(mortarMaterial, DEPTH_LAYER_MORTAR_UNITS)
                   const mortarMesh = new THREE.Mesh(mortarGeometry, mortarMaterial)
                   mortarMesh.castShadow = true
                   mortarMesh.userData.lodTier = 'mortar'
@@ -4388,8 +4402,27 @@ export class FacadeController {
         continue
       }
 
-      const local = openingLocalCenter(wall, opening)
-      addOverlay(wall, opening.width, opening.height, local.x, local.y, 4)
+      const shell = openingForShellCut(opening)
+      const mask = openingWallFaceMaskPolyline(shell, 0)
+      let left = shell.x
+      let right = shell.x + shell.width
+      let bottom = shell.y
+      let top = shell.y + shell.height
+      if (mask.length >= 2) {
+        left = Infinity
+        right = -Infinity
+        bottom = Infinity
+        top = -Infinity
+        for (const p of mask) {
+          left = Math.min(left, p.x)
+          right = Math.max(right, p.x)
+          bottom = Math.min(bottom, p.y)
+          top = Math.max(top, p.y)
+        }
+      }
+      const localX = (left + right) / 2 - wall.width / 2
+      const localY = (bottom + top) / 2 - wall.height / 2
+      addOverlay(wall, right - left, top - bottom, localX, localY, 4)
     }
 
     const selCeiling = this.editor.selectedCeiling
@@ -4466,7 +4499,7 @@ function createOpeningDragGhostParts(
 ): THREE.Object3D[] {
   const pts = isStudioWall(wall)
     ? openingDragGhostWallLocalPoints(wall, opening, localZ)
-    : openingMaskPolyline(opening, 0, ARCH_MESH_SEGMENTS).map((p) => ({
+    : openingWallFaceMaskPolyline(openingForShellCut(opening), 0).map((p) => ({
         x: p.x - wall.width / 2,
         y: p.y - wall.height / 2,
       }))

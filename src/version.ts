@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.152'
+export const APP_VERSION = '2.0.170'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,184 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.170',
+    date: '2026-09-04',
+    title: 'Flüssigere Navigation & Tag/Nacht + klassischer Loader',
+    changes: [
+      'Ladeanimation zeigt immer nur das klassische Haus vom Nikolaus (ein fester Pfad)',
+      'Orbit: leichte Schatten während der Geste, EnvMap erst danach — flüssigeres Navigieren',
+      'Sonnenuntergang/-aufgang und Lichter-Einblenden ohne Frame-für-Frame Shadow-/EnvMap-Bake und ohne Shader-Lichtanzahl-Wechsel',
+    ],
+  },
+  {
+    version: '2.0.169',
+    date: '2026-09-04',
+    title: 'Mehrere Lichter: Rechtsklick und Ebenen-Mehr',
+    changes: [
+      'Mehrfachauswahl (Shift/Ctrl) bleibt beim Rechtsklick erhalten — Ein-/Ausblenden, Duplizieren und Löschen gelten für alle gewählten Lichter',
+      'Rechtsklick auch im Ebenenbaum; Sektions-Mehr-Menü Lichter: Alle ein-/ausblenden und Alle löschen',
+    ],
+  },
+  {
+    version: '2.0.168',
+    date: '2026-09-04',
+    title: 'Herbstlaub mit Cursor-Wind',
+    changes: [
+      'Neuer Laub-Modus: Klick/Ziehen und „Boden streuen“ platzieren Herbstblätter (3 Formen, Herbstfarben)',
+      'Nach Verlassen des Modus reagiert das Laub auf Mausbewegung als Windzug — ohne Klicken',
+      'Laub bleibt im Projekt gespeichert (bis zu 800 Blätter)',
+    ],
+  },
+  {
+    version: '2.0.167',
+    date: '2026-09-04',
+    title: 'Nachtlicht bleibt sichtbar bei vielen Lampen',
+    changes: [
+      'Viele Punktlichter mit Schatten gleichzeitig (ab ~16) machten die Szene schwarz — wirkte wie „Lichter gehen nicht an“',
+      'Jetzt werfen nur die hellsten 12 Lichter Schatten; alle Lichter leuchten weiter',
+    ],
+  },
+  {
+    version: '2.0.166',
+    date: '2026-09-04',
+    title: 'Keine Zoom-Zacken mehr über dem Rundbogen',
+    changes: [
+      'Bogenkappe (Steine und Mörtel) als eine Frontfläche statt ~128 Trapez-Spalten — keine vertikalen Distanz-Artefakte mehr beim Rauszoomen',
+    ],
+  },
+  {
+    version: '2.0.165',
+    date: '2026-09-04',
+    title: 'Neutral-Bühne: Kugel durchsichtig, Boden mit Schatten',
+    changes: [
+      'Neutralmodus: flacher Boden bleibt sichtbar und größer als das Haus — wirft und empfängt Schatten',
+      'Volle Studio-Kugel nur von innen sichtbar (von außen hindurchschauen)',
+      'Haus-Fußboden bleibt sichtbar, wenn die Decke ausgeblendet wird',
+    ],
+  },
+  {
+    version: '2.0.164',
+    date: '2026-09-04',
+    title: 'Neutrale Studio-Bühne',
+    changes: [
+      'Neuer Umgebungsmodus Neutral: runde Schalen-Plattform (Innengrund einer Kugel) statt flacher Bodenplatte mit Himmel',
+      'Tagsüber helles Beige mit weichen Schatten, nachts wird die Umgebung nahezu schwarz — folgt der Tageszeit',
+      'Himmel-Modus unverändert (Bodenplatte, Sonne, Horizont); Umschalten in der Viewport-Leiste und unter Szene',
+    ],
+  },
+  {
+    version: '2.0.163',
+    date: '2026-09-04',
+    title: 'Licht-Modus deutlich flüssiger + Ladescreen',
+    changes: [
+      'Licht-Modus ein/aus mit Ladescreen — Shader werden im Hintergrund kompiliert, kein eingefrorenes Bild mehr',
+      'Im Licht-Modus 60 FPS statt 10: kein Mond-/Sonnenschatten (unsichtbar, aber teuer), kein Spiegelungs-Bake nach dem Orbit',
+      'Hinzufügen, Duplizieren, Löschen und Verschieben von Lichtern ohne Sekunden-Hänger (konstante Lichtanzahl im Shader)',
+      'Pixel-Ratio 1 und halbe Glas-Transmissionsauflösung im Licht-Modus — außerhalb unverändert',
+    ],
+  },
+  {
+    version: '2.0.162',
+    date: '2026-09-04',
+    title: 'Licht-Modus: Blaulicht blinkt weiter',
+    changes: [
+      'Im Licht-Modus läuft das Blaulicht-Blinken weiter (Tageszyklus aus, Animationen nicht pausiert)',
+    ],
+  },
+  {
+    version: '2.0.161',
+    date: '2026-09-04',
+    title: 'Licht-Modus: echte Nacht + alle Lichter an',
+    changes: [
+      '00:00 setzt jetzt auch Sonnenhöhe/Azimut — keine rote Tages-Sonne mehr am Himmel',
+      'Im Licht-Modus werden alle Punktlichter eingeschaltet (Ein/Aus-Stand bleibt beim Verlassen erhalten)',
+    ],
+  },
+  {
+    version: '2.0.160',
+    date: '2026-09-04',
+    title: 'Licht-Modus flüssig; Szene #555555',
+    changes: [
+      'Licht-Modus: automatisch 00:00, kein Tageszyklus — vorheriger Sonnenstand bleibt erhalten',
+      'Orbit, Zoom und Licht bearbeiten/verschieben ohne Cube-Shadow-Bakes (deutlich flüssiger)',
+      'Szene: Hintergrund, Untergrund und Himmel standardmäßig #555555',
+    ],
+  },
+  {
+    version: '2.0.159',
+    date: '2026-09-04',
+    title: 'Licht-Modus: alle Lichter mit Kreis',
+    changes: [
+      'Im Licht-Modus sind alle Lichter sichtbar — unabhängig von Tageszeit und Ein/Aus',
+      'Jedes Licht mit Kreismarke (Auswahl orange); nur Lichter anwählbar und verschiebbar',
+    ],
+  },
+  {
+    version: '2.0.158',
+    date: '2026-09-04',
+    title: 'Keine Streifen auf Mauerwerk beim Rauszoomen',
+    changes: [
+      'Mauerwerk/Paneele mit Fugen zerfielen ab ~40 m Kameraabstand in dunkle Streifen (Z-Fighting Mörtel ↔ Steine ↔ Wandschale)',
+      'Feste Tiefen-Reihenfolge Steine → Mörtel → Wandschale per polygonOffsetUnits — unabhängig vom Abstand',
+      'Debug-Instrumentierung aus v2.0.157 entfernt',
+    ],
+  },
+  {
+    version: '2.0.157',
+    date: '2026-09-04',
+    title: 'Aufriss-Skala: Freeze + Studio-kind Hydrate',
+    changes: [
+      '2D-Aufriss friert px/cm über Layoutwechsel ein (auch wenn der Viewport-Cache leer war)',
+      'Wände ohne kind werden beim Laden wieder als Studio erkannt — sonst sprang die Kamera auf ±200',
+    ],
+  },
+  {
+    version: '2.0.156',
+    date: '2026-09-04',
+    title: 'Auswahl ohne Skala-Sprung; Matrix; Öffnungs-Drag',
+    changes: [
+      '2D-Aufriss behält px/cm bei Auswahl (kein horizontales Skalieren)',
+      'Fassade (Paneel) = Wand: dieselben Bibliothek-Tabs und Einstellungen',
+      'Preset-Karten (Verbände, Profile, Formen, Fonts) nur noch in der Bibliothek',
+      'Öffnung verschieben: Orange, Hilfslinien und Loch auf derselben Kontur und Tiefe',
+      'Bitte hart neu laden, bis v2.0.156 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.155',
+    date: '2026-09-04',
+    title: 'Auswahl stabil: Kamera, Pick, Treppen-Presets',
+    changes: [
+      'Auswahl verschiebt die 2D-Kamera nicht mehr (Aufriss-Skala bleibt bei Bibliotheks-Layoutwechsel)',
+      'Fensterbank, Gesims, Sockel & Co. wieder zuverlässig in 3D/2D-Canvas anwählbar',
+      'Treppen-Bibliothek: „Keine“ zuerst, 1–8 Stufen, Formen (bündig / Überstand / Aufweitung)',
+      'Bitte hart neu laden, bis v2.0.155 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.154',
+    date: '2026-09-04',
+    title: 'Objekt-Matrix: Bibliothek & Einstellungen nach Auswahl',
+    changes: [
+      'Bibliothek-Tabs folgen Objekt und Teil-Fokus (Fenster ≠ Türen/Schrift; Treppe nur Treppenformen)',
+      'Teilobjekte: Sockel/Gesims/Bank/Verdachung/Treppe blenden fremde Reiter aus (kein Rollladen bei Treppe)',
+      'Neuer Bibliotheks-Tab Treppen mit Stufen-Presets',
+      'Bitte hart neu laden, bis v2.0.154 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.153',
+    date: '2026-09-04',
+    title: 'UX-Grundgesetz: Kontext-Bibliothek & Licht-Modus',
+    changes: [
+      'Bibliothek folgt der Auswahl (Fassade/Gesims/Zierband/Sockel/Schrift nur mit Wand; Profile/Verdachung mit Öffnung)',
+      'Balkone & Loggia zusammen; Tot: Öffnungsgehrung, abwechselnde Ebenen, zwei Bänder, Ecke-Dropdown',
+      'Licht-Modus neben Vorschau/Render: nur Lichter durch Wände, Kreismarken, Mehrfachwahl, Snap-Hilfen',
+      'Rechts: Fugen-Toggle, Ecken-Reiter; Paneele → Fassade',
+      'Bitte hart neu laden, bis v2.0.153 in der Titelleiste steht',
+    ],
+  },
   {
     version: '2.0.152',
     date: '2026-09-04',

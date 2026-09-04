@@ -18,7 +18,7 @@ Toolbar **Maße** (Auszug):
 
 | Steuerung | Verhalten |
 |---|---|
-| Breite / Höhe / Position | Modulverband: **Ziehen** rastet an Fuge (+ Wandmitte-Magnet ±8 cm), Magnet-Radius 7 cm — sonst frei; **Pfeile** Fuge / Steinmitte / Wandmitte. Bei Zwei-Bändern Modul der Zone an Öffnungsmitte-Y. Sonst 8-cm-Raster. Abstand zwischen Öffnungen 32 cm; kein Pflicht-Randabstand zur Wandkante |
+| Breite / Höhe / Position | Modulverband: **Ziehen** rastet an Fuge (+ Wandmitte-Magnet ±8 cm), Magnet-Radius 7 cm — sonst frei; **Pfeile** Fuge / Steinmitte / Wandmitte. Bei Zwei-Bändern Modul der Zone an Öffnungsmitte-Y. Sonst 8-cm-Raster. Abstand zwischen Öffnungen 32 cm; kein Pflicht-Randabstand zur Wandkante. **v2.0.156:** Ghost, orangefarbene Auswahl und Hilfslinien teilen dieselbe Maske (`openingForShellCut` + `openingWallFaceMaskPolyline`) und dieselbe Fassadentiefe (`OPENING_DRAG_FLOAT_CM` = 4 cm); Pick-Ebene = Overlay-Z. Dateien: `liveDrag.ts`, `openingGuides.ts`, `panelGeometry.ts`, `FacadeController.ts`, `main.ts` |
 | Fenstertiefe | UI **Frontlage (cm von Außenkante)** unter Maße; speichert `Opening.depthOffset` pro Öffnung (Gültigkeitsbereich). Fehlt → `Building.windowDepthOffset`. Standard 24 cm Laibung + Offset |
 | Öffnungsart | Fenster/Tür: durchgehend · Wandfläche (bündig) · Nische. Cutout: Durchbruch oder Nische (+ Tiefe). Konche: immer Kalotte, Tiefe steuerbar. **v2.0.123:** Nische lichtdicht — Shadow-Tunnel-Kappen. **v2.0.127 / v2.0.130:** Nischenwände EnvMap wie Innenwand, kein Selbstwurf. **v2.0.133:** Bei Nischentiefe **größer als Wanddicke** Tunnel bis hinter die Rückwand (keine Mittelkappe an der Innenkante); Nischen empfangen wieder Sonne-/Punktlicht-Schatten |
 | In Wand eingebettet | `revealFrame.enabled` → kein Wandloch, kein Rahmen/Glas; Bänke/Profile/Bogen/Verdachung bleiben. Nicht bei Cutouts |
@@ -88,6 +88,8 @@ Nur bei **genau einer** gewählten Tür (`#door-stairs-section`). Optionen nur w
 | Steigung / Auftritt | 8 cm | je Stufe |
 | Podesttiefe | 8 cm | oberste Ebene; hinten bis Tür/Innenwand |
 | Breite oben / Überstand / Aufweitung | 8 cm | |
+
+**Bibliothek (v2.0.155):** Tab Treppen — **Keine** zuerst, dann 1–8 Stufen; Gruppe **Form** (bündig / Überstand / Aufgeweitet / Überstand+Aufweitung). Rechts: Feinparameter.
 
 Oberste Hinterkante = Innenwand; tiefere Stufen = Außenkante. Aktive Treppe: Sockel, Wandkörper, Paneele und Mörtel clippen das Loch von y=0 bis über die Tür (`openingForShellCut`) — sonst bliebe Mauerwerk als Fläche unter der angehobenen Schwelle. Unteres Türprofil (`bottom`) wird nicht gezeichnet. Der Innenboden folgt der Schwelle (`storeyFloorSurfaceY`) und kerbt an der Tür sowie an Kellerfenstern, die die Platte berühren ([floor-plan.md](floor-plan.md)).
 

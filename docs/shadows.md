@@ -148,7 +148,7 @@ State-Änderung / Sonnen-Slider
 | `SHADOW_GROUND_Y` | −0,5 cm | Bodenebene der Projektion |
 | `SHADOW_GROUND_MAX_LENGTH` | 3200 cm | Cap der Boden-Schattenlänge (Texel) |
 
-**Boden-Schatten:** Außenboden bei `y = −0,5` cm, neue `PlaneGeometry`, `polygonOffset`. Defaults: Hintergrund, Untergrund und Klar-Glas-Himmel `#ffffff` (Szene-Farben; einzeln oder über „Alle drei“).
+**Boden-Schatten:** Außenboden bei `y = −0,5` cm, neue `PlaneGeometry`, `polygonOffset`. Defaults: Hintergrund, Untergrund und Klar-Glas-Himmel `#555555` (Szene-Farben; einzeln oder über „Alle drei“).
 
 Glas: dunkles Klarglas, CubeCamera-EnvMap der Szene von außerhalb. `transmission` Default 0 (Durchsicht), `castShadow: false`.
 

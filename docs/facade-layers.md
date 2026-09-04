@@ -131,6 +131,27 @@ Stil-Vorlagen / Stile kopieren-einfügen nehmen `claddingZones` mit dem Paneel-S
 | `FacadeSvgView`, Mörtel, Validierung | oft globales `wall.panel` | bewusst (UI/Optik); Layout 3D zonenbasiert |
 | Voussoir / Rustika / taperedField | **Rustika v2.0.78** (`archRustication.ts`); Hybrid MVP; taperedField optional | Rustika ok; Hybrid Fallback |
 
+## Tiefen-Reihenfolge der Schichten (v2.0.158)
+
+Die Schale A bleibt **immer** unter der Verkleidung B (`createStudioWallGeometry`: Außenfläche 0,15 cm nach innen versetzt, im oberen Freistreifen volle Tiefe). Geometrisch liegen dann in lokalem Z: Stein-Front (`projectDepth`, Default 4 cm) → Mörtel-Front (`jointDepth`, Default 0,8 cm) → Stein-Rücken (0) → Schale (−0,15 cm).
+
+Diese Abstände sind kleiner als die Tiefenpuffer-Auflösung ab ~40–60 m Kameraabstand (perspektivisch, 24 Bit, near 1 cm: Δz ≈ z²·6·10⁻⁸ cm → bei 60 m ≈ 2 cm). Ohne Gegenmaßnahme gewinnen zufällig Mörtel oder Schale gegen die Steine → dunkle Streifen beim Rauszoomen („fragmentierte Oberfläche“).
+
+**Lösung:** distanzunabhängiger Tiefenrang über `polygonOffsetUnits` (in `FacadeController.ts`):
+
+| Schicht | Material | `polygonOffsetUnits` |
+|---|---|---|
+| Steine / Basis-Material | `DEPTH_LAYER_TILE_UNITS` | 1 |
+| Mörtel (Low- und High-LOD) | `DEPTH_LAYER_MORTAR_UNITS` | 4 |
+| Wandschale außen (`syncWallBodyMaterials`) | `DEPTH_LAYER_WALL_SHELL_UNITS` | 8 |
+
+Fallstricke:
+
+- `applyDepthLayerOffset` **nach** `finishExteriorMaterial` / `finishMortarMaterial` / `applyWorkModeSurfaceLook` aufrufen — die setzen Factor/Units auf 1/1 zurück.
+- Kein `logarithmicDepthBuffer`: schreibt `gl_FragDepth` und hebelt sämtliche `polygonOffset`-Regeln aus (Laibung −1, Profile, Schrift).
+- Der Flat-Pfad (Vorschau) ist nicht betroffen: Fugen und Steine sind dort disjunkte Polygone auf einer Ebene.
+- Zuvor beobachtbar: v2.0.156-Screenshots mit Streifen nur auf Wänden mit `joint > 0` und `jointDepth > 0`.
+
 ## Was bewusst nicht „eine Formel“ ist
 
 - Beliebige Profilquerschnitte auf jedem Clip-Rest am Bogen

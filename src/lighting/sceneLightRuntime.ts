@@ -2,12 +2,15 @@ import * as THREE from 'three'
 import type { SceneLight } from '../scene/sceneLights'
 import {
   createLightBloomCore,
+  createLightEditRing,
   createLightGlowSprite,
   createLightSolidMarker,
   disposeLightBloomCore,
+  disposeLightEditRing,
   disposeLightGlowSprite,
   disposeLightSolidMarker,
   updateLightBloomCore,
+  updateLightEditRing,
   updateLightGlowSprite,
   updateLightSolidMarker,
 } from './lightGlowMarker'
@@ -55,6 +58,8 @@ interface LightEntry {
   marker: THREE.Sprite
   bloomCore: THREE.Mesh
   solidMarker: THREE.Mesh
+  /** Licht-Modus: Kreismarke um jedes Licht, unabhängig von Tag/Nacht. */
+  editRing: THREE.Sprite
   pick: THREE.Mesh
   beamMode: SceneLightBeamMode
   /** Basisleistung (Watt) vor Animations-Multiplikator. */
@@ -75,7 +80,23 @@ interface LightEntry {
   showMarker: boolean
   bloomActive: boolean
   roomOcclusion: boolean
+  /** Licht-Modus: Lichter bleiben im Shader gezählt (visible, Intensität 0) — kein Rebuild bei Blink/aus. */
+  keepCounted: boolean
 }
+
+/**
+ * Padding-Schrittweite für die stabile Lichtanzahl im Licht-Modus. Three.js kompiliert bei jeder
+ * neuen Anzahl sichtbarer Punkt-/Spotlichter **alle** Programme neu (~3–4 s bei ~90 Programmen).
+ * Reserve-Lichter mit Intensität 0 halten die Anzahl konstant; erst nach 4 Hinzufügungen ein Rebuild.
+ */
+export const STABLE_LIGHT_COUNT_STEP = 4
+
+/**
+ * Max. gleichzeitige Punkt-/Spot-Shadow-Maps (Cube oder 2D).
+ * Ab ~16 Shadow-Casters (WebGL-Texture-Units) wird die Szene schwarz — nachts mit vielen
+ * „Lichter an“ wirkte das wie „Lichter gehen nicht“. Unter dem Limit bleiben, stärkste zuerst.
+ */
+export const MAX_SCENE_LIGHT_SHADOWS = 12
 
 export interface SceneLightRuntimeSyncOptions {
   selectedId?: string
@@ -92,12 +113,18 @@ export interface SceneLightRuntimeSyncOptions {
   pointShadowRadiusScale?: number
   /** Cube-Shadow-Map-Kantenlänge; Front oft höher. */
   pointShadowMapSize?: number
-  /** Globale Anzeige der Editor-Kugeln (Bibliothek → Licht). */
+  /** Licht-Modus: Kreismarken um alle Lichter (auch aus / tagsüber). */
   showMarkers?: boolean
   /** Bloom aktiv — HDR-Kern für Glühbirnen-Effekt. */
   bloomActive?: boolean
   /** Zeitstempel für Blink-Animationen (ms). */
   timeMs?: number
+  /**
+   * Licht-Modus: Anzahl sichtbarer Punkt-/Spotlichter konstant halten (Reserve-Lichter mit
+   * Intensität 0, inaktive Lichter bleiben `visible`). Hinzufügen/Löschen/Blinken löst dann keine
+   * Shader-Neukompilierung aus. Ohne Option werden Reserven ausgeblendet.
+   */
+  stableLightCount?: boolean
 }
 
 function configureShadowLayers(light: THREE.Light): void {
@@ -148,6 +175,12 @@ function createSpotLight(color: THREE.Color, direction: 'down' | 'up'): THREE.Sp
 export class SceneLightRuntime {
   readonly root = new THREE.Group()
   private readonly entries = new Map<string, LightEntry>()
+  /** Reserve-Lichter (Intensität 0) für die stabile Lichtanzahl im Licht-Modus. */
+  private readonly sparePoints: THREE.PointLight[] = []
+  private readonly spareSpots: THREE.SpotLight[] = []
+  /** Ziel-Anzahl gezählter Lichter; wächst nur (Hysterese), Reset beim Verlassen des Modus. */
+  private stablePointTarget = 0
+  private stableSpotTarget = 0
 
   constructor() {
     this.root.name = 'sceneLightRuntime'
@@ -172,6 +205,100 @@ export class SceneLightRuntime {
       entry.phaseOffsetMs = phaseById.get(spec.id) ?? 0
       this.applySpec(entry, spec, options)
     }
+    this.enforceShadowBudget()
+    this.syncSpareLights(options.stableLightCount === true)
+  }
+
+  /**
+   * Nur die hellsten N Shadow-Casters behalten — sonst Texture-Unit-Overflow → schwarze Szene.
+   * Beleuchtung selbst bleibt an (nur `castShadow` aus für den Rest).
+   */
+  private enforceShadowBudget(maxShadows = MAX_SCENE_LIGHT_SHADOWS): void {
+    const casters: { light: THREE.Light; score: number }[] = []
+    for (const entry of this.entries.values()) {
+      if (entry.point.castShadow) {
+        casters.push({ light: entry.point, score: entry.point.intensity })
+      }
+      if (entry.spotDown.castShadow) {
+        casters.push({ light: entry.spotDown, score: entry.spotDown.intensity })
+      }
+      if (entry.spotUp.castShadow) {
+        casters.push({ light: entry.spotUp, score: entry.spotUp.intensity })
+      }
+    }
+    if (casters.length <= maxShadows) return
+    casters.sort((a, b) => b.score - a.score)
+    for (let i = maxShadows; i < casters.length; i += 1) {
+      casters[i]!.light.castShadow = false
+    }
+  }
+
+  /** Anzahl aktuell im Shader gezählter (sichtbarer) Punkt-/Spotlichter inkl. Reserven. */
+  countedLights(): { points: number; spots: number } {
+    let points = 0
+    let spots = 0
+    for (const entry of this.entries.values()) {
+      if (entry.point.visible) points += 1
+      if (entry.spotDown.visible) spots += 1
+      if (entry.spotUp.visible) spots += 1
+    }
+    for (const spare of this.sparePoints) if (spare.visible) points += 1
+    for (const spare of this.spareSpots) if (spare.visible) spots += 1
+    return { points, spots }
+  }
+
+  /**
+   * Reserve-Lichter so setzen, dass die gezählte Anzahl auf ein Vielfaches von
+   * `STABLE_LIGHT_COUNT_STEP` (mit mindestens einer freien Reserve) aufgefüllt ist.
+   */
+  private syncSpareLights(stable: boolean): void {
+    if (!stable) {
+      this.stablePointTarget = 0
+      this.stableSpotTarget = 0
+      for (const spare of this.sparePoints) spare.visible = false
+      for (const spare of this.spareSpots) spare.visible = false
+      return
+    }
+    let points = 0
+    let spots = 0
+    for (const entry of this.entries.values()) {
+      if (entry.point.visible) points += 1
+      if (entry.spotDown.visible) spots += 1
+      if (entry.spotUp.visible) spots += 1
+    }
+    const step = STABLE_LIGHT_COUNT_STEP
+    const roundUp = (n: number) => Math.ceil((n + 1) / step) * step
+    this.stablePointTarget = Math.max(this.stablePointTarget, roundUp(points))
+    this.stableSpotTarget = Math.max(this.stableSpotTarget, roundUp(spots))
+
+    const needPoints = Math.max(0, this.stablePointTarget - points)
+    while (this.sparePoints.length < needPoints) {
+      const spare = new THREE.PointLight(0xffffff, 0, 1, 2)
+      spare.name = 'sceneLightSparePoint'
+      spare.castShadow = false
+      spare.userData.kind = 'sceneLightSpare'
+      this.root.add(spare)
+      this.sparePoints.push(spare)
+    }
+    this.sparePoints.forEach((spare, index) => {
+      spare.visible = index < needPoints
+      spare.intensity = 0
+    })
+
+    const needSpots = Math.max(0, this.stableSpotTarget - spots)
+    while (this.spareSpots.length < needSpots) {
+      const spare = new THREE.SpotLight(0xffffff, 0, 1, 0.1, 0, 2)
+      spare.name = 'sceneLightSpareSpot'
+      spare.castShadow = false
+      spare.userData.kind = 'sceneLightSpare'
+      spare.target.position.set(0, -1, 0)
+      this.root.add(spare, spare.target)
+      this.spareSpots.push(spare)
+    }
+    this.spareSpots.forEach((spare, index) => {
+      spare.visible = index < needSpots
+      spare.intensity = 0
+    })
   }
 
   pickObject(object: THREE.Object3D): string | undefined {
@@ -186,6 +313,18 @@ export class SceneLightRuntime {
 
   dispose(): void {
     for (const id of [...this.entries.keys()]) this.disposeEntry(id)
+    for (const spare of this.sparePoints) {
+      this.root.remove(spare)
+      spare.dispose()
+    }
+    for (const spare of this.spareSpots) {
+      this.root.remove(spare, spare.target)
+      spare.dispose()
+    }
+    this.sparePoints.length = 0
+    this.spareSpots.length = 0
+    this.stablePointTarget = 0
+    this.stableSpotTarget = 0
   }
 
   /** Geometrie-/Sonnen-Bake: alle Bibliotheks-Licht-Shadows neu. */
@@ -211,7 +350,18 @@ export class SceneLightRuntime {
     const bloomCore = createLightBloomCore()
     enableBloomLayer(bloomCore)
     const solidMarker = createLightSolidMarker()
-    root.add(point, spotDown, spotDown.target, spotUp, spotUp.target, marker, bloomCore, solidMarker)
+    const editRing = createLightEditRing(MARKER_RADIUS_CM * 2.4)
+    root.add(
+      point,
+      spotDown,
+      spotDown.target,
+      spotUp,
+      spotUp.target,
+      marker,
+      bloomCore,
+      solidMarker,
+      editRing,
+    )
 
     const pick = new THREE.Mesh(
       new THREE.SphereGeometry(PICK_RADIUS_CM, 12, 8),
@@ -227,6 +377,7 @@ export class SceneLightRuntime {
       marker,
       bloomCore,
       solidMarker,
+      editRing,
       pick,
       beamMode: 'omni',
       baseWatts: 0,
@@ -243,6 +394,7 @@ export class SceneLightRuntime {
       showMarker: true,
       bloomActive: false,
       roomOcclusion: false,
+      keepCounted: false,
     }
   }
 
@@ -287,6 +439,16 @@ export class SceneLightRuntime {
     return any
   }
 
+  /** Sofort auf enabled-Ziel springen (Licht-Modus mit pausierten Animationen). */
+  snapFadesToEnabled(timeMs = performance.now()): void {
+    for (const entry of this.entries.values()) {
+      const target = entry.enabled ? 1 : 0
+      if (Math.abs(entry.fadeFactor - target) < 1e-4) continue
+      entry.fadeFactor = target
+      this.applyAnimatedIntensity(entry, timeMs)
+    }
+  }
+
   private litFactor(entry: LightEntry, timeMs: number): number {
     const anim = sceneLightAnimationFactor(entry.animation, timeMs, entry.phaseOffsetMs)
     return entry.fadeFactor * anim
@@ -300,44 +462,109 @@ export class SceneLightRuntime {
     const split = entry.beamMode === 'upDown' ? 0.5 : 1
     const inten = wattsToThreeIntensity(entry.baseWatts) * factor
     const active = factor > 0.001
-    entry.point.visible = usePoint && active
-    entry.spotDown.visible = useDown && active
-    entry.spotUp.visible = useUp && active
+    // Licht-Modus: inaktive Lichter bleiben sichtbar (Intensität 0) — Blinken ändert die
+    // Lichtanzahl im Shader nicht, sonst Programmwechsel für alle Materialien pro Blitz.
+    const counted = active || entry.keepCounted
+    entry.point.visible = usePoint && counted
+    entry.spotDown.visible = useDown && counted
+    entry.spotUp.visible = useUp && counted
     entry.point.intensity = usePoint ? inten : 0
     entry.spotDown.intensity = useDown ? inten * split : 0
     entry.spotUp.intensity = useUp ? inten * split : 0
 
-    const markerOn =
-      entry.markersGloballyOn && entry.showMarker && entry.markerRadiusCm > 0 && active
-    const markerDiameter = markerOn ? entry.markerRadiusCm * 2 : 0
-    const glowBrightness = markerGlowBrightness(entry.baseWatts * factor, entry.selected)
+    this.syncEditorMarkers(entry, {
+      active,
+      factor,
+      watts: entry.baseWatts * factor,
+      selected: entry.selected,
+      colorHex: entry.colorHex,
+      markerRadiusCm: entry.markerRadiusCm,
+      markersGloballyOn: entry.markersGloballyOn,
+      showMarker: entry.showMarker,
+      roomOcclusion: entry.roomOcclusion,
+      bloomActive: entry.bloomActive,
+    })
+  }
+
+  /**
+   * Licht-Modus (`markersGloballyOn`): Kreismarke + sichtbare Position für **alle** Lichter,
+   * unabhängig von Tag/Nacht / Fade / Blink. Glühen/Bloom nur wenn das Licht wirklich leuchtet.
+   */
+  private syncEditorMarkers(
+    entry: LightEntry,
+    opts: {
+      active: boolean
+      factor: number
+      watts: number
+      selected: boolean
+      colorHex: string
+      markerRadiusCm: number
+      markersGloballyOn: boolean
+      showMarker: boolean
+      roomOcclusion: boolean
+      bloomActive: boolean
+    },
+  ): void {
+    const editOn =
+      opts.markersGloballyOn && opts.showMarker && opts.markerRadiusCm > 0
+    const litMarkerOn = editOn && opts.active
+    const markerDiameter = litMarkerOn ? opts.markerRadiusCm * 2 : 0
+    const glowBrightness = markerGlowBrightness(opts.watts, opts.selected)
+
+    // Editor-Kreis: immer im Licht-Modus, auch tagsüber wenn das Licht aus ist.
+    updateLightEditRing(
+      entry.editRing,
+      opts.colorHex,
+      editOn ? opts.markerRadiusCm * 2.4 : 0,
+      opts.selected,
+    )
+    entry.editRing.userData.sceneLightId = entry.root.userData.sceneLightId
+
+    // Kleine Positions-Kugel im Licht-Modus immer sichtbar (auch ohne Beleuchtung).
+    updateLightSolidMarker(
+      entry.solidMarker,
+      opts.colorHex,
+      editOn || (opts.roomOcclusion && litMarkerOn && opts.factor > BLAULICHT_VISIBLE_MARKER_FACTOR),
+      opts.selected,
+    )
+    if (editOn && !opts.active) {
+      // Ausgeschaltetes Licht: gedimmte Kugel, Ring bleibt die Hauptmarke.
+      entry.solidMarker.scale.setScalar(opts.selected ? 10 : 6)
+      const mat = entry.solidMarker.material as THREE.MeshBasicMaterial
+      mat.color.set(opts.selected ? '#ff8800' : opts.colorHex)
+      mat.color.multiplyScalar(0.55)
+    }
+
     updateLightGlowSprite(
       entry.marker,
-      entry.colorHex,
-      entry.roomOcclusion ? 0 : markerDiameter,
+      opts.colorHex,
+      opts.roomOcclusion ? 0 : markerDiameter,
       glowBrightness,
     )
-    const bloomCoreDiameter = entry.roomOcclusion
-      ? markerOn
-        ? Math.max(8, entry.markerRadiusCm * 0.55)
+    const bloomCoreDiameter = opts.roomOcclusion
+      ? litMarkerOn
+        ? Math.max(8, opts.markerRadiusCm * 0.55)
         : 0
       : markerDiameter
     const bloomCoreVisible =
-      entry.markersGloballyOn && entry.showMarker && active && bloomCoreDiameter > 0
+      opts.markersGloballyOn &&
+      opts.showMarker &&
+      opts.active &&
+      bloomCoreDiameter > 0 &&
+      opts.factor > BLAULICHT_VISIBLE_MARKER_FACTOR
     updateLightBloomCore(
       entry.bloomCore,
-      entry.colorHex,
+      opts.colorHex,
       bloomCoreDiameter,
-      entry.baseWatts * factor,
-      entry.bloomActive,
-      bloomCoreVisible && factor > BLAULICHT_VISIBLE_MARKER_FACTOR,
+      opts.watts,
+      opts.bloomActive,
+      bloomCoreVisible,
     )
-    updateLightSolidMarker(
-      entry.solidMarker,
-      entry.colorHex,
-      entry.roomOcclusion && markerOn && factor > BLAULICHT_VISIBLE_MARKER_FACTOR,
-      entry.selected,
-    )
+
+    const pickScale =
+      (editOn ? Math.max(opts.markerRadiusCm * 1.6, 48) : 48) / PICK_RADIUS_CM
+    entry.pick.scale.setScalar(opts.selected ? pickScale * 1.15 : pickScale)
+    entry.pick.visible = true
   }
 
   private applySpec(entry: LightEntry, spec: SceneLight, options: SceneLightRuntimeSyncOptions): void {
@@ -360,6 +587,9 @@ export class SceneLightRuntime {
     entry.spotDown.userData.sceneLightId = spec.id
     entry.spotUp.userData.sceneLightId = spec.id
     entry.marker.userData.sceneLightId = spec.id
+    entry.bloomCore.userData.sceneLightId = spec.id
+    entry.solidMarker.userData.sceneLightId = spec.id
+    entry.editRing.userData.sceneLightId = spec.id
     entry.pick.userData.sceneLightId = spec.id
 
     const moved =
@@ -377,8 +607,7 @@ export class SceneLightRuntime {
     const inten = wattsToThreeIntensity(spec.intensity) * litFactor
     const distance = spec.distance ?? 0
     const decay = spec.decay ?? 2
-    const cast =
-      active && spec.castShadow !== false && options.roomOcclusion !== false
+    const cast = entry.enabled && spec.castShadow !== false && options.roomOcclusion !== false
     const mapSize = options.pointShadowMapSize ?? POINT_SHADOW_MAP
     const shadowFar =
       distance > 0
@@ -397,9 +626,11 @@ export class SceneLightRuntime {
     const useDown = beamMode === 'down' || beamMode === 'upDown'
     const useUp = beamMode === 'up' || beamMode === 'upDown'
 
-    entry.point.visible = usePoint && active
-    entry.spotDown.visible = useDown && active
-    entry.spotUp.visible = useUp && active
+    entry.keepCounted = options.stableLightCount === true
+    const counted = active || entry.keepCounted
+    entry.point.visible = usePoint && counted
+    entry.spotDown.visible = useDown && counted
+    entry.spotUp.visible = useUp && counted
 
     this.syncPoint(entry.point, {
       color,
@@ -451,39 +682,18 @@ export class SceneLightRuntime {
     entry.bloomActive = options.bloomActive === true
     entry.roomOcclusion = options.roomOcclusion === true
 
-    const glowBrightness = markerGlowBrightness(spec.intensity * litFactor, selected)
-    const markerOn = markerRadius > 0 && active
-    const markerDiameter = markerOn ? markerRadius * 2 : 0
-    const roomOcclusion = entry.roomOcclusion
-    updateLightGlowSprite(entry.marker, spec.color, roomOcclusion ? 0 : markerDiameter, glowBrightness)
-    const bloomCoreDiameter = roomOcclusion
-      ? markerOn
-        ? Math.max(8, markerRadius * 0.55)
-        : 0
-      : markerDiameter
-    const bloomCoreVisible =
-      markersGloballyOn &&
-      spec.showMarker !== false &&
-      active &&
-      bloomCoreDiameter > 0 &&
-      litFactor > BLAULICHT_VISIBLE_MARKER_FACTOR
-    updateLightBloomCore(
-      entry.bloomCore,
-      spec.color,
-      bloomCoreDiameter,
-      spec.intensity * litFactor,
-      options.bloomActive === true,
-      bloomCoreVisible,
-    )
-    updateLightSolidMarker(
-      entry.solidMarker,
-      spec.color,
-      roomOcclusion && markerOn && litFactor > BLAULICHT_VISIBLE_MARKER_FACTOR,
+    this.syncEditorMarkers(entry, {
+      active,
+      factor: litFactor,
+      watts: spec.intensity * litFactor,
       selected,
-    )
-    const pickScale = (markerRadius > 0 ? Math.max(markerRadius * 1.6, 48) : 48) / PICK_RADIUS_CM
-    entry.pick.scale.setScalar(selected ? pickScale * 1.15 : pickScale)
-    entry.pick.visible = true
+      colorHex: spec.color,
+      markerRadiusCm: markerRadius,
+      markersGloballyOn,
+      showMarker: spec.showMarker !== false,
+      roomOcclusion: entry.roomOcclusion,
+      bloomActive: options.bloomActive === true,
+    })
   }
 
   private syncPoint(
@@ -581,6 +791,7 @@ export class SceneLightRuntime {
     disposeLightGlowSprite(entry.marker)
     disposeLightBloomCore(entry.bloomCore)
     disposeLightSolidMarker(entry.solidMarker)
+    disposeLightEditRing(entry.editRing)
     entry.pick.geometry.dispose()
     ;(entry.pick.material as THREE.Material).dispose()
     entry.point.dispose()

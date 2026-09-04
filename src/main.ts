@@ -251,6 +251,7 @@ import {
   scheduleFacadeHashWrite,
   isOwnLiveFacadeHash,
 } from './utils/share'
+import { openingDragFloatLocalZ, wallLocalToWorld } from './utils/liveDrag'
 import { facadeHasNeedsReview } from './utils/schemaMigrations'
 import {
   buildLayerOrder,
@@ -556,8 +557,30 @@ import {
   presentationUsesWorkLikeShading,
   type PresentationMode,
 } from './lighting/editPresentation'
+import {
+  createStudioSphereGeometry,
+  isStudioStage,
+  loadStageEnvironment,
+  saveStageEnvironment,
+  studioEnvironmentHex,
+  studioFlatFloorSize,
+  studioSphereRadius,
+  STUDIO_AMBIENT_BOOST,
+  STUDIO_KEY_INTENSITY_SCALE,
+  STUDIO_MIN_SHADOW_SOFTNESS,
+  type StageEnvironment,
+} from './lighting/studioStage'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
 import { SceneLightRuntime, POINT_SHADOW_MAP_FRONT } from './lighting/sceneLightRuntime'
+import { LeafRuntime, type LeafWindSample } from './scene/leafRuntime'
+import {
+  appendGroundLeaves,
+  clearGroundLeaves,
+  createLeafClump,
+  createLeafScatter,
+  normalizeGroundLeaves,
+  MAX_GROUND_LEAVES,
+} from './scene/groundLeaves'
 import { normalizePowerWatts } from './lighting/sceneLightUnits'
 import {
   addLightsToSceneLightGroup,
@@ -660,6 +683,23 @@ let orbitLitePointer = false
  * sonst ändert sich das Glühen sichtbar (Retina 2× → 1×).
  */
 let bloomKeepFullPixelRatioDuringOrbit = false
+/**
+ * UX v2.0.153: nur Lichter anwählbar; Marker + Hilfslinien.
+ * Früh deklariert: `applyRendererPixelRatio()` liest den Wert beim Modul-Start.
+ */
+let lightEditMode = false
+/** Session: Laub auf dem Boden platzieren (Klick/Zug); Wind wirkt auch danach. */
+let leafEditMode = false
+/** Laub streuen während Pointer gezogen wird. */
+let leafPaintActive = false
+let leafPaintLastX = 0
+let leafPaintLastZ = 0
+/** Cursor-Wind (siteOffset-Lokal). */
+let leafWind: LeafWindSample = { x: 0, z: 0, vx: 0, vz: 0, active: false }
+let leafWindLastX = 0
+let leafWindLastZ = 0
+let leafWindLastMs = 0
+let leafPersistTimer = 0
 
 /** Früher adaptives PCSS-Lite — bleibt als Stub für Aufrufe im Animate-Loop. */
 function orbitProbeReset() {}
@@ -667,9 +707,16 @@ function orbitProbeFrame(_now: number) {
   void _now
 }
 
+/** Licht-Modus: Transmission-Pass (physisches Glas) mit halber Auflösung — viertelt dessen Kosten. */
+const LIGHT_EDIT_TRANSMISSION_SCALE = 0.5
+
 function applyRendererPixelRatio() {
-  const cap = orbitLite && !bloomKeepFullPixelRatioDuringOrbit ? 1 : MAX_PIXEL_RATIO
+  // Licht-Modus: Pixel-Ratio 1 wie Orbit-Lite. Die Fragment-Kosten skalieren mit Lichtanzahl ×
+  // Pixelzahl (Glas-Transmission rendert die Szene zweimal); 1,5² = 2,25× weniger Fragmente.
+  const cap =
+    lightEditMode || (orbitLite && !bloomKeepFullPixelRatioDuringOrbit) ? 1 : MAX_PIXEL_RATIO
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, cap))
+  renderer.transmissionResolutionScale = lightEditMode ? LIGHT_EDIT_TRANSMISSION_SCALE : 1
   // Composer erst nach Init vorhanden; danach Ratio immer mitsynchronisieren (sonst Bloom-Pfad weich/pixelig).
   syncComposerPixelRatio?.()
 }
@@ -735,6 +782,16 @@ camera.layers.enable(SHADOW_LAYER_EXTERIOR)
 camera.layers.enable(SHADOW_LAYER_INTERIOR)
 camera.layers.enable(BLOOM_LAYER)
 
+// Dev-Hook für Performance-Diagnose in der Konsole (nur Vite-Dev, nicht im Build).
+if (import.meta.env.DEV) {
+  ;(window as unknown as { __fbDebug?: Record<string, unknown> }).__fbDebug = {
+    renderer,
+    scene,
+    camera,
+    THREE,
+  }
+}
+
 const frontCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 3000)
 frontCamera.layers.enable(SHADOW_LAYER_EXTERIOR)
 frontCamera.layers.enable(SHADOW_LAYER_INTERIOR)
@@ -754,6 +811,10 @@ controls.minPolarAngle = 0
 controls.maxPolarAngle = Math.PI
 controls.target.set(192, 224, 0)
 controls.mouseButtons.RIGHT = THREE.MOUSE.PAN
+if (import.meta.env.DEV) {
+  const dbg = (window as unknown as { __fbDebug?: Record<string, unknown> }).__fbDebug
+  if (dbg) dbg.controls = controls
+}
 /** ⌘/Ctrl kann auf macOS beim Pointerdown fehlen — keydown/keyup als Fallback. */
 let modKeyHeld = false
 /** Numpad-/Zifferntaste 1–9 gehalten → Nudge-Schritt = 8·n cm (sonst 8). */
@@ -794,8 +855,8 @@ function setOrbitLite(active: boolean) {
     if (!orbitLite) {
       orbitLite = true
       orbitProbeReset()
-      // Weicher PCSS bleibt auch während der Geste (kein 1-Tap-Hartschatten).
-      setPcssLiteMode(false)
+      // Navigation: 1-Tap-Schatten (Uniform) — Idle bleibt weiches PCSS.
+      setPcssLiteMode(true)
       applyRendererPixelRatio()
     }
     markViewportDirty()
@@ -807,7 +868,8 @@ function setOrbitLite(active: boolean) {
   orbitProbeReset()
   setPcssLiteMode(false)
   applyRendererPixelRatio()
-  markSceneReflectionsDirty()
+  // EnvMap erst nach kurzer Pause — sonst 1‑s-Hänger direkt am Gestenende.
+  scheduleShadowMapUpdate({ reflections: true })
   if (currentView === 'top') {
     updateGroundPlane()
     floorPlanView.syncGridToCamera(topCamera)
@@ -1003,6 +1065,27 @@ ground.castShadow = false
 ground.layers.set(SHADOW_LAYER_EXTERIOR)
 siteOffset.add(ground)
 
+/** Neutrale Studio-Kugel: nur Innenfläche (BackSide) — von außen hindurchschauen. */
+const studioSphereMat = new THREE.MeshStandardMaterial({
+  name: 'studioSphere',
+  color: new THREE.Color(DEFAULT_SCENE_APPEARANCE.ground),
+  roughness: 1,
+  metalness: 0,
+  envMapIntensity: 0,
+  side: THREE.BackSide,
+  shadowSide: THREE.BackSide,
+})
+applyGroundMoodShader(studioSphereMat)
+let studioSphereGeo = createStudioSphereGeometry(studioSphereRadius(GROUND_BASE_SIZE))
+const studioSphere = new THREE.Mesh(studioSphereGeo, studioSphereMat)
+studioSphere.name = 'studioSphere'
+studioSphere.position.y = GROUND_Y
+studioSphere.receiveShadow = true
+studioSphere.castShadow = false
+studioSphere.visible = false
+studioSphere.layers.set(SHADOW_LAYER_EXTERIOR)
+siteOffset.add(studioSphere)
+
 const hemiLight = new THREE.HemisphereLight(0xffffff, 0x3a3a3a, 0.32)
 hemiLight.position.set(0, 500, 0)
 hemiLight.layers.enable(SHADOW_LAYER_EXTERIOR)
@@ -1039,6 +1122,8 @@ scene.add(dirLightIndoor.target)
 
 const sceneLightRuntime = new SceneLightRuntime()
 siteOffset.add(sceneLightRuntime.root)
+const leafRuntime = new LeafRuntime()
+siteOffset.add(leafRuntime.root)
 
 /** Canvas-MSAA gilt nicht für EffectComposer-RTs — ohne Samples wirken Bloom-Kanten pixelig. */
 const BLOOM_MSAA_SAMPLES = Math.min(8, renderer.capabilities.maxSamples)
@@ -1115,11 +1200,29 @@ function sceneContentMaxY(): number {
 
 function sceneColorsForLighting(): { sky: string; ground: string; background: string } {
   const line = currentRenderStyle === 'line'
-  return {
-    sky: line ? '#ffffff' : sceneAppearance.skyReflection,
-    ground: line ? '#ffffff' : sceneAppearance.ground,
-    background: line ? '#ffffff' : sceneAppearance.background,
+  if (line) {
+    return { sky: '#ffffff', ground: '#ffffff', background: '#ffffff' }
   }
+  if (isStudioStage(stageEnvironment)) {
+    const celestial = resolveCelestialState(sunSettings)
+    const hex = studioEnvironmentHex(celestial.twilightFactor)
+    return { sky: hex, ground: hex, background: hex }
+  }
+  return {
+    sky: sceneAppearance.skyReflection,
+    ground: sceneAppearance.ground,
+    background: sceneAppearance.background,
+  }
+}
+
+/** Himmel nur im Landschafts-Modus (nicht Neutral-Studio). */
+function atmosphereSkyWanted(line = currentRenderStyle === 'line'): boolean {
+  return (
+    !isStudioStage(stageEnvironment) &&
+    !presentationUsesWorkLikeShading(presentationMode) &&
+    !line &&
+    (currentView === '3d' || currentView === 'top')
+  )
 }
 
 function activeFloorWorldY(): number {
@@ -1128,7 +1231,80 @@ function activeFloorWorldY(): number {
 
 const UI_MODE_STORAGE_KEY = 'fassaden-builder-ui-mode'
 type UiMode = 'simple' | 'complex'
-type LibraryTab = 'walls' | 'bay' | 'balcony' | 'loggia' | 'windows' | 'doors' | 'niches' | 'panels' | 'profiles' | 'pediment' | 'lights'
+type LibraryTab =
+  | 'walls'
+  | 'bay'
+  | 'balcony'
+  | 'loggia'
+  | 'windows'
+  | 'doors'
+  | 'niches'
+  | 'stairs'
+  | 'panels'
+  | 'cornice'
+  | 'trimBands'
+  | 'plinth'
+  | 'label'
+  | 'profiles'
+  | 'pediment'
+  | 'lights'
+
+/** Objekt-Affinität: welche Bibliothek-Tabs zur aktuellen Auswahl gehören (docs/ux.md). */
+function allowedLibraryTabs(): Set<LibraryTab> {
+  if (lightEditMode || editor.selectedSceneLightId || (editor.selectedSceneLightIds?.length ?? 0) > 0) {
+    return new Set<LibraryTab>(['lights'])
+  }
+
+  if (editor.selectedOpenings.length > 0) {
+    const part = editor.selectedOpeningPart ?? 'group'
+    const sel = selectedWindowOpening()
+    const opening = sel?.opening
+    const isDoor = opening?.type === 'door'
+    const isNiche =
+      Boolean(opening && (opening.type === 'cutout' || opening.type === 'conch' || openingLacksWindowChrome(opening)))
+
+    if (part === 'stairs') return new Set<LibraryTab>(['stairs'])
+    if (part === 'rollerShutter') return new Set<LibraryTab>()
+    if (part === 'sillInner' || part === 'sillOuter') return new Set<LibraryTab>(['profiles'])
+    if (part === 'pediment' || part === 'consoles') return new Set<LibraryTab>(['pediment'])
+    if (part === 'trim') return new Set<LibraryTab>(['profiles'])
+    if (part === 'frame' || part === 'grille') {
+      if (isDoor) return new Set<LibraryTab>(['doors', 'profiles'])
+      if (isNiche) return new Set<LibraryTab>(['niches'])
+      return new Set<LibraryTab>(['windows', 'profiles'])
+    }
+    // Öffnung ganz
+    if (isDoor) return new Set<LibraryTab>(['doors', 'profiles', 'pediment', 'stairs'])
+    if (isNiche) return new Set<LibraryTab>(['niches'])
+    return new Set<LibraryTab>(['windows', 'profiles', 'pediment'])
+  }
+
+  if (editor.selectedWallIds.length > 0) {
+    const part = editor.selectedWallPart ?? 'group'
+    if (part === 'cornice') return new Set<LibraryTab>(['cornice'])
+    if (part === 'plinth') return new Set<LibraryTab>(['plinth'])
+    if (part === 'trimBand') return new Set<LibraryTab>(['trimBands'])
+    if (part === 'label') return new Set<LibraryTab>(['label'])
+    // Fassade (cladding) = Wand ganz: dieselben Kataloge (Highlight bleibt auf Paneel).
+    return new Set<LibraryTab>([
+      'walls',
+      'bay',
+      'balcony',
+      'panels',
+      'cornice',
+      'trimBands',
+      'plinth',
+      'label',
+      'windows',
+      'doors',
+      'niches',
+      'lights',
+    ])
+  }
+
+  // Keine Auswahl / Dach/Decke: Platzieren
+  return new Set<LibraryTab>(['walls', 'bay', 'balcony', 'lights'])
+}
 
 function loadUiMode(): UiMode {
   try {
@@ -1170,6 +1346,79 @@ function isAdvancedUi(): boolean {
   return uiMode === 'complex'
 }
 
+function syncLibraryTabVisibility() {
+  const allowed = allowedLibraryTabs()
+  const buttons = [...document.querySelectorAll<HTMLButtonElement>('.library-tab')]
+  for (const btn of buttons) {
+    const tab = btn.dataset.libraryTab as LibraryTab | undefined
+    if (!tab) {
+      btn.hidden = true
+      continue
+    }
+    // Loggia bleibt in „Balkone & Loggia“ gemerged
+    if (tab === 'loggia') {
+      btn.hidden = true
+      continue
+    }
+    btn.hidden = !allowed.has(tab)
+  }
+  const activeBtn = buttons.find((btn) => btn.dataset.libraryTab === libraryTab)
+  if (allowed.size === 0) {
+    // Teilobjekt ohne Katalog (z. B. Rollladen): kein Tab aktiv, leere Leiste
+    syncLibraryTabs()
+    if (libraryTab !== 'lights') {
+      // initOpeningLibrary: unbekannter Tab → leere Items
+      const host = document.querySelector('#opening-library-items')
+      host?.replaceChildren()
+    }
+    return
+  }
+  if (!activeBtn || activeBtn.hidden) {
+    const preferred =
+      (allowed.has('lights') && allowed.size === 1
+        ? 'lights'
+        : allowed.has('stairs')
+          ? 'stairs'
+          : allowed.has('windows')
+            ? 'windows'
+            : allowed.has('doors')
+              ? 'doors'
+              : allowed.has('niches')
+                ? 'niches'
+                : allowed.has('panels')
+                  ? 'panels'
+                  : allowed.has('cornice')
+                    ? 'cornice'
+                    : allowed.has('plinth')
+                      ? 'plinth'
+                      : allowed.has('trimBands')
+                        ? 'trimBands'
+                        : allowed.has('label')
+                          ? 'label'
+                          : allowed.has('profiles')
+                            ? 'profiles'
+                            : allowed.has('pediment')
+                              ? 'pediment'
+                              : allowed.has('walls')
+                                ? 'walls'
+                                : undefined) ?? [...allowed][0]
+    const fallbackBtn =
+      (preferred
+        ? buttons.find((btn) => btn.dataset.libraryTab === preferred && !btn.hidden)
+        : undefined) ?? buttons.find((btn) => !btn.hidden)
+    const next = (fallbackBtn?.dataset.libraryTab as LibraryTab | undefined) ?? 'walls'
+    if (next !== libraryTab) {
+      libraryTab = next
+      if (next !== 'walls') {
+        armedLibraryWallPresetId = null
+        if (wallSplitHover) clearWallSplitHover()
+      }
+      initOpeningLibrary()
+    }
+  }
+  syncLibraryTabs()
+}
+
 function syncLibraryTabs() {
   for (const btn of document.querySelectorAll<HTMLButtonElement>('.library-tab')) {
     const tab = btn.dataset.libraryTab as LibraryTab | undefined
@@ -1185,7 +1434,7 @@ function setLibraryTab(tab: LibraryTab) {
     if (wallSplitHover) clearWallSplitHover()
   }
   libraryTab = tab
-  syncLibraryTabs()
+  syncLibraryTabVisibility()
   initOpeningLibrary()
 }
 
@@ -1210,7 +1459,6 @@ function wallWithOpeningPreviewSvg(preset: WallWithOpeningPreset): string {
     <rect x="${ox}" y="${oy}" width="${ow}" height="${oh}" fill="${fill}" stroke="#4a453c" stroke-width="1.2" opacity="0.85"/>
   </svg>`
 }
-
 
 function wallEndPiecePreviewSvg(hand: EndPieceHand = 'left'): string {
   const arm = 48
@@ -1305,6 +1553,33 @@ function pickWorldOnHorizontalPlane(
  * Bei steilem Blick: Horizontalebene. Bei flachem Blick (2D-Front / flacher 3D-Orbit):
  * vertikale Bildebene — sonst ist der Ray parallel zur Boden-Ebene und trifft nichts.
  */
+
+const SCENE_LIGHT_SNAP_CM = 8
+
+function snapSceneLightXZ(x: number, z: number, selfId: string): { x: number; z: number } {
+  let bestX = x
+  let bestZ = z
+  let bestDx = SCENE_LIGHT_SNAP_CM
+  let bestDz = SCENE_LIGHT_SNAP_CM
+  for (const other of normalizeSceneLights(state.sceneLights)) {
+    if (other.id === selfId) continue
+    const dx = Math.abs(other.x - x)
+    const dz = Math.abs(other.z - z)
+    if (dx < bestDx) {
+      bestDx = dx
+      bestX = other.x
+    }
+    if (dz < bestDz) {
+      bestDz = dz
+      bestZ = other.z
+    }
+  }
+  return {
+    x: bestDx < SCENE_LIGHT_SNAP_CM ? bestX : x,
+    z: bestDz < SCENE_LIGHT_SNAP_CM ? bestZ : z,
+  }
+}
+
 function pickSceneLightHorizontalXZ(
   clientX: number,
   clientY: number,
@@ -1466,8 +1741,6 @@ function planViewCenterGrid(): { gx: number; gz: number } {
     gz: Math.round(worldZ / PLAN_GRID),
   }
 }
-
-
 
 function wallPresetLengthCm(presetId: string): number | null {
   const lengthPreset = WALL_LENGTH_PRESETS.find((item) => item.id === presetId)
@@ -2435,8 +2708,6 @@ function addWallPresetAtPlan(
   }
 }
 
-
-
 function applyStudioWallYawChange(ids: string[], yawForWall: (wall: Wall) => number, statusOk: string) {
   if (!canEditActiveBuildingNow()) return
   const idSet = new Set(ids.filter((id) => {
@@ -2527,7 +2798,6 @@ function setSelectedStudioWallsYaw(nextYaw: number) {
     `Wand auf ${snapped}° gedreht`,
   )
 }
-
 
 function applyPanelPresetFromLibrary(
   pattern: StudioPanelPattern,
@@ -3932,7 +4202,7 @@ function matchingBayLibraryPresetId(wall: Wall): string | null {
 
 function isLibraryCardApplied(card: HTMLElement): boolean {
   const hasSelection = editor.selectedWallIds.length > 0 || editor.selectedOpenings.length > 0
-  if (libraryTab === 'profiles' || libraryTab === 'pediment') {
+  if (libraryTab === 'profiles' || libraryTab === 'pediment' || libraryTab === 'cornice' || libraryTab === 'plinth') {
     return card.classList.contains('active')
   }
   // Bewaffnete Wand-Breite (Segment-Modus / Ziehen) ist auch ohne Auswahl „aktiv“ umrandet.
@@ -4019,6 +4289,17 @@ let bloomSettings: BloomSettings = { ...DEFAULT_BLOOM_SETTINGS }
 let fogSettings: FogSettings = { ...DEFAULT_FOG_SETTINGS }
 let lodSettings: LodSettings = normalizeLodSettings(DEFAULT_LOD_SETTINGS)
 let presentationMode: PresentationMode = loadPresentationMode()
+let stageEnvironment: StageEnvironment = loadStageEnvironment()
+
+/** Sonnen-/Licht-Zustand vor dem Licht-Modus — beim Verlassen wiederherstellen. */
+let lightEditSunRestore: {
+  timeOfDay: number
+  dayCycleEnabled: boolean
+  animationsPaused: boolean
+  /** enabled pro Licht-ID vor dem Erzwingen von „alle an“. */
+  lightEnabledById: Record<string, boolean>
+} | null = null
+
 const collapsedFloors = new Set<number>()
 const collapsedBuildings = new Set<string>()
 const expandedRoofs = new Set<string>()
@@ -4051,11 +4332,31 @@ function scheduleShareHashWrite() {
 
 function persistApp() {
   if (isGalleryModeActive()) return
+  // Licht-Modus setzt vorübergehend 00:00 — Persistenz behält den vorherigen Sonnenstand.
+  const sunForPersist = lightEditSunRestore
+    ? {
+        ...sunSettings,
+        timeOfDay: lightEditSunRestore.timeOfDay,
+        dayCycleEnabled: lightEditSunRestore.dayCycleEnabled,
+        animationsPaused: lightEditSunRestore.animationsPaused,
+      }
+    : sunSettings
+  let facadeForPersist = state
+  if (lightEditSunRestore) {
+    // Nicht „alle an“ aus dem Licht-Modus speichern — nur den Stand vor dem Modus.
+    const enabledById = new Map<string, boolean>(
+      Object.entries(lightEditSunRestore.lightEnabledById),
+    )
+    for (const light of normalizeSceneLights(state.sceneLights)) {
+      if (!enabledById.has(light.id)) enabledById.set(light.id, light.enabled)
+    }
+    facadeForPersist = setSceneLightsEnabledById(state, enabledById)
+  }
   savePersistedState({
-    facade: state,
+    facade: facadeForPersist,
     editor,
     view: currentView,
-    sun: sunSettings,
+    sun: sunForPersist,
     editScope,
     editFacadeYawFilter,
     scene: sceneAppearance,
@@ -4137,13 +4438,20 @@ function syncPresentationModeUi() {
   document.querySelector<HTMLElement>('#sun-shadow-density-block')?.toggleAttribute('hidden', true)
 }
 
-function applyWorkModeShadowStyle() {
+/**
+ * Shadow-Map-Typ / PCSS an-/abschalten.
+ * @param bake — false bei Live-Uhr: kein Material-Invalidate und kein sofortiges Bake
+ *   (sonst umgeht jeder Tageszyklus-Tick den Shadow-Debounce).
+ */
+function applyWorkModeShadowStyle(bake = true) {
   const hard = presentationUsesWorkLikeShading(presentationMode)
   const nextType = THREE.BasicShadowMap
+  let typeChanged = false
   if (renderer.shadowMap.type !== nextType) {
     disposeDirectionalShadowMap(dirLight)
     disposeDirectionalShadowMap(dirLightIndoor)
     renderer.shadowMap.type = nextType
+    typeChanged = true
   }
   if (hard) {
     disablePcssShadows()
@@ -4153,6 +4461,7 @@ function applyWorkModeShadowStyle() {
     enablePcssShadows()
     dirLight.shadow.radius = 0
   }
+  if (!bake && !typeChanged) return
   invalidateShadowMaterials(scene)
   renderer.shadowMap.needsUpdate = true
 }
@@ -4162,15 +4471,15 @@ function applyPresentationMode() {
   facade.setPresentationMode(presentationMode)
   syncPresentationModeUi()
   const line = currentRenderStyle === 'line'
-  const wantSky =
-    !presentationUsesWorkLikeShading(presentationMode) && !line && (currentView === '3d' || currentView === 'top')
-  atmosphereSky.setVisible(wantSky)
-  const bg = line ? '#ffffff' : sceneAppearance.background
+  atmosphereSky.setVisible(atmosphereSkyWanted(line))
+  const colors = sceneColorsForLighting()
+  const bg = colors.background
   applySceneBackground(scene, renderer, bg)
   viewport.style.background = bg
   applyBloomRenderer()
   if (presentationUsesWorkLikeShading(presentationMode)) clearGlassEnvironmentBindings(scene)
   applyWorkModeShadowStyle()
+  applyStageEnvironmentVisuals()
   applySunLighting({ updateShadowMap: true })
   markViewportDirty()
   updateWallLibraryGizmos()
@@ -4188,7 +4497,6 @@ function setPresentationMode(mode: PresentationMode) {
 function setEditPresentationEnabled(enabled: boolean) {
   setPresentationMode(enabled ? 'preview' : 'render')
 }
-
 
 let fogAppliedKey = ''
 
@@ -4233,10 +4541,15 @@ function renderLitSceneFrame(activeCamera: THREE.Camera) {
   // Shadow-Map nur bei Geometrie/Licht-Änderung (scheduleSunShadowMapUpdate) —
   // nicht jeden Frame bei Punktlicht, sonst stottern Orbit und Verschieben.
   const line = currentRenderStyle === 'line'
-  const wantSky =
-    !presentationUsesWorkLikeShading(presentationMode) && !line && (currentView === '3d' || currentView === 'top')
-  atmosphereSky.setVisible(wantSky)
-  if (!presentationUsesWorkLikeShading(presentationMode) && !orbitLite && !orbitLitePointer) {
+  atmosphereSky.setVisible(atmosphereSkyWanted(line))
+  // Licht-Modus: kein EnvMap-Bake (6 Cube-Renders + PMREM nach jedem Orbit-Ende ≈ 1 s Hänger).
+  // Die vorhandene EnvMap bleibt gebunden; beim Verlassen wird neu gebacken.
+  if (
+    !presentationUsesWorkLikeShading(presentationMode) &&
+    !orbitLite &&
+    !orbitLitePointer &&
+    !lightEditMode
+  ) {
     reflectionSiteBox.setFromObject(sitePivot)
     activeCamera.getWorldPosition(reflectionCamPos)
     if (reflectionSiteBox.isEmpty()) reflectionFocus.set(0, 180, 0)
@@ -4364,6 +4677,7 @@ type LibraryAsset =
   | { kind: 'frame-profile'; id: string }
   | { kind: 'cornice-profile'; id: string }
   | { kind: 'plinth-profile'; id: string }
+  | { kind: 'trim-band-profile'; id: string }
   | { kind: 'sill-profile'; id: string }
   | { kind: 'pediment-form'; form: PedimentForm | 'none' }
   | { kind: 'pediment-profile'; id: string }
@@ -5194,6 +5508,8 @@ const studioEndBossStart = document.querySelector<HTMLSelectElement>('#studio-en
 const studioEndBossEnd = document.querySelector<HTMLSelectElement>('#studio-end-boss-end')!
 const studioEndBossStartJoin = document.querySelector<HTMLSelectElement>('#studio-end-boss-start-join')!
 const studioEndBossEndJoin = document.querySelector<HTMLSelectElement>('#studio-end-boss-end-join')!
+const studioJointsEnabled = document.querySelector<HTMLInputElement>('#studio-joints-enabled')!
+const studioJointsOptions = document.querySelector<HTMLDivElement>('#studio-joints-options')!
 const studioJointInput = document.querySelector<HTMLInputElement>('#studio-joint')!
 const studioPanelWidthInput = document.querySelector<HTMLInputElement>('#studio-panel-width')!
 const studioPanelWidthRow = document.querySelector<HTMLDivElement>('#studio-panel-width-row')!
@@ -5365,8 +5681,20 @@ type FrontViewBase = {
   outwardX: number
   outwardZ: number
   layoutKey: string
+  /** Aufriss-Inhalt ohne Viewport-Größe — für stabile Skala bei Layout-Resizes. */
+  contentKey: string
+  /** Canvas-Breite beim Cache — px/cm einfrieren wenn contentKey gleich bleibt. */
+  viewportW: number
 }
 let frontViewBaseCache: FrontViewBase | null = null
+/** Überlebt LayoutKey-Wechsel; nur bei echtem Content-Wechsel / fitOnly zurücksetzen. */
+let frontViewScaleFreeze: {
+  contentKey: string
+  pxPerWorld: number
+  lookX: number
+  lookY: number
+  lookZ: number
+} | null = null
 
 type ViewZoomAnimTarget = {
   frontZoom?: number
@@ -5388,6 +5716,7 @@ let viewZoomAnimRaf = 0
 
 function invalidateFrontViewBase() {
   frontViewBaseCache = null
+  frontViewScaleFreeze = null
 }
 
 function cancelViewZoomAnim() {
@@ -5398,7 +5727,7 @@ function cancelViewZoomAnim() {
   }
 }
 
-function frontViewLayoutKey(walls: Wall[], yaw: number, width: number, height: number): string {
+function frontViewContentKey(walls: Wall[], yaw: number): string {
   const facing = wallsForYaw(walls, yaw)
   const targetWalls = facing.length > 0 ? facing : walls
   const elevKey =
@@ -5413,7 +5742,11 @@ function frontViewLayoutKey(walls: Wall[], yaw: number, width: number, height: n
         `${wall.id}:${wall.x}:${wall.y}:${wall.width}:${wall.height}:${wall.originX ?? ''}:${wall.originZ ?? ''}`,
     )
     .join('|')
-  return `${elevKey}|${width}x${height}|${wallKey}`
+  return `${elevKey}|yaw:${yaw}|${wallKey}`
+}
+
+function frontViewLayoutKey(walls: Wall[], yaw: number, width: number, height: number): string {
+  return `${frontViewContentKey(walls, yaw)}|${width}x${height}`
 }
 
 function computeFrontViewBase(
@@ -5423,7 +5756,7 @@ function computeFrontViewBase(
   height: number,
 ): FrontViewBase | null {
   const pad = 48
-  const aspect = width / height
+  const aspect = Math.max(1e-6, width / height)
   const facing = wallsForYaw(walls, yaw)
   const targetWalls = facing.length > 0 ? facing : walls
   if (targetWalls.length === 0) return null
@@ -5457,21 +5790,55 @@ function computeFrontViewBase(
 
   const elevW = Math.max(80, maxAlong - minAlong)
   const elevH = Math.max(80, maxY - minY)
-  let viewW = elevW + pad * 2
-  let viewH = elevH + pad * 2
+  const minW = elevW + pad * 2
+  const minH = elevH + pad * 2
+  let viewW = minW
+  let viewH = minH
   if (viewW / viewH > aspect) viewH = viewW / aspect
   else viewW = viewH * aspect
 
+  const contentKey = frontViewContentKey(walls, yaw)
+  // Auswahl ändert Bibliothek/rechte Spalte → Viewport-Größe. px/cm und look* einfrieren —
+  // kein Re-Fit an minH (sonst springt das Haus horizontal).
+  const prev = frontViewBaseCache
+  const freeze =
+    frontViewScaleFreeze && frontViewScaleFreeze.contentKey === contentKey
+      ? frontViewScaleFreeze
+      : null
+  const sameContent = Boolean(
+    (freeze && freeze.pxPerWorld > 0) ||
+      (prev && prev.contentKey === contentKey && prev.viewportW > 0),
+  )
+  const pxFrozen = freeze?.pxPerWorld ?? (prev && prev.viewportW > 0 ? prev.viewportW / prev.viewW : 0)
+  if (sameContent && pxFrozen > 0) {
+    viewW = width / Math.max(1e-6, pxFrozen)
+    viewH = viewW / aspect
+  }
+
+  const lookX = freeze?.lookX ?? (sameContent && prev ? prev.lookX : cx)
+  const lookY = freeze?.lookY ?? (sameContent && prev ? prev.lookY : (minY + maxY) / 2)
+  const lookZ = freeze?.lookZ ?? (sameContent && prev ? prev.lookZ : cz)
+
   const outward = facadeOutward(yaw, targetWalls[0]?.panelFlip ?? true)
+  const pxPerWorld = width / Math.max(1e-6, viewW)
+  frontViewScaleFreeze = {
+    contentKey,
+    pxPerWorld,
+    lookX,
+    lookY,
+    lookZ,
+  }
   return {
     viewW,
     viewH,
-    lookX: cx,
-    lookY: (minY + maxY) / 2,
-    lookZ: cz,
+    lookX,
+    lookY,
+    lookZ,
     outwardX: outward.x,
     outwardZ: outward.z,
     layoutKey: frontViewLayoutKey(walls, yaw, width, height),
+    contentKey,
+    viewportW: width,
   }
 }
 
@@ -5867,7 +6234,6 @@ function commitOpeningTaperedFieldPatch(
   commitState(updateOpeningTaperedField(state, refs, patch))
 }
 
-
 function selectionIsStudioWall(): boolean {
   const walls = selectedWalls()
   return walls.length > 0 && walls.every(isStudioWall)
@@ -6237,7 +6603,18 @@ function syncAllSceneLightsEnabledControl(): void {
 }
 
 function commitAllSceneLightsEnabled(enabled: boolean): void {
-  commitState(setAllSceneLightsEnabled(state, enabled))
+  const next = setAllSceneLightsEnabled(state, enabled)
+  if (next === state) return
+  // Soft wie Auto-Sonne: kein volles applyState — Fade + gedrosseltes Cube-Bake.
+  editHistory.record(currentSnapshot())
+  state = next
+  syncIndoorFillForSceneLights()
+  syncSceneLightRuntime({ scheduleShadows: true })
+  schedulePersistApp()
+  syncAllSceneLightsEnabledControl()
+  renderLayerList()
+  markViewportDirty()
+  planStatus.textContent = enabled ? 'Alle Lichter einblenden' : 'Alle Lichter ausblenden'
 }
 
 function syncRoofUI() {
@@ -6482,30 +6859,33 @@ function generateWallsFromFloorPlan(): boolean {
 function syncStudioPanelVisibility(
   panel: NonNullable<Wall['panel']>,
   corniceEnabled: boolean,
-  wall?: Wall,
+  _wall?: Wall,
 ) {
   const panelsOn = panel.enabled !== false && panel.pattern !== 'none'
   // Muster-Karten bleiben immer sichtbar — sonst wirken Paneele/Mauerwerk „entfernt“,
   // wenn die Checkbox aus ist oder nur die Checkbox ohne Auswahl angezeigt wird.
   studioPanelOptions.hidden = false
   studioJointsSection.hidden = !panelsOn
+  const jointsOn = panelsOn && panel.joint > 0
+  if (studioJointsEnabled) studioJointsEnabled.checked = jointsOn
+  if (studioJointsOptions) studioJointsOptions.hidden = !jointsOn
   studioTaperSection.hidden = !panelsOn
-  studioJointOptions.hidden = !panelsOn || panel.joint <= 0
-  studioJointColorRow.hidden = !panelsOn
+  studioJointOptions.hidden = !jointsOn
+  studioJointColorRow.hidden = !jointsOn
   studioTaperOptions.hidden = !panelsOn || (panel.taperDepth ?? 0) <= 0
   studioCorniceOptions.hidden = !corniceEnabled
   studioPlinthOptions.hidden = panel.plinthEnabled === false
-  studioPanelsAlternateRow.hidden = !panelsOn || panel.pattern !== 'strip'
-  const alternateOn = panel.alternateFloors === true && panel.pattern === 'strip'
-  studioAlternateLayers.hidden = !panelsOn || !alternateOn
-  studioStandardDepthRow.hidden = !panelsOn || alternateOn
-  studioTaperSection.hidden = !panelsOn || alternateOn
+  // Tot: Abwechselnde Ebenen / Zwei-Bänder / Gehrung / Ecke-Dropdown (UI bleibt im DOM, hidden)
+  studioPanelsAlternateRow.hidden = true
+  studioAlternateLayers.hidden = true
+  studioCladdingTwoBandsOptions.hidden = true
+  studioStandardDepthRow.hidden = !panelsOn
+  studioTaperSection.hidden = !panelsOn
   studioTileColorSection.hidden = !panelsOn
   studioTileVarietyRow.hidden = !panelsOn || (panel.tileColorVariance ?? 0) <= 0
-  const twoBands = Boolean(wall && isTwoHorizontalBandCladding(wall))
-  studioCladdingTwoBands.disabled = !panelsOn
-  studioCladdingTwoBandsOptions.hidden = !panelsOn || !twoBands
-  studioPanelWidthRow.hidden = !panelsOn || twoBands
+  studioPanelWidthRow.hidden = !panelsOn
+  // Ecken-Reiter: End-Boss sichtbar bei Wand + Paneelen
+  if (studioEndBossSection) studioEndBossSection.hidden = !panelsOn
 }
 
 function syncStudioToolbar(wall: Wall) {
@@ -6789,7 +7169,7 @@ function syncTrimBandsControls(wall: Wall) {
     profileLabel.className = 'toolbar-label'
     profileLabel.textContent = 'Profil / Stil'
     const profileCards = document.createElement('div')
-    profileCards.className = 'tpl-card-row profile-picker-row trim-band-profile-row'
+    profileCards.className = 'tpl-card-row profile-picker-row trim-band-profile-row sidebar-library-picker'
     rebuildCorniceProfileCards(
       profileCards,
       band.profileId ?? 'traufgesims70x150',
@@ -7292,6 +7672,57 @@ function applyLibraryAsset(asset: LibraryAsset, hit?: { wallId?: string; opening
           : { plinthEnabled: false },
       ),
     )
+    return
+  }
+  if (asset.kind === 'trim-band-profile') {
+    const wall = getWall(state, ids[0]!)
+    if (!wall || !isStudioWall(wall)) {
+      planStatus.textContent = 'Zierband-Profil auf eine Studio-Wand ziehen'
+      return
+    }
+    const bands = wallTrimBands(wall)
+    if (!asset.id) {
+      // Alle Bänder entfernen
+      let next = state
+      for (const band of [...bands].reverse()) {
+        next = removeWallTrimBand(next, ids, band.id, {
+          anchorWallId: ids[0],
+          scope: editScope,
+        })
+      }
+      commitState(next)
+      return
+    }
+    const selectedId = editor.selectedTrimBandId
+    const target = selectedId
+      ? bands.find((b) => b.id === selectedId)
+      : bands[0]
+    if (target) {
+      commitState(
+        patchWallTrimBand(
+          state,
+          ids,
+          target.id,
+          { profileId: asset.id },
+          { anchorWallId: ids[0], scope: editScope },
+        ),
+      )
+    } else {
+      let next = addWallTrimBand(state, ids)
+      const w = getWall(next, ids[0]!)
+      const band = w ? wallTrimBands(w).at(-1) : undefined
+      if (band) {
+        next = patchWallTrimBand(
+          next,
+          ids,
+          band.id,
+          { profileId: asset.id },
+          { anchorWallId: ids[0], scope: editScope },
+        )
+      }
+      commitState(next)
+    }
+    return
   }
 }
 
@@ -7714,7 +8145,10 @@ function initOpeningLibrary() {
 
   if (libraryTab === 'balcony') {
     appendLibraryIdleNoneCard(host, 'Keines')
-    for (const preset of BAY_WINDOW_PRESETS.filter((item) => bayPresetKind(item) === 'balcony')) {
+    for (const preset of BAY_WINDOW_PRESETS.filter((item) => {
+      const kind = bayPresetKind(item)
+      return kind === 'balcony' || kind === 'loggia'
+    })) {
       const card = document.createElement('button')
       card.type = 'button'
       card.className = 'opening-library-card'
@@ -7845,19 +8279,141 @@ function initOpeningLibrary() {
     return
   }
 
-  if (libraryTab === 'profiles') {
-    const openingSel = selectedWindowOpening()
+  if (libraryTab === 'stairs') {
+    const opening = selectedWindowOpening()?.opening
+    const current = opening?.stairs?.enabled ? normalizeOpeningStairs(opening.stairs, opening) : null
+
+    appendLibraryGroupLabel(host, 'Anzahl')
+    const none = document.createElement('button')
+    none.type = 'button'
+    none.className = 'opening-library-card'
+    none.dataset.libraryNone = '1'
+    if (opening && !opening.stairs?.enabled) none.classList.add('library-card-applied')
+    none.title = 'Treppe entfernen'
+    const noneThumb = document.createElement('div')
+    noneThumb.className = 'opening-library-thumb tpl-card-thumb-empty'
+    noneThumb.textContent = '—'
+    const noneLabel = document.createElement('span')
+    noneLabel.textContent = 'Keine'
+    none.append(noneThumb, noneLabel)
+    none.addEventListener('click', () => {
+      commitStairPatch({ enabled: false })
+      initOpeningLibrary()
+    })
+    host.appendChild(none)
+
+    const countPresets: Array<{ label: string; count: number; rise: number; tread: number }> = [
+      { label: '1 Stufe', count: 1, rise: 16, tread: 32 },
+      { label: '2 Stufen', count: 2, rise: 16, tread: 32 },
+      { label: '3 Stufen', count: 3, rise: 16, tread: 32 },
+      { label: '4 Stufen', count: 4, rise: 16, tread: 32 },
+      { label: '5 Stufen', count: 5, rise: 16, tread: 32 },
+      { label: '6 Stufen', count: 6, rise: 16, tread: 32 },
+      { label: '8 Stufen', count: 8, rise: 16, tread: 32 },
+    ]
+    for (const preset of countPresets) {
+      const card = document.createElement('button')
+      card.type = 'button'
+      card.className = 'opening-library-card'
+      if (current && current.count === preset.count) card.classList.add('library-card-applied')
+      card.title = `${preset.label} — auf ausgewählte Tür anwenden`
+      const thumb = document.createElement('div')
+      thumb.className = 'opening-library-thumb'
+      thumb.innerHTML =
+        '<svg viewBox="0 0 48 36" width="48" height="36" aria-hidden="true"><path d="M4 32 H44 M4 32 V28 H12 V24 H20 V20 H28 V16 H36 V12 H44" fill="none" stroke="#6a6358" stroke-width="2" stroke-linejoin="round"/></svg>'
+      const label = document.createElement('span')
+      label.textContent = preset.label
+      card.append(thumb, label)
+      card.addEventListener('click', () => {
+        if (!selectedWindowOpening()) {
+          planStatus.textContent = 'Zuerst eine Tür bzw. Treppe auswählen'
+          return
+        }
+        commitStairPatch({
+          enabled: true,
+          count: preset.count,
+          rise: preset.rise,
+          tread: preset.tread,
+        })
+        initOpeningLibrary()
+      })
+      host.appendChild(card)
+    }
+
+    appendLibraryGroupLabel(host, 'Form')
+    const formPresets: Array<{
+      label: string
+      extend: number
+      splay: number
+      svg: string
+    }> = [
+      {
+        label: 'Bündig',
+        extend: 0,
+        splay: 0,
+        svg: '<svg viewBox="0 0 48 36" width="48" height="36" aria-hidden="true"><path d="M14 8 V32 H34 V8" fill="none" stroke="#6a6358" stroke-width="2"/><path d="M14 32 H6 V26 H14 M34 32 H42 V26 H34" fill="none" stroke="#6a6358" stroke-width="2"/></svg>',
+      },
+      {
+        label: 'Überstand',
+        extend: 16,
+        splay: 0,
+        svg: '<svg viewBox="0 0 48 36" width="48" height="36" aria-hidden="true"><path d="M18 8 V28 H30 V8" fill="none" stroke="#6a6358" stroke-width="2"/><path d="M8 28 H40 V32 H8 Z" fill="none" stroke="#6a6358" stroke-width="2"/></svg>',
+      },
+      {
+        label: 'Aufgeweitet',
+        extend: 0,
+        splay: 16,
+        svg: '<svg viewBox="0 0 48 36" width="48" height="36" aria-hidden="true"><path d="M18 8 L8 32 H40 L30 8 Z" fill="none" stroke="#6a6358" stroke-width="2"/></svg>',
+      },
+      {
+        label: 'Überstand + Aufweitung',
+        extend: 16,
+        splay: 12,
+        svg: '<svg viewBox="0 0 48 36" width="48" height="36" aria-hidden="true"><path d="M20 8 L6 28 H42 L28 8" fill="none" stroke="#6a6358" stroke-width="2"/><path d="M4 28 H44 V32 H4 Z" fill="none" stroke="#6a6358" stroke-width="2"/></svg>',
+      },
+    ]
+    for (const preset of formPresets) {
+      const card = document.createElement('button')
+      card.type = 'button'
+      card.className = 'opening-library-card'
+      const curExt = current ? Math.max(current.extendLeft, current.extendRight) : 0
+      const curSplay = current ? Math.max(current.splayLeft, current.splayRight) : 0
+      if (
+        current?.enabled &&
+        Math.abs(curExt - preset.extend) < 0.5 &&
+        Math.abs(curSplay - preset.splay) < 0.5
+      ) {
+        card.classList.add('library-card-applied')
+      }
+      card.title = `${preset.label} — Stufenform`
+      const thumb = document.createElement('div')
+      thumb.className = 'opening-library-thumb'
+      thumb.innerHTML = preset.svg
+      const label = document.createElement('span')
+      label.textContent = preset.label
+      card.append(thumb, label)
+      card.addEventListener('click', () => {
+        if (!selectedWindowOpening()) {
+          planStatus.textContent = 'Zuerst eine Tür bzw. Treppe auswählen'
+          return
+        }
+        commitStairPatch({
+          enabled: true,
+          extendLeft: preset.extend,
+          extendRight: preset.extend,
+          splayLeft: preset.splay,
+          splayRight: preset.splay,
+        })
+        initOpeningLibrary()
+      })
+      host.appendChild(card)
+    }
+    syncLibraryAppliedOutline()
+    return
+  }
+
+  if (libraryTab === 'cornice') {
     const wall = selectedWalls()[0]
-    appendLibraryGroupLabel(host, 'Rahmen')
-    appendLibraryProfileCards(
-      host,
-      frameProfileDefinitions(),
-      'frame-profile',
-      openingSel ? openingProfileId(openingSel.wall, openingSel.opening.id) ?? '' : '',
-      activeTrimColor(),
-      'Keines',
-    )
-    appendLibraryGroupLabel(host, 'Gesims')
     appendLibraryProfileCards(
       host,
       corniceProfileDefinitions(),
@@ -7866,7 +8422,12 @@ function initOpeningLibrary() {
       wall ? (wallCornice(wall).color ?? wall.profileColor ?? DEFAULT_PROFILE_COLOR) : DEFAULT_PROFILE_COLOR,
       'Keines',
     )
-    appendLibraryGroupLabel(host, 'Sockel')
+    syncLibraryAppliedOutline()
+    return
+  }
+
+  if (libraryTab === 'plinth') {
+    const wall = selectedWalls()[0]
     appendLibraryProfileCards(
       host,
       plinthProfileDefinitions(),
@@ -7875,8 +8436,131 @@ function initOpeningLibrary() {
         ? (wall.panel.plinthProfileId ?? DEFAULT_PLINTH_PROFILE_ID)
         : '',
       activePlinthProfileColor(wall),
-      'Keiner',
+      'Keines',
     )
+    syncLibraryAppliedOutline()
+    return
+  }
+
+  if (libraryTab === 'trimBands') {
+    const wall = selectedWalls()[0]
+    const bands = wall ? wallTrimBands(wall) : []
+    const selectedBand =
+      (editor.selectedTrimBandId
+        ? bands.find((b) => b.id === editor.selectedTrimBandId)
+        : undefined) ?? bands[0]
+    appendLibraryProfileCards(
+      host,
+      corniceProfileDefinitions(),
+      'trim-band-profile',
+      selectedBand?.profileId ?? '',
+      selectedBand?.color ??
+        (wall ? (wall.profileColor ?? DEFAULT_PROFILE_COLOR) : DEFAULT_PROFILE_COLOR),
+      'Keines',
+    )
+    syncLibraryAppliedOutline()
+    return
+  }
+
+  if (libraryTab === 'label') {
+    const wall = selectedWalls()[0]
+    const activeFont = wall ? wallLabel(wall).fontId : undefined
+    for (const font of LABEL_FONTS) {
+      const card = document.createElement('button')
+      card.type = 'button'
+      card.className = 'opening-library-card'
+      if (wall && wallLabel(wall).enabled && activeFont === font.id) card.classList.add('library-card-applied')
+      card.title = `${font.name} — Schrift auf ausgewählte Wand setzen`
+      const thumb = document.createElement('div')
+      thumb.className = 'opening-library-thumb'
+      const preview = document.createElement('span')
+      preview.className = 'label-font-preview'
+      preview.style.fontFamily = `"${font.family}", serif`
+      preview.style.fontSize = '22px'
+      preview.textContent = 'Aa'
+      thumb.appendChild(preview)
+      const label = document.createElement('span')
+      label.textContent = font.name
+      card.append(thumb, label)
+      card.addEventListener('click', () => {
+        if (selectedWalls().length === 0) {
+          planStatus.textContent = 'Zuerst eine Wand auswählen'
+          return
+        }
+        const patch: Partial<WallLabelConfig> = { enabled: true, fontId: font.id }
+        const anchor = selectedWalls()[0]
+        if (anchor && !(wallLabel(anchor).text ?? '').trim()) {
+          patch.text = 'Text'
+        }
+        commitLabelPatch(patch)
+        initOpeningLibrary()
+      })
+      host.appendChild(card)
+    }
+    syncLibraryAppliedOutline()
+    return
+  }
+
+  if (libraryTab === 'profiles') {
+    const openingSel = selectedWindowOpening()
+    const part = editor.selectedOpeningPart ?? 'group'
+    const sillFocus = part === 'sillInner' || part === 'sillOuter'
+    const trimFocus = part === 'trim'
+    if (!sillFocus) {
+      appendLibraryGroupLabel(host, 'Rahmen')
+      appendLibraryProfileCards(
+        host,
+        frameProfileDefinitions(),
+        'frame-profile',
+        openingSel ? openingProfileId(openingSel.wall, openingSel.opening.id) ?? '' : '',
+        activeTrimColor(),
+        'Keines',
+      )
+    }
+    if (trimFocus) {
+      syncLibraryAppliedOutline()
+      return
+    }
+    if (part === 'sillInner') {
+      appendLibraryGroupLabel(host, 'Fensterbrett')
+      const inner = openingSel?.opening.sillInner
+      const none = document.createElement('button')
+      none.type = 'button'
+      none.className = 'opening-library-card'
+      none.dataset.libraryNone = '1'
+      if (!inner || inner.enabled === false) none.classList.add('library-card-applied')
+      none.title = 'Fensterbrett entfernen'
+      const noneThumb = document.createElement('div')
+      noneThumb.className = 'opening-library-thumb tpl-card-thumb-empty'
+      noneThumb.textContent = '—'
+      const noneLabel = document.createElement('span')
+      noneLabel.textContent = 'Keines'
+      none.append(noneThumb, noneLabel)
+      none.addEventListener('click', () => {
+        commitOpeningSillPatch({ inner: { enabled: false } })
+        initOpeningLibrary()
+      })
+      host.appendChild(none)
+      const board = document.createElement('button')
+      board.type = 'button'
+      board.className = 'opening-library-card'
+      if (inner && inner.enabled !== false) board.classList.add('library-card-applied')
+      board.title = 'Fensterbrett (Brett)'
+      const thumb = document.createElement('div')
+      thumb.className = 'opening-library-thumb'
+      thumb.innerHTML =
+        '<svg viewBox="0 0 48 28" width="48" height="28" aria-hidden="true"><rect x="6" y="14" width="36" height="6" fill="none" stroke="#6a6358" stroke-width="2"/></svg>'
+      const label = document.createElement('span')
+      label.textContent = 'Brett'
+      board.append(thumb, label)
+      board.addEventListener('click', () => {
+        commitOpeningSillPatch({ inner: { enabled: true } })
+        initOpeningLibrary()
+      })
+      host.appendChild(board)
+      syncLibraryAppliedOutline()
+      return
+    }
     appendLibraryGroupLabel(host, 'Fensterbank')
     const sill = openingSel?.opening.sillOuter
     appendLibraryProfileCards(
@@ -8028,6 +8712,38 @@ function initOpeningLibrary() {
   }
   for (const preset of WALL_OPENING_PRESETS.filter((p) => p.type === openingType)) {
     appendOpeningPresetCard(preset)
+  }
+
+  // Bogenform — Presets in der Bibliothek (rechts nur Parameter).
+  if (libraryTab === 'windows' || libraryTab === 'doors') {
+    appendLibraryGroupLabel(host, 'Form')
+    const currentArch = selectedWindowOpening()?.opening.arch
+    for (const form of ARCH_FORM_IDS) {
+      const card = document.createElement('button')
+      card.type = 'button'
+      card.className = 'opening-library-card'
+      const applied =
+        form === 'rect'
+          ? !currentArch?.enabled || currentArch.form === 'rect'
+          : Boolean(currentArch?.enabled && currentArch.form === form)
+      if (applied) card.classList.add('library-card-applied')
+      card.title = `${archFormLabel(form)} — Öffnungsform`
+      const thumb = document.createElement('div')
+      thumb.className = 'opening-library-thumb'
+      thumb.innerHTML = archFormPreviewSvg(form)
+      const label = document.createElement('span')
+      label.textContent = archFormLabel(form)
+      card.append(thumb, label)
+      card.addEventListener('click', () => {
+        if (!selectedWindowOpening()) {
+          planStatus.textContent = 'Zuerst ein Fenster oder eine Tür auswählen'
+          return
+        }
+        commitOpeningArchPatch({ form, enabled: form !== 'rect' })
+        initOpeningLibrary()
+      })
+      host.appendChild(card)
+    }
   }
 
   const divider = document.createElement('div')
@@ -8404,6 +9120,7 @@ function planFrustumSpan(): number {
 function syncGroundDepthForView() {
   groundMat.depthWrite = true
   ground.renderOrder = 0
+  studioSphere.renderOrder = -1
   floorPlanView.root.renderOrder = 0
 }
 
@@ -8470,15 +9187,41 @@ function rebuildPlanWallOverlay() {
 }
 
 function updateGroundPlane() {
-  const { size, cx, cz } = groundSizeForView()
+  const { size: landscapeSize, cx, cz } = groundSizeForView()
+  const studio = isStudioStage(stageEnvironment)
+  const size = studio
+    ? studioFlatFloorSize(landscapeSize, buildingSpanForStudioFloor())
+    : landscapeSize
   const next = new THREE.PlaneGeometry(size, size)
   ground.geometry.dispose()
   ground.geometry = next
   groundGeo = next
   ground.scale.set(1, 1, 1)
   ground.position.set(cx, GROUND_Y, cz)
-  ground.visible = currentView !== 'front'
+
+  const sphereR = studioSphereRadius(size)
+  const nextSphere = createStudioSphereGeometry(sphereR)
+  studioSphere.geometry.dispose()
+  studioSphere.geometry = nextSphere
+  studioSphereGeo = nextSphere
+  // Zentrum auf Bodenebene: untere Hälfte unter dem Boden, Kuppel darüber.
+  studioSphere.position.set(cx, GROUND_Y, cz)
+  syncStageMeshVisibility()
   syncGroundDepthForView()
+}
+
+function buildingSpanForStudioFloor(): number {
+  const studio = sitePlanBounds()
+  if (!studio) return 0
+  return Math.max(studio.maxX - studio.minX, studio.maxZ - studio.minZ)
+}
+
+/** Flacher Bühnenboden + optional Kugel — Sichtbarkeit je Umgebung und Ansicht. */
+function syncStageMeshVisibility() {
+  const showStage = currentView !== 'front'
+  const studio = isStudioStage(stageEnvironment)
+  ground.visible = showStage
+  studioSphere.visible = showStage && studio
 }
 
 function getActiveCamera(): THREE.Camera {
@@ -8519,11 +9262,17 @@ function applyFrontCameraView(opts?: {
   let base: FrontViewBase | null
   if (opts?.yaw != null || opts?.width != null || opts?.height != null || opts?.fitOnly) {
     base = computeFrontViewBase(walls, yaw, width, height)
+    if (base) frontViewBaseCache = base
   } else {
     base = getFrontViewBase()
   }
 
   if (!base) {
+    // Kein Soft-Reset auf ±200 bei leerer Wandliste — letzter bekannter Aufriss bleibt.
+    if (frontViewBaseCache) {
+      applyFrontCameraFromBase(frontViewBaseCache, opts)
+      return
+    }
     frontCamera.left = -200
     frontCamera.right = 200
     frontCamera.top = 200
@@ -8540,6 +9289,7 @@ function applyFrontCameraView(opts?: {
 function syncFrontView() {
   applyFrontCameraView()
   ground.visible = false
+  studioSphere.visible = false
   canvas.style.left = ''
   canvas.style.top = ''
   canvas.style.width = ''
@@ -8652,14 +9402,19 @@ function applyPcssSoftnessLive() {
   else if (currentView === 'top') renderLitSceneFrame(topCamera)
 }
 
-const SUN_SHADOW_MAP_MIN_INTERVAL_MS = 90
+const SUN_SHADOW_MAP_MIN_INTERVAL_MS = 120
 /** Auch bei Dauer-Scrub/Tageszyklus spätestens nach dieser Zeit einmal backen. */
-const SUN_SHADOW_MAP_MAX_LAG_MS = 250
+const SUN_SHADOW_MAP_MAX_LAG_MS = 280
 let sunShadowMapTimer = 0
 let sunShadowMapQueued = false
 let sunShadowFirstQueueMs = 0
 let sunShadowScheduleReflections = false
+let sunShadowScheduleSun = false
 let sunSliderPersistTimer = 0
+/** Letzter Studio-Hintergrund (Live) — EnvMap nur bei spürbarer Änderung dirty. */
+let lastStudioLiveBgHex = ''
+/** Hysterese für Key-Licht-Schatten (Sonne/Mond), vermeidet Shader-Flip an der Schwelle. */
+let keyCastShadowLatched = true
 
 function flushSunShadowMap(opts?: { reflections?: boolean; sceneLights?: boolean }) {
   if (sunShadowMapTimer) {
@@ -8669,6 +9424,7 @@ function flushSunShadowMap(opts?: { reflections?: boolean; sceneLights?: boolean
   sunShadowMapQueued = false
   sunShadowFirstQueueMs = 0
   sunShadowScheduleReflections = false
+  sunShadowScheduleSun = false
   dirLight.shadow.needsUpdate = true
   // Punktlicht-Cubes hängen nicht am Sonnenstand — nur bei Geometrie mitbacken.
   if (opts?.sceneLights) sceneLightRuntime.markAllShadowsDirty()
@@ -8686,6 +9442,7 @@ function flushShadowMapsOnly() {
   sunShadowMapQueued = false
   sunShadowFirstQueueMs = 0
   sunShadowScheduleReflections = false
+  sunShadowScheduleSun = false
   // Sonne bleibt clean (autoUpdate=false, needsUpdate unverändert) — sonst Sekunden-Bake.
   renderer.shadowMap.needsUpdate = true
   markViewportDirty()
@@ -8695,7 +9452,8 @@ function scheduleShadowMapUpdate(opts?: { reflections?: boolean; sun?: boolean }
   const now = performance.now()
   if (!sunShadowMapQueued) sunShadowFirstQueueMs = now
   sunShadowMapQueued = true
-  if (opts?.sun) dirLight.shadow.needsUpdate = true
+  // Sonne erst im Timeout markieren — sonst backt der aktuelle Frame sofort (Debounce tot).
+  if (opts?.sun) sunShadowScheduleSun = true
   // Reflections nur wenn explizit gewünscht (nie bei Live-Scrub erzwingen).
   if (opts?.reflections === true) sunShadowScheduleReflections = true
   const elapsed = now - sunShadowFirstQueueMs
@@ -8710,7 +9468,10 @@ function scheduleShadowMapUpdate(opts?: { reflections?: boolean; sun?: boolean }
     sunShadowMapQueued = false
     sunShadowFirstQueueMs = 0
     const reflections = sunShadowScheduleReflections
+    const sun = sunShadowScheduleSun
     sunShadowScheduleReflections = false
+    sunShadowScheduleSun = false
+    if (sun) dirLight.shadow.needsUpdate = true
     renderer.shadowMap.needsUpdate = true
     if (reflections) markSceneReflectionsDirty()
     markViewportDirty()
@@ -8808,33 +9569,63 @@ function sceneLightsActive(): boolean {
 }
 
 function syncSceneLightRuntime(opts?: { flushShadows?: boolean; scheduleShadows?: boolean }): void {
-  const roomOcclusion = sceneLightRoomOcclusionActive()
+  // Licht-Modus: keine Cube-Shadows — sonst stocken Orbit, Zoom und jedes CRUD.
+  const roomOcclusion = lightEditMode ? false : sceneLightRoomOcclusionActive()
   const lightsActive = sceneLightsActive()
+  const lights = normalizeSceneLights(state.sceneLights)
   const frontView = currentView === 'front'
-  sceneLightRuntime.sync(normalizeSceneLights(state.sceneLights), {
+  sceneLightRuntime.sync(lights, {
     roomOcclusion,
     selectedId: editor.selectedSceneLightId,
     shadowFarCm: sceneLightShadowFarCm(),
     shadowSoftness: sunSettings.shadowSoftness,
     pointShadowMapSize: frontView ? POINT_SHADOW_MAP_FRONT : 2048,
-    showMarkers: state.viewOptions?.showLightMarkers !== false,
+    showMarkers: lightEditMode,
     bloomActive: bloomIsActive(),
+    // Konstante Shader-Lichtanzahl: Fade/Blinken/„Alle an“ ohne Programmwechsel (auch außerhalb Licht-Modus).
+    stableLightCount: lightEditMode || lights.length > 0,
   })
   if (!facadeReady) return
   // Okkluder an Existenz der Lichter koppeln (nicht an enabled) — Dämmerung ohne Mesh-Rebuild.
-  facade.syncPointLightOccluders(sceneLightOccludersWanted(), lightsActive)
+  // Im Licht-Modus Okkluder aus: kein Shadow-Cast / kein Bake.
+  facade.syncPointLightOccluders(
+    lightEditMode ? false : sceneLightOccludersWanted(),
+    lightEditMode ? false : lightsActive,
+  )
   // Frische Punktlichter: Cube-Map einmal backen (ohne EnvMap). Nicht bei bloßer Auswahl.
+  if (lightEditMode) return
   if (opts?.flushShadows) flushShadowMapsOnly()
   else if (opts?.scheduleShadows) scheduleShadowMapUpdate({ reflections: false })
 }
 
+function syncLeafRuntime(): void {
+  leafRuntime.sync(normalizeGroundLeaves(state.groundLeaves))
+}
+
+/** Wind-Positionen soft zurückschreiben (ohne History). */
+function softPersistLeafPositions(): void {
+  if (leafRuntime.count() === 0) return
+  state = { ...state, groundLeaves: leafRuntime.snapshotLeaves() }
+  schedulePersistApp()
+}
+
+function scheduleSoftPersistLeaves(): void {
+  if (leafPersistTimer) window.clearTimeout(leafPersistTimer)
+  leafPersistTimer = window.setTimeout(() => {
+    leafPersistTimer = 0
+    softPersistLeafPositions()
+  }, 600)
+}
+
 function syncIndoorFillForSceneLights(): void {
+  // Immer sichtbar (Intensität 0 wenn aus) — kein NUM_DIR_LIGHTS-Shader-Wechsel bei Dämmerung.
   if (sceneLightRoomOcclusionActive()) {
     dirLightIndoor.visible = true
     dirLightIndoor.intensity = Math.max(0.28, hemiLight.intensity * 0.9)
     dirLightIndoor.color.copy(dirLight.color)
   } else {
-    dirLightIndoor.visible = false
+    dirLightIndoor.visible = true
+    dirLightIndoor.intensity = 0
   }
 }
 
@@ -9038,13 +9829,13 @@ function previewSceneLightViewDepth(depthCm: number): void {
   previewSelectedSceneLight(sceneLightPositionFromWorld(world))
 }
 
-/** Live-Update ohne History/Rebuild — Shadow-Bake verzögert. */
+/** Live-Update ohne History/Rebuild — Shadow-Bake erst beim Commit. */
 function previewSelectedSceneLight(patch: Parameters<typeof updateSceneLight>[2]): void {
   const id = editor.selectedSceneLightId
   if (!id) return
   state = clampFacadeState(updateSceneLight(state, id, patch))
   syncIndoorFillForSceneLights()
-  syncSceneLightRuntime({ scheduleShadows: true })
+  syncSceneLightRuntime()
   schedulePersistApp()
   markViewportDirty()
 }
@@ -9074,15 +9865,26 @@ function applySunLighting(opts?: { updateShadowMap?: boolean; live?: boolean }) 
     sceneColors.background,
   )
   const mood = resolveLightingMood(sunSettings, preCelestial, palette, sceneColors.ground)
-  const intensityScale = THREE.MathUtils.clamp(sunSettings.intensity / 2.4, 0.15, 3.5)
+  const studio = isStudioStage(stageEnvironment)
+  const intensityScale =
+    THREE.MathUtils.clamp(sunSettings.intensity / 2.4, 0.15, 3.5) *
+    (studio ? STUDIO_KEY_INTENSITY_SCALE : 1)
+  // Licht-Modus (00:00): kein Sonnen-/Mondschatten. Der Mond wirft sonst PCSS mit 96 Taps
+  // auf eine 8192²-Map — bei Intensität 0,01 unsichtbar, kostete aber ~95 ms/Frame.
+  // Hysterese: vermeidet Shader-Flip (USE_SHADOWMAP) an der Elevations-Schwelle.
+  const wantKeyCast =
+    mood.keyCastShadow && !lightEditMode && preCelestial.lightIntensity > 0.08
+  if (wantKeyCast) keyCastShadowLatched = true
+  else if (!mood.keyCastShadow || preCelestial.lightIntensity < 0.05) keyCastShadowLatched = false
   lastCelestialState = atmosphereSky.update(sunSettings, {
     intensityScale,
-    castShadow: mood.keyCastShadow,
+    castShadow: keyCastShadowLatched && !lightEditMode,
     lightTarget: target,
     lightDistance: Math.max(900, distance),
   })
-  atmosphereSky.skyLightProbe.intensity = mood.skyIntensity
-  hemiLight.intensity = mood.skyIntensity
+  const skyFill = mood.skyIntensity * (studio ? STUDIO_AMBIENT_BOOST : 1)
+  atmosphereSky.skyLightProbe.intensity = skyFill
+  hemiLight.intensity = skyFill
   hemiLight.color.copy(mood.hemiSkyColor)
   hemiLight.groundColor.copy(mood.groundHemiColor)
 
@@ -9099,20 +9901,28 @@ function applySunLighting(opts?: { updateShadowMap?: boolean; live?: boolean }) 
   bounceDirLight.target.updateMatrixWorld()
   bounceDirLight.visible = mood.bounceIntensity > 0.02
 
+  if (studio) {
+    groundMat.color.set(sceneColors.ground)
+    studioSphereMat.color.set(sceneColors.ground)
+  }
   updateGroundMoodUniformValues(mood, groundMat.color)
   setGroundShadowHard(presentationUsesWorkLikeShading(presentationMode))
-  applyWorkModeShadowStyle()
+  const live = opts?.live === true
+  // Live-Uhr: kein Material-Invalidate / needsUpdate — sonst Shadow-Bake jedes Frame.
+  applyWorkModeShadowStyle(!live)
 
   applyDirectionalSun(sunSettings, dirLightIndoor, target, distance)
   dirLightIndoor.target.position.copy(dirLight.target.position)
   dirLightIndoor.target.updateMatrixWorld()
   // Schwaches Innen-Fill wenn Bibliotheks-Punktlicht aktiv — Innenwände/Laibung nicht schwarz.
+  // Immer visible (Intensität 0 wenn aus) — kein Shader-NUM_DIR_LIGHTS-Wechsel.
   if (sceneLightRoomOcclusionActive()) {
     dirLightIndoor.visible = true
     dirLightIndoor.intensity = Math.max(0.28, hemiLight.intensity * 0.9)
     dirLightIndoor.color.copy(dirLight.color)
   } else {
-    dirLightIndoor.visible = false
+    dirLightIndoor.visible = true
+    dirLightIndoor.intensity = 0
   }
   dirLightIndoor.castShadow = false
 
@@ -9123,15 +9933,30 @@ function applySunLighting(opts?: { updateShadowMap?: boolean; live?: boolean }) 
   dirLight.shadow.camera.layers.set(SHADOW_LAYER_EXTERIOR)
   fitDirectionalShadowCamera(dirLight, shadowBox)
 
+  const softness = studio
+    ? Math.max(sunSettings.shadowSoftness, STUDIO_MIN_SHADOW_SOFTNESS)
+    : sunSettings.shadowSoftness
   if (!presentationUsesWorkLikeShading(presentationMode)) {
-    updatePcssShadowParameters(sunSettings.shadowSoftness, shadowFrustumWidthCm(dirLight), scene)
+    updatePcssShadowParameters(softness, shadowFrustumWidthCm(dirLight), live ? undefined : scene)
   }
   if (presentationUsesWorkLikeShading(presentationMode)) {
     dirLight.shadow.radius = 0
     dirLight.shadow.normalBias = SHADOW_NORMAL_BIAS_MIN
     dirLight.shadow.bias = SHADOW_BIAS
   }
-  const live = opts?.live === true
+
+  if (studio && currentRenderStyle !== 'line') {
+    const bgHex = sceneColors.background
+    if (bgHex !== lastStudioLiveBgHex) {
+      lastStudioLiveBgHex = bgHex
+      scene.background = new THREE.Color(bgHex)
+      viewport.style.background = bgHex
+      svgContainer.style.background = bgHex
+      // EnvMap nur bei Farbwechsel und gedrosselt — nicht jedes Twilight-Tick.
+      if (live) scheduleShadowMapUpdate({ reflections: true })
+      else applySceneBackground(scene, renderer, bgHex)
+    }
+  }
   // Live-Scrub: kein Punktlicht-Sync (teuer bei vielen Lichtern) — Softness folgt beim Commit.
   if (!live) syncSceneLightRuntime()
   if (opts?.updateShadowMap === true) {
@@ -9192,7 +10017,9 @@ function applyState(nextState: FacadeState, nextEditor = editor) {
     facade.setState(state, { rebuildBuildingIds: [] })
     facade.setEditor(editor)
     syncIndoorFillForSceneLights()
-    syncSceneLightRuntime({ scheduleShadows: true })
+    // Im Licht-Modus keine Shadow-Bakes (CRUD/Drag bleibt flüssig).
+    syncSceneLightRuntime({ scheduleShadows: !lightEditMode })
+    syncLeafRuntime()
     if (currentView === 'front') syncFrontView()
     if (currentView === 'export') {
       clearExportCaptureCache()
@@ -9257,15 +10084,18 @@ function applyState(nextState: FacadeState, nextEditor = editor) {
     syncCameraDistanceLimits()
     applySunLighting({ updateShadowMap: true })
     syncSceneLightRuntime()
+    syncLeafRuntime()
   } else if (lightsChanged) {
     // Licht-only (Fallback): kein Sonnen-/EnvMap-/Boden-Pfad; Schatten verzögert.
     syncIndoorFillForSceneLights()
     syncSceneLightRuntime({ scheduleShadows: true })
+    syncLeafRuntime()
   } else {
     syncSiteTransform()
     updateGroundPlane()
     syncCameraDistanceLimits()
     syncSceneLightRuntime()
+    syncLeafRuntime()
   }
   if (currentView === 'front') {
     syncFrontView()
@@ -9431,7 +10261,6 @@ function previewOpeningDrag(
   }
 }
 
-
 /** Verhindert Tab-Sprünge, solange in der Auswahl-Toolbar editiert wird. */
 let selectionToolbarTabLocked = false
 selectionToolbar.addEventListener(
@@ -9455,6 +10284,7 @@ selectionToolbar.addEventListener('focusout', () => {
 function finishRenderUi() {
   syncSelectionToolbarTabs()
   syncSceneToolbarTabs()
+  syncLibraryTabVisibility()
   syncLibraryAppliedOutline()
   updateWallLibraryGizmos()
   requestAnimationFrame(positionToolbar)
@@ -10135,6 +10965,15 @@ function wallContextItems(wallId: string): MenuItem[] {
       children: wallDuplicateMenuItems(wallId),
     },
   ]
+  if (wall && wallLabel(wall).enabled) {
+    items.push({
+      label: 'Schrift entfernen',
+      action: () => {
+        ensureWallSelected(wallId)
+        commitLabelPatch({ enabled: false })
+      },
+    })
+  }
   if (replace.length > 0) {
     items.push({ label: 'Ersetzen durch', children: replace })
   }
@@ -10482,23 +11321,31 @@ function sceneLightContextItems(lightId: string): MenuItem[] {
   const selectedIds = selectedSceneLightIds()
   const menuIds =
     selectedIds.includes(lightId) && selectedIds.length > 1 ? selectedIds : [lightId]
+  const multi = menuIds.length > 1
+  const anyOn = menuIds.some((id) => sceneLightById(state, id)?.enabled !== false)
   const items: MenuItem[] = [
     {
-      label: light?.enabled !== false ? 'Ausblenden' : 'Einblenden',
-      action: () => toggleSceneLightEnabled(lightId),
+      label: multi
+        ? anyOn
+          ? 'Ausblenden'
+          : 'Einblenden'
+        : light?.enabled !== false
+          ? 'Ausblenden'
+          : 'Einblenden',
+      action: () => {
+        setSceneLightsEnabled(menuIds, !anyOn)
+        planStatus.textContent = anyOn
+          ? multi
+            ? 'Lichter ausgeblendet'
+            : 'Licht ausgeblendet'
+          : multi
+            ? 'Lichter eingeblendet'
+            : 'Licht eingeblendet'
+      },
     },
     {
-      label: 'Duplizieren',
-      action: () => {
-        const { state: next, lightId: newId } = duplicateSceneLight(state, lightId)
-        if (!newId) return
-        commitState(next, {
-          ...createDefaultEditorState(),
-          selectedSceneLightId: newId,
-          selectedSceneLightIds: [newId],
-        })
-        planStatus.textContent = 'Licht dupliziert'
-      },
+      label: multi ? `${menuIds.length} duplizieren` : 'Duplizieren',
+      action: () => duplicateSceneLights(menuIds),
     },
   ]
   if (menuIds.length > 1) {
@@ -10538,13 +11385,9 @@ function sceneLightContextItems(lightId: string): MenuItem[] {
     })
   }
   items.push({
-    label: menuIds.length > 1 ? 'Lichter entfernen' : 'Licht entfernen',
-    action: () => {
-      let next = state
-      for (const id of menuIds) next = removeSceneLight(next, id)
-      commitState(next, createDefaultEditorState())
-      planStatus.textContent = menuIds.length > 1 ? 'Lichter entfernt' : 'Licht entfernt'
-    },
+    label: multi ? 'Lichter entfernen' : 'Licht entfernen',
+    danger: true,
+    action: () => removeSceneLights(menuIds),
   })
   return items
 }
@@ -10582,10 +11425,48 @@ function sceneLightGroupContextItems(groupId: string): MenuItem[] {
   ]
 }
 
-function toggleSceneLightEnabled(lightId: string) {
-  const light = sceneLightById(state, lightId)
-  if (!light) return
-  commitState(updateSceneLight(state, lightId, { enabled: !light.enabled }))
+/** Mehrere Lichter gemeinsam ein- oder ausblenden. */
+function setSceneLightsEnabled(ids: string[], enabled: boolean): void {
+  if (ids.length === 0) return
+  if (ids.length === 1) {
+    commitState(updateSceneLight(state, ids[0]!, { enabled }))
+    return
+  }
+  const map = new Map(ids.map((id) => [id, enabled] as const))
+  commitState(setSceneLightsEnabledById(state, map))
+}
+
+function duplicateSceneLights(ids: string[]): void {
+  let next = state
+  const newIds: string[] = []
+  for (const id of ids) {
+    const result = duplicateSceneLight(next, id)
+    if (!result.lightId) continue
+    next = result.state
+    newIds.push(result.lightId)
+  }
+  if (newIds.length === 0) return
+  commitState(next, {
+    ...createDefaultEditorState(),
+    selectedSceneLightId: newIds[newIds.length - 1],
+    selectedSceneLightIds: newIds,
+  })
+  planStatus.textContent =
+    newIds.length > 1 ? `${newIds.length} Lichter dupliziert` : 'Licht dupliziert'
+}
+
+function removeSceneLights(ids: string[]): void {
+  if (ids.length === 0) return
+  let next = state
+  for (const id of ids) next = removeSceneLight(next, id)
+  commitState(next, createDefaultEditorState())
+  planStatus.textContent = ids.length > 1 ? 'Lichter entfernt' : 'Licht entfernt'
+}
+
+/** Rechtsklick: Mehrfachauswahl behalten, wenn das Ziel schon ausgewählt ist. */
+function ensureSceneLightSelected(lightId: string): void {
+  if (selectedSceneLightIds().includes(lightId)) return
+  selectSceneLight(lightId, false)
 }
 
 function showElementContextMenu(
@@ -10601,7 +11482,7 @@ function showElementContextMenu(
   },
 ) {
   if (hit.sceneLightId) {
-    selectSceneLight(hit.sceneLightId)
+    ensureSceneLightSelected(hit.sceneLightId)
     showContextMenu(clientX, clientY, sceneLightContextItems(hit.sceneLightId))
     return
   }
@@ -10972,8 +11853,19 @@ function sceneLightsLayerContextItems(): MenuItem[] {
   ]
   if (lights.length > 0) {
     items.push({
-      label: allOn ? 'Alle Lichter aus' : 'Alle Lichter an',
-      action: () => commitAllSceneLightsEnabled(!allOn),
+      label: allOn ? 'Alle ausblenden' : 'Alle einblenden',
+      action: () => {
+        commitAllSceneLightsEnabled(!allOn)
+        planStatus.textContent = allOn ? 'Alle Lichter ausgeblendet' : 'Alle Lichter eingeblendet'
+      },
+    })
+    items.push({
+      label: 'Alle löschen',
+      danger: true,
+      action: () => {
+        removeSceneLights(lights.map((item) => item.id))
+        planStatus.textContent = 'Alle Lichter gelöscht'
+      },
     })
   }
   return items
@@ -11011,7 +11903,16 @@ function renderSceneLightsLayerSection() {
     if (lights.length > 0) selectSceneLight(lights[0]!.id)
   })
 
-  const moreBtn = createLayerMoreButton(sceneLightsLayerContextItems())
+  const moreBtn = document.createElement('button')
+  moreBtn.type = 'button'
+  moreBtn.className = 'layer-more-btn'
+  moreBtn.title = 'Mehr'
+  moreBtn.setAttribute('aria-label', 'Mehr')
+  moreBtn.textContent = '⋯'
+  moreBtn.addEventListener('click', (event) => {
+    event.stopPropagation()
+    showContextMenu(event.clientX, event.clientY, sceneLightsLayerContextItems())
+  })
   const header = document.createElement('div')
   header.className = 'layer-building-header layer-floor-header'
   header.append(collapseBtn, titleBtn, moreBtn)
@@ -11052,10 +11953,26 @@ function renderSceneLightsLayerSection() {
       meta.textContent = `${Math.round(light.intensity)} W`
       btn.append(label, meta)
       btn.addEventListener('click', (event) => {
-        selectSceneLight(light.id, event.shiftKey)
+        selectSceneLight(light.id, event.shiftKey || event.metaKey || event.ctrlKey)
       })
 
-      const lightMoreBtn = createLayerMoreButton(sceneLightContextItems(light.id))
+      const lightMoreBtn = document.createElement('button')
+      lightMoreBtn.type = 'button'
+      lightMoreBtn.className = 'layer-more-btn'
+      lightMoreBtn.title = 'Mehr'
+      lightMoreBtn.setAttribute('aria-label', 'Mehr')
+      lightMoreBtn.textContent = '⋯'
+      lightMoreBtn.addEventListener('click', (event) => {
+        event.stopPropagation()
+        ensureSceneLightSelected(light.id)
+        showContextMenu(event.clientX, event.clientY, sceneLightContextItems(light.id))
+      })
+      row.addEventListener('contextmenu', (event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        ensureSceneLightSelected(light.id)
+        showContextMenu(event.clientX, event.clientY, sceneLightContextItems(light.id))
+      })
       row.append(btn, lightMoreBtn)
       rowWrap.appendChild(row)
       host.appendChild(rowWrap)
@@ -11332,7 +12249,7 @@ function renderLayerList() {
           ceilingBtn.className = ceilingSelected ? 'layer-row selected' : 'layer-row'
           const ceilingKind = document.createElement('span')
           ceilingKind.className = 'layer-kind'
-          ceilingKind.textContent = 'Decke / Boden'
+          ceilingKind.textContent = 'Decke'
           const ceilingLabel = document.createElement('span')
           ceilingLabel.className = 'layer-label'
           ceilingLabel.textContent = ''
@@ -11569,7 +12486,6 @@ function renderLayerList() {
     layerList.appendChild(buildingItem)
   }
 }
-
 
 function selectRoof(buildingId: string, part: 'group' | 'shell' | 'tiles' | 'gutter' = 'group') {
   if (state.activeBuildingId !== buildingId) {
@@ -13345,7 +14261,7 @@ function refreshAllProfileCards() {
 
 function fillAllProfileSelects() {
   refreshAllProfileCards()
-  if (libraryTab === 'profiles' || libraryTab === 'pediment') initOpeningLibrary()
+  if (libraryTab === 'profiles' || libraryTab === 'pediment' || libraryTab === 'cornice' || libraryTab === 'plinth' || libraryTab === 'label' || libraryTab === 'panels') initOpeningLibrary()
 }
 
 function drawProfileSectionPreview() {
@@ -13540,7 +14456,6 @@ function syncTaperedFieldControls() {
     el.disabled = !field.enabled
   }
 }
-
 
 function syncOpeningPositionControls() {
   const sel = selectedWindowOpening()
@@ -14193,10 +15108,12 @@ function applyOpeningPartVisibility() {
 
   if (!isDoor || !showStairs) doorStairsSection.hidden = true
   else doorStairsSection.hidden = false
+  if (stairsEnabled?.parentElement) stairsEnabled.parentElement.hidden = false
 
   const supportsShutter = Boolean(sel && openingSupportsRollerShutter(sel.opening))
-  // Reiter immer sichtbar bei unterstützter Öffnung; Fokus auf anderem Teil blendet ihn nicht aus.
-  openingRollerShutterSection.hidden = !supportsShutter || Boolean(lacksChrome)
+  // Rollladen nur bei Ganz-Öffnung oder explizitem Rollladen-Fokus (Objekt-Matrix v2.0.154).
+  openingRollerShutterSection.hidden =
+    !supportsShutter || Boolean(lacksChrome) || (focusPart && part !== 'rollerShutter')
 
   const measuresSection = document.querySelector<HTMLElement>('#opening-measures-section')
   if (measuresSection) measuresSection.hidden = focusPart
@@ -14211,10 +15128,10 @@ function applyOpeningPartVisibility() {
   const revealSection = document.querySelector<HTMLElement>('#opening-reveal-frame-section')
   const archSection = document.querySelector<HTMLElement>('#opening-arch-section')
   const fillSection = document.querySelector<HTMLElement>('#opening-fill-section')
-  if (revealSection) revealSection.hidden = Boolean(lacksChrome)
-  // Konche erzwingt Rundbogen-Maske — Form-UI ausblenden
-  if (archSection) archSection.hidden = Boolean(lacksChrome)
-  if (fillSection) fillSection.hidden = false
+  // Teil-Fokus: nur der passende Block — Arch/Fill/Reveal nur bei Ganz-Öffnung.
+  if (revealSection) revealSection.hidden = Boolean(lacksChrome) || focusPart
+  if (archSection) archSection.hidden = Boolean(lacksChrome) || focusPart || Boolean(isConch)
+  if (fillSection) fillSection.hidden = focusPart
   openingTypeSection.hidden = focusPart
   if (lacksChrome || isConch) {
     windowStyleSection.hidden = true
@@ -14266,7 +15183,20 @@ function applyOpeningPartVisibility() {
     if (profileAssign) profileAssign.hidden = true
     if (pedimentSection) pedimentSection.hidden = true
     if (consolesSection) consolesSection.hidden = true
+    if (taperedFieldSection) taperedFieldSection.hidden = true
     windowSillSection.hidden = true
+    openingRollerShutterSection.hidden = true
+    openingTypeSection.hidden = true
+    if (revealSection) revealSection.hidden = true
+    if (archSection) archSection.hidden = true
+    if (fillSection) fillSection.hidden = true
+    doorStairsSection.hidden = false
+    // Treppen-Parameter (Maße/Farbe) liegen in #stairs-options — Sektion sichtbar halten.
+    if (stairsOptions) stairsOptions.hidden = false
+    if (stairsEnabled) {
+      stairsEnabled.checked = true
+      stairsEnabled.parentElement && (stairsEnabled.parentElement.hidden = true)
+    }
   }
   if (focusPart && part === 'rollerShutter') {
     if (colorsSection) colorsSection.hidden = true
@@ -14287,6 +15217,7 @@ function applyOpeningPartVisibility() {
     if (pedimentSection) pedimentSection.hidden = true
     if (consolesSection) consolesSection.hidden = true
     doorStairsSection.hidden = true
+    openingRollerShutterSection.hidden = true
   }
   if (focusPart && (part === 'pediment' || part === 'consoles')) {
     if (colorsSection) colorsSection.hidden = true
@@ -14295,6 +15226,7 @@ function applyOpeningPartVisibility() {
     if (profileAssign) profileAssign.hidden = true
     windowSillSection.hidden = true
     doorStairsSection.hidden = true
+    openingRollerShutterSection.hidden = true
     if (part === 'pediment' && consolesSection) consolesSection.hidden = true
     if (part === 'consoles' && pedimentSection) pedimentSection.hidden = true
   }
@@ -14303,6 +15235,7 @@ function applyOpeningPartVisibility() {
     if (styleSection) styleSection.hidden = true
     windowSillSection.hidden = true
     doorStairsSection.hidden = true
+    openingRollerShutterSection.hidden = true
     if (pedimentSection) pedimentSection.hidden = true
     if (consolesSection) consolesSection.hidden = true
     // Farben-Hub: nur Profilfarbe sinnvoll
@@ -14317,7 +15250,7 @@ function applyWallPartVisibility() {
   if (hasOpening) return
 
   const part = editor.selectedWallPart ?? 'group'
-  const focusPart = part !== 'group' && part !== 'cladding'
+  const focusPart = part !== 'group'
   const toolbar = document.querySelector<HTMLElement>('#toolbar-studio')
   if (!toolbar) return
 
@@ -14329,20 +15262,22 @@ function applyWallPartVisibility() {
       section.hidden = false
       continue
     }
-    // Nur der zum Teil gehörige Reiter bleibt sichtbar.
+    // Nur der zum Teil gehörige Reiter bleibt sichtbar (Objekt-Matrix).
+    // Fassade (cladding) = Wand ganz: alle Sektionen (Highlight bleibt auf Paneel).
     if (part === 'cornice') section.hidden = id !== 'cornice'
     else if (part === 'trimBand') section.hidden = id !== 'trimBands'
     else if (part === 'plinth') section.hidden = id !== 'plinth'
     else if (part === 'label') section.hidden = id !== 'label'
+    else if (part === 'cladding') section.hidden = false
     else section.hidden = false
   }
 
-  // Maße nur bei Ganz-Wand-Auswahl.
+  // Maße nur bei Ganz-Wand- oder Fassaden-Auswahl (cladding = Wand).
   const dims = toolbar.querySelector<HTMLElement>('[data-settings-section="dimensions"]')
-  if (dims) dims.hidden = focusPart
+  if (dims) dims.hidden = focusPart && part !== 'cladding'
   const colors = toolbar.querySelector<HTMLElement>('[data-settings-section="colors"]')
   if (colors) {
-    colors.hidden = focusPart && part !== 'label'
+    colors.hidden = focusPart && part !== 'label' && part !== 'cladding'
   }
 }
 
@@ -15108,7 +16043,7 @@ function selectOpening(
     pendingSelectionToolbarTab = preferredTab
   }
   lastSelectionAnchor = null
-  const ref: OpeningRef = { wallId, openingId }
+  const ref: OpeningRef = { wallId, openingId}
 
   if (additive) {
     const exists = editor.selectedOpenings.some(
@@ -15190,11 +16125,13 @@ sceneReflectionHideRoots.push(
   facade.lineGroup,
   placementGridGroup,
   sceneLightRuntime.root,
+  leafRuntime.root,
 )
 buildLabelFontCards()
 facade.setLodSettings(lodSettings)
 applyPresentationMode()
 syncSceneLightRuntime()
+syncLeafRuntime()
 for (const group of [
   facade.wallGroup,
   facade.profileGroup,
@@ -15662,11 +16599,9 @@ function syncTopView() {
   applyRendererPixelRatio()
   renderer.setSize(width, height)
   syncTopCamera2()
-  atmosphereSky.setVisible(
-    !presentationUsesWorkLikeShading(presentationMode) && currentRenderStyle !== 'line',
-  )
-  viewport.style.background = sceneAppearance.background
-  ground.visible = true
+  atmosphereSky.setVisible(atmosphereSkyWanted())
+  viewport.style.background = sceneColorsForLighting().background
+  syncStageMeshVisibility()
   updateGroundPlane()
   setFacadeMeshesVisible(true)
   floorPlanView.root.visible = false
@@ -16775,7 +17710,6 @@ function commitOpeningArchPatch(patch?: {
   syncOpeningPositionControls()
 }
 
-
 function ensureOpeningArchFormCards(): void {
   if (!openingArchFormCards || openingArchFormCards.childElementCount > 0) return
   for (const form of ARCH_FORM_IDS) {
@@ -16882,8 +17816,6 @@ openingArchSpandrel.addEventListener('change', () => {
     spandrel: openingArchSpandrel.value === 'rect' ? 'rect' : 'bond',
   })
 })
-
-
 
 stairsEnabled.addEventListener('change', () => {
   commitStairPatch({ enabled: stairsEnabled.checked })
@@ -17237,10 +18169,9 @@ function setup3dDragForWall(wall: Wall, opening: { x: number; y: number; width: 
   const normal = new THREE.Vector3(outward.x, 0, outward.z)
   const originX = wall.originX ?? wall.x
   const originZ = wall.originZ ?? 0
-  const along = wallAlongDelta(yawDeg, wall.width / 2)
-  const cx = originX + along.x
-  const cz = originZ + along.z
-  const coplanar = new THREE.Vector3(cx, wall.y, cz)
+  // Pick-Ebene auf derselben Fassadentiefe wie Ghost/Hilfslinien (kein Planlinien-Versatz).
+  const face = wallLocalToWorld(wall, 0, 0, openingDragFloatLocalZ(wall))
+  const coplanar = new THREE.Vector3(face.x, face.y, face.z)
   drag3dWallPlane = new THREE.Plane().setFromNormalAndCoplanarPoint(normal, coplanar)
   drag3dWallCenterX = originX
   drag3dWallCenterZ = originZ
@@ -17325,6 +18256,14 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
     const sceneLightId = sceneLightRuntime.pickObject(lightHits[0]!.object)
     if (sceneLightId) return { sceneLightId }
   }
+  if (lightEditMode) {
+    // Licht-Modus: keine Fassaden-/Objektwahl — nur Lichter (auch durch Wände).
+    return null
+  }
+  if (leafEditMode) {
+    // Laub-Modus: keine Fassadenwahl — Platzierung über eigenen Pointer-Pfad.
+    return null
+  }
   const hits = raycaster.intersectObjects(
     [
       facade.indoorFloorGroup,
@@ -17398,13 +18337,65 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
     if (front && hit.distance > front.t + behindSlack) continue
     return ceiling
   }
+
+  // Vorspringende Teilobjekte (Bank, Gesims, Treppe, …) vor Paneel/Wand/Öffnungsloch.
+  const PART_PICK_SLACK = 10
+  type RankedPick = {
+    distance: number
+    resolved: NonNullable<ReturnType<typeof resolveHit>>
+    rank: number
+  }
+  const partRank = (resolved: NonNullable<ReturnType<typeof resolveHit>>): number => {
+    const op = resolved.openingPart
+    const wp = resolved.wallPart
+    if (op === 'stairs') return 0
+    if (op === 'sillOuter' || op === 'sillInner') return 1
+    if (op === 'pediment' || op === 'consoles') return 2
+    if (op === 'rollerShutter') return 3
+    if (op === 'trim') return 4
+    if (wp === 'cornice' || wp === 'plinth' || wp === 'trimBand' || wp === 'label') return 1
+    if (op && op !== 'group' && op !== 'frame' && op !== 'grille') return 5
+    return 100
+  }
+
+  let bestPart: RankedPick | null = null
+  let nearestGeneric: RankedPick | null = null
   for (const hit of hits) {
     const resolved = resolveHit(hit.object)
     if (!resolved) continue
     if (isBehindFrontFacade(hit.distance, resolved.wallId)) continue
-    if (resolved.openingId && resolved.openingPart === 'stairs') return resolved
+    const rank = partRank(resolved)
+    if (rank < 100) {
+      if (
+        !bestPart ||
+        rank < bestPart.rank ||
+        (rank === bestPart.rank && hit.distance < bestPart.distance)
+      ) {
+        bestPart = { distance: hit.distance, resolved, rank }
+      }
+    } else if (!nearestGeneric || hit.distance < nearestGeneric.distance) {
+      nearestGeneric = { distance: hit.distance, resolved, rank }
+    }
+  }
+
+  if (bestPart) {
+    const near = nearestGeneric?.distance ?? Infinity
+    // Teilobjekt nehmen, wenn es das Nächste ist oder nur knapp hinter Fläche liegt.
+    if (bestPart.distance <= near + PART_PICK_SLACK) {
+      return bestPart.resolved
+    }
+  }
+
+  for (const hit of hits) {
+    const resolved = resolveHit(hit.object)
+    if (!resolved) continue
+    if (isBehindFrontFacade(hit.distance, resolved.wallId)) continue
     if (resolved.openingId) return resolved
     if (resolved.wallId && !resolved.openingId) {
+      // Explizite Wand-Teile nicht durch Öffnungsloch „stehlen“.
+      if (resolved.wallPart && resolved.wallPart !== 'group' && resolved.wallPart !== 'cladding') {
+        return resolved
+      }
       const wall = getWall(state, resolved.wallId)
       if (!wall) return resolved
       const originX = wall.originX ?? wall.x
@@ -17437,7 +18428,6 @@ function isSelectablePickHit(hit: ReturnType<typeof pickFromEvent>): boolean {
   if (!hit) return false
   return Boolean(hit.wallId || hit.openingId || hit.ceiling || hit.sceneLightId)
 }
-
 
 function offsetStudioWallsByGrid(
   facadeState: FacadeState,
@@ -17534,6 +18524,101 @@ function tryStartBuildingDrag(event: PointerEvent): boolean {
   return true
 }
 
+function pickLeafGroundLocal(clientX: number, clientY: number): { x: number; z: number } | null {
+  const pos = pickWorldOnHorizontalPlane(clientX, clientY, 0)
+  if (!pos) return null
+  return { x: pos.x, z: pos.z }
+}
+
+function softAppendLeaves(additions: ReturnType<typeof createLeafClump>): void {
+  if (additions.length === 0) return
+  const before = normalizeGroundLeaves(state.groundLeaves).length
+  state = appendGroundLeaves(state, additions)
+  const after = normalizeGroundLeaves(state.groundLeaves).length
+  if (after === before) {
+    planStatus.textContent = `Maximal ${MAX_GROUND_LEAVES} Blätter`
+    return
+  }
+  syncLeafRuntime()
+  schedulePersistApp()
+  markViewportDirty()
+  planStatus.textContent = `Laub ${after}`
+}
+
+function placeLeafClumpAtClient(clientX: number, clientY: number, recordHistory: boolean): boolean {
+  const p = pickLeafGroundLocal(clientX, clientY)
+  if (!p) return false
+  if (normalizeGroundLeaves(state.groundLeaves).length >= MAX_GROUND_LEAVES) {
+    planStatus.textContent = `Maximal ${MAX_GROUND_LEAVES} Blätter`
+    return false
+  }
+  const clump = createLeafClump(p.x, p.z)
+  if (recordHistory) {
+    editHistory.record(currentSnapshot())
+  }
+  softAppendLeaves(clump)
+  leafPaintLastX = p.x
+  leafPaintLastZ = p.z
+  return true
+}
+
+function updateLeafWindFromClient(clientX: number, clientY: number): void {
+  if (currentView !== '3d' && currentView !== 'top') {
+    leafWind = { ...leafWind, active: false, vx: 0, vz: 0 }
+    return
+  }
+  const p = pickLeafGroundLocal(clientX, clientY)
+  const now = performance.now()
+  if (!p) {
+    leafWind = { ...leafWind, active: false, vx: 0, vz: 0 }
+    return
+  }
+  const dt = leafWindLastMs > 0 ? Math.max(1, now - leafWindLastMs) / 1000 : 0.016
+  const vx = (p.x - leafWindLastX) / dt
+  const vz = (p.z - leafWindLastZ) / dt
+  leafWind = { x: p.x, z: p.z, vx, vz, active: true }
+  leafWindLastX = p.x
+  leafWindLastZ = p.z
+  leafWindLastMs = now
+}
+
+function scatterLeavesOnGround(): void {
+  const { size, cx, cz } = groundSizeForView()
+  const half = size * 0.42
+  const existing = normalizeGroundLeaves(state.groundLeaves).length
+  const want = Math.min(350, MAX_GROUND_LEAVES - existing)
+  if (want <= 0) {
+    planStatus.textContent = `Maximal ${MAX_GROUND_LEAVES} Blätter`
+    return
+  }
+  const added = createLeafScatter(cx, cz, half, half, want, existing)
+  commitState(appendGroundLeaves(state, added))
+  planStatus.textContent = `Laub gestreut (${normalizeGroundLeaves(state.groundLeaves).length})`
+}
+
+function syncLeafModeUi(): void {
+  const chrome = document.querySelector<HTMLButtonElement>('#leaf-mode-btn')
+  const side = document.querySelector<HTMLButtonElement>('#leaf-mode-btn-side')
+  const tools = document.querySelector<HTMLElement>('#leaf-mode-tools')
+  for (const btn of [chrome, side]) {
+    btn?.classList.toggle('active', leafEditMode)
+    btn?.setAttribute('aria-pressed', leafEditMode ? 'true' : 'false')
+  }
+  if (tools) tools.hidden = !leafEditMode
+}
+
+function setLeafEditMode(on: boolean): void {
+  if (on && lightEditMode) setLightEditMode(false)
+  leafEditMode = on
+  document.documentElement.dataset.leafEditMode = on ? '1' : '0'
+  if (!on) leafPaintActive = false
+  syncLeafModeUi()
+  planStatus.textContent = on
+    ? 'Laub-Modus: Klick/Ziehen streut Blätter — „Boden streuen“ für Fläche'
+    : 'Laub-Modus aus — Cursor bewegt das Laub'
+  markViewportDirty()
+}
+
 canvas.addEventListener('pointerdown', (event) => {
   if (currentView === 'front') {
     if (event.button === 2 || event.button === 1) {
@@ -17581,6 +18666,16 @@ canvas.addEventListener('pointerdown', (event) => {
   }
   if (event.button !== 0 || !isSceneEditView()) return
 
+  if (leafEditMode) {
+    event.preventDefault()
+    if (placeLeafClumpAtClient(event.clientX, event.clientY, true)) {
+      leafPaintActive = true
+      if (currentView === '3d') controls.enabled = false
+      canvas.setPointerCapture(event.pointerId)
+    }
+    return
+  }
+
   const additive = event.shiftKey || event.metaKey || event.ctrlKey
 
   if (currentView === '3d') controls.enabled = false
@@ -17588,7 +18683,7 @@ canvas.addEventListener('pointerdown', (event) => {
   const hit = pickFromEvent(event)
   if (hit?.sceneLightId) {
     const light = sceneLightById(state, hit.sceneLightId)
-    selectSceneLight(hit.sceneLightId)
+    selectSceneLight(hit.sceneLightId, additive)
     if (light && (currentView === '3d' || currentView === 'front')) {
       drag3dSceneLight = {
         lightId: hit.sceneLightId,
@@ -17599,6 +18694,12 @@ canvas.addEventListener('pointerdown', (event) => {
       if (currentView === '3d') controls.enabled = false
       canvas.setPointerCapture(event.pointerId)
     }
+    return
+  }
+  if (lightEditMode) {
+    // Nur Lichter — leerer Klick hebt die Lichtwahl auf, keine Fassade.
+    if (!additive) selectSceneLight(null)
+    if (currentView === '3d') controls.enabled = true
     return
   }
   if (hit?.ceiling) {
@@ -17713,6 +18814,26 @@ canvas.addEventListener('pointerdown', (event) => {
 })
 
 canvas.addEventListener('pointermove', (event) => {
+  // Cursor-Wind: immer, auch ohne Drag (außer während Orbit-Lite-Navigation).
+  if (
+    (currentView === '3d' || currentView === 'top') &&
+    leafRuntime.count() > 0 &&
+    !orbitLite
+  ) {
+    updateLeafWindFromClient(event.clientX, event.clientY)
+  }
+
+  if (leafPaintActive && leafEditMode) {
+    const p = pickLeafGroundLocal(event.clientX, event.clientY)
+    if (p) {
+      const dist = Math.hypot(p.x - leafPaintLastX, p.z - leafPaintLastZ)
+      if (dist >= 36) {
+        placeLeafClumpAtClient(event.clientX, event.clientY, false)
+      }
+    }
+    return
+  }
+
   if (currentView === 'front' && frontPanActive) {
     panFrontByPixels(event.clientX - frontPanLastX, event.clientY - frontPanLastY)
     frontPanLastX = event.clientX
@@ -17756,12 +18877,20 @@ canvas.addEventListener('pointermove', (event) => {
       // Default: nur horizontal (X/Z) — auch bei flachem Blick / 2D-Front
       const pos = pickSceneLightHorizontalXZ(event.clientX, event.clientY, light)
       if (!pos) return
-      state = updateSceneLight(state, drag3dSceneLight.lightId, { x: pos.x, z: pos.z })
+      let x = pos.x
+      let z = pos.z
+      if (lightEditMode) {
+        const snap = snapSceneLightXZ(x, z, drag3dSceneLight.lightId)
+        x = snap.x
+        z = snap.z
+      }
+      state = updateSceneLight(state, drag3dSceneLight.lightId, { x, z })
     }
-    syncSceneLightRuntime({ scheduleShadows: true })
-    syncSceneLightToolbar()
+    // Kein Shadow-Bake / Toolbar-DOM während des Zugs — nur Position; der Frame kommt aus
+    // `animate()` (max. 1×/Frame). Ein zusätzlicher synchroner Render pro pointermove verdoppelte
+    // die GPU-Last (Pointer-Events bis 120 Hz) und ließ den Zug stottern.
+    syncSceneLightRuntime()
     markViewportDirty()
-    if (currentView === '3d') render3dFrame()
     return
   }
 
@@ -17956,7 +19085,17 @@ canvas.addEventListener('dblclick', (event) => {
   planStatus.textContent = 'Galerie: Orbit um die gewählte Wand'
 })
 
+canvas.addEventListener('pointerleave', () => {
+  leafWind = { ...leafWind, active: false, vx: 0, vz: 0 }
+})
+
 canvas.addEventListener('pointerup', (event) => {
+  if (leafPaintActive) {
+    leafPaintActive = false
+    if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId)
+    if (currentView === '3d') controls.enabled = true
+    scheduleSoftPersistLeaves()
+  }
   if (currentView === '3d') {
     if (event.button === 2) {
       controls.enablePan = false
@@ -17994,6 +19133,7 @@ canvas.addEventListener('pointerup', (event) => {
       // Kein flushSunShadowMap: EnvMap-Bake kostet Sekunden; applyState plant Shadow-Maps.
       planStatus.textContent = 'Punktlicht verschoben'
     }
+    syncSceneLightToolbar()
     drag3dSceneLight = null
     drag3dSceneLightMoved = false
     if (currentView === '3d') controls.enabled = true
@@ -18103,6 +19243,11 @@ canvas.addEventListener('pointerup', (event) => {
   if (dx * dx + dy * dy > 16) return
   if (trySwapDraftWallSegmentAtClick(event)) return
   const hit = pickFromEvent(event)
+  if (lightEditMode) {
+    if (hit?.sceneLightId) selectSceneLight(hit.sceneLightId, additive)
+    else if (!additive) selectSceneLight(null)
+    return
+  }
   if (!hit) {
     selectWall(null, additive)
     return
@@ -18261,7 +19406,6 @@ function setView(mode: AppView) {
     planZoom = 1
     topViewYawDeg = currentElevation.kind === 'yaw' ? currentElevation.yaw : 0
     framePlanCameraToContent()
-    ground.visible = true
     updateGroundPlane()
   }
 
@@ -18277,7 +19421,6 @@ function setView(mode: AppView) {
   updateViewCompass()
 
   if (mode === '3d') {
-    ground.visible = true
     updateGroundPlane()
     if (!cameraInitialized) {
       initCameraTarget()
@@ -18429,6 +19572,7 @@ function captureExportView(view: ExportViewKind, width: number, height: number):
   const prevSize = renderer.getSize(new THREE.Vector2())
   const prevPR = renderer.getPixelRatio()
   const prevGround = ground.visible
+  const prevSphere = studioSphere.visible
   const prevSkyVisible = atmosphereSky.root.visible
   facade.forceAllHighDetail()
   renderer.setPixelRatio(1)
@@ -18437,12 +19581,13 @@ function captureExportView(view: ExportViewKind, width: number, height: number):
   let cam: THREE.Camera = frontCamera
   if (view.kind === 'yaw') {
     ground.visible = false
+    studioSphere.visible = false
     atmosphereSky.setVisible(false)
     applyFrontCameraView({ width, height, yaw: view.yaw, fitOnly: true })
     cam = frontCamera
   } else {
-    ground.visible = true
-    atmosphereSky.setVisible(true)
+    syncStageMeshVisibility()
+    atmosphereSky.setVisible(atmosphereSkyWanted())
     framePlanCameraToContent()
     syncPlanCamera(
       topCamera,
@@ -18464,6 +19609,7 @@ function captureExportView(view: ExportViewKind, width: number, height: number):
   ctx.drawImage(renderer.domElement, 0, 0, width, height)
 
   ground.visible = prevGround
+  studioSphere.visible = prevSphere
   atmosphereSky.setVisible(prevSkyVisible)
   renderer.setPixelRatio(prevPR)
   renderer.setSize(Math.max(1, prevSize.x), Math.max(1, prevSize.y), false)
@@ -18650,6 +19796,188 @@ viewBtnColor.addEventListener('click', () => {
 viewBtnLine.addEventListener('click', () => {
   setRenderStyle('line')
 })
+function setLightEditMode(on: boolean) {
+  if (on && leafEditMode) {
+    leafEditMode = false
+    leafPaintActive = false
+    syncLeafModeUi()
+  }
+  lightEditMode = on
+  const btn = document.querySelector<HTMLButtonElement>('#light-mode-btn')
+  btn?.classList.toggle('active', on)
+  btn?.setAttribute('aria-pressed', on ? 'true' : 'false')
+  document.documentElement.dataset.lightEditMode = on ? '1' : '0'
+  // Pixel-Ratio 1 + halbe Transmission-Auflösung im Licht-Modus (siehe applyRendererPixelRatio).
+  applyRendererPixelRatio()
+  if (on) {
+    if (!lightEditSunRestore) {
+      const lightEnabledById: Record<string, boolean> = {}
+      for (const light of normalizeSceneLights(state.sceneLights)) {
+        lightEnabledById[light.id] = light.enabled
+      }
+      lightEditSunRestore = {
+        timeOfDay: sunSettings.timeOfDay,
+        dayCycleEnabled: sunSettings.dayCycleEnabled !== false,
+        animationsPaused: sunSettings.animationsPaused === true,
+        lightEnabledById,
+      }
+    }
+    // Echte Mitternacht: Azimut/Elevation mitberechnen — sonst bleibt die Tages-Sonne
+    // (elevationRad) stehen, Nacht wird nicht erkannt und Auto-Lichter gehen aus.
+    // Tageszyklus aus; Animationen an (Blaulicht-Blinken) — Pause-Stand wird beim Verlassen restored.
+    sunSettings = syncSunSettingsFromSolar(
+      {
+        ...sunSettings,
+        timeOfDay: 0,
+        dayCycleEnabled: false,
+        animationsPaused: false,
+      },
+      { applySolarLook: true },
+    )
+    syncSunUi()
+    applySunLighting({ live: true })
+    // Alle Lichter an (auch ohne Auto-mit-Sonne / Schedule), damit Bearbeitung möglich ist.
+    state = setAllSceneLightsEnabled(state, true)
+    syncIndoorFillForSceneLights()
+    syncSceneLightRuntime()
+    sceneLightRuntime.snapFadesToEnabled()
+    syncAllSceneLightsEnabledControl()
+    // Nur Licht-Auswahl behalten; Wände/Öffnungen freigeben
+    selectSceneLight(editor.selectedSceneLightId ?? null)
+    if (libraryTab !== 'lights') setLibraryTab('lights')
+  } else if (lightEditSunRestore) {
+    const restore = lightEditSunRestore
+    lightEditSunRestore = null
+    sunSettings = syncSunSettingsFromSolar(
+      {
+        ...sunSettings,
+        timeOfDay: restore.timeOfDay,
+        dayCycleEnabled: restore.dayCycleEnabled,
+        animationsPaused: restore.animationsPaused,
+      },
+      { applySolarLook: true },
+    )
+    syncSunUi()
+    const enabledById = new Map<string, boolean>(Object.entries(restore.lightEnabledById))
+    // Neu hinzugefügte Lichter während des Modus bleiben an; gelöschte IDs ignorieren.
+    for (const light of normalizeSceneLights(state.sceneLights)) {
+      if (!enabledById.has(light.id)) enabledById.set(light.id, light.enabled)
+    }
+    state = setSceneLightsEnabledById(state, enabledById)
+    applySunLighting({ updateShadowMap: true })
+    syncAutoSceneLightsWithSun(true, { updateLayerList: false })
+    syncAllSceneLightsEnabledControl()
+  }
+  syncSceneLightRuntime(on ? undefined : { scheduleShadows: true })
+  if (!on) sceneLightRuntime.snapFadesToEnabled()
+  markViewportDirty()
+}
+
+/** Während des Wechsels rendert `animate()` nicht — Shader werden parallel kompiliert. */
+let lightModeTransition = false
+let lightModeToggleBusy = false
+
+function lightModeLoadingOverlay(): HTMLElement {
+  let el = viewport.querySelector<HTMLElement>('#light-mode-loading')
+  if (el) return el
+  el = document.createElement('div')
+  el.id = 'light-mode-loading'
+  el.className = 'light-mode-loading'
+  el.setAttribute('role', 'status')
+  el.setAttribute('aria-live', 'polite')
+  el.hidden = true
+  const spinner = document.createElement('span')
+  spinner.className = 'light-mode-loading-spinner'
+  spinner.setAttribute('aria-hidden', 'true')
+  const text = document.createElement('p')
+  text.className = 'light-mode-loading-text'
+  el.append(spinner, text)
+  viewport.appendChild(el)
+  return el
+}
+
+function showLightModeLoading(message: string): void {
+  const el = lightModeLoadingOverlay()
+  const text = el.querySelector<HTMLElement>('.light-mode-loading-text')
+  if (text) text.textContent = message
+  el.hidden = false
+  el.setAttribute('aria-busy', 'true')
+}
+
+function hideLightModeLoading(): void {
+  const el = viewport.querySelector<HTMLElement>('#light-mode-loading')
+  if (!el) return
+  el.hidden = true
+  el.setAttribute('aria-busy', 'false')
+}
+
+function nextAnimationFrames(count: number): Promise<void> {
+  return new Promise((resolve) => {
+    const step = (left: number) => {
+      if (left <= 0) {
+        resolve()
+        return
+      }
+      requestAnimationFrame(() => step(left - 1))
+    }
+    step(count)
+  })
+}
+
+/**
+ * Licht-Modus ein/aus mit Ladescreen: Lichtanzahl und Sonnenschatten ändern die Shader-Programme
+ * aller Materialien (~1–2 s Kompilierung). `compileAsync` nutzt KHR_parallel_shader_compile,
+ * damit der Hauptthread frei bleibt und der Spinner läuft; erst danach der erste Frame.
+ */
+async function toggleLightEditMode(): Promise<void> {
+  if (lightModeToggleBusy) return
+  lightModeToggleBusy = true
+  const on = !lightEditMode
+  showLightModeLoading(on ? 'Licht-Modus wird vorbereitet …' : 'Licht-Modus wird beendet …')
+  lightModeTransition = true
+  try {
+    // Overlay erst zeichnen lassen, dann rechnen.
+    await nextAnimationFrames(2)
+    setLightEditMode(on)
+    try {
+      await renderer.compileAsync(scene, getActiveCamera())
+    } catch {
+      // Fallback: synchrone Kompilierung beim ersten Render.
+    }
+  } finally {
+    lightModeTransition = false
+    markViewportDirty()
+    if (currentView === '3d') render3dFrame()
+    else if (currentView === 'front') renderLitSceneFrame(frontCamera)
+    else if (currentView === 'top') renderLitSceneFrame(topCamera)
+    hideLightModeLoading()
+    lightModeToggleBusy = false
+  }
+}
+
+document.querySelector('#light-mode-btn')?.addEventListener('click', () => {
+  void toggleLightEditMode()
+})
+
+function toggleLeafEditMode(): void {
+  setLeafEditMode(!leafEditMode)
+}
+
+document.querySelector('#leaf-mode-btn')?.addEventListener('click', () => {
+  toggleLeafEditMode()
+})
+document.querySelector('#leaf-mode-btn-side')?.addEventListener('click', () => {
+  toggleLeafEditMode()
+})
+document.querySelector('#leaf-scatter-btn')?.addEventListener('click', () => {
+  if (!leafEditMode) setLeafEditMode(true)
+  scatterLeavesOnGround()
+})
+document.querySelector('#leaf-clear-btn')?.addEventListener('click', () => {
+  commitState(clearGroundLeaves(state))
+  planStatus.textContent = 'Laub entfernt'
+})
+
 document.querySelector('#light-presentation-btn')?.addEventListener('click', () => {
   setPresentationMode('draft')
 })
@@ -18659,6 +19987,16 @@ document.querySelector('#edit-presentation-btn')?.addEventListener('click', () =
 document.querySelector('#render-presentation-btn')?.addEventListener('click', () => {
   setPresentationMode('render')
 })
+
+function bindStageEnvironmentButtons() {
+  const setSky = () => setStageEnvironment('sky')
+  const setStudio = () => setStageEnvironment('studio')
+  document.querySelector('#stage-env-sky-btn')?.addEventListener('click', setSky)
+  document.querySelector('#stage-env-studio-btn')?.addEventListener('click', setStudio)
+  document.querySelector('#stage-env-sky-btn-side')?.addEventListener('click', setSky)
+  document.querySelector('#stage-env-studio-btn-side')?.addEventListener('click', setStudio)
+}
+bindStageEnvironmentButtons()
 
 navHelpButton.addEventListener('click', () => {
   navHelpDialog.showModal()
@@ -18778,6 +20116,8 @@ function syncAutoSceneLightsWithSun(
   opts?: { updateLayerList?: boolean },
 ): void {
   if (!facadeReady) return
+  // Licht-Modus erzwingt „alle an“ — Sonnen-/Zeitplan-Kopplung erst wieder beim Verlassen.
+  if (lightEditMode) return
   const celestial = resolveCelestialState(sunSettings)
   const night = !celestial.sunAboveHorizon
   const autoSun = sunSettings.autoSceneLightsWithSun !== false
@@ -18816,6 +20156,7 @@ function syncAutoSceneLightsWithSun(
 }
 
 function tickDayCycle(now: number, dtMs: number): boolean {
+  if (lightEditMode) return false
   if (sunSettings.animationsPaused === true) return false
   if (sunSettings.dayCycleEnabled === false) return false
   if (dtMs <= 0) return false
@@ -18980,22 +20321,82 @@ bindSunSlider(
 function applySceneAppearance(override?: Partial<SceneAppearance>) {
   const appearance = override ? { ...sceneAppearance, ...override } : sceneAppearance
   const line = currentRenderStyle === 'line'
-  const bg = line ? '#ffffff' : appearance.background
-  const groundColor = line ? '#ffffff' : appearance.ground
-  const skyColor = line ? '#ffffff' : appearance.skyReflection
+  // Preview-Override: manuelle Farben; sonst Studio-Beige/Nacht oder Nutzerfarben.
+  const colors =
+    override || !isStudioStage(stageEnvironment)
+      ? {
+          sky: line ? '#ffffff' : appearance.skyReflection,
+          ground: line ? '#ffffff' : appearance.ground,
+          background: line ? '#ffffff' : appearance.background,
+        }
+      : sceneColorsForLighting()
+  const bg = colors.background
+  const groundColor = colors.ground
+  const skyColor = colors.sky
   groundMat.color.set(groundColor)
+  studioSphereMat.color.set(groundColor)
   setGlassSkyReflectionColor(skyColor)
   setGlassGroundReflectionColor(groundColor)
   atmosphereSky.setGroundAlbedo(groundColor)
   applySceneBackground(scene, renderer, bg)
-  const wantSky = !presentationUsesWorkLikeShading(presentationMode) && !line && currentView !== 'front'
-  atmosphereSky.setVisible(wantSky)
+  atmosphereSky.setVisible(atmosphereSkyWanted(line))
   viewport.style.background = bg
   svgContainer.style.background = bg
+  applyStageEnvironmentVisuals()
   applyBloomRenderer()
   applyFogToScene()
   applySunLighting({ updateShadowMap: false })
   markSceneReflectionsDirty()
+  markViewportDirty()
+}
+
+function applyStageEnvironmentVisuals() {
+  syncStageMeshVisibility()
+  syncStageEnvironmentUi()
+  syncStudioSceneColorVisibility()
+}
+
+function syncStageEnvironmentUi() {
+  const skyBtn = document.querySelector('#stage-env-sky-btn')
+  const studioBtn = document.querySelector('#stage-env-studio-btn')
+  if (skyBtn) {
+    skyBtn.classList.toggle('active', stageEnvironment === 'sky')
+    skyBtn.setAttribute('aria-pressed', stageEnvironment === 'sky' ? 'true' : 'false')
+  }
+  if (studioBtn) {
+    studioBtn.classList.toggle('active', stageEnvironment === 'studio')
+    studioBtn.setAttribute('aria-pressed', stageEnvironment === 'studio' ? 'true' : 'false')
+  }
+  document.querySelector('#stage-env-sky-btn-side')?.classList.toggle('active', stageEnvironment === 'sky')
+  document
+    .querySelector('#stage-env-studio-btn-side')
+    ?.classList.toggle('active', stageEnvironment === 'studio')
+}
+
+/** Im Neutralmodus steuern Tageszeit die Beige/Schwarz-Farben — manuelle Szenenfarben ausblenden. */
+function syncStudioSceneColorVisibility() {
+  const hideManual = isStudioStage(stageEnvironment)
+  for (const id of [
+    'scene-all-color-host',
+    'scene-bg-color-host',
+    'scene-ground-color-host',
+    'scene-sky-color-host',
+  ]) {
+    const host = document.getElementById(id)
+    const group = host?.closest('.toolbar-group') as HTMLElement | null
+    group?.toggleAttribute('hidden', hideManual)
+  }
+  document.getElementById('studio-stage-hint')?.toggleAttribute('hidden', !hideManual)
+}
+
+function setStageEnvironment(mode: StageEnvironment) {
+  if (stageEnvironment === mode) return
+  stageEnvironment = mode
+  saveStageEnvironment(mode)
+  applyStageEnvironmentVisuals()
+  updateGroundPlane()
+  applySceneAppearance()
+  applySunLighting({ updateShadowMap: true })
   markViewportDirty()
 }
 
@@ -19772,7 +21173,7 @@ function resizeCanvasView() {
     canvas.style.top = ''
     canvas.style.width = ''
     canvas.style.height = ''
-    ground.visible = true
+    syncStageMeshVisibility()
     syncGroundDepthForView()
     syncCameraDistanceLimits()
     const width = viewportRenderWidth()
@@ -19876,7 +21277,6 @@ controls.addEventListener('change', () => {
   if (!orbitLitePointer && !nav3d) scheduleOrbitLiteEnd()
   syncGalleryNavigationFeel()
   markViewportDirty()
-  updateWallLibraryGizmos()
 })
 controls.addEventListener('end', () => {
   orbitLitePointer = false
@@ -19887,6 +21287,8 @@ let animateFramePrevMs = 0
 
 function animate() {
   requestAnimationFrame(animate)
+  // Licht-Modus-Wechsel: kein Render, sonst kompiliert der Frame die Shader synchron (Hänger).
+  if (lightModeTransition) return
   const nowMs = performance.now()
   const animClock = advanceAnimationClock(nowMs)
   const paused = sunSettings.animationsPaused === true
@@ -19915,11 +21317,23 @@ function animate() {
   const sceneLightLive = fadingLights || sceneLightAnim
   if (sceneLightLive) viewportDirty = true
 
+  const leafMoved =
+    !paused && leafRuntime.count() > 0 && leafRuntime.tick(dayDt, leafWind)
+  if (leafMoved) {
+    viewportDirty = true
+    scheduleSoftPersistLeaves()
+  }
+  // Wind klingt ab, wenn Maus stillsteht / die Bühne verlässt.
+  if (!leafWind.active && leafRuntime.count() > 0) {
+    leafWind = { ...leafWind, vx: leafWind.vx * 0.9, vz: leafWind.vz * 0.9 }
+  }
+
   const liveMotion =
     dayMoved ||
     (!paused && Boolean(openingMotionPlayback)) ||
     (!paused && Boolean(rollerShutterPlayback)) ||
-    sceneLightLive
+    sceneLightLive ||
+    leafMoved
 
   const perfOn = isPerfOverlayEnabled()
   let perfT0 = 0
@@ -20222,7 +21636,13 @@ function commitStudioPanelPatch(patch: Parameters<typeof updateStudioPanel>[2]) 
   const ids = scopedWallIds().filter((id) => canEditWallNow(id))
   if (ids.length === 0) return
   let next = state
-  next = updateStudioPanel(next, ids, patch)
+  // UX v2.0.153: totgelegte Paneel-Optionen erzwingen
+  next = updateStudioPanel(next, ids, {
+    ...patch,
+    openingJoin: 'flush',
+    alternateFloors: false,
+    cornerJoin: 'none',
+  })
   if (patch.hideRowsTop !== undefined) {
     next = syncWallDecorToTopBareBand(next, ids)
   }
@@ -20248,7 +21668,7 @@ studioPanelsEnabled.addEventListener('change', () => {
 
 studioCornerJoinSelect.addEventListener('change', () => {
   commitStudioPanelPatch({
-    cornerJoin: studioCornerJoinSelect.value as StudioCornerJoin,
+    cornerJoin: 'none' as StudioCornerJoin,
   })
 })
 
@@ -20356,6 +21776,16 @@ studioHideRowsTopInput.addEventListener('change', () => {
 })
 studioHideRowsTopInput.addEventListener('input', () => {
   commitHideRowsPatch('top', Number(studioHideRowsTopInput.value))
+})
+
+studioJointsEnabled?.addEventListener('change', () => {
+  if (!studioJointsEnabled.checked) {
+    commitStudioPanelPatch({ joint: 0 })
+    return
+  }
+  const wall = anchorWall()
+  const prev = wall?.panel?.joint ?? 0
+  commitStudioPanelPatch({ joint: prev > 0 ? prev : DEFAULT_STUDIO_PANEL.joint })
 })
 
 studioJointInput.addEventListener('change', () => {
@@ -21450,7 +22880,6 @@ initOpeningTemplateUi()
 initOpeningLibrary()
 rebuildFloorPlanOverlay()
 
-
 viewCompass.querySelectorAll<SVGTextElement>('.view-compass-cardinal').forEach((el) => {
   const activate = () => setCompassYaw(Number(el.dataset.yaw))
   el.addEventListener('click', (event) => {
@@ -21561,6 +22990,7 @@ try {
   setView(currentView)
   applyState(state, editor)
   syncAutoSceneLightsWithSun(true)
+  syncLeafModeUi()
   markViewportDirty()
   animate()
   void bootstrapSceneLighting()

@@ -4,14 +4,15 @@ Platzierbare Lichter aus der Element-Bibliothek — unabhängig von Sonne und au
 
 ## Nutzer
 
-1. Unten in der Bibliothek den Tab **Licht** wählen.
+1. Unten in der Bibliothek den Tab **Licht** wählen (auch ohne Wandauswahl).
 2. Eine **Voreinstellung** wählen (**Laterne**, **Deckenlampe**, **Stehlampe**, **Leselampe**, **Fassadenlampe**) — Klick oder Drag in die Szene (3D/Front/Oben).
-3. Unter **Anzeige** (Bibliothek) oder **Szene → Licht**: **Alle Lichter an** schaltet alle Punktlichter ein/aus; **Lichtpunkte anzeigen** schaltet nur die Editor-Glühen (Lichtwirkung bleibt).
-4. **3D / 2D-Front:** leuchtende Kugel anklicken und **ziehen** — bewegt sich nur **horizontal** (Höhe bleibt; in Front entlang der Bildebene links/rechts). **Shift** halten und ziehen = nur **vertikal** (Höhe).
-5. **2D-Front:** zusätzlich **Tiefe (Blickrichtung)** per Slider vor/zurück entlang der Blickachse.
-6. **Ebenenbaum (links):** Sektion **Lichter** — Einträge heißen nach Art (`Laterne`, `Blaulicht 2`, …). **Shift+Klick** Mehrfachauswahl → Mehr-Menü **Gruppieren**. Gruppenzeilen aufklappbar; Klick wählt alle Mitglieder. Pro Licht: Ausblenden, Duplizieren, Aus Gruppe lösen, Entfernen. Sektions-Mehr-Menü: **Punktlicht einfügen**, **Alle Lichter an/aus**.
-7. **Rechtsklick** in der Szene: **Duplizieren** oder **Licht entfernen**.
-8. Rechts in `#toolbar-scene-light`: Voreinstellung, Abstrahlung, Winkel, Position, Farbe, Leistung (Watt LED), Marker, Reichweite, Abfall, Schatten, **Ein-/Ausblenden (ms)**, **Uhrzeiten** Ein/Aus.
+3. **Licht-Modus** (Toggle rechts neben Vorschau/Render, v2.0.153 / **v2.0.159–160**): setzt **00:00** ohne Tageszyklus; nur Lichter anwählbar **durch Wände**; **alle** Lichter mit Kreismarke; ohne Cube-Shadows (flüssig); Shift/Ctrl-Mehrfachwahl; horizontales Bündig-Snap. **v2.0.163:** Ein-/Ausschalten mit Ladescreen; im Modus kein Sonnen-/Mondschatten, kein EnvMap-Bake, Pixel-Ratio 1, konstante Lichtanzahl im Shader (`stableLightCount`, Reserve-Lichter) — Hinzufügen/Duplizieren/Löschen/Verschieben ohne Shader-Rebuild. Details: [performance.md](performance.md#licht-modus).
+4. Unter **Anzeige** (Bibliothek) oder **Szene → Licht**: **Alle Lichter an** schaltet alle Punktlichter ein/aus.
+5. **3D / 2D-Front:** leuchtende Kugel anklicken und **ziehen** — bewegt sich nur **horizontal** (Höhe bleibt; in Front entlang der Bildebene links/rechts). **Shift** halten und ziehen = nur **vertikal** (Höhe).
+6. **2D-Front:** zusätzlich **Tiefe (Blickrichtung)** per Slider vor/zurück entlang der Blickachse.
+7. **Ebenenbaum (links):** Sektion **Lichter** — Einträge heißen nach Art (`Laterne`, `Blaulicht 2`, …). **Shift/Ctrl+Klick** Mehrfachauswahl → Mehr-Menü **Gruppieren**. Gruppenzeilen aufklappbar; Klick wählt alle Mitglieder. Pro Licht (⋯ oder Rechtsklick): **Ein-/Ausblenden**, **Duplizieren**, Aus Gruppe lösen, **Entfernen** — bei Mehrfachauswahl für alle gewählten. Sektions-Mehr-Menü: **Punktlicht einfügen**, **Alle ein-/ausblenden**, **Alle löschen**.
+8. **Rechtsklick** in der Szene (oder Ebenen): bei Mehrfachauswahl bleiben alle gewählt; Menü gilt für die Auswahl (**Ein-/Ausblenden**, **Duplizieren**, **Lichter entfernen**).
+9. Rechts in `#toolbar-scene-light`: Voreinstellung, Abstrahlung, Winkel, Position, Farbe, Leistung (Watt LED), Marker, Reichweite, Abfall, Schatten, **Ein-/Ausblenden (ms)**, **Uhrzeiten** Ein/Aus.
 
 Lichter drehen mit dem Grundstück (`siteOffset`).
 
@@ -49,7 +50,7 @@ Im **Render**-Modus (3D/Front) ist die Okklusion **automatisch aktiv**, sobald m
 
 **v2.0.102 — physikalisch:** Punktlicht beleuchtet **Fassade und Innenraum** (beide Layer). Lichtdichte nur über **Cube-Shadows** und Okkluder — nicht mehr über Shader-Skip der Außenflächen. Innenwände/Böden/Decken empfangen wieder Punktlicht-Schatten (Wände, Sprossen, Rahmen).
 
-1. **Cube-Shadows:** Wände, Verkleidung, Rahmen, Laibung, Geschossplatten und unsichtbare Außenring-Okkluder (`SHADOW_LAYER_OCCLUDER`) werfen in die Punktlicht-Cube-Map (`customDistanceMaterial` wo nötig). **v2.0.107:** Okkluder 100 cm dick + Stoßplatte 160 cm zwischen Etagen; `normalBias` 0,25 cm; Indoor-Platten und `sunCeilingOccluder` casten bei Raum-Okklusion immer. **v2.0.111 / v2.0.118 / v2.0.141:** 2D-Front Cube-Map **4096**; Soft-Würfel-Filter entfernt — Hard-Cube; `shadow.camera.far` folgt Reichweite bzw. **Site-Diagonale + Puffer** (nicht mehr 500 m bei unbegrenzter Distanz).
+1. **Cube-Shadows:** Wände, Verkleidung, Rahmen, Laibung, Geschossplatten und unsichtbare Außenring-Okkluder (`SHADOW_LAYER_OCCLUDER`) werfen in die Punktlicht-Cube-Map (`customDistanceMaterial` wo nötig). **v2.0.107:** Okkluder 100 cm dick + Stoßplatte 160 cm zwischen Etagen; `normalBias` 0,25 cm; Indoor-Platten und `sunCeilingOccluder` casten bei Raum-Okklusion immer. **v2.0.111 / v2.0.118 / v2.0.141:** 2D-Front Cube-Map **4096**; Soft-Würfel-Filter entfernt — Hard-Cube; `shadow.camera.far` folgt Reichweite bzw. **Site-Diagonale + Puffer** (nicht mehr 500 m bei unbegrenzter Distanz). **v2.0.167 — Shadow-Budget:** höchstens `MAX_SCENE_LIGHT_SHADOWS` (12) gleichzeitige Punkt-/Spot-Shadow-Maps; die hellsten behalten `castShadow`, der Rest leuchtet ohne Schatten. Ab ~16 Casters (WebGL-Texture-Units) wurde die ganze Szene schwarz — nachts mit „Alle Lichter an“ wirkte das wie ausgefallene Lichter (`enforceShadowBudget` in `sceneLightRuntime.ts`).
 2. **Konche:** sichtbare Kalotte ohne flache Okklusions-Kappen; Dichtung nur im unsichtbaren Shadow-Tunnel (`OPENING_SHADOW_TUNNEL_INFLATE_CM = 2,5`).
 3. **Unsichtbare Okkluder** (`SHADOW_LAYER_OCCLUDER = 3`): Boden/Decke auf dem **Grundriss-Außenring**, mit `customDistanceMaterial` in der Punktlicht-Cube-Map.
 4. **Sichtbare Böden/Decken (v2.0.92)** reichen bis zur **Fassaden-Außenkante** (Plan-Ring); sie casten bei Raum-Okklusion immer (auch ausgeblendet) und nutzen `customDistanceMaterial`. Nicht durch Kellerfenster angehoben (`storeyFloorSurfaceY`). **v2.0.121:** Kerben an Öffnungen, die die Platte schneiden/berühren (`slabNotches.ts`).
@@ -74,7 +75,7 @@ Im **Render**-Modus (3D/Front) ist die Okklusion **automatisch aktiv**, sobald m
 | Leistung (Watt LED) | `12` | Helligkeit wie LED-Lampe (10 W ≈ 800 lm); Live-Vorschau beim Tippen, History bei Enter/Fokus-Verlust (v2.0.146) |
 | Marker anzeigen | an | Pro Licht: Editor-Glühen ausblenden |
 | **Alle Lichter an** (Szene → Licht / Bibliothek → Licht) | an (wenn Lichter existieren) | Schaltet alle `sceneLights[].enabled` gemeinsam (`setAllSceneLightsEnabled`) |
-| **Lichtpunkte anzeigen** (Szene → Licht / Bibliothek → Licht) | an | Global alle Glühen ein/aus (`viewOptions.showLightMarkers`) |
+| **Lichtpunkte anzeigen** (Szene → Licht / Bibliothek → Licht) | an | Legacy-Schalter in der UI; **ab v2.0.153** erscheinen Kreismarken nur im **Licht-Modus** (`#light-mode-btn`, `lightEditMode`). **v2.0.159:** Marker unabhängig von Tag/Nacht und `enabled` — Ring + Positions-Kugel für jedes Licht; Beleuchtung selbst folgt weiter Sonne/Schedule |
 | **Bloom an** (Szene → Licht, unter Lichtpunkten) | aus | Full-Scene-Bloom; Optionen ausgeblendet wenn aus |
 | **Bloom bei Kamerabewegung aus** | aus (unchecked) | Wenn an: Bloom während Orbit/Zoom aus (wie früher Orbit-Lite). Default: Bloom bleibt auch beim Navigieren an. **v2.0.125:** Bei Bloom an und dieser Option aus bleibt die Pixelratio beim Orbit voll — kein Qualitätswechsel des Glühens. |
 | Voreinstellung | — | Laterne / Deckenlampe / Stehlampe / Leselampe / Fassadenlampe / Blaulicht |
@@ -107,8 +108,8 @@ Persistiert in `FacadeState.sceneLights`. Hydrate: `normalizeSceneLights` / `nor
 | `src/utils/layers.ts` | `effectiveStoreyFloorCapY` (Kellerfenster-Oberkante) |
 | `src/lighting/selectiveBloom.ts` | `enableBloomLayer` (optional HDR-Kerne); Bloom selbst in `main.ts` |
 | `src/lighting/sceneLightUnits.ts` | Watt ↔ Three.js-Intensität (cm-Maßstab) |
-| `src/lighting/lightGlowMarker.ts` | Weiches Glühen (Sprite, depthTest für Okklusion) |
-| `src/lighting/sceneLightRuntime.ts` | Point- und SpotLight(s) + Marker/Pick + Fade |
+| `src/lighting/lightGlowMarker.ts` | Weiches Glühen, Bloom-Kern, Solid-Kugel, **Edit-Ring** (Licht-Modus) |
+| `src/lighting/sceneLightRuntime.ts` | Point- und SpotLight(s) + Marker/Pick/Ring + Fade |
 | `src/utils/daySchedule.ts` | Uhrzeit-Schedule Eval |
 | `src/ui/dayScheduleEditor.ts` | Ein-/Aus-Listen in der Toolbar |
 | `src/main.ts` | Bibliothek, Pick, Toolbar, Kontextmenü, Soft-Auto-Sonne |

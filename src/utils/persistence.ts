@@ -43,14 +43,16 @@ export interface SceneAppearance {
 }
 
 export const DEFAULT_SCENE_APPEARANCE: SceneAppearance = {
-  background: '#ffffff',
-  ground: '#ffffff',
-  skyReflection: '#3A6084',
+  background: '#555555',
+  ground: '#555555',
+  skyReflection: '#555555',
   lineStrokeScale: 1,
 }
 
-/** Alter Himmel-Default (weiß) — gilt als nicht vom Nutzer überschrieben. */
-export const PREVIOUS_SKY_REFLECTION_DEFAULTS = ['#ffffff'] as const
+/** Alte Defaults — gelten als nicht vom Nutzer überschrieben und werden migriert. */
+export const PREVIOUS_SKY_REFLECTION_DEFAULTS = ['#ffffff', '#3a6084'] as const
+export const PREVIOUS_BACKGROUND_DEFAULTS = ['#ffffff'] as const
+export const PREVIOUS_GROUND_DEFAULTS = ['#ffffff'] as const
 
 function normalizeLineStrokeScale(value: unknown): number {
   const n = typeof value === 'number' ? value : Number(value)
@@ -118,16 +120,24 @@ function isHexColor(value: unknown): value is string {
 
 export function normalizeSceneAppearance(value: unknown): SceneAppearance {
   if (!isRecord(value)) return { ...DEFAULT_SCENE_APPEARANCE }
+  const bgRaw = isHexColor(value.background) ? value.background : undefined
+  const groundRaw = isHexColor(value.ground) ? value.ground : undefined
   const skyRaw = isHexColor(value.skyReflection) ? value.skyReflection : undefined
-  const skyLower = skyRaw?.toLowerCase()
-  const skyWasOldDefault =
-    skyLower != null && PREVIOUS_SKY_REFLECTION_DEFAULTS.some((item) => item.toLowerCase() === skyLower)
+  const wasOld = (raw: string | undefined, prev: readonly string[]) =>
+    raw != null && prev.some((item) => item.toLowerCase() === raw.toLowerCase())
   return {
-    background: isHexColor(value.background) ? value.background : DEFAULT_SCENE_APPEARANCE.background,
-    ground: isHexColor(value.ground) ? value.ground : DEFAULT_SCENE_APPEARANCE.ground,
-    skyReflection: skyWasOldDefault || skyRaw == null
-      ? DEFAULT_SCENE_APPEARANCE.skyReflection
-      : skyRaw,
+    background:
+      wasOld(bgRaw, PREVIOUS_BACKGROUND_DEFAULTS) || bgRaw == null
+        ? DEFAULT_SCENE_APPEARANCE.background
+        : bgRaw,
+    ground:
+      wasOld(groundRaw, PREVIOUS_GROUND_DEFAULTS) || groundRaw == null
+        ? DEFAULT_SCENE_APPEARANCE.ground
+        : groundRaw,
+    skyReflection:
+      wasOld(skyRaw, PREVIOUS_SKY_REFLECTION_DEFAULTS) || skyRaw == null
+        ? DEFAULT_SCENE_APPEARANCE.skyReflection
+        : skyRaw,
     lineStrokeScale: normalizeLineStrokeScale(value.lineStrokeScale),
   }
 }

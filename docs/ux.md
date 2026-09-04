@@ -104,15 +104,17 @@ Sonne (`DEFAULT_SUN_SETTINGS`): **heutiges Datum**, **13:15** (13,25 h), Sonnenw
 
 ### Szene-Farben (`SceneAppearance`, `src/utils/persistence.ts`)
 
-Im Akkordeon **Szene** (rechte Leiste) drei Farb-Inputs, gespeichert unter `PersistedAppState.scene`:
+Im Akkordeon **Szene** (rechte Leiste) zuerst **Umgebung** (**Himmel** | **Neutral**, v2.0.164), dann **Laub** (Modus + Streuen/Entfernen, v2.0.168 — [ground-leaves.md](ground-leaves.md)), dann Farb-Inputs, gespeichert unter `PersistedAppState.scene`. Details Neutral-Modus: [stage-environment.md](stage-environment.md).
 
 | Input | Feld | Default | Wirkung |
 |---|---|---|---|
-| `#scene-all-color` | alle drei | `#ffffff` | Setzt Hintergrund, Untergrund und Himmelsfarbe gemeinsam. |
-| `#scene-bg-color` | `background` | `#ffffff` | Viewport-Hintergrund (Aufriss, Entwurf/Vorschau). In **Render**/3D liegt der physikalische Himmel davor — dort wirkt die Farbe nur am Rand außerhalb der Zeichenfläche. |
-| `#scene-ground-color` | `ground` | `#ffffff` | Bodenplatte (Albedo) und atmosphärischer Horizont unter dem Himmel. |
-| `#scene-sky-color` | `skyReflection` | `#3A6084` | Hemisphere-Himmel, Glas-EnvMap und Lichtstimmung. Alter Default `#ffffff` wird beim Laden ersetzt, sofern nicht bewusst eine andere Farbe gesetzt wurde. |
+| `#scene-all-color` | alle drei | `#555555` | Setzt Hintergrund, Untergrund und Himmelsfarbe gemeinsam. |
+| `#scene-bg-color` | `background` | `#555555` | Viewport-Hintergrund (Aufriss, Entwurf/Vorschau). In **Render**/3D liegt der physikalische Himmel davor — dort wirkt die Farbe nur am Rand außerhalb der Zeichenfläche. |
+| `#scene-ground-color` | `ground` | `#555555` | Bodenplatte (Albedo) und atmosphärischer Horizont unter dem Himmel. |
+| `#scene-sky-color` | `skyReflection` | `#555555` | Hemisphere-Himmel, Glas-EnvMap und Lichtstimmung. Alte Defaults (`#ffffff`, `#3A6084`) werden beim Laden ersetzt, sofern nicht bewusst eine andere Farbe gesetzt wurde. |
 | `#scene-line-stroke` / `#view-line-stroke-row` | `lineStrokeScale` | `1` | Multiplikator für Linienstärke im Stil **Zeichnung** (2D-SVG, 3D-Kanten via `LineSegments2`, Grundriss-Kanten). Steuerung oben links in der Zeichenfläche (`#view-line-stroke-row`), sichtbar nur bei aktivem Stil Zeichnung. |
+
+Im Modus **Neutral** sind die manuellen Farb-Inputs ausgeblendet (Farbe folgt Tageszeit: Beige → nahezu Schwarz).
 
 Anwendung über `applySceneAppearance()` — setzt Hintergrund, Boden, Glas-EnvMap und aktualisiert die Hemisphere-Lichter. Farb-Picker (auch vorgefertigte `<input type="color">` in `index.html`) haben Live-Vorschau während des Ziehens (v2.0.11).
 
@@ -328,12 +330,13 @@ Tab **Schrift** (`data-settings-section="label"`): Checkbox, Textfeld mit **Spei
 
 `OpeningPart` in `EditorState.selectedOpeningPart`: `group` | `frame` | `trim` | `sillInner` | `sillOuter` | `pediment` | `consoles` | `stairs` | `grille` | `rollerShutter`.
 
-`selectedWallPart` (nur ohne Öffnungswahl): `group` | `cornice` | `plinth` | `cladding` | `label`.
+`selectedWallPart` (nur ohne Öffnungswahl): `group` | `cornice` | `plinth` | `trimBand` | `cladding` | `label`.
 
 - 3D: Raycast inkl. `claddingGroup` (Treppe) und `profileGroup`; Gesims-Meshes mit `wallPart: 'cornice'`, Sockel mit `plinth`, Paneele mit `cladding` (orange inkl. LOD-Kacheln).
-- Bei Teil-Fokus (`part !== 'group'`): rechte Toolbar zeigt **nur** den passenden Reiter (andere `.settings-section` per `hidden`; verschachtelte Sektionen zählen nur wenn kein Vorfahre ausgeblendet ist). Maße/Aktionen und irrelevante Farben ausgeblendet. **Ausnahme Paneele (`cladding`):** ab **v0.7.227** wieder **alle** Wand-Reiter sichtbar (Maße, Schrift, Gesims, …) — nur 3D-Highlight bleibt auf dem Paneel.
+- Bei Teil-Fokus (`part !== 'group'`): rechte Toolbar zeigt **nur** den passenden Reiter (andere `.settings-section` per `hidden`; verschachtelte Sektionen zählen nur wenn kein Vorfahre ausgeblendet ist). Maße/Aktionen und irrelevante Farben ausgeblendet. **Ausnahme Paneele (`cladding`):** **v2.0.156** / v0.7.227 — **wie Wand ganz** (alle Bibliothek-Tabs und Studio-Reiter); nur 3D-Highlight bleibt auf dem Paneel.
 - **v0.7.176:** Anklicken in 3D behält Teil-Fokus für Profil, Bänke, Verdachung, Konsolen, Treppe, Gesims, Sockel, Paneele, Schrift. Rahmen/Glas → Ganz-Öffnung (`group`) mit Tab Farben. Rahmen-/Glasfarbe nur bei Öffnungsauswahl.
-- 3D-Highlight: Treppe = Stufen-Meshes orange (kein flaches Overlay in der Sockelzone); Wand-Teil = markierte Meshes + Overlay.
+- 3D-Highlight: Treppe = Stufen-Meshes orange (kein flaches Overlay in der Sockelzone); Wand-Teil = markierte Meshes + Overlay. Öffnungs-Overlay folgt der Maske (`openingForShellCut` + `openingWallFaceMaskPolyline`).
+- **Verschieben (v2.0.156):** Ghost, Hilfslinien und Pick-Ebene auf derselben Fassadentiefe (`OPENING_DRAG_FLOAT_CM` = 4 cm) und derselben Maskenkontur — Orange = Linien = Loch nach Drop.
 
 - 3D: `tagPickable(..., { openingPart })` an Rahmen, Profil-Sweeps, Leibung (`trim`), Bänke, Verdachung, Treppe, Gitter, Freiraum-Kappe; Raycast inkl. `profileGroup`. Pick-Priorität: **Treppe vor Öffnung vor Verkleidung**; Treffer im Öffnungsloch auf Paneel/Wand zählen als Fenster.
 - 2D: Bank/Treppe/Verdachung mit `data-opening-part` pickbar; Öffnungspfade `pointer-events: all`.
@@ -372,9 +375,93 @@ UI-Felder und Konstanten: [profiles.md](profiles.md) / [opening-features.md](ope
 
 ## Register-Navigation (Auswahl, v0.7.55+)
 
+### Grundgesetz (v2.0.153–154)
+
+1. **Bibliothek = Typ & Preset** (Karten). **Rechts = Parameter** des Ausgewählten.
+2. **Katalog-Tabs folgen der Auswahl** (Kontext), nicht einer festen Alles-Liste.
+3. **Inaktive Parameter ausblenden** (Toggle aus → Felder weg).
+4. **Funktionen nicht still löschen** — außer explizit freigegeben.
+5. **Farben:** feste Palette + global gleiches **Eigene-Farbe-Overlay** (HEX/RGB/HSL) überall.
+6. **Lesereihenfolge** am Objekt von oben nach unten (Gesims → Zierband → Schrift → Fassade → … → Sockel).
+
+#### Objekt-Affinitäts-Matrix (v2.0.154–156)
+
+`selection = { kind, part, openingType? }` steuert **Bibliothek-Tabs**, **Preset-Karten** und **rechte Sektionen**. Fremdes ausblenden. Implementierung: `allowedLibraryTabs()` / `applyOpeningPartVisibility` / `applyWallPartVisibility` / `pickFromEvent` in `main.ts`.
+
+**Grundgesetz:** Bibliothek = Typ & Preset-Karten. Rechts = nur Parameter (Enable, Maße, Farbe, Scale, Orientierung). Keine Verbände-/Profil-/Form-/Font-Karten rechts (`.sidebar-library-picker` / `hidden`, IDs bleiben).
+
+##### Bibliothek (unten)
+
+| Auswahl | Tabs | Preset-Sammlung (Muster) |
+|---|---|---|
+| Nichts | Wände · Erker · Balkone&Loggia · Licht | Platzieren |
+| Wand ganz | + Fassade · Gesims · Zierbänder · Sockel · Schrift · Fenster · Türen · Nischen · Licht | je Katalog **Keine/Keines** zuerst |
+| Wand-Teil Fassade (`cladding`) | **wie Wand ganz** (Highlight bleibt auf Paneel) | Verbände + **Keine** |
+| Wand-Teil Gesims / Sockel / Zierband / Schrift | nur dieser Katalog | Profile/Fonts; Gesims/Sockel/Zierband **Keines** |
+| Fenster ganz | Fenster · Profile · Verdachung | Typen; Bogenformen; Rahmen+Bank; Verdachung |
+| Tür ganz | Türen · Profile · Verdachung · Treppen | + Treppen-Anzahl/Form |
+| Nische/Konche ganz | Nischen | Nischen-Presets |
+| Teil Profil (`trim`) | Profile | **nur Rahmen** |
+| Teil Fensterbrett | Profile | **Keines** · Brett |
+| Teil Fensterbank | Profile | Bankprofile + **Keines** |
+| Teil Verdachung / Konsolen | Verdachung | Form + Profil + Konsolen (**Keine** zuerst) |
+| Teil Treppe | **nur Treppen** | **Keine** · 1–8 Stufen · Form (bündig / Überstand / Aufweitung) |
+| Teil Rollladen | (leer / kein Fremdkatalog) | Parameter rechts |
+| Teil Rahmen/Gitter | Fenster bzw. Türen · Profile | |
+| Licht / Licht-Modus | nur Licht | Licht-Presets |
+| Dach / Decke | vorerst keine Extra-Tabs | |
+
+- **Fassade** = Verbände; Preset **„Keine“**.
+- **Gesims / Zierband / Sockel:** jeweils **„Keines“** (Zierband: Profilkatalog wie Gesims).
+- **Schrift:** Font-Karten; Löschen per Rechtsklick; **kein „Keine“**.
+- Öffnungsauswahl zeigt **keine** Wand-Kataloge (Fassade/Schrift/…), außer der Teil gehört zur Wand.
+
+##### Picking (v2.0.155)
+
+Vorspringende Teile (Treppe, Bank, Verdachung, Gesims, Sockel, Zierband, Schrift, Profil) gewinnen vor Paneel/Wand, auch wenn die Fläche knapp davor liegt (`PART_PICK_SLACK`). Gesims/Sockel werden nicht mehr durch Öffnungsloch-Treffer zu „Öffnung ganz“ umgebogen.
+
+##### Kamera / Viewport (v2.0.155–156)
+
+Auswahl darf die Aufriss-Skala nicht springen lassen: bei gleichem `contentKey` friert `computeFrontViewBase` **px/cm** ein (`frontViewScaleFreeze` / `viewportW` / `viewW`), ohne Re-Fit an `minH`. Fehlendes `wall.kind` → Hydrate setzt `studio` (v2.0.157). Rechte Spalte fest `340px`; Bibliothek `min-height` + `scrollbar-gutter: stable`.
+
+##### Rechte Leiste
+
+| Auswahl | Sektionen |
+|---|---|
+| Wand ganz / Fassade (`cladding`) | Maße · Farben · Fassade · Ecken · Gesims/Sockel/… (Hide-when-off; **keine** Verbände-Karten) |
+| Wand-Teil Gesims/Sockel/… | nur der passende Reiter (+ Farbe wenn sinnvoll); **keine** Profilkarten |
+| Öffnung ganz | Maße · Farben · Profil · Verdachung · Rollladen · Treppe (Tür) · … — Form/Profil-Karten hidden |
+| Teil Treppe | **nur** Treppen-Parameter (Stufen/Maße/Farbe) — **kein** Rollladen/Verdachung |
+| Teil Rollladen | nur Rollladen |
+| Teil Bank / Verdachung / Profil | nur dieser Block (Arch/Fill/Reveal/Typ aus) |
+
+**Tot / raus (v2.0.153):** Öffnungs-Gehrung; abwechselnde Ebenen; zwei Bänder; Ecke-Dropdown (`cornerJoin=none`).
+
+#### Licht-Modus
+
+- Toggle **rechts außerhalb** von Vorschau/Render (`#light-mode-btn`).
+- Beim Aktivieren: **Uhrzeit 00:00** mit echtem Sonnenstand (Elevation/Azimut neu berechnet — sonst bleibt die Tages-Sonne sichtbar), **Tageszyklus aus**; **Blaulicht-Blinken läuft weiter**; **alle Lichter an**. Vorheriger Sonnen- und Ein/Aus-Stand wird beim Verlassen wiederhergestellt (Persistenz schreibt den alten Stand).
+- **Alle** Lichter sichtbar — unabhängig von Tageszeit, Uhrzeit, „Lichter mit Sonne“ und Ein-/Aus-Zustand (`enabled`/`fade`).
+- Jedes Licht mit **Kreismarke** (Sprite-Ring, durch Wände sichtbar, Auswahl orange); kleine Positions-Kugel in der Mitte.
+- Nur Lichter anwählbar und verschiebbar (**durch Wände**); Mehrfachauswahl (Shift/Ctrl); leerer Klick hebt die Lichtwahl auf.
+- Horizontales Bündig-Snap zu anderen Lichtern.
+- **Performance (v2.0.160):** im Licht-Modus keine Punktlicht-Cube-Shadows / Okkluder; Drag ohne Shadow-Bake und ohne Toolbar-DOM pro Frame — Orbit, Zoom und CRUD bleiben flüssig.
+- **Ladescreen (v2.0.163):** Ein-/Ausschalten zeigt ein Overlay über dem Viewport („Licht-Modus wird vorbereitet …“ / „… wird beendet …“, `#light-mode-loading`, Spinner per CSS-Animation). Dahinter werden die Shader-Programme neu kompiliert (Lichtanzahl und Sonnenschatten ändern die Programm-Varianten); `animate()` rendert währenddessen nicht. Details: [performance.md](performance.md#licht-modus).
+- **Rendering im Modus (v2.0.163):** Pixel-Ratio 1 (wie Orbit-Lite), Glas-Transmission halbe Auflösung, kein Sonnen-/Mondschatten, kein EnvMap-Bake. Hinzufügen, Duplizieren, Löschen, Blinken und Abstrahlrichtung lösen keine Shader-Neukompilierung aus (Reserve-Lichter halten die Lichtanzahl konstant); nur alle 4 neuen Lichter ein kurzer Hänger.
+- Außerhalb des Modus: keine Kreismarken.
+
+#### Laub-Modus (v2.0.168)
+
+- Chrome `#leaf-mode-btn` und Szene `#leaf-mode-btn-side`: Session-Toggle (nicht im Save).
+- Im Modus: Klick/Ziehen streut Häufchen; **Boden streuen** / **Laub entfernen** nur sichtbar wenn Modus an (`#leaf-mode-tools`).
+- Nach Verlassen: Cursor bewegt Blätter (Wind); Persistenz `groundLeaves`. Details: [ground-leaves.md](ground-leaves.md).
+- Schließt sich mit dem Licht-Modus aus.
+
+---
+
 Bei Wand-, Öffnungs-, Studio-, Dach- oder Decken-Auswahl:
 
-- **Unten** (`#library-dock` / `#opening-library` / `#library-mode`): immer die **Element-Bibliothek** (Wände / Fenster / Türen / **Paneele**). Tabs horizontal **oberhalb** der Kartenleiste (`#library-dock > .library-chrome`), Text **waagerecht** lesbar; kein Titel „Bibliothek“.
+- **Unten** (`#library-dock` / `#opening-library` / `#library-mode`): **kontextuelle** Element-Bibliothek (siehe Grundgesetz). Tabs horizontal **oberhalb** der Kartenleiste (`#library-dock > .library-chrome`), Text **waagerecht** lesbar; kein Titel „Bibliothek“.
 - **Rechts** (`#selection-toolbar`): Werte, Farben, ±, Löschen. Register (`#selection-right-tabs` / `.selection-toolbar-tabs`) **vertikal** gestapelt mit `writing-mode: vertical-rl`; Toolbar `flex-direction: row`. **v0.7.56:** Szene- und Auswahl-Tab-Leiste strecken sich über die volle rechte Spaltenhöhe bis zum unteren Fensterrand (`#ui-right` / `#lighting-accordion` mit `flex: 1`). **v2.0.65:** Auswahl-Toolbar ohne Höhen-Deckel (früher `max-height: min(52vh, 520px)`); `#selection-toolbar-panels` füllt die Restfläche und scrollt vertikal.
 - Ohne Auswahl: rechts **immer** die Szeneneinstellungen (`#lighting-accordion`, Geschwister von `#selection-toolbar` unter `#ui-right` — nicht darin verschachtelt, sonst verschwindet die Szene mit `[hidden]` der Auswahl-Toolbar).
 - **`data-settings-inline-all`**: kein eigener Reiter, im aktiven rechten Panel mit sichtbar (Modell/Aktionen).
@@ -411,8 +498,8 @@ Gilt für die **rechten Einstellungs-Register** bei jeder Objektauswahl (Wand, �
 
 ### Keine Auswahl
 
-- **Unten:** Bibliothek (`#library-mode`) mit Tabs Wände / Fenster / Türen / Paneele und Preset-/Vorlagen-Karten.
-- **Rechts:** Szeneneinstellungen (`#lighting-accordion`) immer sichtbar (Geschwister von `#selection-toolbar`), inkl. vertikaler Szene-Register (volle Höhe).
+- **Unten:** Bibliothek mit Tabs Wände / Erker / Balkone & Loggia / Licht (Fenster/Türen/Nischen erst mit Wand-Auswahl, v2.0.153).
+- **Rechts:** Szeneneinstellungen (`#lighting-accordion`) immer sichtbar (Geschwister von `#selection-toolbar`), inkl. vertikaler Szene-Register (volle Höhe). Licht-Modus-Toggle außerhalb Vorschau/Render.
 
 ### Linke Spalte einklappbar (v0.7.54 / v0.7.133)
 
@@ -497,7 +584,7 @@ Tabs in `#opening-library`: **Wände** | **Fenster** | **Türen** | **Nischen** 
 | Profile | Rahmen, Gesims, Sockel, Fensterbank | Drag (`application/x-library-asset`) auf Fenster/Tür bzw. Wand; Klick nutzt die Auswahl |
 | Verdachung | Form, Verdachungsprofil, Konsolen | auf Fenster/Tür droppen |
 
-Profil- und Form-Karten in der **rechten Seitenleiste** sind ausgeblendet (`.sidebar-library-picker`); **Ausnahme:** `#profile-select-cards` in der Öffnungs-Toolbar (Rahmenprofile) bleibt sichtbar. Zahlen, Checkboxen und Farben bleiben in den Einstellungen. MIME `application/x-library-asset` plus `activeLibraryAssetDrag` (Dragover hat oft leere Custom-MIME).
+Profil-, Verbands-, Font-, Form- und Bogenform-Karten in der **rechten Seitenleiste** sind ausgeblendet (`.sidebar-library-picker`, IDs bleiben) — Auswahl nur in der Bibliothek. Rechts: Zahlen, Checkboxen, Farben, Scale, Orientierung. MIME `application/x-library-asset` plus `activeLibraryAssetDrag` (Dragover hat oft leere Custom-MIME).
 
 **Aktive Kachel (v0.7.167–v0.7.175):** Die Karte, die bereits zur Auswahl gehört, hat einen **1 px schwarzen** Rahmen (`.library-card-applied`). Ohne Auswahl ist **Keines** so umrandet. Bei Wandauswahl erscheinen +/− an der Wand (folgen der Wand auch beim Orbit); + links/rechts/oben fügt aus der Zwischenablage ein oder dupliziert die Auswahl. Drag auf die Bühne bleibt.
 
@@ -509,7 +596,9 @@ Navigation: Button **?** unten rechts in der Bühne öffnet ein Dialog mit der T
 
 ### Ansicht & Darstellung
 
-Oben links in der Zeichenfläche: Segmented Controls — **Oben | 2D | 3D** (Ansicht), **Farbe | Zeichnung** (Darstellung), **Entwurf | Vorschau | Render** (Darstellungsmodus, v0.7.316), **Einfach | Komplex** (UI-Dichte, v0.7.51) und **Galerie** (QA-Übersicht aller Standards, v0.7.141, siehe [gallery.md](gallery.md)). Unabhängig voneinander. Bei **Zeichnung** erscheint daneben **Strichstärke** (Slider + Zahl).
+Oben links in der Zeichenfläche: Segmented Controls — **Oben | 2D | 3D** (Ansicht), **Farbe | Zeichnung** (Darstellung), **Entwurf | Vorschau | Render** (Darstellungsmodus, v0.7.316), **Himmel | Neutral** (Umgebung, v2.0.164), **Licht** (Licht-Modus), **Laub** (Laub-Modus, v2.0.168), **Einfach | Komplex** (UI-Dichte, v0.7.51) und **Galerie** (QA-Übersicht aller Standards, v0.7.141, siehe [gallery.md](gallery.md)). Unabhängig voneinander. Bei **Zeichnung** erscheint daneben **Strichstärke** (Slider + Zahl).
+
+**Himmel / Neutral (v2.0.164 / v2.0.165):** `#stage-env-sky-btn` / `#stage-env-studio-btn` — **Himmel** = flache Bodenplatte + Takram-Himmel; **Neutral** = flacher Boden (größer als Haus) in durchsichtiger Kugel (nur Innenfläche), beige/nacht, Werfschatten auf dem Boden. Persistenz `fassaden-builder-stage-environment`. Siehe [stage-environment.md](stage-environment.md).
 
 **Entwurf / Vorschau / Render (v0.7.316):** `#light-presentation-btn` / `#edit-presentation-btn` / `#render-presentation-btn` — immer genau einer aktiv. **Entwurf (v0.7.325):** Preset **anklicken** → Wand **anklicken** wählt aus (Farben/Mauerwerk); **nochmal klicken** auf die markierte Wand tauscht das Segment; **Greifer** verlängert; **Ziehen** platziert neue Wand. **Vorschau:** Flat-Meshes, detaillierte Fenster. **Render:** volle Geometrie, Himmel, Bloom. Details: [performance.md](performance.md).
 
@@ -712,7 +801,7 @@ Swatch `transparent` (`TRANSPARENT_GLASS`) macht Klarverglasung. 3D-Glas (`apply
 
 - `FacadeState.buildings[]` + `activeBuildingId`; Legacy-Saves werden beim Laden in ein Gebäude „Haus 1“ migriert (`migrateToBuildings`).
 - Ebenen-Liste: **Lichter** (Szene, aufklappbar) → **Haus** → **Dach** (Sektion, aufklappbar) → **Geschosse** → **Decke / Boden** / Wände / Öffnungen / **Treppe** (Unterzeile unter Tür).
-- **Lichter:** Alle platzierten Punktlichter (`FacadeState.sceneLights`) als eigene Sektion oben im Ebenenbaum. Namen nach Art + Nummer (`Blaulicht 2`, `Laterne`, …). **Shift+Klick** Mehrfachauswahl → Mehr-Menü **Gruppieren** (persistente `sceneLightGroups`). Gruppenzeile wählt alle Mitglieder; Mehr-Menü: ein-/ausblenden, umbenennen, auflösen. Pro Licht: Klick wählt (`selectedSceneLightId` / `selectedSceneLightIds`), Mehr-Menü **Ausblenden/Einblenden** (`enabled`), **Duplizieren**, **Licht entfernen**. Sektions-Mehr-Menü: **Punktlicht einfügen**, **Alle Lichter an/aus**. Globaler Toggle auch unter Bibliothek → Licht und Szene → Licht. Ausgeschaltete Lichter gedimmt (`.layer-dimmed`).
+- **Lichter:** Alle platzierten Punktlichter (`FacadeState.sceneLights`) als eigene Sektion oben im Ebenenbaum. Namen nach Art + Nummer (`Blaulicht 2`, `Laterne`, …). **Shift/Ctrl+Klick** Mehrfachauswahl → Mehr-Menü **Gruppieren** (persistente `sceneLightGroups`). Gruppenzeile wählt alle Mitglieder; Mehr-Menü: ein-/ausblenden, umbenennen, auflösen. Pro Licht: Klick wählt (`selectedSceneLightId` / `selectedSceneLightIds`); ⋯ oder **Rechtsklick** (Mehrfachauswahl bleibt) → **Ein-/Ausblenden**, **Duplizieren**, **Entfernen** für alle Gewählten. Sektions-Mehr-Menü: **Punktlicht einfügen**, **Alle ein-/ausblenden**, **Alle löschen**. Globaler Toggle auch unter Bibliothek → Licht und Szene → Licht. Ausgeschaltete Lichter gedimmt (`.layer-dimmed`).
 - Zeilen-Labels: nur **Typ** (`Wand`, `Fenster`, `Tür`, `Treppe`, `Decke / Boden`, `Dach`, `Ziegel`, `Rinne`) + **Meta** (Breite in cm oder Stufenanzahl). Keine Himmelsrichtung, kein Fenstermodell-String, keine x/y-Position. **v2.0.140:** Wand-/Öffnungs-Maße in den Ebenen aktualisieren **live** beim Ziehen (`syncLiveLayerListMetrics`).
 - Haus-Zeile: Klick **aktiviert** das Haus und setzt `selectedBuildingId` (Grundriss-Umriss orange). Mehr-Menü: **Neues Haus**, **Nur weiße Wände** / **Fassade einblenden** (`Building.bareWalls`), Umbenennen, Ausblenden, **Duplizieren** (Ost/West/Nord/Süd), Löschen (mind. ein Haus). Bei `bareWalls` zeigt die Hauszeile „· nur Wände“; 3D/2D nur weiße Vollwände (keine Öffnungen/Mauerwerk/Profile/Dach/Decken), Projektdaten unverändert.
 - **Decke / Boden** pro Geschoss: Zeile wie Wand (`selectedCeiling`, Toolbar `#toolbar-ceiling`, Farbe `FloorPlan.ceilingColor`, Default **Weiß** `#ffffff`). Farbe auch im Wand-Reiter **Farben**. **v0.7.227:** per Klick auf die Decke in 3D auswählbar. Mehr-Menü: Ein-/Ausblenden (`FloorPlan.showCeiling`). Alte braune Defaults (`#9a8a7a` / `#8a7a6a`) werden beim Laden weiß (Schema 13), eigene Farben bleiben.

@@ -23,6 +23,7 @@ Dieses Dokument beschreibt Perspektivkamera, OrbitControls und die eigene ⌘/Ct
 - **3D-Ansicht:** `focusCameraExterior()` rahmt beim Wechsel nach 3D ein und setzt target/position.
 - **Galerie / Doppelklick:** `focusGalleryOnWalls()` verschiebt nur das Ziel oder rahmt neu ein.
 - **Kompass:** `orbitCameraToYaw()` dreht die Kamera um das bestehende Ziel, Abstand bleibt.
+- **Auswahl (v2.0.155–157):** Normale Objektwahl bewegt Orbit-/Aufriss-Kamera **nicht**. 2D-Aufriss: bei gleichem Fassaden-Inhalt friert `computeFrontViewBase` **px/cm** ein (`frontViewScaleFreeze` / `viewportW`/`viewW`, `contentKey`) — kein Re-Fit, der das Haus horizontal skaliert. Fehlendes `wall.kind` wird in Hydrate zu `studio` (sonst keine Aufriss-Base). Rechte Spalte fest 340px; Bibliothek `min-height` + `scrollbar-gutter: stable`.
 
 Der Nutzer orbitiert immer um `controls.target`. Liegt das Ziel außerhalb des Gebäudes (z. B. nur X/Y aus dem 2D-Layout, Z=0), wirkt die Drehung wie „Kamera dreht, Objekt nicht im Mittelpunkt“.
 

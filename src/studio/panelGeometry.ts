@@ -328,7 +328,78 @@ function topArcHasStone(arcY: number, yBot: number, eps = 0.05): boolean {
   return arcY > yBot + eps
 }
 
-/** Flat-/Arbeitsansicht: Bogenkappe als Trapez-Spalten (wie High-LOD), nicht ein Umriss. */
+/**
+ * Max. Stützpunkte der Bogenkante für **Front**-Tessellation.
+ * 128 Clip-Spalten als einzelne Quads erzeugen beim Rauszoomen vertikale Distanz-Zacken
+ * (Tiefenpuffer, v2.0.166) — eine Earcut-Fläche mit ~24 Punkten bleibt glatt.
+ */
+const ARC_FRONT_MAX_SAMPLES = 24
+/** Soffit unter der Kurve darf etwas feiner bleiben (dünne Leiste, weniger Fight). */
+const ARC_SOFFIT_MAX_SAMPLES = 48
+
+function filterArcStonePoints(
+  arc: { x: number; y: number }[],
+  kind: 'bottom' | 'top',
+  y0: number,
+  y1: number,
+): Pt2[] {
+  const out: Pt2[] = []
+  for (const pt of arc) {
+    if (kind === 'bottom') {
+      if (!bottomArcHasStone(pt.y, y1)) continue
+      out.push({ x: pt.x, y: Math.max(pt.y, y0) })
+    } else {
+      if (!topArcHasStone(pt.y, y0)) continue
+      out.push({ x: pt.x, y: Math.min(pt.y, y1) })
+    }
+  }
+  return out
+}
+
+/** Geschlossener D-Ring der Bogenkappe (CCW) für eine Front-Fläche statt Spalten-Quads. */
+function arcCapFrontRing(
+  rect: { x: number; y: number; width: number; height: number },
+  arc: { x: number; y: number }[],
+  kind: 'bottom' | 'top',
+  maxSamples = ARC_FRONT_MAX_SAMPLES,
+): Pt2[] | null {
+  const y0 = rect.y
+  const y1 = rect.y + rect.height
+  const pts = filterArcStonePoints(arc, kind, y0, y1)
+  if (pts.length < 2) return null
+  const sparse = sparsePolyline(pts, maxSamples, 0.85)
+  if (sparse.length < 2) return null
+  if (kind === 'bottom') {
+    return ringCcw(
+      cleanRing([
+        ...sparse,
+        { x: sparse[sparse.length - 1]!.x, y: y1 },
+        { x: sparse[0]!.x, y: y1 },
+      ]),
+    )
+  }
+  return ringCcw(
+    cleanRing([
+      { x: sparse[0]!.x, y: y0 },
+      { x: sparse[sparse.length - 1]!.x, y: y0 },
+      ...[...sparse].reverse(),
+    ]),
+  )
+}
+
+/** Bogenkante für Soffit/Seiten — ausgedünnt, aber feiner als die Front. */
+function sparseArcForSoffit(
+  arc: { x: number; y: number }[],
+  kind: 'bottom' | 'top',
+  y0: number,
+  y1: number,
+): Pt2[] {
+  const pts = filterArcStonePoints(arc, kind, y0, y1)
+  if (pts.length <= 2) return pts
+  return sparsePolyline(pts, ARC_SOFFIT_MAX_SAMPLES, 0.45)
+}
+
+/** Flat-/Arbeitsansicht: Bogenkappe als eine Frontfläche (nicht 128 Trapez-Spalten). */
 function addWorkFaceArcPart(
   wall: Wall,
   miter: { start: boolean; end: boolean },
@@ -338,37 +409,17 @@ function addWorkFaceArcPart(
   indices: number[],
   part: OpeningPoly,
 ) {
-  const y0 = part.y
-  const y1 = part.y + part.height
   if (part.bottomArc && part.bottomArc.length >= 2) {
-    const arc = part.bottomArc
-    for (let i = 0; i < arc.length - 1; i += 1) {
-      const a = arc[i]!
-      const b = arc[i + 1]!
-      if (!bottomArcHasStone(a.y, y1) || !bottomArcHasStone(b.y, y1)) continue
-      if (Math.abs(b.x - a.x) < 1e-4) continue
-      addWorkFaceOutlinePoly(wall, miter, faceZ, positions, normals, indices, [
-        { x: a.x, y: Math.max(a.y, y0) },
-        { x: b.x, y: Math.max(b.y, y0) },
-        { x: b.x, y: y1 },
-        { x: a.x, y: y1 },
-      ])
+    const ring = arcCapFrontRing(part, part.bottomArc, 'bottom')
+    if (ring && ring.length >= 3) {
+      addWorkFaceOutlinePoly(wall, miter, faceZ, positions, normals, indices, ring)
     }
     return
   }
   if (part.topArc && part.topArc.length >= 2) {
-    const arc = part.topArc
-    for (let i = 0; i < arc.length - 1; i += 1) {
-      const a = arc[i]!
-      const b = arc[i + 1]!
-      if (!topArcHasStone(a.y, y0) || !topArcHasStone(b.y, y0)) continue
-      if (Math.abs(b.x - a.x) < 1e-4) continue
-      addWorkFaceOutlinePoly(wall, miter, faceZ, positions, normals, indices, [
-        { x: a.x, y: y0 },
-        { x: b.x, y: y0 },
-        { x: b.x, y: Math.min(b.y, y1) },
-        { x: a.x, y: Math.min(a.y, y1) },
-      ])
+    const ring = arcCapFrontRing(part, part.topArc, 'top')
+    if (ring && ring.length >= 3) {
+      addWorkFaceOutlinePoly(wall, miter, faceZ, positions, normals, indices, ring)
     }
   }
 }
@@ -1017,8 +1068,10 @@ function extrudeStone(
 
   if (arc && arc.length >= 2) {
     const skipFront = taperOn
-    const first = arc.find((pt) => bottomArcHasStone(pt.y, y1Wall))
-    const last = [...arc].reverse().find((pt) => bottomArcHasStone(pt.y, y1Wall))
+    const y0Wall = rect.y
+    const soffit = sparseArcForSoffit(arc, 'bottom', y0Wall, y1Wall)
+    const first = soffit[0]
+    const last = soffit.length > 0 ? soffit[soffit.length - 1] : undefined
     if (first) {
       addQuad(
         positions,
@@ -1041,19 +1094,17 @@ function extrudeStone(
         p(last.x, Math.max(last.y, y0Wall), bodyFrontZ),
       )
     }
-    for (let i = 0; i < arc.length - 1; i += 1) {
-      const a = arc[i]
-      const b = arc[i + 1]
-      if (!bottomArcHasStone(a.y, y1Wall) || !bottomArcHasStone(b.y, y1Wall)) continue
+    if (!skipFront) {
+      const ring = arcCapFrontRing(rect, arc, 'bottom')
+      if (ring) fillRingFront(ring, p, bodyFrontZ, positions, normals, indices)
+    }
+    for (let i = 0; i < soffit.length - 1; i += 1) {
+      const a = soffit[i]!
+      const b = soffit[i + 1]!
       const ay = Math.max(a.y, y0Wall)
       const by = Math.max(b.y, y0Wall)
       const af = p(a.x, ay, bodyFrontZ)
       const bf = p(b.x, by, bodyFrontZ)
-      const at = p(a.x, y1Wall, bodyFrontZ)
-      const bt = p(b.x, y1Wall, bodyFrontZ)
-      if (!skipFront) {
-        addQuad(positions, normals, indices, af, bf, bt, at)
-      }
       addQuad(
         positions,
         normals,
@@ -1069,8 +1120,10 @@ function extrudeStone(
 
   if (topArc && topArc.length >= 2) {
     const skipFront = taperOn
-    const first = topArc.find((pt) => topArcHasStone(pt.y, y0Wall))
-    const last = [...topArc].reverse().find((pt) => topArcHasStone(pt.y, y0Wall))
+    const y0Wall = rect.y
+    const soffit = sparseArcForSoffit(topArc, 'top', y0Wall, y1Wall)
+    const first = soffit[0]
+    const last = soffit.length > 0 ? soffit[soffit.length - 1] : undefined
     if (first) {
       addQuad(
         positions,
@@ -1093,23 +1146,15 @@ function extrudeStone(
         p(last.x, Math.min(last.y, y1Wall), bodyFrontZ),
       )
     }
-    for (let i = 0; i < topArc.length - 1; i += 1) {
-      const a = topArc[i]
-      const b = topArc[i + 1]
-      if (!topArcHasStone(a.y, y0Wall) || !topArcHasStone(b.y, y0Wall)) continue
+    if (!skipFront) {
+      const ring = arcCapFrontRing(rect, topArc, 'top')
+      if (ring) fillRingFront(ring, p, bodyFrontZ, positions, normals, indices)
+    }
+    for (let i = 0; i < soffit.length - 1; i += 1) {
+      const a = soffit[i]!
+      const b = soffit[i + 1]!
       const ay = Math.min(a.y, y1Wall)
       const by = Math.min(b.y, y1Wall)
-      if (!skipFront) {
-        addQuad(
-          positions,
-          normals,
-          indices,
-          p(a.x, y0Wall, bodyFrontZ),
-          p(b.x, y0Wall, bodyFrontZ),
-          p(b.x, by, bodyFrontZ),
-          p(a.x, ay, bodyFrontZ),
-        )
-      }
       addQuad(
         positions,
         normals,
@@ -1463,12 +1508,16 @@ function sparsePolyline(pts: Pt2[], maxN: number, tol = 1.6): Pt2[] {
 function remnantOutline(rect: Rect): Pt2[] | null {
   const fromTile = ringFromTile(rect)
   if (fromTile && fromTile.length >= 3) {
-    // Bogen-Silhouette (topArc/bottomArc) nie auf wenige Sehnen ausdünnen:
-    // wandbreite Streifen mit mehreren Öffnungen würden sonst zu Diagonal-/Trapez-Chaos.
+    // Bogen-Silhouette: Front/Boss ausdünnen gegen Distanz-Zacken (128 Clip-Spalten),
+    // Extrados bleibt mit ~24 Punkten erkennbar (Voussoir-Dock am Clip, nicht an der Mesh-Kante).
     const hasArc =
       (rect.bottomArc != null && rect.bottomArc.length >= 2) ||
       (rect.topArc != null && rect.topArc.length >= 2)
-    if (hasArc) return fromTile
+    if (hasArc) {
+      return fromTile.length > ARC_FRONT_MAX_SAMPLES
+        ? simplifyClosedRing(fromTile, ARC_FRONT_MAX_SAMPLES, 0.85)
+        : fromTile
+    }
     return fromTile.length > 16 ? simplifyClosedRing(fromTile, 16, 0.4) : fromTile
   }
   if (rect.width > CLIP_EPS && rect.height > CLIP_EPS) {
@@ -1621,38 +1670,14 @@ function fillMonotoneArcFront(
 ) {
   const bottom = rect.bottomArc
   const top = rect.topArc
-  const y0 = rect.y
-  const y1 = rect.y + rect.height
   if (bottom && bottom.length >= 2) {
-    for (let i = 0; i < bottom.length - 1; i += 1) {
-      const a = bottom[i]!
-      const b = bottom[i + 1]!
-      addQuad(
-        positions,
-        normals,
-        indices,
-        p(a.x, a.y, z),
-        p(b.x, b.y, z),
-        p(b.x, y1, z),
-        p(a.x, y1, z),
-      )
-    }
+    const ring = arcCapFrontRing(rect, bottom, 'bottom')
+    if (ring) fillRingFront(ring, p, z, positions, normals, indices)
     return
   }
   if (top && top.length >= 2) {
-    for (let i = 0; i < top.length - 1; i += 1) {
-      const a = top[i]!
-      const b = top[i + 1]!
-      addQuad(
-        positions,
-        normals,
-        indices,
-        p(a.x, y0, z),
-        p(b.x, y0, z),
-        p(b.x, b.y, z),
-        p(a.x, a.y, z),
-      )
-    }
+    const ring = arcCapFrontRing(rect, top, 'top')
+    if (ring) fillRingFront(ring, p, z, positions, normals, indices)
   }
 }
 
@@ -2362,21 +2387,14 @@ export function createStudioPlinthGeometry(
 
     if (bottomArc && bottomArc.length >= 2) {
       const yTop = y1 - halfH
-      for (let i = 0; i < bottomArc.length - 1; i += 1) {
-        const a = bottomArc[i]!
-        const b = bottomArc[i + 1]!
-        if (!bottomArcHasStone(a.y, y1) || !bottomArcHasStone(b.y, y1)) continue
+      const ring = arcCapFrontRing(rect, bottomArc, 'bottom')
+      if (ring) fillRingFront(ring, p, outerZ, positions, normals, indices)
+      const soffit = sparseArcForSoffit(bottomArc, 'bottom', y0, y1)
+      for (let i = 0; i < soffit.length - 1; i += 1) {
+        const a = soffit[i]!
+        const b = soffit[i + 1]!
         const ya0 = Math.max(a.y, y0) - halfH
         const ya1 = Math.max(b.y, y0) - halfH
-        addQuad(
-          positions,
-          normals,
-          indices,
-          v3(xAt(a.x, outerZ), ya0, outerZ),
-          v3(xAt(b.x, outerZ), ya1, outerZ),
-          v3(xAt(b.x, outerZ), yTop, outerZ),
-          v3(xAt(a.x, outerZ), yTop, outerZ),
-        )
         addQuad(
           positions,
           normals,
@@ -2396,8 +2414,8 @@ export function createStudioPlinthGeometry(
           v3(xAt(a.x, outerZ), ya0, outerZ),
         )
       }
-      const a0 = bottomArc.find((pt) => bottomArcHasStone(pt.y, y1))
-      const aN = [...bottomArc].reverse().find((pt) => bottomArcHasStone(pt.y, y1))
+      const a0 = soffit[0]
+      const aN = soffit.length > 0 ? soffit[soffit.length - 1] : undefined
       if (a0 && !(dockStart && rect.x <= 0.5)) {
         addQuad(
           positions,
@@ -2425,21 +2443,14 @@ export function createStudioPlinthGeometry(
 
     if (topArc && topArc.length >= 2) {
       const yBot = y0 - halfH
-      for (let i = 0; i < topArc.length - 1; i += 1) {
-        const a = topArc[i]!
-        const b = topArc[i + 1]!
-        if (!topArcHasStone(a.y, y0) || !topArcHasStone(b.y, y0)) continue
+      const ring = arcCapFrontRing(rect, topArc, 'top')
+      if (ring) fillRingFront(ring, p, outerZ, positions, normals, indices)
+      const soffit = sparseArcForSoffit(topArc, 'top', y0, y1)
+      for (let i = 0; i < soffit.length - 1; i += 1) {
+        const a = soffit[i]!
+        const b = soffit[i + 1]!
         const ay = Math.min(a.y, y1) - halfH
         const by = Math.min(b.y, y1) - halfH
-        addQuad(
-          positions,
-          normals,
-          indices,
-          v3(xAt(a.x, outerZ), yBot, outerZ),
-          v3(xAt(b.x, outerZ), yBot, outerZ),
-          v3(xAt(b.x, outerZ), by, outerZ),
-          v3(xAt(a.x, outerZ), ay, outerZ),
-        )
         addQuad(
           positions,
           normals,
@@ -2563,22 +2574,17 @@ export function createStudioMortarGeometry(
     const arc = rect.bottomArc
 
     if (arc && arc.length >= 2) {
-      for (let i = 0; i < arc.length - 1; i += 1) {
-        const a = arc[i]
-        const b = arc[i + 1]
-        if (!bottomArcHasStone(a.y, y1) || !bottomArcHasStone(b.y, y1)) continue
+      const ring = arcCapFrontRing(rect, arc, 'bottom')
+      if (ring) {
+        const p = (wx: number, wy: number, z: number) => v3(xAt(wx, z), wy - halfH, z)
+        fillRingFront(ring, p, mortarFrontZ, positions, normals, indices)
+      }
+      const soffit = sparseArcForSoffit(arc, 'bottom', rect.y, y1)
+      for (let i = 0; i < soffit.length - 1; i += 1) {
+        const a = soffit[i]!
+        const b = soffit[i + 1]!
         const ya0 = Math.max(a.y, rect.y) - halfH
         const ya1 = Math.max(b.y, rect.y) - halfH
-        const yt = y1 - halfH
-        addQuad(
-          positions,
-          normals,
-          indices,
-          v3(xAt(a.x, mortarFrontZ), ya0, mortarFrontZ),
-          v3(xAt(b.x, mortarFrontZ), ya1, mortarFrontZ),
-          v3(xAt(b.x, mortarFrontZ), yt, mortarFrontZ),
-          v3(xAt(a.x, mortarFrontZ), yt, mortarFrontZ),
-        )
         addQuad(
           positions,
           normals,
@@ -2594,20 +2600,14 @@ export function createStudioMortarGeometry(
 
     const topArc = rect.topArc
     if (topArc && topArc.length >= 2) {
-      const yBot = rect.y - halfH
-      for (let i = 0; i < topArc.length - 1; i += 1) {
-        const a = topArc[i]
-        const b = topArc[i + 1]
-        if (!topArcHasStone(a.y, rect.y) || !topArcHasStone(b.y, rect.y)) continue
-        addQuad(
-          positions,
-          normals,
-          indices,
-          v3(xAt(a.x, mortarFrontZ), yBot, mortarFrontZ),
-          v3(xAt(b.x, mortarFrontZ), yBot, mortarFrontZ),
-          v3(xAt(b.x, mortarFrontZ), Math.min(b.y, y1) - halfH, mortarFrontZ),
-          v3(xAt(a.x, mortarFrontZ), Math.min(a.y, y1) - halfH, mortarFrontZ),
-        )
+      const ring = arcCapFrontRing(rect, topArc, 'top')
+      if (ring) {
+        const p = (wx: number, wy: number, z: number) => v3(xAt(wx, z), wy - halfH, z)
+        fillRingFront(ring, p, mortarFrontZ, positions, normals, indices)
+      }
+      for (let i = 0; i < soffit.length - 1; i += 1) {
+        const a = soffit[i]!
+        const b = soffit[i + 1]!
         addQuad(
           positions,
           normals,
@@ -2681,7 +2681,8 @@ export function openingDragGhostWallLocalPoints(
   opening: Opening,
   localZ: number,
 ): { x: number; y: number }[] {
-  return openingWallFaceMaskPolyline(opening, 0, ARCH_MESH_SEGMENTS).map((p) => ({
+  const shell = openingForShellCut(opening)
+  return openingWallFaceMaskPolyline(shell, 0).map((p) => ({
     x: wallLocalX(wall, p.x, localZ),
     y: localY(p.y, wall),
   }))

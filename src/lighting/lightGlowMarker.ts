@@ -143,3 +143,80 @@ export function disposeLightSolidMarker(mesh: THREE.Mesh): void {
   mesh.geometry.dispose()
   ;(mesh.material as THREE.Material).dispose()
 }
+
+let sharedRingMap: THREE.Texture | null = null
+
+/** Dünner Kreisring für den Licht-Modus (Editor-Auswahl, immer kamera-facing). */
+function ringTexture(): THREE.Texture {
+  if (sharedRingMap) return sharedRingMap
+  const size = 128
+  const data = new Uint8Array(size * size * 4)
+  const center = (size - 1) / 2
+  const outer = center * 0.92
+  const inner = center * 0.78
+  const soft = center * 0.06
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const r = Math.hypot(x - center, y - center)
+      let alpha = 0
+      if (r <= outer && r >= inner) {
+        alpha = 1
+      } else if (r > outer && r < outer + soft) {
+        alpha = 1 - (r - outer) / soft
+      } else if (r < inner && r > inner - soft) {
+        alpha = 1 - (inner - r) / soft
+      }
+      const i = (y * size + x) * 4
+      data[i] = 255
+      data[i + 1] = 255
+      data[i + 2] = 255
+      data[i + 3] = Math.round(255 * Math.max(0, Math.min(1, alpha)))
+    }
+  }
+  sharedRingMap = new THREE.DataTexture(data, size, size, THREE.RGBAFormat)
+  sharedRingMap.needsUpdate = true
+  return sharedRingMap
+}
+
+/**
+ * Kreismarke im Licht-Modus: sichtbar durch Wände (`depthTest` aus),
+ * unabhängig davon ob das Licht gerade leuchtet.
+ */
+export function createLightEditRing(initialDiameterCm: number): THREE.Sprite {
+  const material = new THREE.SpriteMaterial({
+    map: ringTexture(),
+    transparent: true,
+    opacity: 0.95,
+    depthTest: false,
+    depthWrite: false,
+    toneMapped: false,
+    sizeAttenuation: true,
+  })
+  const sprite = new THREE.Sprite(material)
+  sprite.renderOrder = 40
+  sprite.name = 'lightEditRing'
+  sprite.scale.setScalar(Math.max(16, initialDiameterCm))
+  sprite.visible = false
+  return sprite
+}
+
+export function updateLightEditRing(
+  sprite: THREE.Sprite,
+  colorHex: string,
+  diameterCm: number,
+  selected: boolean,
+): void {
+  const material = sprite.material as THREE.SpriteMaterial
+  if (diameterCm <= 0) {
+    sprite.visible = false
+    return
+  }
+  material.color.set(selected ? '#ff8800' : colorHex)
+  material.opacity = selected ? 1 : 0.9
+  sprite.visible = true
+  sprite.scale.setScalar(Math.max(24, diameterCm * (selected ? 1.2 : 1)))
+}
+
+export function disposeLightEditRing(sprite: THREE.Sprite): void {
+  ;(sprite.material as THREE.SpriteMaterial).dispose()
+}

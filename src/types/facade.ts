@@ -7,7 +7,8 @@ import type { CustomProfileDef } from '../profiles/custom'
 import { createId } from '../utils/id'
 import { migrateOpeningPanelFan } from '../utils/openingGeometry'
 import type { DaySchedule } from '../utils/daySchedule'
-export type { FloorPlan, DaySchedule }
+import type { GroundLeaf } from '../scene/groundLeaves'
+export type { FloorPlan, DaySchedule, GroundLeaf }
 
 /** Berliner Mansarddach auf dem obersten Grundriss-Ring. */
 export interface RoofConfig {
@@ -1150,6 +1151,8 @@ export interface FacadeState {
   sceneLights?: SceneLight[]
   /** Lichtgruppen für den Ebenenbaum. */
   sceneLightGroups?: SceneLightGroup[]
+  /** Herbstlaub auf dem Boden (siteOffset-Lokal). */
+  groundLeaves?: GroundLeaf[]
 }
 
 export interface EditorState {
@@ -1343,6 +1346,7 @@ export function cloneFacadeState(state: FacadeState): FacadeState {
       ...group,
       memberLightIds: [...group.memberLightIds],
     })),
+    groundLeaves: state.groundLeaves?.map((leaf) => ({ ...leaf })),
   }
 }
 

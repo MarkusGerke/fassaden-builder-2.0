@@ -2,6 +2,94 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Flüssigere Navigation & Tag/Nacht + klassischer Loader (2026-09-04) — v2.0.170
+
+Loader: fester Nikolaus-Pfad. Orbit: PCSS-Lite + verzögerte EnvMap. Live-Uhr: kein Shadow-Bake jedes Frame, Studio-BG ohne EnvMap-Spam, stabile Lichtanzahl, soft „Alle Lichter an“, Key-Schatten-Hysterese. Dateien: `index.html`, `main.ts`, `sceneLightRuntime.ts`. Docs: [performance.md](performance.md), [views-and-state.md](views-and-state.md).
+
+### Mehrere Lichter: Rechtsklick und Ebenen-Mehr (2026-09-04) — v2.0.169
+
+Rechtsklick in Szene/Ebenen behält die Mehrfachauswahl; Ein-/Ausblenden, Duplizieren und Löschen gelten für alle gewählten Lichter. Sektions-Mehr-Menü: Alle ein-/ausblenden, Alle löschen. Datei: `main.ts`. Docs: [scene-lights.md](scene-lights.md), [ux.md](ux.md).
+
+### Herbstlaub mit Cursor-Wind (2026-09-04) — v2.0.168
+
+Laub-Modus (Chrome + Szene): Klick/Ziehen und „Boden streuen“ platzieren bis zu 800 Herbstblätter (3 Formen). Nach Verlassen reagiert das Laub auf Mausbewegung als Wind. Persistenz in `FacadeState.groundLeaves`. Dateien: `leafShapes.ts`, `groundLeaves.ts`, `leafRuntime.ts`, `main.ts`, `index.html`. Docs: [ground-leaves.md](ground-leaves.md).
+
+### Shadow-Budget bei vielen Nachtlichtern (2026-09-04) — v2.0.167
+
+Ab ~16 gleichzeitigen Punkt-/Spot-Shadow-Maps (WebGL-Texture-Units) wurde die 3D-Szene schwarz — „Alle Lichter an“ nach Sonnenuntergang wirkte kaputt, obwohl `enabled` und Intensität stimmten. Fix: `MAX_SCENE_LIGHT_SHADOWS = 12`, `enforceShadowBudget` behält nur die hellsten Casters. Dateien: `sceneLightRuntime.ts`, Test. Docs: [scene-lights.md](scene-lights.md).
+
+### Bogenkappe ohne Zoom-Zacken (2026-09-04) — v2.0.166
+
+Reste über dem Rundbogen wurden als ~128 unverschweißte Trapez-Spalten extrudiert (Clip `ARCH_CURVE_SEGMENTS`). Beim Rauszoomen: Tiefenpuffer-Risse → vertikale dunkle Zacken. Fix: Front per Earcut-Ring (`arcCapFrontRing`, max. 24 Punkte); Soffit weiter segmentiert (~48). Dateien: `panelGeometry.ts`, `archCapTessellation.test.ts`. Docs: [panel-geometry.md](panel-geometry.md).
+
+### Neutral-Bühne: Kugel durchsichtig + Bodenschatten (2026-09-04) — v2.0.165
+
+Flacher Boden bleibt im Neutralmodus sichtbar (größer als Haus + 480 cm Rand) und empfängt Schatten. Volle Kugel mit `BackSide` — von außen hindurchschauen. Fußboden-Meshes unabhängig von Decken-Sichtbarkeit. Dateien: `studioStage.ts`, `main.ts`, `FacadeController.ts`. Docs: [stage-environment.md](stage-environment.md).
+
+### Neutrale Studio-Bühne (2026-09-04) — v2.0.164
+
+Zweiter Bühnenmodus **Neutral**: schalenförmige Plattform (sphärisches Cap, Innengrund einer Kugel), Takram-Himmel aus. Tagesbeige `#E8E3DD` → Nacht `#0C0B0A` über `twilightFactor`; weichere PCSS-Schatten und leichtes Ambient-Boost. **Himmel**-Modus unverändert. UI: Viewport-Chrome + Szene → Umgebung. Dateien: `studioStage.ts`, `main.ts`, `index.html`. Docs: [stage-environment.md](stage-environment.md).
+
+### Licht-Modus flüssig + Ladescreen (2026-09-04) — v2.0.163
+
+Leerlauf 10 → 60 FPS, CRUD 3,5–5,8 s → 20–40 ms. Ursachen: Mondschatten (PCSS 96 Taps, 8192²) bei Intensität 0,01; EnvMap-Bake nach jedem Orbit; Shader-Neukompilierung bei jeder Änderung der Lichtanzahl (auch Blinken); doppelter Render pro `pointermove`. Maßnahmen: `castShadow` der Sonne aus, kein Reflexions-Bake, `stableLightCount` mit Reserve-Lichtern (`STABLE_LIGHT_COUNT_STEP = 4`), Pixel-Ratio 1 + `transmissionResolutionScale 0.5`, Overlay `#light-mode-loading` mit `renderer.compileAsync` (`toggleLightEditMode`, `lightModeTransition` pausiert `animate()`). Dateien: `main.ts`, `sceneLightRuntime.ts`, `style.css`. Docs: [performance.md](performance.md#licht-modus), [ux.md](ux.md), [scene-lights.md](scene-lights.md).
+
+### Licht-Modus: Blaulicht blinkt weiter (2026-09-04) — v2.0.162
+
+Licht-Modus setzt `animationsPaused` nicht mehr — nur `dayCycleEnabled: false` (plus Guard). Blaulicht-Doppelblitz läuft weiter. Datei: `main.ts`. Docs: [ux.md](ux.md).
+
+### Licht-Modus: echte Nacht + alle Lichter an (2026-09-04) — v2.0.161
+
+Nur `timeOfDay = 0` ließ `elevationRad`/`azimuth` auf Tageswerten — die rote Sonne blieb sichtbar und `sunAboveHorizon` war weiter true → Auto-Lichter aus. Fix: `syncSunSettingsFromSolar(..., { applySolarLook: true })` bei Eintritt/Austritt; zusätzlich `setAllSceneLightsEnabled(true)` und Snap der Fade-Faktoren; Ein/Aus-Stand pro Licht wird wiederhergestellt. Datei: `main.ts`. Docs: [ux.md](ux.md).
+
+### Licht-Modus flüssig + Szene grau (2026-09-04) — v2.0.160
+
+Licht-Modus setzt automatisch **00:00**, pausiert Tageszyklus/Animationen (Stand wird beim Verlassen wiederhergestellt; Persistenz schreibt den alten Sonnenstand). Keine Punktlicht-Cube-Shadows/Okkluder im Modus; Drag ohne Shadow-Bake und ohne Toolbar-DOM pro Frame. Szene-Farben Default alle drei `#555555` (Migration alter Weiß-/Blau-Defaults). Dateien: `main.ts`, `sceneLightRuntime.ts`, `persistence.ts`, `index.html`. Docs: [ux.md](ux.md), [scene-lights.md](scene-lights.md), [views-and-state.md](views-and-state.md).
+
+### Licht-Modus: alle Lichter mit Kreis, auch tagsüber (2026-09-04) — v2.0.159
+
+Im Licht-Modus verschwanden Marker tagsüber, weil sie an `enabled`/`fadeFactor` (Sonne/Schedule) hingen. Jetzt: Kreismarke (`createLightEditRing`, `depthTest` aus → durch Wände) plus Positions-Kugel für **jedes** Licht unabhängig von Tageszeit; Beleuchtung selbst unverändert. Nur Lichter pick-/verschiebbar; Leerklick hebt die Lichtwahl auf. Dateien: `lightGlowMarker.ts`, `sceneLightRuntime.ts`, `main.ts`. Docs: [scene-lights.md](scene-lights.md), [ux.md](ux.md).
+
+### Mauerwerk ohne Streifen beim Rauszoomen (2026-09-04) — v2.0.158
+
+Ab ~40–60 m Kameraabstand zerfielen Wände mit Fugen-Mauerwerk in dunkle horizontale Streifen — kein „Verschwinden“ der Wand, sondern **Tiefenpuffer-Z-Fighting**: Stein-Front (+4 cm), Mörtel-Front (+0,8 cm), Stein-Rücken (0) und Wandschale (−0,15 cm) liegen bei perspektivischer 24-Bit-Tiefe (near 1 cm) ab dieser Distanz innerhalb einer Auflösungsstufe (≈ z²·6·10⁻⁸ cm). Fix: feste Tiefen-Reihenfolge per `polygonOffsetUnits` — Steine 1, Mörtel 4, Wandschale außen 8 (`applyDepthLayerOffset`, nach `finish*`/`applyWorkModeSurfaceLook`, weil die Units zurücksetzen). Geometrie unverändert; kein `logarithmicDepthBuffer` (würde alle `polygonOffset`-Regeln aushebeln). Datei: `FacadeController.ts`. Docs: [facade-layers.md](facade-layers.md).
+
+### Auswahl ohne Skala-Sprung; Matrix; Öffnungs-Drag (2026-09-04) — v2.0.156 / v2.0.157
+
+**Kamera:** `computeFrontViewBase` friert px/cm bei gleichem `contentKey` ein (`viewportW` + `frontViewScaleFreeze`); kein Re-Fit-else. Rechte Spalte fest 340px. **v2.0.157:** Hydrate setzt fehlendes `wall.kind` auf `studio` — sonst `isStudioWall` false → Aufriss ohne Base → Frustum ±200 und Skala folgt der Canvas-Breite.
+
+**Matrix:** Fassade (`cladding`) = Wand (Tabs + Einstellungen). Preset-Karten rechts (Verbände, Fonts, Rahmen, Verdachungsform, Bogenform, Licht, Zierband-Profile, Ziegel) via `.sidebar-library-picker` ausgeblendet. Zierband-Bibliothek = Profilkatalog. Teil Profil nur Rahmen. Teil-Fokus blendet Arch/Fill/Reveal aus.
+
+**Öffnungs-Drag:** Ghost/Overlay/Guides/Pick auf derselben Maske (`openingForShellCut` + `openingWallFaceMaskPolyline`) und Fassaden-`localZ` (`OPENING_DRAG_FLOAT_CM` = 4).
+
+Dateien: `main.ts`, `FacadeController.ts`, `openingGuides.ts`, `panelGeometry.ts`, `liveDrag.ts`, `presets.ts`, `index.html`, `style.css`. Docs: [ux.md](ux.md), [camera.md](camera.md).
+
+### Auswahl stabil: Kamera, Pick, Treppen (2026-09-04) — v2.0.155
+
+**Kamera:** Aufriss behält Skala/`look*` bei gleichem Fassaden-Inhalt, wenn nur die Viewport-Höhe durch Bibliotheks-Tabs wechselt; Bibliothek `min-height`.
+
+**Picking:** Teilobjekte (Bank, Gesims, Sockel, Verdachung, Treppe, …) vor Paneel; kein Öffnungsloch-Diebstahl für echte Wand-Teile.
+
+**Treppen-Bibliothek:** „Keine“ zuerst, 1–8 Stufen, Form-Presets (bündig / Überstand / Aufweitung). Bank-Fokus: nur Brett-Katalog.
+
+Dateien: `main.ts`, `style.css`. Docs: [ux.md](ux.md), [camera.md](camera.md).
+
+### Objekt-Matrix Bibliothek/Einstellungen (2026-09-04) — v2.0.154
+
+`allowedLibraryTabs()` + verschärfte `applyOpeningPartVisibility` / `applyWallPartVisibility`: Tabs und rechte Sektionen folgen `kind`×`part`×Öffnungstyp. Treppe: nur Treppen-Katalog und -Parameter. Docs: [ux.md](ux.md) Matrix.
+
+### UX-Grundgesetz: Kontext-Bibliothek & Licht-Modus (2026-09-04) — v2.0.153
+
+**Bibliothek:** Tabs folgen der Auswahl (`data-library-when`); Balkone & Loggia zusammen; bei Wand zusätzlich Fassade/Gesims/Zierbänder/Sockel/Schrift; Profile/Verdachung bei Öffnung.
+
+**Tot:** Öffnungs-Gehrung (`openingJoin=flush`), abwechselnde Ebenen, Zwei-Bänder-Zonen, Ecke-Dropdown (`cornerJoin=none`). UI hidden, Normalize/Hydrate erzwingen.
+
+**Licht-Modus:** Toggle `#light-mode-btn` neben Vorschau/Render — nur Lichter pickbar (durch Wände), Marker nur hier, Mehrfachwahl, XZ-Snap.
+
+**Rechts:** Fugen-Toggle, Reiter Ecken (End-Boss), Paneele→Fassade, Stein-Kontrast unter Farben.
+
+Dateien: `main.ts`, `index.html`, `constants.ts`, `hydrate.ts`. Docs: [ux.md](ux.md), [migration.md](migration.md).
+
 ### Fensterlöcher frei; Sturz korrekt (2026-09-04) — v2.0.152
 
 v2.0.151 `preferOutline` erzeugte ein L/U-Polygon; der nächste `clipRectMinusBox` nutzte nur die Bounding-Box und füllte frühere Fenster wieder → Fläche vor dem Glas, Sturz wirkte zu tief. Fix: Rechtecklöcher als Achsen-Differenz (links/rechts/oben/unten), Outlines vorher in AABBs zerlegen. Regression: `rectStripClip.test.ts`. Dateien: `openingGeometry.ts`. Docs: [panel-geometry.md](panel-geometry.md).

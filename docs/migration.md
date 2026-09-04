@@ -21,7 +21,7 @@ Gemeinsamer Einstieg: [`src/utils/facadeLoad.ts`](../src/utils/facadeLoad.ts) `a
 | Schritt | Datei | Rolle |
 |---|---|---|
 | Schema-Leiter | [`src/utils/schemaMigrations.ts`](../src/utils/schemaMigrations.ts) | Dokumentierte Rewrites (dürfen Optik ändern) |
-| Hydrate | [`src/utils/hydrate.ts`](../src/utils/hydrate.ts) | Feldkatalog vervollständigen, Feature **aus** |
+| Hydrate | [`src/utils/hydrate.ts`](../src/utils/hydrate.ts) | Feldkatalog vervollständigen, Feature **aus**; **v2.0.157:** fehlendes `wall.kind` → `studio` (sonst Aufriss ohne Studio-Wände) |
 | Clamp | [`src/utils/walls.ts`](../src/utils/walls.ts) `clampFacadeState` | inkl. Hydrate bei jedem Apply |
 | Abgeleitet | [`src/studio/planGeometry.ts`](../src/studio/planGeometry.ts) `finalizeStudioGeometry` | Grundriss, Bank-`flipForward`, Gehrung — **kein** `panelFlip` |
 | Außenkante | `fitStateWallsToOuterSpine` wenn `buildingNeedsOuterSpineFit` (Mehrheit `panelFlip: false`) | Origin = Außenecke, Dicke nach innen; v0.7.280 richtet die Außenlinie an der Plan-Kante aus. **v2.0.93:** keine Fit-Heuristik mehr über „unverbundene Ringe“ — die verschob Wände beim Hard-Reload |
@@ -125,3 +125,13 @@ Alte `hdri*`-Felder in `PersistedAppState.scene` werden ignoriert (HDRI entfernt
 ### Hydrate ohne Schema-Step (v2.0.150) — Fade / DaySchedule
 
 - `SceneLight.fadeInMs` / `fadeOutMs` / `schedule`, `Opening.schedule`, `OpeningRollerShutter.schedule`: Defaults beim Normalize/Hydrate (leere Zeiten, Fade 800/1200 ms). Kein `FACADE_SCHEMA_VERSION`-Bump.
+
+## 2.0.153 — UX-Totlegungen
+
+Beim Laden (`hydrateWall` / `normalizeStudioPanel`):
+
+- `openingJoin` → immer `flush`
+- `alternateFloors` → immer `false`
+- `cornerJoin` → immer `none`
+- Persistierte Zwei-Bänder (`band-lower`/`band-upper`) werden verworfen (`clearPersistedCladdingZones`)
+

@@ -2,12 +2,15 @@ import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
 import {
   createLightBloomCore,
+  createLightEditRing,
   createLightGlowSprite,
   createLightSolidMarker,
   disposeLightBloomCore,
+  disposeLightEditRing,
   disposeLightGlowSprite,
   disposeLightSolidMarker,
   updateLightBloomCore,
+  updateLightEditRing,
   updateLightGlowSprite,
   updateLightSolidMarker,
 } from './lightGlowMarker'
@@ -64,5 +67,19 @@ describe('lightGlowMarker', () => {
     updateLightSolidMarker(mesh, '#ffaa66', false, false)
     expect(mesh.visible).toBe(false)
     disposeLightSolidMarker(mesh)
+  })
+
+  it('Licht-Modus-Kreis ist durch Wände sichtbar und orange bei Auswahl', () => {
+    const ring = createLightEditRing(80)
+    const mat = ring.material as THREE.SpriteMaterial
+    expect(mat.depthTest).toBe(false)
+    updateLightEditRing(ring, '#4488ff', 96, false)
+    expect(ring.visible).toBe(true)
+    expect(`#${mat.color.getHexString()}`).toBe('#4488ff')
+    updateLightEditRing(ring, '#4488ff', 96, true)
+    expect(`#${mat.color.getHexString()}`).toBe('#ff8800')
+    updateLightEditRing(ring, '#4488ff', 0, false)
+    expect(ring.visible).toBe(false)
+    disposeLightEditRing(ring)
   })
 })

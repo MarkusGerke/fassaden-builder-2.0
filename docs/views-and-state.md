@@ -16,7 +16,7 @@ type AppView = 'front' | '3d' | 'top' | 'export'
 
 Legacy `'plan'` → `'top'`, `'edit'` / `'2d'` → `'front'`.
 
-Wechsel via `setView(mode)` in `src/main.ts`. **Fassaden-Builder 2.0:** App-Start standardmäßig **2D-Front** + **Render**-Modus; **3D** wieder per `#view-btn-3d` wählbar. Gespeicherte `view: '3d'` aus `localStorage` wird beim Reload wiederhergestellt (Hash-Load bleibt `'front'`). Buttons Oben/Entwurf/Galerie/Einfach-Komplex und Ebenen-Panel sind weiter per `hidden` ausgeblendet (Code/Wiring bleibt). **v2.0.38 / v2.0.149:** Ladeoverlay `#app-loading` bleibt bis `bootstrapSceneLighting()` fertig ist (Atmosphäre/Horizont, Fenster-Meshes, erstes Shadow-Map-Bake) plus zwei Animationsframes — nicht mehr sofort in `finally`. Loader: SVG „Haus vom Nikolaus“ (nur vollständige Eulerwege), Strich per `stroke-dashoffset` in 720 ms, nahtloser Loop ohne Eckpunkte, Text „Studio wird geladen …“ (v2.0.4).
+Wechsel via `setView(mode)` in `src/main.ts`. **Fassaden-Builder 2.0:** App-Start standardmäßig **2D-Front** + **Render**-Modus; **3D** wieder per `#view-btn-3d` wählbar. Gespeicherte `view: '3d'` aus `localStorage` wird beim Reload wiederhergestellt (Hash-Load bleibt `'front'`). Buttons Oben/Entwurf/Galerie/Einfach-Komplex und Ebenen-Panel sind weiter per `hidden` ausgeblendet (Code/Wiring bleibt). **v2.0.38 / v2.0.149:** Ladeoverlay `#app-loading` bleibt bis `bootstrapSceneLighting()` fertig ist (Atmosphäre/Horizont, Fenster-Meshes, erstes Shadow-Map-Bake) plus zwei Animationsframes — nicht mehr sofort in `finally`. Loader: SVG **Haus vom Nikolaus** — **v2.0.170** immer derselbe klassische Eulerweg (8 Kanten), Strich per `stroke-dashoffset` in 720 ms, Loop mit Pause, Text „Studio wird geladen …“.
 
 Beim Wechsel zur `'top'`-Ansicht wird die Kamera zentriert (`framePlanCameraToContent`, `planZoom = 1`).
 
@@ -79,7 +79,7 @@ Laden: `applyFacadeLoadPipeline` (`migrateFacadeSchema` → `clampFacadeState` i
 
 **Teilen-Link (`#f=`):** Zusätzlich zu `facade` optional `scene` (Szene-Farben) und `viewYaw` (Kompass). Siehe [ux.md](ux.md#url-hash-live-srcutilssharets).
 
-`scene` steuert die Szene-Farben (3D-Hintergrund, Untergrund, Glas-Himmelsreflexion). Defaults in `DEFAULT_SCENE_APPEARANCE` (alle drei `#ffffff`), normalisiert über `normalizeSceneAppearance`. UI: einzeln oder `#scene-all-color` für alle drei zugleich.
+`scene` steuert die Szene-Farben (3D-Hintergrund, Untergrund, Glas-Himmelsreflexion). Defaults in `DEFAULT_SCENE_APPEARANCE` (alle drei `#555555`), normalisiert über `normalizeSceneAppearance`. UI: einzeln oder `#scene-all-color` für alle drei zugleich.
 
 Ansicht (`#view-mode-select`) und Darstellung (`#render-style-select`) sind Dropdowns; der Gründerzeit-Typ wird über `#window-preset-select` gewählt.
 

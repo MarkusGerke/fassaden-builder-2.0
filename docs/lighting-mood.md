@@ -47,6 +47,7 @@ flowchart LR
 | `src/scene/sceneLights.ts` | Persistente Punktlichter (Bibliothek, v2.0.27) |
 | `src/lighting/sceneLightRuntime.ts` | THREE.PointLight + Marker-Kugel |
 | `src/main.ts` | `applySunLighting`, `renderLitSceneFrame`, Bloom |
+| `src/lighting/studioStage.ts` | Neutralmodus: Schale, Beige↔Nacht (v2.0.164) |
 
 ## Datenfluss
 

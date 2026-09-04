@@ -68,7 +68,8 @@
         var pathEl = document.getElementById('app-loading-house-path')
         if (!root || !pathEl) return
 
-        // Knoten: 0/1 unten, 2/3 Traufe, 4 First
+        // Klassisches Haus vom Nikolaus (5 Knoten, 8 Kanten, ein Eulerweg).
+        // 0/1 Boden, 2/3 Traufe, 4 First — immer derselbe Pfad, kein Wechsel.
         var P = [
           [5, 20],
           [19, 20],
@@ -76,47 +77,9 @@
           [5, 11],
           [12, 3.5],
         ]
-        var ADJ = [
-          [1, 2, 3],
-          [0, 2, 3],
-          [0, 1, 3, 4],
-          [0, 1, 2, 4],
-          [2, 3],
-        ]
+        var HOUSE_PATH = [0, 3, 4, 2, 1, 0, 2, 3, 1]
         var DRAW_MS = 720
         var PAUSE_MS = 280
-
-        function edgeKey(a, b) {
-          return a < b ? a + '-' + b : b + '-' + a
-        }
-
-        function collectCompletePaths() {
-          var complete = []
-          function dfs(node, used, path) {
-            if (used.size === 8) {
-              complete.push(path.slice())
-              return
-            }
-            var nexts = []
-            for (var i = 0; i < ADJ[node].length; i++) {
-              var n = ADJ[node][i]
-              if (!used.has(edgeKey(node, n))) nexts.push(n)
-            }
-            if (nexts.length === 0) return
-            for (var j = 0; j < nexts.length; j++) {
-              var nn = nexts[j]
-              var k = edgeKey(node, nn)
-              used.add(k)
-              path.push(nn)
-              dfs(nn, used, path)
-              path.pop()
-              used.delete(k)
-            }
-          }
-          dfs(0, new Set(), [0])
-          dfs(1, new Set(), [1])
-          return complete
-        }
 
         function pathD(nodes) {
           var d = ''
@@ -127,15 +90,9 @@
           return d
         }
 
-        var completePaths = collectCompletePaths()
-        if (completePaths.length === 0) {
-          completePaths = [[0, 2, 4, 3, 1, 0, 2, 4, 3]]
-        }
-
         var raf = 0
         var timer = 0
         var cancelled = false
-        var pathIndex = 0
 
         function clearAnim() {
           if (raf) {
@@ -152,18 +109,11 @@
           return !cancelled && root.isConnected && !root.classList.contains('is-done')
         }
 
-        function pickPath() {
-          var nodes = completePaths[pathIndex % completePaths.length]
-          pathIndex += 1
-          return nodes
-        }
-
         function run() {
           if (!stillActive()) return
           clearAnim()
 
-          var nodes = pickPath()
-          pathEl.setAttribute('d', pathD(nodes))
+          pathEl.setAttribute('d', pathD(HOUSE_PATH))
 
           var total = pathEl.getTotalLength()
           if (!(total > 0)) {
@@ -286,6 +236,48 @@
               Render
             </button>
           </div>
+          <div class="view-mode-toggle" role="group" aria-label="Umgebung">
+            <button
+              type="button"
+              class="preset-btn view-mode-btn active"
+              id="stage-env-sky-btn"
+              title="Landschaft: Bodenplatte mit Sonne, Himmel und Horizont"
+              aria-pressed="true"
+            >
+              Himmel
+            </button>
+            <button
+              type="button"
+              class="preset-btn view-mode-btn"
+              id="stage-env-studio-btn"
+              title="Neutral: flacher Boden in Kugel (von außen durchsichtig), beige tagsüber, nachts schwarz"
+              aria-pressed="false"
+            >
+              Neutral
+            </button>
+          </div>
+          <div class="view-mode-toggle" role="group" aria-label="Licht-Modus">
+            <button
+              type="button"
+              class="preset-btn view-mode-btn"
+              id="light-mode-btn"
+              title="Licht-Modus: nur Lichter anwählen (durch Wände), Kreismarken und Hilfslinien"
+              aria-pressed="false"
+            >
+              Licht
+            </button>
+          </div>
+          <div class="view-mode-toggle" role="group" aria-label="Laub-Modus">
+            <button
+              type="button"
+              class="preset-btn view-mode-btn"
+              id="leaf-mode-btn"
+              title="Laub-Modus: Herbstlaub auf dem Boden platzieren; danach reagiert es auf den Cursor als Wind"
+              aria-pressed="false"
+            >
+              Laub
+            </button>
+          </div>
           <div class="view-mode-toggle" role="group" aria-label="Bearbeitungsmodus" hidden>
             <button type="button" class="preset-btn view-mode-btn active" id="ui-mode-simple" title="Weniger Optionen, Presets und ±" hidden>Einfach</button>
             <button type="button" class="preset-btn view-mode-btn" id="ui-mode-complex" title="Alle Einstellungen" hidden>Komplex</button>
@@ -404,17 +396,22 @@
         <div id="library-dock" aria-label="Element-Bibliothek">
           <div class="library-chrome">
             <div class="library-tabs" role="tablist" aria-label="Elemente">
-              <button type="button" class="library-tab active" role="tab" aria-selected="true" data-library-tab="walls" id="library-tab-walls">Wände</button>
-              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="bay" id="library-tab-bay">Erker</button>
-              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="balcony" id="library-tab-balcony">Balkon</button>
-              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="loggia" id="library-tab-loggia">Loggia</button>
-              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="windows" id="library-tab-windows">Fenster</button>
-              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="doors" id="library-tab-doors">Türen</button>
-              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="niches" id="library-tab-niches">Nischen</button>
-              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="panels" id="library-tab-panels">Paneele</button>
-              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="profiles" id="library-tab-profiles">Profile</button>
-              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="pediment" id="library-tab-pediment">Verdachung</button>
-              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="lights" id="library-tab-lights">Licht</button>
+              <button type="button" class="library-tab active" role="tab" aria-selected="true" data-library-tab="walls" id="library-tab-walls" data-library-when="always">Wände</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="bay" id="library-tab-bay" data-library-when="always">Erker</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="balcony" id="library-tab-balcony" data-library-when="always">Balkone &amp; Loggia</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="loggia" id="library-tab-loggia" data-library-when="always" hidden>Loggia</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="panels" id="library-tab-panels" data-library-when="wall">Fassade</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="cornice" id="library-tab-cornice" data-library-when="wall">Gesims</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="trimBands" id="library-tab-trim-bands" data-library-when="wall">Zierbänder</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="plinth" id="library-tab-plinth" data-library-when="wall">Sockel</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="label" id="library-tab-label" data-library-when="wall">Schrift</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="windows" id="library-tab-windows" data-library-when="wall">Fenster</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="doors" id="library-tab-doors" data-library-when="wall">Türen</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="niches" id="library-tab-niches" data-library-when="wall">Nischen</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="stairs" id="library-tab-stairs" data-library-when="stairs" hidden>Treppen</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="profiles" id="library-tab-profiles" data-library-when="opening">Profile</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="pediment" id="library-tab-pediment" data-library-when="opening">Verdachung</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="lights" id="library-tab-lights" data-library-when="always">Licht</button>
             </div>
           </div>
           <div id="opening-library" aria-label="Bibliothek">
@@ -533,7 +530,7 @@
             <div class="settings-section" data-settings-section="sceneLight" data-settings-label="Punktlicht">
               <div class="toolbar-group">
                 <span class="toolbar-label">Voreinstellung</span>
-                <div id="scene-light-preset-cards" class="tpl-card-row scene-light-preset-cards" role="listbox" aria-label="Licht-Voreinstellung"></div>
+                <div id="scene-light-preset-cards" class="tpl-card-row scene-light-preset-cards sidebar-library-picker" role="listbox" aria-label="Licht-Voreinstellung"></div>
               </div>
               <div class="toolbar-group">
                 <span class="toolbar-label">Abstrahlung</span>
@@ -702,7 +699,7 @@
                 <div id="roof-tiles-options" class="settings-section" data-settings-section="roof-tiles" data-settings-label="Ziegel">
                 <div class="toolbar-group">
                   <span class="toolbar-label">Ziegel-Muster</span>
-                  <div id="roof-tile-pattern-cards" class="tpl-card-row pattern-picker-row" role="listbox" aria-label="Ziegel-Muster"></div>
+                  <div id="roof-tile-pattern-cards" class="tpl-card-row pattern-picker-row sidebar-library-picker" role="listbox" aria-label="Ziegel-Muster"></div>
                 </div>
                 <div class="toolbar-group">
                   <span class="toolbar-label">Ziegel-Profil</span>
@@ -816,7 +813,7 @@
                 <div id="ceiling-color-swatches-studio" class="color-swatches"></div>
               </div>
               <div id="cladding-color-section-studio" class="toolbar-group">
-                <span class="toolbar-label">Paneelfarbe</span>
+                <span class="toolbar-label">Verkleidungsfarbe</span>
                 <div id="cladding-color-swatches-studio" class="color-swatches"></div>
               </div>
               <div class="toolbar-group">
@@ -847,6 +844,25 @@
                 <span class="toolbar-label">Fensterglasfarbe</span>
                 <div id="glass-color-swatches-studio" class="color-swatches"></div>
               </div>
+<div id="studio-tile-color-section">
+              <div class="toolbar-group" id="studio-tile-variance-row">
+                <label class="slider-label" for="studio-tile-variance">
+                  <span>Stein-Kontrast</span>
+                  <output id="studio-tile-variance-value">0</output>
+                </label>
+                <input id="studio-tile-variance" type="range" min="0" max="100" step="1" value="0" />
+                <p class="toolbar-hint compact-hint">Hell- und Dunkeltöne um die Paneelfarbe (Paneele und Ziegel). 0 = alle Steine gleich.</p>
+              </div>
+              <div class="toolbar-group" id="studio-tile-variety-row" hidden>
+                <label class="slider-label" for="studio-tile-variety">
+                  <span>Stein-Häufigkeit</span>
+                  <output id="studio-tile-variety-value">0</output>
+                </label>
+                <input id="studio-tile-variety" type="range" min="0" max="100" step="1" value="0" />
+                <p class="toolbar-hint compact-hint">Wie oft abweichende Steine vorkommen — 1 bis 8 Farbstufen, zufällig über das Mauerwerk verteilt.</p>
+              </div>
+              </div>
+
 </div>
 <div class="settings-section" data-settings-section="cornice" data-settings-label="Gesims" data-settings-order="30">
               <div class="toolbar-group">
@@ -904,8 +920,8 @@
               <div id="studio-trim-bands-list"></div>
               <button id="studio-trim-band-add" class="preset-btn" type="button">Band hinzufügen</button>
 </div>
-<div class="settings-section" data-settings-section="panels" data-settings-label="Paneele">
-              <div class="toolbar-group">
+<div class="settings-section" data-settings-section="panels" data-settings-label="Fassade">
+              <div class="toolbar-group" hidden>
                 <label class="toolbar-check">
                   <input id="studio-panels-enabled" type="checkbox" checked />
                   Paneele anzeigen
@@ -914,31 +930,13 @@
               <div id="studio-panel-options">
               <div class="toolbar-group">
                 <span class="toolbar-label">Paneele</span>
-                <div id="studio-pattern-panel-cards" class="tpl-card-row pattern-picker-row" role="listbox" aria-label="Paneelmuster"></div>
+                <div id="studio-pattern-panel-cards" class="tpl-card-row pattern-picker-row sidebar-library-picker" role="listbox" aria-label="Paneelmuster"></div>
               </div>
               <div class="toolbar-group">
                 <span class="toolbar-label">Mauerwerk</span>
-                <div id="studio-pattern-masonry-cards" class="tpl-card-row pattern-picker-row" role="listbox" aria-label="Mauerwerksmuster"></div>
+                <div id="studio-pattern-masonry-cards" class="tpl-card-row pattern-picker-row sidebar-library-picker" role="listbox" aria-label="Mauerwerksmuster"></div>
               </div>
-              <div id="studio-tile-color-section">
-              <div class="toolbar-group" id="studio-tile-variance-row">
-                <label class="slider-label" for="studio-tile-variance">
-                  <span>Stein-Kontrast</span>
-                  <output id="studio-tile-variance-value">0</output>
-                </label>
-                <input id="studio-tile-variance" type="range" min="0" max="100" step="1" value="0" />
-                <p class="toolbar-hint compact-hint">Hell- und Dunkeltöne um die Paneelfarbe (Paneele und Ziegel). 0 = alle Steine gleich.</p>
-              </div>
-              <div class="toolbar-group" id="studio-tile-variety-row" hidden>
-                <label class="slider-label" for="studio-tile-variety">
-                  <span>Stein-Häufigkeit</span>
-                  <output id="studio-tile-variety-value">0</output>
-                </label>
-                <input id="studio-tile-variety" type="range" min="0" max="100" step="1" value="0" />
-                <p class="toolbar-hint compact-hint">Wie oft abweichende Steine vorkommen — 1 bis 8 Farbstufen, zufällig über das Mauerwerk verteilt.</p>
-              </div>
-              </div>
-              <div class="toolbar-group">
+              <div class="toolbar-group" hidden>
                 <label class="toolbar-check">
                   <input id="studio-opening-join-miter" type="checkbox" />
                   Gehrung an Öffnungen
@@ -956,11 +954,11 @@
                 <span class="toolbar-label">Vorstand / Steintiefe (cm)</span>
                 <input id="studio-project-depth" type="number" min="0" step="0.1" value="4" />
               </div>
-              <div class="toolbar-group">
+              <div class="toolbar-group" hidden>
                 <span class="toolbar-label">Ecke</span>
                 <select id="studio-corner-join">
                   <option value="miter">Gehrung (Bilderrahmen)</option>
-                  <option value="none">Keine Gehrung</option>
+                  <option value="none" selected>Keine Gehrung</option>
                   <option value="bond">Mauerverband</option>
                 </select>
               </div>
@@ -972,7 +970,7 @@
                 <span class="toolbar-label">Höhe (cm, 8er-Raster)</span>
                 <input id="studio-panel-height" type="number" min="8" step="8" value="32" />
               </div>
-              <div class="toolbar-group">
+              <div class="toolbar-group" hidden>
                 <label class="toolbar-check">
                   <input id="studio-cladding-two-bands" type="checkbox" />
                   Verkleidung in zwei Bänder teilen
@@ -1045,7 +1043,36 @@
                     <input id="studio-layer2-taper" type="number" min="0" max="1" step="0.05" value="1" />
                   </div>
               </div>
-              <div id="studio-end-boss-section" class="toolbar-group" hidden data-ui-level="advanced">
+
+              <div id="studio-joints-section">
+              <div class="toolbar-group">
+                <label class="toolbar-check">
+                  <input id="studio-joints-enabled" type="checkbox" checked />
+                  Fugen vorhanden
+                </label>
+              </div>
+              <div id="studio-joints-options">
+              <div class="toolbar-group">
+                <span class="toolbar-label">Fugenbreite — Abstand zwischen Steinen (cm)</span>
+                <input id="studio-joint" type="number" min="0" step="0.1" value="0.8" />
+              </div>
+              <div id="studio-joint-color-row" class="toolbar-group">
+                <span class="toolbar-label">Fugenfarbe</span>
+                <div id="joint-color-swatches-studio" class="color-swatches"></div>
+              </div>
+              <div id="studio-joint-options">
+              <div class="toolbar-group">
+                <span class="toolbar-label">Fugentiefe — wie tief die Fuge in die Wand reicht (cm)</span>
+                <input id="studio-joint-depth" type="number" min="0" step="0.1" value="0.8" />
+              </div>
+              </div>
+              </div>
+              </div>
+
+</div>
+<div class="settings-section" data-settings-section="corners" data-settings-label="Ecken" data-settings-order="45">
+              <p class="toolbar-hint compact-hint">Bossen und Endstücke an Wandenden. Freie Enden sind stumpf; fortlaufende Nachbarwände docken weiter an.</p>
+              <div id="studio-end-boss-section" class="toolbar-group" data-ui-level="advanced">
                 <p class="settings-subheading settings-subheading-nested">Bossen an Wandenden</p>
                 <div id="studio-end-boss-start-row" class="toolbar-group" hidden>
                   <span class="toolbar-label">Start (links)</span>
@@ -1077,24 +1104,6 @@
                 </div>
               </div>
               </div>
-
-              <div id="studio-joints-section">
-              <div class="toolbar-group">
-                <span class="toolbar-label">Fugenbreite — Abstand zwischen Steinen (cm)</span>
-                <input id="studio-joint" type="number" min="0" step="0.1" value="0.8" />
-              </div>
-              <div id="studio-joint-color-row" class="toolbar-group">
-                <span class="toolbar-label">Fugenfarbe</span>
-                <div id="joint-color-swatches-studio" class="color-swatches"></div>
-              </div>
-              <div id="studio-joint-options">
-              <div class="toolbar-group">
-                <span class="toolbar-label">Fugentiefe — wie tief die Fuge in die Wand reicht (cm)</span>
-                <input id="studio-joint-depth" type="number" min="0" step="0.1" value="0.8" />
-              </div>
-              </div>
-              </div>
-
 </div>
 <div class="settings-section" data-settings-section="plinth" data-settings-label="Sockel">
               <div class="toolbar-group">
@@ -1167,7 +1176,7 @@
                 </div>
                 <div class="toolbar-group">
                   <span class="toolbar-label">Schriftart</span>
-                  <div id="studio-label-font-cards" class="label-font-card-stack" role="listbox" aria-label="Schriftart"></div>
+                  <div id="studio-label-font-cards" class="label-font-card-stack sidebar-library-picker" role="listbox" aria-label="Schriftart"></div>
                 </div>
                 <div class="toolbar-group">
                   <span class="toolbar-label">Höhe (cm, 8er-Raster)</span>
@@ -1429,7 +1438,7 @@
                   <input id="opening-arch-enabled" type="checkbox" />
                   Bogen aktiv (Legacy)
                 </label>
-                <div id="opening-arch-form-cards" class="tpl-card-row opening-arch-form-row" role="listbox" aria-label="Öffnungsbogenform"></div>
+                <div id="opening-arch-form-cards" class="tpl-card-row opening-arch-form-row sidebar-library-picker" role="listbox" aria-label="Öffnungsbogenform"></div>
                 <div id="opening-arch-rise-row" class="toolbar-group" hidden>
                   <span class="toolbar-label">Bogenhöhe / Stichmaß (cm, 8er)</span>
                   <div class="preset-group" style="align-items: center; gap: 0.35rem">
@@ -1829,7 +1838,7 @@
             <div id="profile-assign-section" class="toolbar-group settings-section" data-settings-section="profile" data-settings-label="Profil" data-settings-order="30">
               <span class="toolbar-label">Rahmenprofil</span>
               <p class="toolbar-hint compact-hint">Profil in der Bibliothek (Tab Profile) wählen oder auf Fenster/Tür ziehen.</p>
-              <div id="profile-select-cards" class="tpl-card-row profile-picker-row" role="listbox" aria-label="Rahmenprofil"></div>
+              <div id="profile-select-cards" class="tpl-card-row profile-picker-row sidebar-library-picker" role="listbox" aria-label="Rahmenprofil"></div>
               <div id="profile-trim-section" class="toolbar-group" hidden>
                 <div class="toolbar-group">
                   <span class="toolbar-label">Profilfarbe</span>
@@ -1975,7 +1984,7 @@
                   <div class="toolbar-group">
                   <span class="toolbar-label">Form</span>
                   <p class="toolbar-hint compact-hint">Form in der Bibliothek (Tab Verdachung) wählen oder auf die Öffnung ziehen.</p>
-                  <div id="pediment-form-cards" class="tpl-card-row pediment-form-row" role="listbox" aria-label="Verdachungsform">
+                  <div id="pediment-form-cards" class="tpl-card-row pediment-form-row sidebar-library-picker" role="listbox" aria-label="Verdachungsform">
                     <button type="button" class="tpl-card pediment-form-btn" data-form="straight" title="Gerade">
                       <div class="tpl-card-thumb" aria-hidden="true">
                         <svg viewBox="0 0 48 28" width="48" height="28"><path d="M6 20 H42" fill="none" stroke="currentColor" stroke-width="2.5"/></svg>
@@ -2382,27 +2391,55 @@
 
               <div class="settings-section" data-settings-section="colors" data-settings-label="Szene" data-settings-order="40">
                 <div class="toolbar-group">
+                  <span class="toolbar-label">Umgebung</span>
+                  <div class="preset-group" style="margin: 0; gap: 6px">
+                    <button id="stage-env-sky-btn-side" class="preset-btn" type="button">Himmel</button>
+                    <button id="stage-env-studio-btn-side" class="preset-btn" type="button">Neutral</button>
+                  </div>
+                  <p id="studio-stage-hint" class="toolbar-hint compact-hint" hidden>
+                    Flacher Boden (größer als das Haus) in einer Kugel — von außen hindurchschauen.
+                    Beige tagsüber, nachts nahezu schwarz; Schatten auf dem Boden.
+                  </p>
+                </div>
+                <div class="toolbar-group">
+                  <span class="toolbar-label">Laub</span>
+                  <div class="preset-group" style="margin: 0; gap: 6px">
+                    <button id="leaf-mode-btn-side" class="preset-btn" type="button" title="Laub-Modus">Laub</button>
+                  </div>
+                  <div id="leaf-mode-tools" hidden>
+                    <button id="leaf-scatter-btn" class="preset-btn" type="button" title="Zufällig über den Boden streuen">
+                      Boden streuen
+                    </button>
+                    <button id="leaf-clear-btn" class="preset-btn" type="button" title="Alles Laub entfernen">
+                      Laub entfernen
+                    </button>
+                    <p class="toolbar-hint compact-hint">
+                      Klick oder Ziehen streut Häufchen. Nach Verlassen des Modus: Cursor = Wind.
+                    </p>
+                  </div>
+                </div>
+                <div class="toolbar-group">
                   <span class="toolbar-label">Alle drei</span>
                   <div id="scene-all-color-host">
-                    <input id="scene-all-color" type="color" value="#ffffff" title="Hintergrund, Untergrund und Himmel gemeinsam" />
+                    <input id="scene-all-color" type="color" value="#555555" title="Hintergrund, Untergrund und Himmel gemeinsam" />
                   </div>
                 </div>
                 <div class="toolbar-group">
                   <span class="toolbar-label">Hintergrund</span>
                   <div id="scene-bg-color-host">
-                    <input id="scene-bg-color" type="color" value="#ffffff" />
+                    <input id="scene-bg-color" type="color" value="#555555" />
                   </div>
                 </div>
                 <div class="toolbar-group">
                   <span class="toolbar-label">Bodenfarbe</span>
                   <div id="scene-ground-color-host">
-                    <input id="scene-ground-color" type="color" value="#ffffff" />
+                    <input id="scene-ground-color" type="color" value="#555555" />
                   </div>
                 </div>
                 <div class="toolbar-group">
                   <span class="toolbar-label">Himmelsfarbe (Fenster)</span>
                   <div id="scene-sky-color-host">
-                    <input id="scene-sky-color" type="color" value="#3A6084" />
+                    <input id="scene-sky-color" type="color" value="#555555" />
                   </div>
                 </div>
 

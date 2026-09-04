@@ -27,7 +27,7 @@ export function applyGroundMoodShader(material: THREE.MeshStandardMaterial): voi
   }
   if (material.userData.groundMoodApplied) return
   material.userData.groundMoodApplied = true
-  material.name = 'studioGround'
+  if (!material.name) material.name = 'studioGround'
   material.envMap = null
   material.envMapIntensity = 0
   material.roughness = 1

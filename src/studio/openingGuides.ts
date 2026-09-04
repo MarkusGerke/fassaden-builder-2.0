@@ -1,5 +1,6 @@
 import type { Opening, Wall } from '../types/facade'
 import { wallElevationAlong } from './elevation'
+import { openingForShellCut, openingWallFaceMaskPolyline } from '../utils/openingGeometry'
 
 /** Anzeige-Toleranz für Hilfslinien (cm); Snap bleibt 8 cm. */
 export const OPENING_GUIDE_TOLERANCE = 0.5
@@ -81,13 +82,35 @@ const WALL_Y_MARKS: { kind: OpeningGuideKind; frac: number }[] = [
 ]
 
 function edgesOf(opening: Opening): EdgeValues {
+  const shell = openingForShellCut(opening)
+  const pts = openingWallFaceMaskPolyline(shell, 0)
+  if (pts.length < 2) {
+    return {
+      left: opening.x,
+      right: opening.x + opening.width,
+      bottom: opening.y,
+      top: opening.y + opening.height,
+      midX: opening.x + opening.width / 2,
+      midY: opening.y + opening.height / 2,
+    }
+  }
+  let left = Infinity
+  let right = -Infinity
+  let bottom = Infinity
+  let top = -Infinity
+  for (const p of pts) {
+    left = Math.min(left, p.x)
+    right = Math.max(right, p.x)
+    bottom = Math.min(bottom, p.y)
+    top = Math.max(top, p.y)
+  }
   return {
-    left: opening.x,
-    right: opening.x + opening.width,
-    bottom: opening.y,
-    top: opening.y + opening.height,
-    midX: opening.x + opening.width / 2,
-    midY: opening.y + opening.height / 2,
+    left,
+    right,
+    bottom,
+    top,
+    midX: (left + right) / 2,
+    midY: (bottom + top) / 2,
   }
 }
 
