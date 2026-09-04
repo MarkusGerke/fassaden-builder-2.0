@@ -189,7 +189,7 @@ Meshes sind per `userData.indoorRole` (`ceiling` \| `floor`) und `userData.kind`
 
 **Auswahl:** Linksklick auf die Decke in 3D setzt `selectedCeiling` (orange Highlight); Toolbar `#toolbar-ceiling` mit Farbe (`FloorPlan.ceilingColor`, Default Weiß). Dieselbe Farbe steht im Wand-Reiter **Farben**. Ebenenliste wie bisher.
 
-**Sichtbarkeit (3D):** `floors[fi].showCeiling !== false && !floors[fi].hidden` — die Platte trennt die Etage darüber von der darunter.
+**Sichtbarkeit (3D):** `floors[fi].showCeiling !== false && !floors[fi].hidden` — die Platte trennt die Etage darüber von der darunter. **v2.0.145:** Ohne geschlossenen Grundrissring gibt es keine Meshes — nach Extrusion konnten Wandenden 1 Rasterzelle auseinander landen (`floorPlanFromWalls` → `sealNearClosedPlanGaps` schließt das). Ebenen „Einblenden“ ruft zusätzlich `rebuildIndoorFloor` auf.
 
 Versteckte Gebäude (`building.hidden`), Wände (`wall.hidden`) und Öffnungen (`opening.hidden`) werden nicht gerendert.
 

@@ -10655,6 +10655,9 @@ function toggleFloorCeiling(floorIndex: number, show: boolean) {
   while (floors.length <= floorIndex) floors.push(createEmptyFloorPlan())
   floors[floorIndex] = { ...floors[floorIndex], showCeiling: show }
   commitState(updateActiveBuilding(state, { floors }))
+  // Sichtbarkeit ggf. ohne Wand-Geometrie-Diff nachziehen (Decken-Meshes + Okkluder).
+  facade.rebuildIndoorFloor()
+  markViewportDirty()
 }
 
 function toggleWallHidden(wallId: string) {

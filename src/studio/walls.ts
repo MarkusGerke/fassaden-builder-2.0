@@ -1053,6 +1053,7 @@ export function offsetStudioWallsAlongFront(
       const nextPt = { x: pt.x + dx, z: pt.z + dz }
       let neighbors = 0
       let bridged = 0
+      const collinearNeighbors: Array<{ wallId: string; end: 'start' | 'end' }> = []
       for (const other of building.walls) {
         if (moveSet.has(other.id) || !isStudioWall(other)) continue
         if (Math.abs((other.y ?? 0) - (wall.y ?? 0)) > 1) continue
@@ -1063,15 +1064,34 @@ export function offsetStudioWallsAlongFront(
         // Nachbar kann der Bewegung folgen, wenn seine Achse einen Anteil in Front-Richtung hat.
         const u = wallAlongDelta(other.yawDeg ?? 0, 1)
         const ulen = Math.hypot(u.x, u.z) || 1
-        if (Math.abs((u.x * out.x + u.z * out.z) / (ulen * outLen)) > 0.2) bridged += 1
-        if (meetsStart) fixes.push({ wallId: other.id, end: 'start', point: nextPt })
-        if (meetsEnd) fixes.push({ wallId: other.id, end: 'end', point: nextPt })
+        const alongFront = Math.abs((u.x * out.x + u.z * out.z) / (ulen * outLen))
+        if (alongFront > 0.2) {
+          bridged += 1
+          // Nur nicht-kollineare Nachbarn (90°/45°) an die neue Ecke ziehen.
+          if (meetsStart) fixes.push({ wallId: other.id, end: 'start', point: nextPt })
+          if (meetsEnd) fixes.push({ wallId: other.id, end: 'end', point: nextPt })
+        } else {
+          if (meetsStart) collinearNeighbors.push({ wallId: other.id, end: 'start' })
+          if (meetsEnd) collinearNeighbors.push({ wallId: other.id, end: 'end' })
+        }
       }
       if (!opts?.returnWalls || neighbors === 0 || bridged > 0) continue
-      const key = `${Math.round(wall.y ?? 0)}|${Math.round(pt.x)},${Math.round(pt.z)}`
+      // Extrudieren: kollineare Nachbarn bleiben am alten Stoß; Rückwand füllt alt→neu.
+      // Stoßpunkt = tatsächliches Nachbarende (nicht gerundetes Segmentende), sonst 48-cm-Lücke.
+      let base = pt
+      const jointNeighbor = collinearNeighbors[0]
+      if (jointNeighbor) {
+        const other = building.walls.find((w) => w.id === jointNeighbor.wallId)
+        if (other) {
+          base =
+            jointNeighbor.end === 'start' ? wallStartPoint(other) : wallEndPoint(other)
+        }
+      }
+      const tip = { x: base.x + dx, z: base.z + dz }
+      const key = `${Math.round(wall.y ?? 0)}|${Math.round(base.x)},${Math.round(base.z)}`
       if (returnKeys.has(key)) continue
       returnKeys.add(key)
-      const returnWall = buildReturnWall(wall, pt, nextPt, end)
+      const returnWall = buildReturnWall(wall, base, tip, end)
       if (returnWall) returnWalls.push(returnWall)
     }
   }

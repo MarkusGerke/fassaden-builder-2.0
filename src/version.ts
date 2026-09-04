@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.144'
+export const APP_VERSION = '2.0.145'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,17 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.145',
+    date: '2026-09-04',
+    title: 'Decke wieder einblendbar; Grundriss-Lücken schließen',
+    changes: [
+      'Ausgeblendete Decke/Boden erscheint wieder: nach Extrusion konnte der Grundriss eine 1-Zellen-Lücke haben — dann gab es keine Decken-Meshes mehr, „Einblenden“ wirkte nur in den Ebenen',
+      'Grundriss aus Wänden schließt solche Raster-Lücken automatisch (geschlossener Ring → Decke sichtbar)',
+      'Extrudieren zieht kollineare Nachbarn nicht mehr fälschlich mit an die neue Ecke (Rückwand bleibt am alten Stoß)',
+      'Bitte hart neu laden, bis v2.0.145 in der Titelleiste steht',
+    ],
+  },
   {
     version: '2.0.144',
     date: '2026-09-04',

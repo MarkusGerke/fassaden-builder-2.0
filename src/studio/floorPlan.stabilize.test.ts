@@ -3,10 +3,14 @@ import { emptyNeighbors } from '../types/facade'
 import type { FacadeState, Wall } from '../types/facade'
 import { WALL_DEPTH } from '../constants/presets'
 import {
+  extractPlanRings,
   floorPlanFromWalls,
+  planHasClosedRing,
+  sealNearClosedPlanGaps,
   stabilizeFloorPlanIds,
   syncFloorPlansFromWalls,
 } from './floorPlan'
+import { PLAN_GRID } from './constants'
 
 function wall(
   id: string,
@@ -93,5 +97,40 @@ describe('stabilizeFloorPlanIds', () => {
     const once = syncFloorPlansFromWalls(state)
     const twice = syncFloorPlansFromWalls(once)
     expect(JSON.stringify(once.buildings[0]!.floors)).toBe(JSON.stringify(twice.buildings[0]!.floors))
+  })
+})
+
+describe('sealNearClosedPlanGaps', () => {
+  it('verbindet zwei Grad-1-Enden eine Zelle auseinander zu einem geschlossenen Ring', () => {
+    const open = {
+      nodes: [
+        { id: 'a', gx: 0, gz: 0 },
+        { id: 'b', gx: 10, gz: 0 },
+        { id: 'c', gx: 10, gz: 8 },
+        { id: 'd', gx: 0, gz: 8 },
+        { id: 'e', gx: 1, gz: 0 },
+      ],
+      edges: [
+        { id: 'e1', fromId: 'e', toId: 'b' },
+        { id: 'e2', fromId: 'b', toId: 'c' },
+        { id: 'e3', fromId: 'c', toId: 'd' },
+        { id: 'e4', fromId: 'd', toId: 'a' },
+      ],
+    }
+    expect(planHasClosedRing(open)).toBe(false)
+    const sealed = sealNearClosedPlanGaps(open)
+    expect(planHasClosedRing(sealed)).toBe(true)
+    expect(extractPlanRings(sealed).some((r) => r.closed && r.nodes.length >= 4)).toBe(true)
+  })
+
+  it('schließt Raster-Lücke nach Extrusion (Wandenden 48 cm versetzt)', () => {
+    const walls = [
+      wall('a', PLAN_GRID, 0, 0, 192 - PLAN_GRID),
+      wall('r', 192, 0, 270, 192),
+      wall('b', 192, 192, 180, 192),
+      wall('l', 0, 192, 90, 192),
+    ]
+    const plan = floorPlanFromWalls(walls)
+    expect(planHasClosedRing(plan)).toBe(true)
   })
 })

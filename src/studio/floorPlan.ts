@@ -798,7 +798,77 @@ export function floorPlanFromWalls(walls: Wall[]): FloorPlan {
     if (fromGx === toGx && fromGz === toGz) continue
     plan = drawPlanLine(plan, fromGx, fromGz, toGx, toGz)
   }
-  return plan
+  return sealNearClosedPlanGaps(plan)
+}
+
+/**
+ * Nach Raster-Snap können angedockte Wandenden 1 Zelle auseinander landen
+ * (Weltstoß rundet auf zwei Nachbarzellen). Offene Ringe → keine Decke/Boden.
+ * Zwei Grad-1-Enden mit Chebyshev-Abstand 1 werden verbunden bzw. verschmolzen.
+ */
+export function sealNearClosedPlanGaps(plan: FloorPlan): FloorPlan {
+  const adj = buildAdjacency(plan)
+  const degree1 = plan.nodes.filter((node) => (adj.get(node.id) ?? []).length === 1)
+  if (degree1.length < 2) return plan
+
+  let next = plan
+  const used = new Set<string>()
+  for (let i = 0; i < degree1.length; i += 1) {
+    const a = degree1[i]!
+    if (used.has(a.id)) continue
+    let best: PlanNode | undefined
+    let bestDist = Infinity
+    for (let j = i + 1; j < degree1.length; j += 1) {
+      const b = degree1[j]!
+      if (used.has(b.id)) continue
+      const dist = Math.max(Math.abs(a.gx - b.gx), Math.abs(a.gz - b.gz))
+      if (dist === 1 && dist < bestDist) {
+        best = b
+        bestDist = dist
+      }
+    }
+    if (!best) continue
+    used.add(a.id)
+    used.add(best.id)
+    // Gleiche Kante-Richtung: Enden verschmelzen (eine Zelle wählen), sonst kurze Kante ziehen.
+    const sameAxis = a.gx === best.gx || a.gz === best.gz
+    if (sameAxis) {
+      // Endpunkt der längeren angebundenen Kante behalten → weniger Verzerrung.
+      next = mergePlanNodes(next, a.id, best.id)
+    } else {
+      next = drawPlanLine(next, a.gx, a.gz, best.gx, best.gz)
+    }
+  }
+  return next
+}
+
+/** Zwei Knoten zu einem verschmelzen (Kanten umbiegen, Duplikate entfernen). */
+function mergePlanNodes(plan: FloorPlan, keepId: string, dropId: string): FloorPlan {
+  if (keepId === dropId) return plan
+  const keep = plan.nodes.find((n) => n.id === keepId)
+  const drop = plan.nodes.find((n) => n.id === dropId)
+  if (!keep || !drop) return plan
+  const edges = plan.edges
+    .map((edge) => ({
+      ...edge,
+      fromId: edge.fromId === dropId ? keepId : edge.fromId,
+      toId: edge.toId === dropId ? keepId : edge.toId,
+    }))
+    .filter((edge) => edge.fromId !== edge.toId)
+  // Doppelkanten entfernen
+  const seen = new Set<string>()
+  const unique = edges.filter((edge) => {
+    const key =
+      edge.fromId < edge.toId ? `${edge.fromId}|${edge.toId}` : `${edge.toId}|${edge.fromId}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+  return {
+    ...plan,
+    nodes: plan.nodes.filter((n) => n.id !== dropId),
+    edges: unique,
+  }
 }
 
 /**

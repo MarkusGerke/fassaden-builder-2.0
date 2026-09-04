@@ -149,7 +149,7 @@ Erzeugt `Wall[]` aus einem `FloorPlan`:
 5. `planLinked: true` — Wand gehört zum Grundriss-Graphen
 6. `wallY` als y-Offset (Etagenindex × `wallHeight`)
 
-`floorPlanFromWalls` / `syncFloorPlansFromWalls` lassen Wände mit `planLinked: false` weg. Freie Wände liegen nur in 3D; Gehrung zu Nachbarn erst nach Verknüpfen.
+`floorPlanFromWalls` / `syncFloorPlansFromWalls` lassen Wände mit `planLinked: false` weg. Freie Wände liegen nur in 3D; Gehrung zu Nachbarn erst nach Verknüpfen. **v2.0.145:** `sealNearClosedPlanGaps` nach dem Zeichnen — Grad-1-Enden mit Chebyshev-Abstand 1 werden verschmolzen/verbunden, damit Raster-Snap nach Extrusion keinen offenen Ring (und damit keine Decke) hinterlässt.
 
 ### `wallYawDegFromSegment(from, to)`
 

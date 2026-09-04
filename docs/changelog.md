@@ -2,6 +2,10 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Decke einblenden / Grundriss-Lücke (2026-09-04) — v2.0.145
+
+Nach Segment-Extrusion konnten Wandenden durch Raster-Snap 1 Zelle (48 cm) auseinander landen → offener Grundrissring → `planFacesWithHoles` leer → keine Decken-/Boden-Meshes; Ebenen „Einblenden“ setzte nur `showCeiling`. Fix: `sealNearClosedPlanGaps` in `floorPlanFromWalls` verschmilzt/verbindet Grad-1-Enden mit Chebyshev-Abstand 1. Extrusion: kollineare Nachbarn werden nicht mehr an die neue Ecke gefixt (nur 90°-Nachbarn); Rückwand am echten Nachbarstoß. `toggleFloorCeiling` ruft `rebuildIndoorFloor` nach. Tests: `floorPlan.stabilize.test.ts`. Docs: [floor-plan.md](floor-plan.md), [ux.md](ux.md).
+
 ### Extrudieren: Gehrung und Verbund der Rückwände (2026-09-04) — v2.0.144
 
 `buildReturnWall`: Rückwand mit `panelFlip` der bewegten Wand, Laufrichtung ring-konsistent (Start: alt→neu, Ende: neu→alt) statt beliebiger `panelFlip`-Wahl — Gehrungs-Vorzeichen (`miterInsetAgainstNeighbor`, richtungsabhängig) stimmen an allen vier Ecken; Front nicht mehr um die Wandstärke versetzt. `offsetStudioWallsAlongFront`: Fix-Nachbar ohne Öffnungen, dessen Länge auf 0 fällt, wird entfernt (vorher `poseWallEndAt` → `null` → Rückwände blieben stehen). Test mit Gehrungs-Werten, Zurückschieben und Nische. Dateien: `walls.ts`, `wallResize.test.ts`, Docs.
