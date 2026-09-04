@@ -2,6 +2,42 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Fensterlöcher frei; Sturz korrekt (2026-09-04) — v2.0.152
+
+v2.0.151 `preferOutline` erzeugte ein L/U-Polygon; der nächste `clipRectMinusBox` nutzte nur die Bounding-Box und füllte frühere Fenster wieder → Fläche vor dem Glas, Sturz wirkte zu tief. Fix: Rechtecklöcher als Achsen-Differenz (links/rechts/oben/unten), Outlines vorher in AABBs zerlegen. Regression: `rectStripClip.test.ts`. Dateien: `openingGeometry.ts`. Docs: [panel-geometry.md](panel-geometry.md).
+
+### Lotrechte Öffnungen; weiche Orbit-Schatten (2026-09-04) — v2.0.151
+
+**Paneele:** `clipRectMinusBox` → `clipPolyMinusColumnHole(..., preferOutline)` erzeugt L/U-Reste an Sturz/Sohlbank als achskantige Outline statt `emitMonotone`-Sehne (Trapez ins Fenster). Regression: `rectStripClip.test.ts`.
+
+**Schatten:** Adaptives PCSS-Lite (1 Tap beim Navigieren) entfernt — Orbit behält volles PCSS wie Idle. Dateien: `openingGeometry.ts`, `main.ts`. Docs: [panel-geometry.md](panel-geometry.md), [shadows.md](shadows.md), [performance.md](performance.md).
+
+### Decke folgt Vorsprung; Licht-Fade; Uhrzeiten (2026-09-04) — v2.0.150
+
+**Grundriss:** Vorsprung/Erker ohne gesplittete Parent-Kante lieferte rechteckigen Outer-Ring → Decke/Boden ohne Nische. Fix: `splitEdgesAtTJoints` + `removePlanChords` + Linkskurven-Walk in `extractPlanRings`. Tests L/U in `floorPlan.stabilize.test.ts`.
+
+**Licht:** `fadeInMs`/`fadeOutMs` + Runtime-`fadeFactor`; Auto-Sonne und Schedule setzen nur `enabled`, Fade im Animate-Loop ohne Shadow-Rebake.
+
+**Schedule:** `DaySchedule` (`onTimes`/`offTimes`) an Licht, Opening, Rollladen; Eval in `daySchedule.ts`; UI `dayScheduleEditor.ts`. Lichter: `(autoSun && Nacht) || scheduleSaysOn`. Kein Schema-Bump.
+
+Dateien: `floorPlan.ts`, `sceneLightRuntime.ts`, `sceneLights.ts`, `daySchedule.ts`, `dayScheduleEditor.ts`, `main.ts`, `index.html`, Hydrate/Rollladen. Docs: [floor-plan.md](floor-plan.md), [scene-lights.md](scene-lights.md), [opening-motion.md](opening-motion.md), [roller-shutter.md](roller-shutter.md).
+
+### Dämmerung flüssig + Loader wartet (2026-09-04) — v2.0.149
+
+Tag/Nacht-Umschaltung der Auto-Lichter rief `applyState` und baute Okkluder sowie alle Cube-Maps neu → Ruckler am Horizont. Soft-Pfad ohne History; Okkluder bleiben solange Lichter existieren; Re-Enable ohne Shadow-Rebake. Ladeoverlay `#app-loading` erst nach `bootstrapSceneLighting` (+ 2 Frames), nicht mehr in `finally` sofort. Dateien: `main.ts`, `sceneLightRuntime.ts`. Docs: [views-and-state.md](views-and-state.md), [performance.md](performance.md), [scene-lights.md](scene-lights.md).
+
+### Sonne live ohne Voll-Bake (2026-09-04) — v2.0.148
+
+Tageszeit/Sonnenwinkel wirkten Sekunden verzögert: `flushSunShadowMap` markierte alle Punktlicht-Cubes dirty und Live-Schedule backte EnvMap mit. Fix: Sonnen-Flush ohne `sceneLights` (Cubes hängen nicht am Azimut); Live nur Sonne, keine Reflections; Debounce mit Max-Lag 250 ms; Punktlicht-Runtime-Sync erst beim Loslassen. Dateien: `main.ts`. Docs: [shadows.md](shadows.md), [performance.md](performance.md).
+
+### Licht-Duplikat ohne Voll-Bake (2026-09-04) — v2.0.147
+
+Duplizieren setzte `renderer.shadowMap.needsUpdate` — Three.js backte dann **Sonne + alle** Punktlicht-Cube-Maps (Sekunden bei vielen Lichtern). Fix: `shadow.autoUpdate = false` an Sonne und Bibliotheks-Lichtern; nur dirty Lichter (`shadow.needsUpdate`) bei Position/Neu/Cast/Far; Licht-only-Schedule ohne Sonnen-Flag. Dateien: `sceneLightRuntime.ts`, `main.ts`, `scenePointLights.ts`. Docs: [scene-lights.md](scene-lights.md), [performance.md](performance.md).
+
+### Lichter sofort (2026-09-04) — v2.0.146
+
+Licht hinzufügen/ändern/löschen/verschieben wirkte mehrere Sekunden: `applyState` backte bei Licht-Diff sofort Cube-Shadows (`flushShadows`), Drag-Ende rief zusätzlich `flushSunShadowMap` (EnvMap), Slider committen bei jedem `input` History + Bake. Fix: früher Licht-only-Pfad ohne `syncFloorPlansFromWalls`; `scheduleShadows` statt Flush; Drag ohne EnvMap-Bake; Live-Preview (`previewSelectedSceneLight`) bei XYZ/Farbe/Winkel, Commit erst bei `change`. Dateien: `main.ts`, `sceneLights.ts`. Docs: [scene-lights.md](scene-lights.md), [performance.md](performance.md).
+
 ### Decke einblenden / Grundriss-Lücke (2026-09-04) — v2.0.145
 
 Nach Segment-Extrusion konnten Wandenden durch Raster-Snap 1 Zelle (48 cm) auseinander landen → offener Grundrissring → `planFacesWithHoles` leer → keine Decken-/Boden-Meshes; Ebenen „Einblenden“ setzte nur `showCeiling`. Fix: `sealNearClosedPlanGaps` in `floorPlanFromWalls` verschmilzt/verbindet Grad-1-Enden mit Chebyshev-Abstand 1. Extrusion: kollineare Nachbarn werden nicht mehr an die neue Ecke gefixt (nur 90°-Nachbarn); Rückwand am echten Nachbarstoß. `toggleFloorCeiling` ruft `rebuildIndoorFloor` nach. Tests: `floorPlan.stabilize.test.ts`. Docs: [floor-plan.md](floor-plan.md), [ux.md](ux.md).

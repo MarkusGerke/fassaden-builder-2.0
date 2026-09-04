@@ -5,6 +5,10 @@ import { getAllWalls } from '../utils/buildings'
 import { buildingWorldBox, kelvinToColor } from '../utils/sunLighting'
 import { DEFAULT_POWER_WATTS, normalizePowerWatts } from '../lighting/sceneLightUnits'
 import {
+  normalizeDaySchedule,
+  type DaySchedule,
+} from '../utils/daySchedule'
+import {
   normalizeSceneLightAnimation,
   type SceneLightAnimationId,
 } from './sceneLightAnimation'
@@ -27,6 +31,9 @@ const COLOR_TEMP_MIN_K = 2000
 const COLOR_TEMP_MAX_K = 6500
 const DEFAULT_COLOR_TEMP_K = 3000
 
+export const DEFAULT_SCENE_LIGHT_FADE_IN_MS = 800
+export const DEFAULT_SCENE_LIGHT_FADE_OUT_MS = 1200
+
 export const DEFAULT_SCENE_LIGHT: Omit<SceneLight, 'id' | 'x' | 'y' | 'z'> = {
   label: 'Punktlicht',
   color: '#ffaa66',
@@ -42,6 +49,14 @@ export const DEFAULT_SCENE_LIGHT: Omit<SceneLight, 'id' | 'x' | 'y' | 'z'> = {
   beamAngleDownDeg: DEFAULT_BEAM_ANGLE_DOWN_DEG,
   beamAngleUpDeg: DEFAULT_BEAM_ANGLE_UP_DEG,
   animation: 'none',
+  fadeInMs: DEFAULT_SCENE_LIGHT_FADE_IN_MS,
+  fadeOutMs: DEFAULT_SCENE_LIGHT_FADE_OUT_MS,
+  schedule: { onTimes: [], offTimes: [] },
+}
+
+function normalizeFadeMs(raw: unknown, fallback: number): number {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return fallback
+  return Math.min(60000, Math.max(0, Math.round(raw)))
 }
 
 export function kelvinToHex(kelvin: number): string {
@@ -143,6 +158,9 @@ export function normalizeSceneLight(raw: Partial<SceneLight> & { id: string }): 
     beamAngleUpDeg: normalizeBeamAngleDeg(raw.beamAngleUpDeg, DEFAULT_BEAM_ANGLE_UP_DEG),
     animation: normalizeSceneLightAnimation(raw.animation),
     groupId,
+    fadeInMs: normalizeFadeMs(raw.fadeInMs, DEFAULT_SCENE_LIGHT_FADE_IN_MS),
+    fadeOutMs: normalizeFadeMs(raw.fadeOutMs, DEFAULT_SCENE_LIGHT_FADE_OUT_MS),
+    schedule: normalizeDaySchedule(raw.schedule),
   }
 }
 
@@ -206,6 +224,41 @@ export function normalizeSceneLightState(state: FacadeState): {
     return light
   })
   return { sceneLights, sceneLightGroups: groups }
+}
+
+function stateWithoutSceneLights(state: FacadeState): unknown {
+  const { sceneLights: _lights, sceneLightGroups: _groups, ...rest } = state
+  return rest
+}
+
+/** True wenn sich nur `sceneLights` / `sceneLightGroups` geändert haben — kein Grundriss-/Fassaden-Pfad. */
+export function facadeStateDiffersOnlyBySceneLights(
+  prev: FacadeState,
+  next: FacadeState,
+): boolean {
+  if (JSON.stringify(stateWithoutSceneLights(prev)) !== JSON.stringify(stateWithoutSceneLights(next))) {
+    return false
+  }
+  return (
+    JSON.stringify(normalizeSceneLightState(prev)) !==
+    JSON.stringify(normalizeSceneLightState(next))
+  )
+}
+
+/** Ebenenbaum-relevante Licht-Metadaten (ohne XYZ/Farbe/Watt). */
+export function sceneLightsLayerListKey(state: FacadeState): string {
+  const { sceneLights, sceneLightGroups } = normalizeSceneLightState(state)
+  return JSON.stringify({
+    groups: sceneLightGroups.map((g) => [g.id, g.name, g.memberLightIds]),
+    lights: sceneLights.map((l) => [
+      l.id,
+      l.label,
+      l.enabled,
+      l.groupId ?? null,
+      l.preset ?? null,
+      l.showMarker !== false,
+    ]),
+  })
 }
 
 export function defaultSceneLightPosition(
@@ -306,6 +359,29 @@ export function setAllSceneLightsEnabled(state: FacadeState, enabled: boolean): 
     sceneLights: lights.map((item) => normalizeSceneLight({ ...item, enabled })),
     sceneLightGroups,
   }
+}
+
+/**
+ * Pro Licht gewünschten An-Zustand setzen (Sonne und/oder Schedule).
+ * Unveränderte Lichter behalten manuelles `enabled`.
+ */
+export function setSceneLightsEnabledById(
+  state: FacadeState,
+  enabledById: ReadonlyMap<string, boolean>,
+): FacadeState {
+  if (enabledById.size === 0) return state
+  const { sceneLights: lights, sceneLightGroups } = normalizeSceneLightState(state)
+  if (lights.length === 0) return state
+  let changed = false
+  const next = lights.map((item) => {
+    if (!enabledById.has(item.id)) return item
+    const enabled = enabledById.get(item.id)!
+    if (item.enabled === enabled) return item
+    changed = true
+    return normalizeSceneLight({ ...item, enabled })
+  })
+  if (!changed) return state
+  return { ...state, sceneLights: next, sceneLightGroups }
 }
 
 export function removeSceneLight(state: FacadeState, lightId: string): FacadeState {

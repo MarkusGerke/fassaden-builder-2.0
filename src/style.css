@@ -2188,6 +2188,50 @@ button:disabled {
   gap: 0.35rem;
 }
 
+.day-schedule-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.day-schedule-list {
+  list-style: none;
+  margin: 0.2rem 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.day-schedule-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.day-schedule-empty {
+  color: #888;
+  font-size: 0.85em;
+}
+
+.day-schedule-remove {
+  min-width: 1.6rem;
+  padding: 0.1rem 0.35rem;
+}
+
+.day-schedule-add-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.day-schedule-add-row input {
+  min-width: 0;
+}
+
 dialog {
   border: 1px solid #ddd;
   border-radius: 0.85rem;

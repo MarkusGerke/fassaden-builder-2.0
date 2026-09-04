@@ -40,6 +40,7 @@ function createPointLightWithMarker(color: number, watts: number): {
 } {
   const light = new THREE.PointLight(color, wattsToThreeIntensity(watts), 0, 2)
   light.castShadow = true
+  light.shadow.autoUpdate = false
   light.shadow.bias = -0.005
   light.shadow.mapSize.setScalar(POINT_SHADOW_MAP)
   light.shadow.radius = 10

@@ -534,7 +534,7 @@ Unter **Szene → Animation** (v2.0.130):
 - **Animationen pausieren** — Master-Stop für Blaulicht-Blinken, Fenster-/Tür-Abspielen, Rollläden-Lauf und Tageszyklus.
 - **Tageszyklus** — Uhrzeit und Sonne laufen kontinuierlich (Default an).
 - **Tagesdauer (Min.)** — Echtzeit-Minuten für einen Szene-Tag (`dayCycleRealMinutes`, Default **60** = 1 Stunde). Bereich 1…1440.
-- **Lichter mit Sonne** — bei Sonnenuntergang alle Bibliotheks-Lichter an, bei Sonnenaufgang aus (Default an; kein Undo-Eintrag).
+- **Lichter mit Sonne** — bei Sonnenuntergang Bibliotheks-Lichter an, bei Sonnenaufgang aus (Default an; kein Undo-Eintrag; soft mit Fade, v2.0.150). **Uhrzeiten** pro Licht parallel (`desiredOn = Sonne-Nacht || Schedule`). Öffnungen/Rollläden nur Schedule.
 
 Der frühere einmalige **Tagesverlauf abspielen** (Himmelsrichtung/Uhrzeit-Kanäle) ist entfernt.
 

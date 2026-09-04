@@ -641,6 +641,34 @@
                 <p class="toolbar-hint compact-hint">Doppelblitz ~2&nbsp;Hz (Feuerwehr/Polizei).</p>
               </div>
               <div class="toolbar-group">
+                <span class="toolbar-label">Ein-/Ausblenden</span>
+                <div class="toolbar-row-2">
+                  <label>Einblenden (ms) <input id="scene-light-fade-in" type="number" min="0" max="60000" step="50" value="800" /></label>
+                  <label>Ausblenden (ms) <input id="scene-light-fade-out" type="number" min="0" max="60000" step="50" value="1200" /></label>
+                </div>
+                <p class="toolbar-hint compact-hint">Weiches An/Aus bei Sonne und Uhrzeiten (ohne Schatten-Neuaufbau).</p>
+              </div>
+              <div id="scene-light-schedule" class="toolbar-group day-schedule-editor">
+                <span class="toolbar-label">Uhrzeiten</span>
+                <p class="toolbar-hint compact-hint">Ein und Aus parallel zur Sonnen-Kopplung. Leer = nur Sonne.</p>
+                <div class="day-schedule-on">
+                  <span class="toolbar-label">Ein</span>
+                  <div class="day-schedule-list-mount"></div>
+                  <div class="toolbar-row day-schedule-add-row">
+                    <input type="text" data-schedule-add="on" placeholder="HH:MM" aria-label="Ein-Zeit hinzufügen" />
+                    <button type="button" class="preset-btn" data-schedule-add="on">+</button>
+                  </div>
+                </div>
+                <div class="day-schedule-off">
+                  <span class="toolbar-label">Aus</span>
+                  <div class="day-schedule-list-mount"></div>
+                  <div class="toolbar-row day-schedule-add-row">
+                    <input type="text" data-schedule-add="off" placeholder="HH:MM" aria-label="Aus-Zeit hinzufügen" />
+                    <button type="button" class="preset-btn" data-schedule-add="off">+</button>
+                  </div>
+                </div>
+              </div>
+              <div class="toolbar-group">
                 <button id="scene-light-delete" type="button" class="preset-btn">Licht entfernen</button>
               </div>
             </div>
@@ -1704,6 +1732,26 @@
               </div>
               <button type="button" id="opening-motion-play-cycle">Öffnen → Pause → Schließen</button>
               <button type="button" id="opening-motion-stop" hidden>Stopp</button>
+              <div id="opening-motion-schedule" class="toolbar-group day-schedule-editor">
+                <span class="toolbar-label">Uhrzeiten</span>
+                <p class="toolbar-hint compact-hint">Ein = öffnen, Aus = schließen (Tageszeit / Tagzyklus).</p>
+                <div class="day-schedule-on">
+                  <span class="toolbar-label">Öffnen</span>
+                  <div class="day-schedule-list-mount"></div>
+                  <div class="toolbar-row day-schedule-add-row">
+                    <input type="text" data-schedule-add="on" placeholder="HH:MM" aria-label="Öffnen-Zeit hinzufügen" />
+                    <button type="button" class="preset-btn" data-schedule-add="on">+</button>
+                  </div>
+                </div>
+                <div class="day-schedule-off">
+                  <span class="toolbar-label">Schließen</span>
+                  <div class="day-schedule-list-mount"></div>
+                  <div class="toolbar-row day-schedule-add-row">
+                    <input type="text" data-schedule-add="off" placeholder="HH:MM" aria-label="Schließen-Zeit hinzufügen" />
+                    <button type="button" class="preset-btn" data-schedule-add="off">+</button>
+                  </div>
+                </div>
+              </div>
               <span class="toolbar-label">Datensatz</span>
               <p class="toolbar-hint compact-hint">JSON kopieren und später einfügen (oder an den Assistenten geben), um genau diese Kurven zu übernehmen.</p>
               <textarea id="opening-motion-dataset" class="opening-motion-dataset" rows="7" spellcheck="false"></textarea>
@@ -1755,6 +1803,26 @@
                 </div>
                 <button type="button" id="roller-shutter-play-cycle">Runter → Pause → Hoch</button>
                 <button type="button" id="roller-shutter-stop" hidden>Stopp</button>
+                <div id="roller-shutter-schedule" class="toolbar-group day-schedule-editor">
+                  <span class="toolbar-label">Uhrzeiten</span>
+                  <p class="toolbar-hint compact-hint">Ein = hochfahren, Aus = runterfahren.</p>
+                  <div class="day-schedule-on">
+                    <span class="toolbar-label">Hoch</span>
+                    <div class="day-schedule-list-mount"></div>
+                    <div class="toolbar-row day-schedule-add-row">
+                      <input type="text" data-schedule-add="on" placeholder="HH:MM" aria-label="Hoch-Zeit hinzufügen" />
+                      <button type="button" class="preset-btn" data-schedule-add="on">+</button>
+                    </div>
+                  </div>
+                  <div class="day-schedule-off">
+                    <span class="toolbar-label">Runter</span>
+                    <div class="day-schedule-list-mount"></div>
+                    <div class="toolbar-row day-schedule-add-row">
+                      <input type="text" data-schedule-add="off" placeholder="HH:MM" aria-label="Runter-Zeit hinzufügen" />
+                      <button type="button" class="preset-btn" data-schedule-add="off">+</button>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 

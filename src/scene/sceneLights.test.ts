@@ -5,9 +5,11 @@ import {
   addSceneLight,
   createSceneLightGroup,
   duplicateSceneLight,
+  facadeStateDiffersOnlyBySceneLights,
   normalizeSceneLightState,
   normalizeSceneLights,
   sceneLightDisplayName,
+  sceneLightsLayerListKey,
   setAllSceneLightsEnabled,
   ungroupSceneLights,
   updateSceneLight,
@@ -130,5 +132,23 @@ describe('sceneLights', () => {
     expect(normalizeSceneLights(state.sceneLights).every((l) => !l.enabled)).toBe(true)
     state = setAllSceneLightsEnabled(state, true)
     expect(normalizeSceneLights(state.sceneLights).every((l) => l.enabled)).toBe(true)
+  })
+
+  it('erkennt reine Licht-Diffs (kein Fassaden-Pfad nötig)', () => {
+    const base = createDefaultFacadeState()
+    const { state: withLight, lightId } = addSceneLight(base)
+    expect(facadeStateDiffersOnlyBySceneLights(base, withLight)).toBe(true)
+    const moved = updateSceneLight(withLight, lightId, { x: 99 })
+    expect(facadeStateDiffersOnlyBySceneLights(withLight, moved)).toBe(true)
+    const other = { ...withLight, siteYawDeg: 15 }
+    expect(facadeStateDiffersOnlyBySceneLights(withLight, other)).toBe(false)
+  })
+
+  it('Layer-List-Key ignoriert XYZ/Farbe', () => {
+    const { state, lightId } = addSceneLight(createDefaultFacadeState())
+    const moved = updateSceneLight(state, lightId, { x: 50, color: '#ff0000' })
+    expect(sceneLightsLayerListKey(state)).toBe(sceneLightsLayerListKey(moved))
+    const toggled = updateSceneLight(state, lightId, { enabled: false })
+    expect(sceneLightsLayerListKey(state)).not.toBe(sceneLightsLayerListKey(toggled))
   })
 })

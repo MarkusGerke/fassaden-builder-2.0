@@ -6,7 +6,8 @@ import { createEmptyFloorPlan } from '../studio/floorPlan'
 import type { CustomProfileDef } from '../profiles/custom'
 import { createId } from '../utils/id'
 import { migrateOpeningPanelFan } from '../utils/openingGeometry'
-export type { FloorPlan }
+import type { DaySchedule } from '../utils/daySchedule'
+export type { FloorPlan, DaySchedule }
 
 /** Berliner Mansarddach auf dem obersten Grundriss-Ring. */
 export interface RoofConfig {
@@ -365,6 +366,8 @@ export interface Opening {
    * Wirkt nur bei Abspielen, nicht auf den Ruhe-Öffnungswinkel der Flügel.
    */
   motion?: OpeningMotion
+  /** Uhrzeiten: on = öffnen, off = schließen. */
+  schedule?: DaySchedule
   /** Stabgitter / französischer Balkon vor der Öffnung. */
   guard?: OpeningGuard
   /** Tür-Details (nur `type === 'door'`). */
@@ -545,6 +548,8 @@ export interface OpeningRollerShutter {
     raise: MotionCurve
     lower: MotionCurve
   }
+  /** Uhrzeiten: on = hoch, off = runter. */
+  schedule?: DaySchedule
 }
 
 export interface OpeningSillInner {
@@ -1114,6 +1119,12 @@ export interface SceneLight {
   animation?: 'none' | 'blaulicht'
   /** Persistente Lichtgruppe im Ebenenbaum. */
   groupId?: string
+  /** Einblenden-Dauer (ms) bei Auto-/Schedule-An. */
+  fadeInMs?: number
+  /** Ausblenden-Dauer (ms) bei Auto-/Schedule-Aus. */
+  fadeOutMs?: number
+  /** Uhrzeiten Ein/Aus (parallel zu „Lichter mit Sonne“). */
+  schedule?: DaySchedule
 }
 
 /** Gruppe von Bibliotheks-Lichtern (Ebenenbaum). */

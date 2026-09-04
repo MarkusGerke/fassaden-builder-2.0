@@ -45,6 +45,7 @@ import {
   normalizeOpeningInteriorShade,
 } from '../windows/openingExtras'
 import { normalizeOpeningMotion } from './openingMotion'
+import { normalizeDaySchedule } from './daySchedule'
 import { normalizeStudioPanel, DEFAULT_STUDIO_PANEL } from '../studio/constants'
 import { NEUTRAL_WALL_LABEL, nudgeWallLabelOffOpenings } from './wallLabel'
 import { normalizeWallTrimBand } from './trimBands'
@@ -251,6 +252,7 @@ export function hydrateOpening(
     )
     next.guard = normalizeOpeningGuard(next.guard)
     next.interiorShade = normalizeOpeningInteriorShade(next.interiorShade)
+    next.schedule = normalizeDaySchedule(next.schedule)
   }
 
   if (next.type === 'door') {

@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.145'
+export const APP_VERSION = '2.0.152'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,78 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.152',
+    date: '2026-09-04',
+    title: 'Fensterlöcher wieder frei; Sturz korrekt',
+    changes: [
+      'Paneel-Clip an Rechteckfenstern: keine Fläche mehr vor dem Glas, Sturz bleibt oberhalb der Öffnung',
+      'Mehrere Fenster in einem Streifen: Löcher bleiben unabhängig frei (kein Wieder-Auffüllen)',
+      'Bitte hart neu laden, bis v2.0.152 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.151',
+    date: '2026-09-04',
+    title: 'Lotrechte Öffnungen; weiche Schatten beim Drehen',
+    changes: [
+      'Streifen-Paneele an Rechteckfenstern: keine schrägen Trapez-Reste mehr am Sturz (lotrechte Laibung)',
+      'Beim Drehen und Zoomen bleibt der Sonnenschatten so weich wie im Stillstand (kein Hartschalten mehr)',
+      'Bitte hart neu laden, bis v2.0.151 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.150',
+    date: '2026-09-04',
+    title: 'Decke folgt Vorsprung; Licht-Fade; Uhrzeiten',
+    changes: [
+      'Decke und Boden folgen Erkern/Vorsprüngen am Grundriss (T-Stoß-Split, schärfste Linkskurve)',
+      'Punktlichter blenden weich ein/aus (Dauer pro Licht); Auto-Sonne ohne Ruckler',
+      'Uhrzeiten Ein/Aus pro Licht, Fenster/Tür und Rollladen (rechts in den Einstellungen)',
+      'Bitte hart neu laden, bis v2.0.150 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.149',
+    date: '2026-09-04',
+    title: 'Flüssige Dämmerung; Laden erst wenn fertig',
+    changes: [
+      'Tageszeit über Sonnenauf-/untergang: Lichter schalten ohne Ruckeln (kein Voll-Bake, Okkluder bleiben stehen)',
+      'Ladeanimation (Haus vom Nikolaus) endet erst, wenn Himmel und Schatten wirklich geladen sind',
+      'Bitte hart neu laden, bis v2.0.149 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.148',
+    date: '2026-09-04',
+    title: 'Tageszeit und Sonnenwinkel sofort',
+    changes: [
+      'Tageszeit- und Sonnenwinkel-Slider: Himmel und Licht folgen sofort der Maus',
+      'Kein Mitbacken aller Punktlicht-Schatten oder der EnvMap beim Ziehen — Schatten der Sonne holen kurz nach, EnvMap erst beim Loslassen',
+      'Bitte hart neu laden, bis v2.0.148 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.147',
+    date: '2026-09-04',
+    title: 'Licht duplizieren ohne Wartezeit',
+    changes: [
+      'Duplizieren (und andere Licht-Ops) backt nicht mehr Sonne + alle Cube-Shadows — nur das geänderte Licht',
+      'Marker erscheint sofort; Schatten des neuen Lichts holen kurz nach',
+      'Bitte hart neu laden, bis v2.0.147 in der Titelleiste steht',
+    ],
+  },
+  {
+    version: '2.0.146',
+    date: '2026-09-04',
+    title: 'Lichter reagieren sofort',
+    changes: [
+      'Lampe hinzufügen, ändern, löschen oder verschieben: Marker und Lichtwirkung sofort, ohne mehrsekündige Pause',
+      'Schatten-Maps werden verzögert nachgezogen (kein sofortiger Cube-/EnvMap-Bake bei jedem Slider-Tick)',
+      'Position, Farbe, Winkel & Co. live während des Ziehens; History erst beim Loslassen / Fokus-Verlust',
+      'Bitte hart neu laden, bis v2.0.146 in der Titelleiste steht',
+    ],
+  },
   {
     version: '2.0.145',
     date: '2026-09-04',

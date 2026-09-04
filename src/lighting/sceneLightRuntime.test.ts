@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
 import { SHADOW_LAYER_EXTERIOR, SHADOW_LAYER_INTERIOR, SHADOW_LAYER_OCCLUDER } from '../utils/sunLighting'
 import { SceneLightRuntime } from './sceneLightRuntime'
+import { wattsToThreeIntensity } from './sceneLightUnits'
 
 function firstPointLight(runtime: SceneLightRuntime): THREE.PointLight | undefined {
   let found: THREE.PointLight | undefined
@@ -104,6 +105,124 @@ describe('sceneLightRuntime', () => {
     expect(spot?.visible).toBe(true)
     expect(point?.visible).toBe(false)
     expect(spot!.angle).toBeGreaterThan(0.5)
+    runtime.dispose()
+  })
+
+  it('Shadow autoUpdate aus; nur neues/verschobenes Licht dirty', () => {
+    const runtime = new SceneLightRuntime()
+    const base = {
+      color: '#ffd080',
+      intensity: 12,
+      enabled: true,
+      castShadow: true,
+      beamMode: 'omni' as const,
+    }
+    runtime.sync([{ id: 'a', x: 0, y: 200, z: 0, ...base }], { roomOcclusion: true })
+    const lightA = firstPointLight(runtime)!
+    expect(lightA.shadow.autoUpdate).toBe(false)
+    expect(lightA.shadow.needsUpdate).toBe(true)
+    lightA.shadow.needsUpdate = false
+    // Fake: Map existiert (Bake schon gelaufen)
+    lightA.shadow.map = { dispose: () => undefined } as unknown as THREE.WebGLRenderTarget
+
+    runtime.sync(
+      [
+        { id: 'a', x: 0, y: 200, z: 0, ...base },
+        { id: 'b', x: 48, y: 200, z: 0, ...base },
+      ],
+      { roomOcclusion: true },
+    )
+    const lights: THREE.PointLight[] = []
+    runtime.root.traverse((obj) => {
+      if ((obj as THREE.PointLight).isPointLight) lights.push(obj as THREE.PointLight)
+    })
+    const a = lights.find((l) => l.userData.sceneLightId === 'a')!
+    const b = lights.find((l) => l.userData.sceneLightId === 'b')!
+    expect(a.shadow.needsUpdate).toBe(false)
+    expect(b.shadow.needsUpdate).toBe(true)
+
+    b.shadow.needsUpdate = false
+    b.shadow.map = { dispose: () => undefined } as unknown as THREE.WebGLRenderTarget
+    runtime.sync(
+      [
+        { id: 'a', x: 0, y: 200, z: 0, ...base },
+        { id: 'b', x: 96, y: 200, z: 0, ...base },
+      ],
+      { roomOcclusion: true },
+    )
+    expect(a.shadow.needsUpdate).toBe(false)
+    expect(b.shadow.needsUpdate).toBe(true)
+
+    // Dämmerung: aus und wieder an ohne Map-Verlust → kein Re-Bake
+    b.shadow.needsUpdate = false
+    runtime.sync(
+      [
+        { id: 'a', x: 0, y: 200, z: 0, ...base, enabled: false },
+        { id: 'b', x: 96, y: 200, z: 0, ...base, enabled: false },
+      ],
+      { roomOcclusion: true },
+    )
+    runtime.sync(
+      [
+        { id: 'a', x: 0, y: 200, z: 0, ...base, enabled: true },
+        { id: 'b', x: 96, y: 200, z: 0, ...base, enabled: true },
+      ],
+      { roomOcclusion: true },
+    )
+    expect(a.shadow.needsUpdate).toBe(false)
+    expect(b.shadow.needsUpdate).toBe(false)
+    runtime.dispose()
+  })
+
+  it('tickFades blendet Intensität ohne Shadow-Rebake', () => {
+    const runtime = new SceneLightRuntime()
+    runtime.sync(
+      [
+        {
+          id: 'l1',
+          x: 0,
+          y: 200,
+          z: 0,
+          color: '#ffd080',
+          intensity: 12,
+          enabled: true,
+          showMarker: true,
+          castShadow: true,
+          beamMode: 'omni',
+          fadeInMs: 1000,
+          fadeOutMs: 1000,
+        },
+      ],
+      { roomOcclusion: true },
+    )
+    const light = firstPointLight(runtime)!
+    const map = { dispose: () => undefined } as unknown as THREE.WebGLRenderTarget
+    light.shadow.map = map
+    light.shadow.needsUpdate = false
+    runtime.sync(
+      [
+        {
+          id: 'l1',
+          x: 0,
+          y: 200,
+          z: 0,
+          color: '#ffd080',
+          intensity: 12,
+          enabled: false,
+          showMarker: true,
+          castShadow: true,
+          beamMode: 'omni',
+          fadeInMs: 1000,
+          fadeOutMs: 1000,
+        },
+      ],
+      { roomOcclusion: true },
+    )
+    expect(runtime.tickFades(500, 0)).toBe(true)
+    expect(light.intensity).toBeGreaterThan(0)
+    expect(light.intensity).toBeLessThan(wattsToThreeIntensity(12) * 0.6)
+    expect(light.shadow.needsUpdate).toBe(false)
+    expect(light.shadow.map).toBe(map)
     runtime.dispose()
   })
 })

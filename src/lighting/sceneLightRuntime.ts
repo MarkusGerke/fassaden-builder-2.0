@@ -16,6 +16,10 @@ import { markerGlowBrightness, wattsToThreeIntensity } from './sceneLightUnits'
 import { pointShadowRadiusFromSoftness } from './pcssShadows'
 import { SHADOW_LAYER_EXTERIOR, SHADOW_LAYER_INTERIOR, SHADOW_LAYER_OCCLUDER } from '../utils/sunLighting'
 import {
+  DEFAULT_SCENE_LIGHT_FADE_IN_MS,
+  DEFAULT_SCENE_LIGHT_FADE_OUT_MS,
+} from '../scene/sceneLights'
+import {
   normalizeSceneLightAnimation,
   sceneLightAnimationFactor,
   blaulichtPhaseOffsetsById,
@@ -58,7 +62,12 @@ interface LightEntry {
   animation: SceneLightAnimationId
   /** Phasenversatz für Blaulicht-Doppelblitz (ms). */
   phaseOffsetMs: number
+  /** Ziel an/aus aus State. */
   enabled: boolean
+  /** 0…1 Ein-/Ausblendfaktor. */
+  fadeFactor: number
+  fadeInMs: number
+  fadeOutMs: number
   colorHex: string
   selected: boolean
   markerRadiusCm: number
@@ -95,6 +104,9 @@ function configureShadowLayers(light: THREE.Light): void {
   light.layers.enable(SHADOW_LAYER_INTERIOR)
   light.layers.enable(SHADOW_LAYER_EXTERIOR)
   if (light.shadow) {
+    // Manuelle Bakes: nur dirty Lichter (nicht Sonne + alle Cubes bei jedem Duplikat).
+    light.shadow.autoUpdate = false
+    light.shadow.needsUpdate = false
     light.shadow.camera.layers.enable(SHADOW_LAYER_INTERIOR)
     light.shadow.camera.layers.enable(SHADOW_LAYER_EXTERIOR)
     light.shadow.camera.layers.enable(SHADOW_LAYER_OCCLUDER)
@@ -103,7 +115,8 @@ function configureShadowLayers(light: THREE.Light): void {
 
 function createPointLight(color: THREE.Color): THREE.PointLight {
   const light = new THREE.PointLight(color, 2800, 0, 2)
-  light.castShadow = true
+  // castShadow erst in applySpec — sonst 3 Maps pro Entry sofort allokiert.
+  light.castShadow = false
   light.shadow.bias = -0.001
   light.shadow.normalBias = 0.25
   light.shadow.mapSize.setScalar(POINT_SHADOW_MAP)
@@ -117,7 +130,7 @@ function createPointLight(color: THREE.Color): THREE.PointLight {
 
 function createSpotLight(color: THREE.Color, direction: 'down' | 'up'): THREE.SpotLight {
   const light = new THREE.SpotLight(color, 2800, 0, Math.PI / 4, SPOT_PENUMBRA, 2)
-  light.castShadow = true
+  light.castShadow = false
   light.shadow.bias = -0.001
   light.shadow.normalBias = 0.25
   light.shadow.mapSize.setScalar(POINT_SHADOW_MAP)
@@ -152,6 +165,7 @@ export class SceneLightRuntime {
       let entry = this.entries.get(spec.id)
       if (!entry) {
         entry = this.createEntry(spec.color)
+        entry.fadeFactor = spec.enabled !== false ? 1 : 0
         this.entries.set(spec.id, entry)
         this.root.add(entry.root, entry.pick)
       }
@@ -172,6 +186,15 @@ export class SceneLightRuntime {
 
   dispose(): void {
     for (const id of [...this.entries.keys()]) this.disposeEntry(id)
+  }
+
+  /** Geometrie-/Sonnen-Bake: alle Bibliotheks-Licht-Shadows neu. */
+  markAllShadowsDirty(): void {
+    for (const entry of this.entries.values()) {
+      for (const light of [entry.point, entry.spotDown, entry.spotUp]) {
+        if (light.castShadow) light.shadow.needsUpdate = true
+      }
+    }
   }
 
   private createEntry(colorHex: string): LightEntry {
@@ -210,6 +233,9 @@ export class SceneLightRuntime {
       animation: 'none',
       phaseOffsetMs: 0,
       enabled: true,
+      fadeFactor: 1,
+      fadeInMs: DEFAULT_SCENE_LIGHT_FADE_IN_MS,
+      fadeOutMs: DEFAULT_SCENE_LIGHT_FADE_OUT_MS,
       colorHex: '#ffffff',
       selected: false,
       markerRadiusCm: 0,
@@ -233,26 +259,56 @@ export class SceneLightRuntime {
     }
     let any = false
     for (const entry of this.entries.values()) {
-      if (entry.animation === 'none' || !entry.enabled) continue
+      if (entry.animation === 'none' || entry.fadeFactor < 0.001) continue
       any = true
       this.applyAnimatedIntensity(entry, timeMs)
     }
     return any
   }
 
+  /** Fade Richtung enabled-Ziel. @returns true wenn noch unterwegs. */
+  tickFades(dtMs: number, timeMs = performance.now()): boolean {
+    let any = false
+    for (const entry of this.entries.values()) {
+      const target = entry.enabled ? 1 : 0
+      if (Math.abs(entry.fadeFactor - target) < 1e-4) {
+        entry.fadeFactor = target
+        continue
+      }
+      any = true
+      const dur = target > entry.fadeFactor ? entry.fadeInMs : entry.fadeOutMs
+      const step = dur <= 0 ? 1 : Math.min(1, Math.max(0, dtMs) / dur)
+      entry.fadeFactor =
+        target > entry.fadeFactor
+          ? Math.min(1, entry.fadeFactor + step)
+          : Math.max(0, entry.fadeFactor - step)
+      this.applyAnimatedIntensity(entry, timeMs)
+    }
+    return any
+  }
+
+  private litFactor(entry: LightEntry, timeMs: number): number {
+    const anim = sceneLightAnimationFactor(entry.animation, timeMs, entry.phaseOffsetMs)
+    return entry.fadeFactor * anim
+  }
+
   private applyAnimatedIntensity(entry: LightEntry, timeMs: number): void {
-    const factor = sceneLightAnimationFactor(entry.animation, timeMs, entry.phaseOffsetMs)
+    const factor = this.litFactor(entry, timeMs)
     const usePoint = entry.beamMode === 'omni'
     const useDown = entry.beamMode === 'down' || entry.beamMode === 'upDown'
     const useUp = entry.beamMode === 'up' || entry.beamMode === 'upDown'
     const split = entry.beamMode === 'upDown' ? 0.5 : 1
-    const inten = entry.enabled ? wattsToThreeIntensity(entry.baseWatts) * factor : 0
+    const inten = wattsToThreeIntensity(entry.baseWatts) * factor
+    const active = factor > 0.001
+    entry.point.visible = usePoint && active
+    entry.spotDown.visible = useDown && active
+    entry.spotUp.visible = useUp && active
     entry.point.intensity = usePoint ? inten : 0
     entry.spotDown.intensity = useDown ? inten * split : 0
     entry.spotUp.intensity = useUp ? inten * split : 0
 
     const markerOn =
-      entry.markersGloballyOn && entry.showMarker && entry.markerRadiusCm > 0 && entry.enabled
+      entry.markersGloballyOn && entry.showMarker && entry.markerRadiusCm > 0 && active
     const markerDiameter = markerOn ? entry.markerRadiusCm * 2 : 0
     const glowBrightness = markerGlowBrightness(entry.baseWatts * factor, entry.selected)
     updateLightGlowSprite(
@@ -267,7 +323,7 @@ export class SceneLightRuntime {
         : 0
       : markerDiameter
     const bloomCoreVisible =
-      entry.markersGloballyOn && entry.showMarker && entry.enabled && bloomCoreDiameter > 0
+      entry.markersGloballyOn && entry.showMarker && active && bloomCoreDiameter > 0
     updateLightBloomCore(
       entry.bloomCore,
       entry.colorHex,
@@ -290,6 +346,14 @@ export class SceneLightRuntime {
     entry.baseWatts = spec.intensity
     entry.animation = normalizeSceneLightAnimation(spec.animation)
     entry.enabled = spec.enabled !== false
+    entry.fadeInMs =
+      typeof spec.fadeInMs === 'number' && Number.isFinite(spec.fadeInMs)
+        ? Math.min(60000, Math.max(0, Math.round(spec.fadeInMs)))
+        : DEFAULT_SCENE_LIGHT_FADE_IN_MS
+    entry.fadeOutMs =
+      typeof spec.fadeOutMs === 'number' && Number.isFinite(spec.fadeOutMs)
+        ? Math.min(60000, Math.max(0, Math.round(spec.fadeOutMs)))
+        : DEFAULT_SCENE_LIGHT_FADE_OUT_MS
     entry.colorHex = spec.color
     entry.root.userData.sceneLightId = spec.id
     entry.point.userData.sceneLightId = spec.id
@@ -298,17 +362,23 @@ export class SceneLightRuntime {
     entry.marker.userData.sceneLightId = spec.id
     entry.pick.userData.sceneLightId = spec.id
 
+    const moved =
+      entry.root.position.x !== spec.x ||
+      entry.root.position.y !== spec.y ||
+      entry.root.position.z !== spec.z
     entry.root.position.set(spec.x, spec.y, spec.z)
     entry.pick.position.set(spec.x, spec.y, spec.z)
 
     const color = new THREE.Color(spec.color)
     const timeMs = options.timeMs ?? performance.now()
     const animFactor = sceneLightAnimationFactor(entry.animation, timeMs, entry.phaseOffsetMs)
-    const inten = entry.enabled ? wattsToThreeIntensity(spec.intensity) * animFactor : 0
+    const litFactor = entry.fadeFactor * animFactor
+    const active = litFactor > 0.001
+    const inten = wattsToThreeIntensity(spec.intensity) * litFactor
     const distance = spec.distance ?? 0
     const decay = spec.decay ?? 2
     const cast =
-      entry.enabled && spec.castShadow !== false && options.roomOcclusion !== false
+      active && spec.castShadow !== false && options.roomOcclusion !== false
     const mapSize = options.pointShadowMapSize ?? POINT_SHADOW_MAP
     const shadowFar =
       distance > 0
@@ -327,9 +397,9 @@ export class SceneLightRuntime {
     const useDown = beamMode === 'down' || beamMode === 'upDown'
     const useUp = beamMode === 'up' || beamMode === 'upDown'
 
-    entry.point.visible = usePoint && entry.enabled
-    entry.spotDown.visible = useDown && entry.enabled
-    entry.spotUp.visible = useUp && entry.enabled
+    entry.point.visible = usePoint && active
+    entry.spotDown.visible = useDown && active
+    entry.spotUp.visible = useUp && active
 
     this.syncPoint(entry.point, {
       color,
@@ -340,6 +410,7 @@ export class SceneLightRuntime {
       mapSize,
       shadowFar,
       softRadius,
+      dirty: moved,
     })
     const split = beamMode === 'upDown' ? 0.5 : 1
     this.syncSpot(entry.spotDown, {
@@ -352,6 +423,7 @@ export class SceneLightRuntime {
       shadowFar,
       softRadius,
       angle: angleDown,
+      dirty: moved,
     })
     this.syncSpot(entry.spotUp, {
       color,
@@ -363,6 +435,7 @@ export class SceneLightRuntime {
       shadowFar,
       softRadius,
       angle: angleUp,
+      dirty: moved,
     })
 
     const selected = options.selectedId === spec.id
@@ -378,8 +451,8 @@ export class SceneLightRuntime {
     entry.bloomActive = options.bloomActive === true
     entry.roomOcclusion = options.roomOcclusion === true
 
-    const glowBrightness = markerGlowBrightness(spec.intensity * animFactor, selected)
-    const markerOn = markerRadius > 0 && entry.enabled
+    const glowBrightness = markerGlowBrightness(spec.intensity * litFactor, selected)
+    const markerOn = markerRadius > 0 && active
     const markerDiameter = markerOn ? markerRadius * 2 : 0
     const roomOcclusion = entry.roomOcclusion
     updateLightGlowSprite(entry.marker, spec.color, roomOcclusion ? 0 : markerDiameter, glowBrightness)
@@ -391,21 +464,21 @@ export class SceneLightRuntime {
     const bloomCoreVisible =
       markersGloballyOn &&
       spec.showMarker !== false &&
-      entry.enabled &&
+      active &&
       bloomCoreDiameter > 0 &&
-      animFactor > BLAULICHT_VISIBLE_MARKER_FACTOR
+      litFactor > BLAULICHT_VISIBLE_MARKER_FACTOR
     updateLightBloomCore(
       entry.bloomCore,
       spec.color,
       bloomCoreDiameter,
-      spec.intensity * animFactor,
+      spec.intensity * litFactor,
       options.bloomActive === true,
       bloomCoreVisible,
     )
     updateLightSolidMarker(
       entry.solidMarker,
       spec.color,
-      roomOcclusion && markerOn && animFactor > BLAULICHT_VISIBLE_MARKER_FACTOR,
+      roomOcclusion && markerOn && litFactor > BLAULICHT_VISIBLE_MARKER_FACTOR,
       selected,
     )
     const pickScale = (markerRadius > 0 ? Math.max(markerRadius * 1.6, 48) : 48) / PICK_RADIUS_CM
@@ -424,6 +497,7 @@ export class SceneLightRuntime {
       mapSize: number
       shadowFar: number
       softRadius: number
+      dirty?: boolean
     },
   ): void {
     light.color.copy(opts.color)
@@ -432,16 +506,23 @@ export class SceneLightRuntime {
     light.decay = opts.decay
     light.castShadow = opts.cast
     light.shadow.radius = opts.softRadius
+    let mapOrFarChanged = false
     if (light.shadow.mapSize.x !== opts.mapSize) {
       light.shadow.mapSize.setScalar(opts.mapSize)
       if (light.shadow.map) {
         light.shadow.map.dispose()
         light.shadow.map = null
       }
+      mapOrFarChanged = true
     }
     if (light.shadow.camera.far !== opts.shadowFar) {
       light.shadow.camera.far = opts.shadowFar
       light.shadow.camera.updateProjectionMatrix()
+      mapOrFarChanged = true
+    }
+    // Kein Re-Bake nur weil cast wieder an — bestehende Map bleibt gültig (Dämmerung/Tageszyklus).
+    if (opts.cast && (opts.dirty || mapOrFarChanged || !light.shadow.map)) {
+      light.shadow.needsUpdate = true
     }
   }
 
@@ -457,26 +538,39 @@ export class SceneLightRuntime {
       shadowFar: number
       softRadius: number
       angle: number
+      dirty?: boolean
     },
   ): void {
     light.color.copy(opts.color)
     light.intensity = opts.intensity
     light.distance = opts.distance
     light.decay = opts.decay
-    light.angle = Math.min(Math.PI / 2 - 0.01, Math.max(0.05, opts.angle))
+    const nextAngle = Math.min(Math.PI / 2 - 0.01, Math.max(0.05, opts.angle))
+    const angleChanged = Math.abs(light.angle - nextAngle) > 1e-5
+    light.angle = nextAngle
     light.penumbra = SPOT_PENUMBRA
     light.castShadow = opts.cast
     light.shadow.radius = opts.softRadius
+    let mapOrFarChanged = false
     if (light.shadow.mapSize.x !== opts.mapSize) {
       light.shadow.mapSize.setScalar(opts.mapSize)
       if (light.shadow.map) {
         light.shadow.map.dispose()
         light.shadow.map = null
       }
+      mapOrFarChanged = true
     }
     if (light.shadow.camera.far !== opts.shadowFar) {
       light.shadow.camera.far = opts.shadowFar
       light.shadow.camera.updateProjectionMatrix()
+      mapOrFarChanged = true
+    }
+    // Kein Re-Bake nur weil cast wieder an — bestehende Map bleibt gültig (Dämmerung/Tageszyklus).
+    if (
+      opts.cast &&
+      (opts.dirty || mapOrFarChanged || angleChanged || !light.shadow.map)
+    ) {
+      light.shadow.needsUpdate = true
     }
   }
 

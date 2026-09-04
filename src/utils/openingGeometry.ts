@@ -1821,6 +1821,9 @@ function emitOutlinePoly(
  * Bossen-Frustum in zwei Kisten). In der Kappe kein Split an boxX0/boxX1
  * (sonst Phantom-Kasten in der Zeichnung). Nur wenn ein Rest das Loch in Y
  * vollständig umschließt (C/O), wird in Sohlbank-/Kämpfer-Bänder getrennt.
+ *
+ * @param preferOutline — Rechtecklöcher (`clipRectMinusBox`): L/U-Reste als
+ *   achskantige Outline (lotrechte Laibung). Bei Bögen false → emitMonotone + Arc.
  */
 function clipPolyMinusColumnHole(
   rect: OpeningPoly,
@@ -1832,6 +1835,7 @@ function clipPolyMinusColumnHole(
   sampleXs: number[],
   eps: number,
   minRemnant: number,
+  preferOutline = false,
 ): OpeningPoly[] {
   const rx0 = rect.x
   const rx1 = rect.x + rect.width
@@ -1986,6 +1990,14 @@ function clipPolyMinusColumnHole(
     }
     const maxN = Math.max(...[...byXList.values()].map((list) => list.length))
     if (maxN < 2) {
+      // Rechteck-Sturz/Sohlbank: Outline mit lotrechter Stufe statt Sehne (Trapez-Chaos).
+      if (preferOutline) {
+        const outlinePoly = emitOutlinePoly(group, props, eps, minRemnant)
+        if (outlinePoly) {
+          out.push(outlinePoly)
+          continue
+        }
+      }
       const poly = emitMonotone(group)
       if (poly) out.push(poly)
       continue
@@ -1993,7 +2005,11 @@ function clipPolyMinusColumnHole(
     // C/O: Loch von beiden Seiten umschlossen → an Sohlbank/Kämpfer trennen.
     // L in der Bogenkappe nicht als ein Outline (Sehne durch den Bogen) — unten
     // Rechteck zur Laibung, oben bottomArc. Kleine L-Steine ohne Kappe bleiben ein Stück.
-    if (!isEnclosedCShape(byXList, eps) && !group.some((b) => b.aboveHole)) {
+    // Rechtecklöcher: auch bei aboveHole (Sturzstreifen) Outline statt Split→Monotone.
+    if (
+      !isEnclosedCShape(byXList, eps) &&
+      (preferOutline || !group.some((b) => b.aboveHole))
+    ) {
       const outlinePoly = emitOutlinePoly(group, props, eps, minRemnant)
       if (outlinePoly) {
         out.push(outlinePoly)
@@ -2237,12 +2253,15 @@ export function clipRectMinusStadium(
   })
 }
 
-/** Rechteckloch ohne Split an Sohlbank/Kämpfer — L-Steine bleiben ein Polygon. */
-export function clipRectMinusBox(
+/**
+ * Achskantige Rechteck-Differenz (links/rechts/unten/oben).
+ * Keine Diagonalen, mehrfach hintereinander sicher (Outline-BBox füllt Löcher nicht wieder).
+ */
+function subtractAxisAlignedRect(
   rect: OpeningPoly,
   hole: OpeningRect,
-  eps = 0.05,
-  minRemnant = MIN_ARCH_CLIP_REMNANT,
+  eps: number,
+  minRemnant: number,
 ): OpeningPoly[] {
   const rx0 = rect.x
   const rx1 = rect.x + rect.width
@@ -2255,17 +2274,117 @@ export function clipRectMinusBox(
   if (rx1 <= hx0 + eps || rx0 >= hx1 - eps || ry1 <= hy0 + eps || ry0 >= hy1 - eps) {
     return [rect]
   }
-  return clipPolyMinusColumnHole(
-    rect,
-    hx0,
-    hx1,
-    () => ({ y0: hy0, y1: hy1 }),
-    hy0,
-    hy1,
-    [rx0, rx1, hx0, hx1],
-    eps,
-    minRemnant,
+  const props = copyPolyProps(rect)
+  const out: OpeningPoly[] = []
+  const push = (x: number, y: number, w: number, h: number) => {
+    if (w < minRemnant - eps || h < minRemnant - eps) return
+    out.push({ ...props, x, y, width: w, height: h })
+  }
+  // Links / rechts der Laibung (volle Streifenhöhe)
+  if (hx0 > rx0 + eps) push(rx0, ry0, hx0 - rx0, ry1 - ry0)
+  if (hx1 < rx1 - eps) push(hx1, ry0, rx1 - hx1, ry1 - ry0)
+  // Über / unter dem Loch nur in der Loch-X-Spanne
+  const mx0 = Math.max(rx0, hx0)
+  const mx1 = Math.min(rx1, hx1)
+  if (mx1 > mx0 + eps) {
+    if (hy0 > ry0 + eps) push(mx0, ry0, mx1 - mx0, hy0 - ry0)
+    if (hy1 < ry1 - eps) push(mx0, hy1, mx1 - mx0, ry1 - hy1)
+  }
+  return out
+}
+
+/** Outline → belegte Achsen-Rechtecke (Gitter aus Outline-Koordinaten). */
+function axisRectsFromOutline(rect: OpeningPoly, eps: number): OpeningPoly[] {
+  const outline = rect.outline
+  if (!outline || outline.length < 3) {
+    return [{ ...rect, outline: undefined, bottomArc: undefined, topArc: undefined }]
+  }
+  const xs = uniqueSortedXs(
+    outline.map((p) => p.x),
+    Math.max(eps * 0.25, 1e-4),
   )
+  const ys = uniqueSortedXs(
+    outline.map((p) => p.y),
+    Math.max(eps * 0.25, 1e-4),
+  )
+  if (xs.length < 2 || ys.length < 2) {
+    return [{ ...rect, outline: undefined, bottomArc: undefined, topArc: undefined }]
+  }
+  const props = copyPolyProps(rect)
+  const out: OpeningPoly[] = []
+  for (let i = 0; i < xs.length - 1; i += 1) {
+    for (let j = 0; j < ys.length - 1; j += 1) {
+      const cx = (xs[i]! + xs[i + 1]!) / 2
+      const cy = (ys[j]! + ys[j + 1]!) / 2
+      if (!pointInPoly(outline, cx, cy)) continue
+      const w = xs[i + 1]! - xs[i]!
+      const h = ys[j + 1]! - ys[j]!
+      if (w > eps && h > eps) out.push({ ...props, x: xs[i]!, y: ys[j]!, width: w, height: h })
+    }
+  }
+  return out.length > 0
+    ? out
+    : [{ ...rect, outline: undefined, bottomArc: undefined, topArc: undefined }]
+}
+
+function pointInPoly(poly: Array<{ x: number; y: number }>, x: number, y: number): boolean {
+  let inside = false
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i]!.x
+    const yi = poly[i]!.y
+    const xj = poly[j]!.x
+    const yj = poly[j]!.y
+    const hit =
+      yi > y !== yj > y &&
+      Math.abs(yj - yi) > 1e-12 &&
+      x < ((xj - xi) * (y - yi)) / (yj - yi) + xi
+    if (hit) inside = !inside
+  }
+  return inside
+}
+
+/** Rechteckloch: Achsen-Differenz (keine Diagonale, Multi-Loch sicher). */
+export function clipRectMinusBox(
+  rect: OpeningPoly,
+  hole: OpeningRect,
+  eps = 0.05,
+  minRemnant = MIN_ARCH_CLIP_REMNANT,
+): OpeningPoly[] {
+  const hasArc =
+    (rect.bottomArc != null && rect.bottomArc.length >= 2) ||
+    (rect.topArc != null && rect.topArc.length >= 2)
+  // Bogen-Reste weiter über Column-Hole (Monotone/Arc); Rechtecke/Outlines achskantig.
+  if (hasArc) {
+    const rx0 = rect.x
+    const rx1 = rect.x + rect.width
+    const ry0 = rect.y
+    const ry1 = rect.y + rect.height
+    const hx0 = hole.x
+    const hx1 = hole.x + hole.width
+    const hy0 = hole.y
+    const hy1 = hole.y + hole.height
+    if (rx1 <= hx0 + eps || rx0 >= hx1 - eps || ry1 <= hy0 + eps || ry0 >= hy1 - eps) {
+      return [rect]
+    }
+    return clipPolyMinusColumnHole(
+      rect,
+      hx0,
+      hx1,
+      () => ({ y0: hy0, y1: hy1 }),
+      hy0,
+      hy1,
+      [rx0, rx1, hx0, hx1],
+      eps,
+      minRemnant,
+      false,
+    )
+  }
+
+  const seeds =
+    rect.outline && rect.outline.length >= 3
+      ? axisRectsFromOutline(rect, eps)
+      : [{ ...rect, outline: undefined }]
+  return seeds.flatMap((seed) => subtractAxisAlignedRect(seed, hole, eps, minRemnant))
 }
 
 /**

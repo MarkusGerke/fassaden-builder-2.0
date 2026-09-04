@@ -14,6 +14,7 @@ Wenn aktiviert:
 - **Farbe / Oberfläche:** Swatches und Stumpf/Glänzend/Metallisch.
 - **Lamellenhöhe / Spalt:** Feinjustierung (cm) — Spalt gilt nur im freihängenden Abschnitt.
 - **Animation:** Phasen **Runterfahren** und **Hochfahren** mit Dauer, Vorlagen Weich/Linear, Abspielen und Zyklus.
+- **Uhrzeiten (v2.0.150):** in `#roller-shutter-options` Listen **Hoch** / **Runter** (`OpeningRollerShutter.schedule`); nur sichtbar wenn Rollladen an. Crossing der Tageszeit startet Playback.
 
 Klick auf die Lamellen in 3D öffnet den Rollläden-Tab (`openingPart: 'rollerShutter'`).
 
@@ -39,6 +40,7 @@ Opening.rollerShutter?: {
     raise: MotionCurve  // Hochfahren, v = Fortschritt 0…1
     lower: MotionCurve  // Runterfahren
   }
+  schedule?: DaySchedule  // on = hoch, off = runter (v2.0.150)
 }
 ```
 
@@ -53,7 +55,8 @@ Hydrate setzt fehlende Config auf **disabled**. Kein Schema-Step nötig.
 | `src/utils/openings.ts` | `updateOpeningRollerShutter` |
 | `src/utils/hydrate.ts` | Defaults für Fenster/Tür |
 | `src/FacadeController.ts` | `rebuildRollerShutters`, `applyRollerShutterDrop`, Schatten-Okkluder an Maske |
-| `index.html` / `src/main.ts` | Tab, Sync, Playback |
+| `src/utils/daySchedule.ts` / `src/ui/dayScheduleEditor.ts` | Uhrzeiten |
+| `index.html` / `src/main.ts` | Tab, Sync, Playback, Schedule |
 
 ## Fallstricke
 

@@ -9,7 +9,7 @@
 | [changelog.md](changelog.md) | Änderungsprotokoll (Historie) |
 | [shadows.md](shadows.md) | 3D-Sonnenlicht, **lichtdichte Hülle** (Sonne nur Öffnung+Glas), Shadow-Camera, Bias; Gesims-Cast; 2D-Front Paneel-Werfschatten |
 | [lighting-mood.md](lighting-mood.md) | Mehrschichtige Lichtstimmung: Umbra, Kontakt, Bounce |
-| [scene-lights.md](scene-lights.md) | Bibliotheks-Lichter: Presets, Abstrahlung, XYZ, Persistenz |
+| [scene-lights.md](scene-lights.md) | Bibliotheks-Lichter: Presets, Fade, Uhrzeiten, XYZ, Persistenz |
 | [celestial-sky.md](celestial-sky.md) | Takram-Himmel, Sonne/Mond, Dämmerung, Tageszeit 0–24 h |
 | [panel-geometry.md](panel-geometry.md) | Gehrungsberechnung, `wallLocalX`, Paneelextrusion, 3D-Leibung, Rest-Bossen an Öffnungen (`remnantBoss.ts`) |
 | [floor-plan.md](floor-plan.md) | Grundriss-System, Ring-Erkennung, Miter, Etagen, Innenkante Decke/Boden |
@@ -22,8 +22,8 @@
 | [profiles.md](profiles.md) | Profil-Querschnitte, Built-ins, Custom-IDs, SVG-Achsen |
 | [bay-windows.md](bay-windows.md) | Erker, Balkon, Loggia |
 | [style-templates.md](style-templates.md) | Stil-Vorlagen speichern/anwenden (localStorage) |
-| [opening-motion.md](opening-motion.md) | Flügel-Öffnen/Schließen: Kurveneditor, Vorlagen, Datensatz `fassaden-opening-motion/v1` |
-| [roller-shutter.md](roller-shutter.md) | Rollläden: Lamellen, Höhe, Stapel, Hoch-/Runter-Animation |
+| [opening-motion.md](opening-motion.md) | Flügel-Öffnen/Schließen: Kurveneditor, Vorlagen, Uhrzeiten, Datensatz `fassaden-opening-motion/v1` |
+| [roller-shutter.md](roller-shutter.md) | Rollläden: Lamellen, Höhe, Stapel, Animation, Uhrzeiten |
 | [roof.md](roof.md) | Berliner Mansarde: Ziegel/Trapez, bündige Traufe, Gehrungsrinne |
 | [gallery.md](gallery.md) | QA-Galerie: alle Standards im Raster, Abstand, Zufall, Projekt-Schutz |
 | [versioning.md](versioning.md) | App-Version, Release Notes, Quellen-Dialog, GitHub-Link, Pflege-Workflow |
@@ -70,6 +70,7 @@
 | SVG-Bearbeitungsansicht | `src/FacadeSvgView.ts` |
 | Öffnungen: erstellen, verschieben | `src/utils/openings.ts` |
 | Fenster-/Tür-Öffnungskurven | `src/utils/openingMotion.ts`, `src/ui/openingMotionEditor.ts`, `docs/opening-motion.md` |
+| Uhrzeit-Schedule | `src/utils/daySchedule.ts`, `src/ui/dayScheduleEditor.ts` |
 | Wände: Bounds, Neighbors, Duplizieren | `src/utils/walls.ts` |
 | Etagen-Gruppierung | `src/utils/layers.ts` |
 | Multi-Building-Helfer | `src/utils/buildings.ts` |

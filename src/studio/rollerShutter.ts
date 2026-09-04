@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import type { MotionCurve, Opening, OpeningRollerShutter, SurfaceFinish } from '../types/facade'
 import { openingMaskXRangesAtY } from '../utils/openingGeometry'
 import { normalizeMotionCurve, LINEAR_MOTION } from '../utils/openingMotion'
+import { EMPTY_DAY_SCHEDULE, normalizeDaySchedule } from '../utils/daySchedule'
 
 /** Default: geschlossenheit 0 = oben, 1 = unten. */
 export const DEFAULT_ROLLER_SHUTTER_DROP = 0
@@ -63,6 +64,7 @@ export function defaultOpeningRollerShutter(): OpeningRollerShutter {
     slatHeightCm: DEFAULT_ROLLER_SLAT_HEIGHT_CM,
     gapCm: DEFAULT_ROLLER_GAP_CM,
     motion: defaultRollerShutterMotion(),
+    schedule: { ...EMPTY_DAY_SCHEDULE },
   }
 }
 
@@ -98,6 +100,7 @@ export function normalizeOpeningRollerShutter(
       raise: normalizeMotionCurve(motionRaw?.raise, motionFallback.raise),
       lower: normalizeMotionCurve(motionRaw?.lower, motionFallback.lower),
     },
+    schedule: normalizeDaySchedule(raw?.schedule ?? base.schedule),
   }
 }
 

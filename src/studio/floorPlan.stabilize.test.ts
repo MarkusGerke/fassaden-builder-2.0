@@ -3,10 +3,15 @@ import { emptyNeighbors } from '../types/facade'
 import type { FacadeState, Wall } from '../types/facade'
 import { WALL_DEPTH } from '../constants/presets'
 import {
+  createEmptyFloorPlan,
+  drawPlanLine,
   extractPlanRings,
   floorPlanFromWalls,
+  planFacesWithHoles,
   planHasClosedRing,
   sealNearClosedPlanGaps,
+  splitEdgesAtTJoints,
+  removePlanChords,
   stabilizeFloorPlanIds,
   syncFloorPlansFromWalls,
 } from './floorPlan'
@@ -132,5 +137,39 @@ describe('sealNearClosedPlanGaps', () => {
     ]
     const plan = floorPlanFromWalls(walls)
     expect(planHasClosedRing(plan)).toBe(true)
+  })
+})
+
+describe('splitEdgesAtTJoints / Vorsprung-Kontur', () => {
+  it('L-Form: geschlossener Outer mit ≥ 6 Ecken', () => {
+    let plan = createEmptyFloorPlan()
+    // L: (0,0)-(10,0)-(10,4)-(4,4)-(4,10)-(0,10)
+    plan = drawPlanLine(plan, 0, 0, 10, 0)
+    plan = drawPlanLine(plan, 10, 0, 10, 4)
+    plan = drawPlanLine(plan, 10, 4, 4, 4)
+    plan = drawPlanLine(plan, 4, 4, 4, 10)
+    plan = drawPlanLine(plan, 4, 10, 0, 10)
+    plan = drawPlanLine(plan, 0, 10, 0, 0)
+    const faces = planFacesWithHoles(plan)
+    expect(faces.length).toBe(1)
+    expect(faces[0]!.outer.length).toBeGreaterThanOrEqual(6)
+  })
+
+  it('U-Vorsprung: T-Split + Chord-Entfernung → Outer mit ≥ 6 Ecken', () => {
+    let raw = createEmptyFloorPlan()
+    raw = drawPlanLine(raw, 0, 0, 10, 0)
+    raw = drawPlanLine(raw, 10, 0, 10, 8)
+    raw = drawPlanLine(raw, 10, 8, 0, 8)
+    raw = drawPlanLine(raw, 0, 8, 0, 0)
+    raw = drawPlanLine(raw, 3, 0, 3, -2)
+    raw = drawPlanLine(raw, 3, -2, 7, -2)
+    raw = drawPlanLine(raw, 7, -2, 7, 0)
+    const before = planFacesWithHoles(raw)
+    expect(before[0]?.outer.length ?? 0).toBeLessThanOrEqual(4)
+
+    const fixed = removePlanChords(splitEdgesAtTJoints(raw))
+    const faces = planFacesWithHoles(fixed)
+    expect(faces.length).toBe(1)
+    expect(faces[0]!.outer.length).toBeGreaterThanOrEqual(6)
   })
 })

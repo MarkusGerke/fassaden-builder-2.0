@@ -10,6 +10,7 @@ Jedes **Fenster** und jede **Tür** hat den Reiter **Animation** (nicht bei Nisc
 - **Punkte:** Ziehen verschiebt; Klick in die Fläche setzt einen Zwischenpunkt; Start- und Endpunkt nur senkrecht (Zeit fest). Gewählter Punkt: **Kurve** (Catmull-Rom) oder **Linie** bis zum nächsten Punkt. Zwischenpunkte löschen.
 - **Dauer / Pause / Zielwinkel:** Pause gilt nach dem Öffnen (für „Öffnen → Pause → Schließen“), nur in der Phase Öffnen sichtbar.
 - **Abspielen:** Öffnen, Schließen, oder Zyklus. Stopp setzt auf den Ruhewinkel zurück (Slider „Einzeln öffnen“). Nach Ende von Öffnen bleiben die Flügel auf dem Zielwinkel; nach Schließen/Zyklus auf 0°. Während des Abspielens ist die **orange Auswahlmarkierung** ausgeblendet (`setSelectionHighlightSuppressed`).
+- **Uhrzeiten (v2.0.150):** unter den Play-Buttons Listen **Öffnen** / **Schließen** (`Opening.schedule`, Dezimalstunden). Crossing der Tageszeit (Slider oder Tagzyklus) startet dieselbe Playback-Kurve. Pausierte Animationen (`animationsPaused`) stoppen auch Schedule-Trigger.
 - **Datensatz:** JSON zum Kopieren und späteren Einfügen (oder zum Übergeben an den Assistenten).
 
 Die Slider **Einzeln öffnen** bleiben der Ruhezustand. Die Animation überschreibt die Flügel nur während des Abspielens bzw. schreibt den Ruhewinkel am Ende.
@@ -74,14 +75,16 @@ Hydrate: fehlendes `Opening.motion` erhält den Typ-Default (Fenster vs. Tür). 
 
 | Datei | Rolle |
 |---|---|
-| `src/types/facade.ts` | `Opening.motion`, `OpeningMotion`, `MotionCurve`, `MotionKeyframe` |
+| `src/types/facade.ts` | `Opening.motion`, `Opening.schedule`, `OpeningMotion`, `MotionCurve`, `MotionKeyframe` |
 | `src/utils/openingMotion.ts` | Eval, Defaults, Datensatz parse/serialize, Punkt-Edit |
-| `src/utils/hydrate.ts` | `motion` für window/door |
+| `src/utils/hydrate.ts` | `motion` + `schedule` für window/door |
+| `src/utils/daySchedule.ts` | Uhrzeit-Eval |
+| `src/ui/dayScheduleEditor.ts` | Listen UI |
 | `src/utils/openings.ts` | `updateOpeningMotion` |
 | `src/windows/gruenderzeit.ts` | Pivot-`userData.leafMotion` |
 | `src/FacadeController.ts` | `applyOpeningLeafDegrees` ohne Mesh-Rebuild |
 | `src/ui/openingMotionEditor.ts` | SVG-Editor, Play-Buttons, Datensatz-Feld |
-| `src/main.ts` | Abspielen im Animate-Loop, Commit der Ruhewinkel |
+| `src/main.ts` | Abspielen im Animate-Loop, Schedule-Crossings, Commit der Ruhewinkel |
 | `index.html` | `#opening-motion-section` Reiter Animation |
 
 `cloneWall` kopiert `motion` tief.

@@ -566,17 +566,30 @@ import {
   createSceneLightGroup,
   duplicateSceneLight,
   kelvinToHex,
+  facadeStateDiffersOnlyBySceneLights,
   normalizeSceneLightState,
   normalizeSceneLights,
   removeSceneLight,
   renameSceneLightGroup,
   sceneLightById,
   sceneLightDisplayName,
+  sceneLightsLayerListKey,
   setAllSceneLightsEnabled,
+  setSceneLightsEnabledById,
   setSceneLightGroupEnabled,
   ungroupSceneLights,
   updateSceneLight,
+  DEFAULT_SCENE_LIGHT_FADE_IN_MS,
+  DEFAULT_SCENE_LIGHT_FADE_OUT_MS,
 } from './scene/sceneLights'
+import {
+  dayScheduleHasTimes,
+  normalizeDaySchedule,
+  scheduleCrossings,
+  scheduleSaysOn,
+  type DaySchedule,
+} from './utils/daySchedule'
+import { bindDayScheduleEditor } from './ui/dayScheduleEditor'
 import {
   BEAM_ANGLE_MAX_DEG,
   BEAM_ANGLE_MIN_DEG,
@@ -648,36 +661,10 @@ let orbitLitePointer = false
  */
 let bloomKeepFullPixelRatioDuringOrbit = false
 
-/**
- * PCSS-Lite während Orbit nur bei Bedarf: Frames im Orbit werden gemessen; liegen anhaltend
- * ≥ PCSS_LITE_SLOW_FRAMES Frames über PCSS_LITE_SLOW_FRAME_MS, schaltet die Sonne für den Rest
- * der Sitzung beim Navigieren auf 1 Tap (Uniform, kein Shader-Rebuild). Auf schneller GPU bleibt
- * der weiche Schatten auch beim Drehen — kein Pop am Gestenende.
- */
-const PCSS_LITE_SLOW_FRAME_MS = 30
-const PCSS_LITE_SLOW_FRAMES = 4
-let pcssLiteSticky = false
-let orbitProbeLastAt = 0
-let orbitProbeSlowCount = 0
-
-function orbitProbeReset() {
-  orbitProbeLastAt = 0
-  orbitProbeSlowCount = 0
-}
-
-/** Nach jedem gerenderten Orbit-Frame aufrufen (Frame-Abstand = Render-Kosten bei Dirty-Loop). */
-function orbitProbeFrame(now: number) {
-  if (!orbitLite || pcssLiteSticky) return
-  if (orbitProbeLastAt > 0) {
-    const dt = now - orbitProbeLastAt
-    if (dt > PCSS_LITE_SLOW_FRAME_MS) orbitProbeSlowCount += 1
-    else orbitProbeSlowCount = Math.max(0, orbitProbeSlowCount - 1)
-    if (orbitProbeSlowCount >= PCSS_LITE_SLOW_FRAMES) {
-      pcssLiteSticky = true
-      setPcssLiteMode(true)
-    }
-  }
-  orbitProbeLastAt = now
+/** Früher adaptives PCSS-Lite — bleibt als Stub für Aufrufe im Animate-Loop. */
+function orbitProbeReset() {}
+function orbitProbeFrame(_now: number) {
+  void _now
 }
 
 function applyRendererPixelRatio() {
@@ -728,6 +715,7 @@ atmosphereSky.attachLights(scene)
 const dirLight = atmosphereSky.sunLight
 dirLight.castShadow = true
 dirLight.layers.set(SHADOW_LAYER_EXTERIOR)
+dirLight.shadow.autoUpdate = false
 dirLight.shadow.mapSize.set(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE)
 dirLight.shadow.camera.near = 1
 dirLight.shadow.camera.far = 2000
@@ -806,7 +794,8 @@ function setOrbitLite(active: boolean) {
     if (!orbitLite) {
       orbitLite = true
       orbitProbeReset()
-      setPcssLiteMode(pcssLiteSticky)
+      // Weicher PCSS bleibt auch während der Geste (kein 1-Tap-Hartschatten).
+      setPcssLiteMode(false)
       applyRendererPixelRatio()
     }
     markViewportDirty()
@@ -5083,6 +5072,11 @@ const sceneLightDistanceInput = document.querySelector<HTMLInputElement>('#scene
 const sceneLightDecayInput = document.querySelector<HTMLInputElement>('#scene-light-decay')!
 const sceneLightEnabledInput = document.querySelector<HTMLInputElement>('#scene-light-enabled')!
 const sceneLightCastShadowInput = document.querySelector<HTMLInputElement>('#scene-light-cast-shadow')!
+const sceneLightFadeInInput = document.querySelector<HTMLInputElement>('#scene-light-fade-in')!
+const sceneLightFadeOutInput = document.querySelector<HTMLInputElement>('#scene-light-fade-out')!
+const sceneLightScheduleEl = document.querySelector<HTMLDivElement>('#scene-light-schedule')!
+const openingMotionScheduleEl = document.querySelector<HTMLDivElement>('#opening-motion-schedule')!
+const rollerShutterScheduleEl = document.querySelector<HTMLDivElement>('#roller-shutter-schedule')!
 const sceneLightAnimationBlaulichtInput = document.querySelector<HTMLInputElement>(
   '#scene-light-animation-blaulicht',
 )!
@@ -8659,48 +8653,74 @@ function applyPcssSoftnessLive() {
 }
 
 const SUN_SHADOW_MAP_MIN_INTERVAL_MS = 90
+/** Auch bei Dauer-Scrub/Tageszyklus spätestens nach dieser Zeit einmal backen. */
+const SUN_SHADOW_MAP_MAX_LAG_MS = 250
 let sunShadowMapTimer = 0
 let sunShadowMapQueued = false
+let sunShadowFirstQueueMs = 0
+let sunShadowScheduleReflections = false
 let sunSliderPersistTimer = 0
 
-function flushSunShadowMap() {
+function flushSunShadowMap(opts?: { reflections?: boolean; sceneLights?: boolean }) {
   if (sunShadowMapTimer) {
     window.clearTimeout(sunShadowMapTimer)
     sunShadowMapTimer = 0
   }
   sunShadowMapQueued = false
+  sunShadowFirstQueueMs = 0
+  sunShadowScheduleReflections = false
+  dirLight.shadow.needsUpdate = true
+  // Punktlicht-Cubes hängen nicht am Sonnenstand — nur bei Geometrie mitbacken.
+  if (opts?.sceneLights) sceneLightRuntime.markAllShadowsDirty()
   renderer.shadowMap.needsUpdate = true
-  markSceneReflectionsDirty()
+  if (opts?.reflections !== false) markSceneReflectionsDirty()
   markViewportDirty()
 }
 
-/** Nur Shadow-Maps (Sonne + Punktlicht) — ohne EnvMap-Bake. Für Licht-only-Commits. */
+/** Nur dirty Punktlicht-Shadows — ohne Sonne und ohne EnvMap-Bake. */
 function flushShadowMapsOnly() {
   if (sunShadowMapTimer) {
     window.clearTimeout(sunShadowMapTimer)
     sunShadowMapTimer = 0
   }
   sunShadowMapQueued = false
+  sunShadowFirstQueueMs = 0
+  sunShadowScheduleReflections = false
+  // Sonne bleibt clean (autoUpdate=false, needsUpdate unverändert) — sonst Sekunden-Bake.
   renderer.shadowMap.needsUpdate = true
   markViewportDirty()
 }
 
-function scheduleShadowMapUpdate(opts?: { reflections?: boolean }) {
+function scheduleShadowMapUpdate(opts?: { reflections?: boolean; sun?: boolean }) {
+  const now = performance.now()
+  if (!sunShadowMapQueued) sunShadowFirstQueueMs = now
   sunShadowMapQueued = true
-  if (sunShadowMapTimer) return
+  if (opts?.sun) dirLight.shadow.needsUpdate = true
+  // Reflections nur wenn explizit gewünscht (nie bei Live-Scrub erzwingen).
+  if (opts?.reflections === true) sunShadowScheduleReflections = true
+  const elapsed = now - sunShadowFirstQueueMs
+  const delay = Math.max(
+    0,
+    Math.min(SUN_SHADOW_MAP_MIN_INTERVAL_MS, SUN_SHADOW_MAP_MAX_LAG_MS - elapsed),
+  )
+  if (sunShadowMapTimer) window.clearTimeout(sunShadowMapTimer)
   sunShadowMapTimer = window.setTimeout(() => {
     sunShadowMapTimer = 0
     if (!sunShadowMapQueued) return
     sunShadowMapQueued = false
+    sunShadowFirstQueueMs = 0
+    const reflections = sunShadowScheduleReflections
+    sunShadowScheduleReflections = false
     renderer.shadowMap.needsUpdate = true
-    if (opts?.reflections !== false) markSceneReflectionsDirty()
+    if (reflections) markSceneReflectionsDirty()
     markViewportDirty()
-  }, SUN_SHADOW_MAP_MIN_INTERVAL_MS)
+  }, delay)
 }
 
 /** Shadow-Map während Slider/Animation gedrosselt — Licht sofort, Bake später. */
 function scheduleSunShadowMapUpdate() {
-  scheduleShadowMapUpdate({ reflections: true })
+  // Keine EnvMap während Scrub/Zyklus — nur Sonnen-Shadow (Punktlichter bleiben clean).
+  scheduleShadowMapUpdate({ reflections: false, sun: true })
 }
 
 function dismissAppLoading() {
@@ -8712,7 +8732,7 @@ function dismissAppLoading() {
   window.setTimeout(() => el.remove(), 400)
 }
 
-/** Atmosphäre + Fenster-Meshes im Hintergrund; Schatten-Map erst wenn beides da ist. */
+/** Atmosphäre + Fenster-Meshes; Overlay bleibt bis Himmel und Schatten fertig sind. */
 function bootstrapSceneLighting(): Promise<void> {
   void preloadWallLabelFlatFont().then(() => {
     facade.refreshWallLabels({ afterFontLoad: true })
@@ -8722,6 +8742,23 @@ function bootstrapSceneLighting(): Promise<void> {
     syncCladdingReceiveShadows()
     startupShadowReady = true
     applySunLighting({ updateShadowMap: true })
+    // Punktlicht-Cubes einmal warm (auch bei Tag/aus) — sonst hitcht die erste Dämmerung.
+    const lights = normalizeSceneLights(state.sceneLights)
+    if (lights.length > 0 && presentationMode === 'render') {
+      const warmed = lights.map((item) => ({ ...item, enabled: true }))
+      sceneLightRuntime.sync(warmed, {
+        roomOcclusion: true,
+        selectedId: editor.selectedSceneLightId,
+        shadowFarCm: sceneLightShadowFarCm(),
+        shadowSoftness: sunSettings.shadowSoftness,
+        pointShadowMapSize: currentView === 'front' ? POINT_SHADOW_MAP_FRONT : 2048,
+        showMarkers: false,
+        bloomActive: false,
+      })
+      facade.syncPointLightOccluders(true, true)
+      sceneLightRuntime.markAllShadowsDirty()
+      renderer.shadowMap.needsUpdate = true
+    }
     sceneLightingReady = true
     markViewportDirty()
     if (currentView === 'front') syncFrontView()
@@ -8733,6 +8770,13 @@ function sceneLightRoomOcclusionActive(): boolean {
   if (presentationMode !== 'render') return false
   if (currentView !== '3d' && currentView !== 'front') return false
   return normalizeSceneLights(state.sceneLights).some((item) => item.enabled)
+}
+
+/** Okkluder-Meshes behalten solange Lichter existieren — kein Dawn/Dusk-Rebuild-Hitch. */
+function sceneLightOccludersWanted(): boolean {
+  if (presentationMode !== 'render') return false
+  if (currentView !== '3d' && currentView !== 'front') return false
+  return normalizeSceneLights(state.sceneLights).length > 0
 }
 
 function sceneLightShadowFarCm(): number {
@@ -8777,7 +8821,8 @@ function syncSceneLightRuntime(opts?: { flushShadows?: boolean; scheduleShadows?
     bloomActive: bloomIsActive(),
   })
   if (!facadeReady) return
-  facade.syncPointLightOccluders(roomOcclusion, lightsActive)
+  // Okkluder an Existenz der Lichter koppeln (nicht an enabled) — Dämmerung ohne Mesh-Rebuild.
+  facade.syncPointLightOccluders(sceneLightOccludersWanted(), lightsActive)
   // Frische Punktlichter: Cube-Map einmal backen (ohne EnvMap). Nicht bei bloßer Auswahl.
   if (opts?.flushShadows) flushShadowMapsOnly()
   else if (opts?.scheduleShadows) scheduleShadowMapUpdate({ reflections: false })
@@ -8944,6 +8989,9 @@ function syncSceneLightToolbar(): void {
   sceneLightEnabledInput.checked = light.enabled
   sceneLightCastShadowInput.checked = light.castShadow
   sceneLightAnimationBlaulichtInput.checked = light.animation === 'blaulicht'
+  sceneLightFadeInInput.value = String(light.fadeInMs ?? DEFAULT_SCENE_LIGHT_FADE_IN_MS)
+  sceneLightFadeOutInput.value = String(light.fadeOutMs ?? DEFAULT_SCENE_LIGHT_FADE_OUT_MS)
+  sceneLightScheduleEditor?.sync()
   rebuildSceneLightPresetCards(light.preset)
   const beamMode = (light.beamMode ?? 'omni') as SceneLightBeamMode
   sceneLightBeamMode.value = beamMode
@@ -8962,11 +9010,11 @@ function syncSceneLightToolbar(): void {
   sceneLightDepthValue.textContent = String(depth)
 }
 
-function patchSceneLightViewDepth(depthCm: number): void {
+function sceneLightWorldFromViewDepth(depthCm: number): THREE.Vector3 | null {
   const id = editor.selectedSceneLightId
-  if (!id) return
+  if (!id) return null
   const light = sceneLightById(state, id)
-  if (!light) return
+  if (!light) return null
   getActiveCamera().getWorldDirection(_frontPanForward)
   sceneLightLocalToWorld(light, _sceneLightWorld)
   viewDepthReferencePoint(_frontPanRight)
@@ -8975,7 +9023,30 @@ function patchSceneLightViewDepth(depthCm: number): void {
   const dz = _sceneLightWorld.z - _frontPanRight.z
   const currentDepth = dx * _frontPanForward.x + dy * _frontPanForward.y + dz * _frontPanForward.z
   _sceneLightWorld.addScaledVector(_frontPanForward, depthCm - currentDepth)
-  patchSelectedSceneLight(sceneLightPositionFromWorld(_sceneLightWorld))
+  return _sceneLightWorld
+}
+
+function patchSceneLightViewDepth(depthCm: number): void {
+  const world = sceneLightWorldFromViewDepth(depthCm)
+  if (!world) return
+  patchSelectedSceneLight(sceneLightPositionFromWorld(world))
+}
+
+function previewSceneLightViewDepth(depthCm: number): void {
+  const world = sceneLightWorldFromViewDepth(depthCm)
+  if (!world) return
+  previewSelectedSceneLight(sceneLightPositionFromWorld(world))
+}
+
+/** Live-Update ohne History/Rebuild — Shadow-Bake verzögert. */
+function previewSelectedSceneLight(patch: Parameters<typeof updateSceneLight>[2]): void {
+  const id = editor.selectedSceneLightId
+  if (!id) return
+  state = clampFacadeState(updateSceneLight(state, id, patch))
+  syncIndoorFillForSceneLights()
+  syncSceneLightRuntime({ scheduleShadows: true })
+  schedulePersistApp()
+  markViewportDirty()
 }
 
 function patchSelectedSceneLight(patch: Parameters<typeof updateSceneLight>[2]): void {
@@ -9060,14 +9131,15 @@ function applySunLighting(opts?: { updateShadowMap?: boolean; live?: boolean }) 
     dirLight.shadow.normalBias = SHADOW_NORMAL_BIAS_MIN
     dirLight.shadow.bias = SHADOW_BIAS
   }
-  syncSceneLightRuntime()
   const live = opts?.live === true
+  // Live-Scrub: kein Punktlicht-Sync (teuer bei vielen Lichtern) — Softness folgt beim Commit.
+  if (!live) syncSceneLightRuntime()
   if (opts?.updateShadowMap === true) {
-    flushSunShadowMap()
+    flushSunShadowMap({ sceneLights: true })
   } else if (live) {
     scheduleSunShadowMapUpdate()
   } else if (opts?.updateShadowMap !== false && startupShadowReady) {
-    flushSunShadowMap()
+    flushSunShadowMap({ sceneLights: true })
   }
   markViewportDirty()
 }
@@ -9109,10 +9181,36 @@ function applyState(nextState: FacadeState, nextEditor = editor) {
   const openingDragWallIds = facade.peekOpeningDragWallIds()
   facade.endLiveDrag()
   const prevState = state
+  const openingDragCommit = openingDragWallIds.size > 0
+  const lightOnly =
+    !openingDragCommit && facadeStateDiffersOnlyBySceneLights(prevState, nextState)
+
+  if (lightOnly) {
+    // Sofortiger Licht-Pfad: kein Grundriss-Sync, kein Fassaden-Rebuild, Schatten verzögert.
+    state = clampFacadeState(nextState)
+    editor = normalizeEditor(state, nextEditor)
+    facade.setState(state, { rebuildBuildingIds: [] })
+    facade.setEditor(editor)
+    syncIndoorFillForSceneLights()
+    syncSceneLightRuntime({ scheduleShadows: true })
+    if (currentView === 'front') syncFrontView()
+    if (currentView === 'export') {
+      clearExportCaptureCache()
+      void refreshExportPreview()
+    }
+    schedulePersistApp()
+    const layerListChanged =
+      sceneLightsLayerListKey(prevState) !== sceneLightsLayerListKey(state)
+    renderUi({ skipLayerList: !layerListChanged })
+    updateHistoryButtons()
+    updateWallLibraryGizmos()
+    markViewportDirty()
+    return
+  }
+
   state = clampFacadeState(syncFloorPlansFromWalls(nextState))
   editor = normalizeEditor(state, nextEditor)
 
-  const openingDragCommit = openingDragWallIds.size > 0
   const labelOnly =
     !openingDragCommit && facadeStateDiffersOnlyByWallLabels(prevState, state)
   let rebuildIds = labelOnly ? [] : buildingIdsNeedingRebuild(prevState, state)
@@ -9160,9 +9258,9 @@ function applyState(nextState: FacadeState, nextEditor = editor) {
     applySunLighting({ updateShadowMap: true })
     syncSceneLightRuntime()
   } else if (lightsChanged) {
-    // Licht-only: kein Sonnen-/EnvMap-/Boden-Pfad, nur Punktlicht-Shadows + Innen-Fill.
+    // Licht-only (Fallback): kein Sonnen-/EnvMap-/Boden-Pfad; Schatten verzögert.
     syncIndoorFillForSceneLights()
-    syncSceneLightRuntime({ flushShadows: true })
+    syncSceneLightRuntime({ scheduleShadows: true })
   } else {
     syncSiteTransform()
     updateGroundPlane()
@@ -13709,6 +13807,7 @@ function syncRollerShutterControls() {
   for (const btn of document.querySelectorAll<HTMLButtonElement>('#roller-shutter-phase-group .preset-btn')) {
     btn.classList.toggle('active', btn.dataset.rollerPhase === rollerShutterPhase)
   }
+  rollerShutterScheduleEditor?.sync()
   renderColorSwatches(
     rollerShutterColorSwatches,
     'profile',
@@ -15281,10 +15380,16 @@ function reapplyOpeningMotionPlayback() {
 
 function playOpeningMotion(mode: OpeningMotionPlayMode) {
   const refs = selectedWindowRefsFromEditor()
-  const sel = selectedWindowOpening()
-  if (refs.length === 0 || !sel || (sel.opening.type !== 'window' && sel.opening.type !== 'door')) return
+  playOpeningMotionOnRefs(refs, mode)
+}
+
+function playOpeningMotionOnRefs(refs: OpeningRef[], mode: OpeningMotionPlayMode) {
+  if (refs.length === 0) return
+  const wall = getWall(state, refs[0]!.wallId)
+  const opening = wall?.openings.find((o) => o.id === refs[0]!.openingId)
+  if (!opening || (opening.type !== 'window' && opening.type !== 'door')) return
   stopOpeningMotionPlayback(false)
-  const motion = openingMotionFromOpening(sel.opening)
+  const motion = openingMotionFromOpening(opening)
   for (const ref of refs) facade.ensureHighDetailForWall(ref.wallId)
   openingMotionPlayback = {
     refs,
@@ -15301,6 +15406,7 @@ function playOpeningMotion(mode: OpeningMotionPlayMode) {
 
 function syncOpeningMotionEditor() {
   openingMotionEditor?.sync()
+  openingMotionScheduleEditor?.sync()
 }
 
 type RollerShutterPlayMode = 'raise' | 'lower' | 'cycle'
@@ -15352,11 +15458,17 @@ function playRollerShutter(mode: RollerShutterPlayMode) {
     const opening = wall?.openings.find((item) => item.id === ref.openingId)
     return opening && openingSupportsRollerShutter(opening) && opening.rollerShutter?.enabled
   })
-  const sel = selectedWindowOpening()
-  if (refs.length === 0 || !sel) return
+  playRollerShutterOnRefs(refs, mode)
+}
+
+function playRollerShutterOnRefs(refs: OpeningRef[], mode: RollerShutterPlayMode) {
+  if (refs.length === 0) return
+  const wall0 = getWall(state, refs[0]!.wallId)
+  const opening0 = wall0?.openings.find((item) => item.id === refs[0]!.openingId)
+  if (!opening0 || !openingSupportsRollerShutter(opening0) || !opening0.rollerShutter?.enabled) return
   stopRollerShutterPlayback(false)
   stopOpeningMotionPlayback(false)
-  const shutter = normalizeOpeningRollerShutter(sel.opening.rollerShutter)
+  const shutter = normalizeOpeningRollerShutter(opening0.rollerShutter)
   const startDrop = shutter.drop
   const phase: RollerShutterPlayPhase = mode === 'raise' ? 'raise' : 'lower'
   const targetDrop = phase === 'raise' ? 0 : 1
@@ -15450,6 +15562,44 @@ openingMotionEditor = initOpeningMotionEditor({
   play: playOpeningMotion,
   stop: () => stopOpeningMotionPlayback(true),
   isPlaying: () => Boolean(openingMotionPlayback),
+})
+
+const sceneLightScheduleEditor = bindDayScheduleEditor(sceneLightScheduleEl, {
+  getSchedule: () => {
+    const id = editor.selectedSceneLightId
+    if (!id) return normalizeDaySchedule(undefined)
+    return normalizeDaySchedule(sceneLightById(state, id)?.schedule)
+  },
+  setSchedule: (schedule: DaySchedule) => {
+    patchSelectedSceneLight({ schedule })
+  },
+})
+
+const openingMotionScheduleEditor = bindDayScheduleEditor(openingMotionScheduleEl, {
+  getSchedule: () =>
+    normalizeDaySchedule(selectedWindowOpening()?.opening.schedule),
+  setSchedule: (schedule: DaySchedule) => {
+    const refs = selectedWindowRefsFromEditor()
+    if (refs.length === 0) return
+    let next = state
+    for (const ref of refs) {
+      next = updateOpening(next, ref.wallId, ref.openingId, { schedule })
+    }
+    commitState(next)
+  },
+})
+
+const rollerShutterScheduleEditor = bindDayScheduleEditor(rollerShutterScheduleEl, {
+  getSchedule: () => {
+    const sel = selectedWindowOpening()
+    if (!sel) return normalizeDaySchedule(undefined)
+    return normalizeDaySchedule(
+      normalizeOpeningRollerShutter(sel.opening.rollerShutter).schedule,
+    )
+  },
+  setSchedule: (schedule: DaySchedule) => {
+    commitRollerShutterPatch({ schedule })
+  },
 })
 
 function setFacadeMeshesVisible(visible: boolean) {
@@ -17841,7 +17991,7 @@ canvas.addEventListener('pointerup', (event) => {
         ...createDefaultEditorState(),
         selectedSceneLightId: drag3dSceneLight.lightId,
       })
-      flushSunShadowMap()
+      // Kein flushSunShadowMap: EnvMap-Bake kostet Sekunden; applyState plant Shadow-Maps.
       planStatus.textContent = 'Punktlicht verschoben'
     }
     drag3dSceneLight = null
@@ -18540,6 +18690,9 @@ function bindSunSlider(
     apply(value)
     output.textContent = format(value)
     applySunLighting({ live: true })
+    // Live Tag/Nacht: Lichter soft umschalten (kein applyState/History/Voll-Bake).
+    syncAutoSceneLightsWithSun(false, { updateLayerList: false })
+    noteScheduleTimeOfDay(sunSettings.timeOfDay, true)
     if (sunSliderPersistTimer) window.clearTimeout(sunSliderPersistTimer)
     sunSliderPersistTimer = window.setTimeout(() => {
       sunSliderPersistTimer = 0
@@ -18547,7 +18700,11 @@ function bindSunSlider(
     }, 400)
   })
   input.addEventListener('change', () => {
-    flushSunShadowMap()
+    // Nur Sonnen-Shadow + EnvMap — keine Punktlicht-Cubes (unabhängig vom Azimut).
+    flushSunShadowMap({ reflections: true })
+    syncSceneLightRuntime()
+    syncAutoSceneLightsWithSun()
+    noteScheduleTimeOfDay(sunSettings.timeOfDay, true)
     if (sunSliderPersistTimer) {
       window.clearTimeout(sunSliderPersistTimer)
       sunSliderPersistTimer = 0
@@ -18562,6 +18719,8 @@ let animationClockMs = 0
 let animationClockLastNow = 0
 let lastAutoLightNight: boolean | null = null
 let dayCycleUiAccumMs = 0
+/** Letzte Tageszeit für Schedule-Crossings (Öffnung/Rollladen). */
+let lastScheduleTimeOfDay: number | null = null
 
 function advanceAnimationClock(now: number): number {
   if (animationClockLastNow <= 0) animationClockLastNow = now
@@ -18571,22 +18730,89 @@ function advanceAnimationClock(now: number): number {
   return animationClockMs
 }
 
-function syncAutoSceneLightsWithSun(force = false): void {
+/**
+ * Öffnungen/Rollläden bei Uhrzeit-Crossing abspielen.
+ * Lichter laufen über syncAutoSceneLightsWithSun (absoluter Zustand + Fade).
+ */
+function tickActorDaySchedules(prevTime: number | null, nextTime: number): void {
+  if (sunSettings.animationsPaused === true) return
+  if (prevTime == null || !Number.isFinite(prevTime)) return
+  if (Math.abs(prevTime - nextTime) < 1e-9) return
+
+  const openRefs: OpeningRef[] = []
+  const closeRefs: OpeningRef[] = []
+  const raiseRefs: OpeningRef[] = []
+  const lowerRefs: OpeningRef[] = []
+
+  for (const wall of getAllWalls(state)) {
+    for (const opening of wall.openings) {
+      if (opening.type !== 'window' && opening.type !== 'door') continue
+      const ref: OpeningRef = { wallId: wall.id, openingId: opening.id }
+      const motionCross = scheduleCrossings(opening.schedule, prevTime, nextTime)
+      if (motionCross.turnedOn) openRefs.push(ref)
+      if (motionCross.turnedOff) closeRefs.push(ref)
+
+      if (!openingSupportsRollerShutter(opening) || !opening.rollerShutter?.enabled) continue
+      const shutter = normalizeOpeningRollerShutter(opening.rollerShutter)
+      const shutterCross = scheduleCrossings(shutter.schedule, prevTime, nextTime)
+      if (shutterCross.turnedOn) raiseRefs.push(ref)
+      if (shutterCross.turnedOff) lowerRefs.push(ref)
+    }
+  }
+
+  if (openRefs.length > 0) playOpeningMotionOnRefs(openRefs, 'open')
+  else if (closeRefs.length > 0) playOpeningMotionOnRefs(closeRefs, 'close')
+
+  if (raiseRefs.length > 0) playRollerShutterOnRefs(raiseRefs, 'raise')
+  else if (lowerRefs.length > 0) playRollerShutterOnRefs(lowerRefs, 'lower')
+}
+
+function noteScheduleTimeOfDay(nextTime: number, triggerActors = true): void {
+  const prev = lastScheduleTimeOfDay
+  if (triggerActors) tickActorDaySchedules(prev, nextTime)
+  lastScheduleTimeOfDay = nextTime
+}
+
+function syncAutoSceneLightsWithSun(
+  force = false,
+  opts?: { updateLayerList?: boolean },
+): void {
   if (!facadeReady) return
-  if (sunSettings.autoSceneLightsWithSun === false) return
   const celestial = resolveCelestialState(sunSettings)
   const night = !celestial.sunAboveHorizon
-  if (!force && lastAutoLightNight === night) return
-  lastAutoLightNight = night
+  const autoSun = sunSettings.autoSceneLightsWithSun !== false
   const lights = normalizeSceneLights(state.sceneLights)
-  if (lights.length === 0) return
-  const wantOn = night
-  if (lights.every((item) => item.enabled === wantOn)) return
-  // Ohne Undo — sonst füllt jeder Sonnenauf-/untergang den Verlauf.
-  applyState(setAllSceneLightsEnabled(state, wantOn))
-  planStatus.textContent = wantOn
-    ? 'Sonnenuntergang — Lichter an'
-    : 'Sonnenaufgang — Lichter aus'
+  if (lights.length === 0) {
+    lastAutoLightNight = night
+    return
+  }
+
+  const enabledById = new Map<string, boolean>()
+  for (const light of lights) {
+    const hasSchedule = dayScheduleHasTimes(light.schedule)
+    if (!autoSun && !hasSchedule) continue
+    const desiredOn =
+      (autoSun && night) || scheduleSaysOn(light.schedule, sunSettings.timeOfDay)
+    if (light.enabled !== desiredOn) enabledById.set(light.id, desiredOn)
+  }
+
+  if (enabledById.size === 0) {
+    if (!force && lastAutoLightNight === night) return
+    lastAutoLightNight = night
+    return
+  }
+  lastAutoLightNight = night
+  // Soft-Pfad: nur enabled flippen — Fade im Runtime-Tick, kein History/applyState.
+  const next = setSceneLightsEnabledById(state, enabledById)
+  if (next === state) return
+  state = next
+  syncIndoorFillForSceneLights()
+  syncSceneLightRuntime({ scheduleShadows: true })
+  schedulePersistApp()
+  if (opts?.updateLayerList !== false) renderUi({ skipLayerList: false })
+  markViewportDirty()
+  const anyOn = [...enabledById.values()].some(Boolean)
+  planStatus.textContent = anyOn ? 'Lichter einblenden' : 'Lichter ausblenden'
 }
 
 function tickDayCycle(now: number, dtMs: number): boolean {
@@ -18613,7 +18839,8 @@ function tickDayCycle(now: number, dtMs: number): boolean {
     sunIntensityValue.textContent = sunSettings.intensity.toFixed(1)
   }
   applySunLighting({ live: true })
-  syncAutoSceneLightsWithSun()
+  syncAutoSceneLightsWithSun(false, { updateLayerList: false })
+  noteScheduleTimeOfDay(sunSettings.timeOfDay, true)
   return true
 }
 
@@ -19008,6 +19235,30 @@ function commitFogPatch(patch: Partial<FogSettings>) {
   if (currentView === '3d') render3dFrame()
 }
 
+/** Slider/Num: Live-Preview bei input, History-Commit bei change. */
+function bindSceneLightLiveDualControl(
+  slider: HTMLInputElement,
+  num: HTMLInputElement,
+  output: HTMLOutputElement,
+  onPreview: (value: number) => void,
+  onCommit: (value: number) => void,
+  format: (value: number) => string,
+): void {
+  const apply = (raw: string, mode: 'preview' | 'commit') => {
+    const value = Number.parseFloat(raw)
+    if (!Number.isFinite(value)) return
+    slider.value = String(value)
+    num.value = String(value)
+    output.textContent = format(value)
+    if (mode === 'preview') onPreview(value)
+    else onCommit(value)
+  }
+  slider.addEventListener('input', () => apply(slider.value, 'preview'))
+  slider.addEventListener('change', () => apply(slider.value, 'commit'))
+  num.addEventListener('input', () => apply(num.value, 'preview'))
+  num.addEventListener('change', () => apply(num.value, 'commit'))
+}
+
 function bindSceneDualControl(
   slider: HTMLInputElement,
   num: HTMLInputElement,
@@ -19036,12 +19287,21 @@ bloomDisableDuringMotionInput.addEventListener('change', () => {
 })
 
 sceneLightXInput.addEventListener('input', () => {
+  previewSelectedSceneLight({ x: Number.parseFloat(sceneLightXInput.value) })
+})
+sceneLightXInput.addEventListener('change', () => {
   patchSelectedSceneLight({ x: Number.parseFloat(sceneLightXInput.value) })
 })
 sceneLightYInput.addEventListener('input', () => {
+  previewSelectedSceneLight({ y: Number.parseFloat(sceneLightYInput.value) })
+})
+sceneLightYInput.addEventListener('change', () => {
   patchSelectedSceneLight({ y: Number.parseFloat(sceneLightYInput.value) })
 })
 sceneLightZInput.addEventListener('input', () => {
+  previewSelectedSceneLight({ z: Number.parseFloat(sceneLightZInput.value) })
+})
+sceneLightZInput.addEventListener('change', () => {
   patchSelectedSceneLight({ z: Number.parseFloat(sceneLightZInput.value) })
 })
 sceneLightBeamMode.addEventListener('change', () => {
@@ -19049,10 +19309,15 @@ sceneLightBeamMode.addEventListener('change', () => {
   syncSceneLightBeamAngleRows(mode)
   patchSelectedSceneLight({ beamMode: mode, preset: undefined })
 })
-bindSceneDualControl(
+bindSceneLightLiveDualControl(
   sceneLightBeamAngleDown,
   sceneLightBeamAngleDownNum,
   sceneLightBeamAngleDownValue,
+  (value) =>
+    previewSelectedSceneLight({
+      beamAngleDownDeg: Math.min(BEAM_ANGLE_MAX_DEG, Math.max(BEAM_ANGLE_MIN_DEG, value)),
+      preset: undefined,
+    }),
   (value) =>
     patchSelectedSceneLight({
       beamAngleDownDeg: Math.min(BEAM_ANGLE_MAX_DEG, Math.max(BEAM_ANGLE_MIN_DEG, value)),
@@ -19060,10 +19325,15 @@ bindSceneDualControl(
     }),
   (value) => String(Math.round(value)),
 )
-bindSceneDualControl(
+bindSceneLightLiveDualControl(
   sceneLightBeamAngleUp,
   sceneLightBeamAngleUpNum,
   sceneLightBeamAngleUpValue,
+  (value) =>
+    previewSelectedSceneLight({
+      beamAngleUpDeg: Math.min(BEAM_ANGLE_MAX_DEG, Math.max(BEAM_ANGLE_MIN_DEG, value)),
+      preset: undefined,
+    }),
   (value) =>
     patchSelectedSceneLight({
       beamAngleUpDeg: Math.min(BEAM_ANGLE_MAX_DEG, Math.max(BEAM_ANGLE_MIN_DEG, value)),
@@ -19073,32 +19343,49 @@ bindSceneDualControl(
 )
 function bindSceneLightDeferredNumber(
   input: HTMLInputElement,
-  apply: (value: number) => void,
+  preview: (value: number) => void,
+  commit: (value: number) => void,
 ): void {
-  const commit = () => {
+  const run = (fn: (value: number) => void) => {
     const value = Number.parseFloat(input.value)
     if (!Number.isFinite(value)) return
-    apply(value)
+    fn(value)
   }
+  input.addEventListener('input', () => run(preview))
   input.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
       event.preventDefault()
-      commit()
+      run(commit)
       input.blur()
     }
   })
-  input.addEventListener('change', commit)
+  input.addEventListener('change', () => run(commit))
 }
-bindSceneLightDeferredNumber(sceneLightIntensityInput, (value) => {
-  patchSelectedSceneLight({ intensity: normalizePowerWatts(value) })
-})
-bindSceneLightDeferredNumber(sceneLightDistanceInput, (value) => {
-  patchSelectedSceneLight({ distance: Math.max(0, value) })
-})
-bindSceneLightDeferredNumber(sceneLightDecayInput, (value) => {
-  patchSelectedSceneLight({ decay: Math.min(3, Math.max(0, value)) })
-})
+bindSceneLightDeferredNumber(
+  sceneLightIntensityInput,
+  (value) => previewSelectedSceneLight({ intensity: normalizePowerWatts(value) }),
+  (value) => patchSelectedSceneLight({ intensity: normalizePowerWatts(value) }),
+)
+bindSceneLightDeferredNumber(
+  sceneLightDistanceInput,
+  (value) => previewSelectedSceneLight({ distance: Math.max(0, value) }),
+  (value) => patchSelectedSceneLight({ distance: Math.max(0, value) }),
+)
+bindSceneLightDeferredNumber(
+  sceneLightDecayInput,
+  (value) => previewSelectedSceneLight({ decay: Math.min(3, Math.max(0, value)) }),
+  (value) => patchSelectedSceneLight({ decay: Math.min(3, Math.max(0, value)) }),
+)
 sceneLightColorTempInput.addEventListener('input', () => {
+  const kelvin = Number.parseFloat(sceneLightColorTempInput.value)
+  if (!Number.isFinite(kelvin)) return
+  const color = kelvinToHex(kelvin)
+  sceneLightColorTempValue.textContent = `${Math.round(kelvin)} K`
+  sceneLightColorInput.value = color
+  sceneLightColorSwatch.style.backgroundColor = color
+  previewSelectedSceneLight({ colorTemperature: kelvin, color })
+})
+sceneLightColorTempInput.addEventListener('change', () => {
   const kelvin = Number.parseFloat(sceneLightColorTempInput.value)
   if (!Number.isFinite(kelvin)) return
   const color = kelvinToHex(kelvin)
@@ -19110,16 +19397,22 @@ sceneLightColorTempInput.addEventListener('input', () => {
 sceneLightColorInput.addEventListener('input', () => {
   const color = sceneLightColorInput.value
   sceneLightColorSwatch.style.backgroundColor = color
+  previewSelectedSceneLight({ color })
+})
+sceneLightColorInput.addEventListener('change', () => {
+  const color = sceneLightColorInput.value
+  sceneLightColorSwatch.style.backgroundColor = color
   patchSelectedSceneLight({ color })
 })
 sceneLightShowMarkerInput.addEventListener('change', () => {
   patchSelectedSceneLight({ showMarker: sceneLightShowMarkerInput.checked })
   sceneLightMarkerSizeRow.hidden = !sceneLightShowMarkerInput.checked
 })
-bindSceneDualControl(
+bindSceneLightLiveDualControl(
   sceneLightMarkerSizeSlider,
   sceneLightMarkerSizeNum,
   sceneLightMarkerSizeValue,
+  (value) => previewSelectedSceneLight({ markerSizeCm: value }),
   (value) => patchSelectedSceneLight({ markerSizeCm: value }),
   (value) => String(Math.round(value)),
 )
@@ -19128,6 +19421,22 @@ sceneLightEnabledInput.addEventListener('change', () => {
 })
 sceneLightCastShadowInput.addEventListener('change', () => {
   patchSelectedSceneLight({ castShadow: sceneLightCastShadowInput.checked })
+})
+sceneLightFadeInInput.addEventListener('change', () => {
+  const n = Number.parseFloat(sceneLightFadeInInput.value)
+  patchSelectedSceneLight({
+    fadeInMs: Number.isFinite(n)
+      ? Math.min(60000, Math.max(0, Math.round(n)))
+      : DEFAULT_SCENE_LIGHT_FADE_IN_MS,
+  })
+})
+sceneLightFadeOutInput.addEventListener('change', () => {
+  const n = Number.parseFloat(sceneLightFadeOutInput.value)
+  patchSelectedSceneLight({
+    fadeOutMs: Number.isFinite(n)
+      ? Math.min(60000, Math.max(0, Math.round(n)))
+      : DEFAULT_SCENE_LIGHT_FADE_OUT_MS,
+  })
 })
 sceneLightAnimationBlaulichtInput.addEventListener('change', () => {
   patchSelectedSceneLight({
@@ -19139,10 +19448,11 @@ sceneLightDeleteBtn.addEventListener('click', () => {
   if (!id) return
   commitState(removeSceneLight(state, id), createDefaultEditorState())
 })
-bindSceneDualControl(
+bindSceneLightLiveDualControl(
   sceneLightDepthSlider,
   sceneLightDepthNum,
   sceneLightDepthValue,
+  (value) => previewSceneLightViewDepth(value),
   (value) => patchSceneLightViewDepth(value),
   (value) => String(Math.round(value)),
 )
@@ -19591,14 +19901,19 @@ function animate() {
 
   const dayMoved = tickDayCycle(nowMs, dayDt)
   if (dayMoved) viewportDirty = true
-  else if (!paused) syncAutoSceneLightsWithSun()
-
-  const sceneLightLive =
-    !paused && sceneLightsNeedLiveFrames(normalizeSceneLights(state.sceneLights))
-  if (sceneLightLive) {
-    sceneLightRuntime.tickAnimations(animClock, normalizeSceneLights(state.sceneLights))
-    viewportDirty = true
+  else if (!paused) {
+    syncAutoSceneLightsWithSun(false, { updateLayerList: false })
+    noteScheduleTimeOfDay(sunSettings.timeOfDay, false)
   }
+
+  const fadingLights = !paused && sceneLightRuntime.tickFades(dayDt, animClock)
+  const sceneLightAnim =
+    !paused && sceneLightsNeedLiveFrames(normalizeSceneLights(state.sceneLights))
+  if (sceneLightAnim) {
+    sceneLightRuntime.tickAnimations(animClock, normalizeSceneLights(state.sceneLights))
+  }
+  const sceneLightLive = fadingLights || sceneLightAnim
+  if (sceneLightLive) viewportDirty = true
 
   const liveMotion =
     dayMoved ||
@@ -21246,12 +21561,29 @@ try {
   setView(currentView)
   applyState(state, editor)
   syncAutoSceneLightsWithSun(true)
-  sceneLightingReady = true
   markViewportDirty()
   animate()
   void bootstrapSceneLighting()
+    .then(async () => {
+      // Frames mit Warm-Bake (Punktlicht-Cubes + Sonne), dann echten Licht-Zustand wiederherstellen.
+      markViewportDirty()
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      })
+      syncSceneLightRuntime()
+      syncIndoorFillForSceneLights()
+      markViewportDirty()
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve())
+      })
+    })
+    .catch((err) => {
+      console.error('Scene lighting bootstrap failed', err)
+    })
+    .finally(() => {
+      dismissAppLoading()
+    })
 } catch (err) {
   console.error('Startup failed', err)
-} finally {
   dismissAppLoading()
 }

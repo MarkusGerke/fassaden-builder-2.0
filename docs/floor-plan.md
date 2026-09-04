@@ -94,6 +94,8 @@ Geschlossene Ringe werden per `ensureCCW` gegen den Uhrzeigersinn orientiert. Da
 
 Kollineare Zwischenpunkte werden mit `simplifyCollinear` entfernt, um unnötige Wand-Segmente zu vermeiden.
 
+**v2.0.150 — Vorsprung / T-Stoß:** Beim Aufbau aus Studio-Wänden (`floorPlanFromWalls`) werden Kanten an T-Stößen gesplittet (`splitEdgesAtTJoints`: Endpunkt mittig auf fremder Kante → Parent teilen) und Sehnen zwischen Grad-≥3-Knoten entfernt (`removePlanChords`), wenn ein Alternativweg existiert. An Verzweigungen wählt `extractPlanRings` die **schärfste Linkskurve** (Face-Walk). So umschließt der Outer-Ring Erker/U-Vorsprünge; Decke und Boden extrudieren korrekt.
+
 ---
 
 ## Gehrungsberechnung

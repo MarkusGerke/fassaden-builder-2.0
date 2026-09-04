@@ -121,3 +121,7 @@ Alte `hdri*`-Felder in `PersistedAppState.scene` werden ignoriert (HDRI entfernt
 - `Opening.arch.riseCm`: optional; fehlt → Form-Standard (`resolveArchRiseForOpening`). Normalize rastert und speichert nur positive Werte.
 - Legacy `arch.form: 'basket'` → `'ellipse'` in `normalizeArchFormId` / `normalizeOpeningArch` (kein Schema-Bump; Optik ≈ Ellipse).
 - Verdachung: gleiche Basket→Ellipse-Map in `pediment.ts`.
+
+### Hydrate ohne Schema-Step (v2.0.150) — Fade / DaySchedule
+
+- `SceneLight.fadeInMs` / `fadeOutMs` / `schedule`, `Opening.schedule`, `OpeningRollerShutter.schedule`: Defaults beim Normalize/Hydrate (leere Zeiten, Fade 800/1200 ms). Kein `FACADE_SCHEMA_VERSION`-Bump.

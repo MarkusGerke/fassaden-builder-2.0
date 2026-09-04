@@ -445,6 +445,131 @@ function buildAdjacency(plan: FloorPlan) {
   return adj
 }
 
+/** true, wenn P streng zwischen A und B auf der Rasterkante liegt (nicht Endpunkt). */
+function pointStrictlyOnGridSegment(
+  px: number,
+  pz: number,
+  ax: number,
+  az: number,
+  bx: number,
+  bz: number,
+): boolean {
+  if (orientGrid(ax, az, bx, bz, px, pz) !== 0) return false
+  const dx = bx - ax
+  const dz = bz - az
+  const len2 = dx * dx + dz * dz
+  if (len2 < 1e-12) return false
+  const t = ((px - ax) * dx + (pz - az) * dz) / len2
+  return t > 1e-9 && t < 1 - 1e-9
+}
+
+/**
+ * T-Stoß: Knoten, der geometrisch auf einer fremden Kante liegt, splittet diese Kante.
+ * Sonst bleibt ein Erker/Vorsprung eine offene Kette und fehlt in der Deckenplatte.
+ */
+export function splitEdgesAtTJoints(plan: FloorPlan): FloorPlan {
+  let next = plan
+  let guard = 0
+  while (guard < 64) {
+    guard += 1
+    const nodeById = new Map(next.nodes.map((n) => [n.id, n]))
+    let split: { edgeId: string; nodeId: string; fromId: string; toId: string } | null = null
+    for (const node of next.nodes) {
+      for (const edge of next.edges) {
+        if (edge.fromId === node.id || edge.toId === node.id) continue
+        const a = nodeById.get(edge.fromId)
+        const b = nodeById.get(edge.toId)
+        if (!a || !b) continue
+        if (!pointStrictlyOnGridSegment(node.gx, node.gz, a.gx, a.gz, b.gx, b.gz)) continue
+        split = { edgeId: edge.id, nodeId: node.id, fromId: a.id, toId: b.id }
+        break
+      }
+      if (split) break
+    }
+    if (!split) break
+    const { edgeId, nodeId, fromId, toId } = split
+    const rest = next.edges.filter((e) => e.id !== edgeId)
+    const has = (a: string, b: string) =>
+      rest.some(
+        (e) =>
+          (e.fromId === a && e.toId === b) || (e.fromId === b && e.toId === a),
+      )
+    const added: PlanEdge[] = []
+    if (!has(fromId, nodeId)) added.push({ id: createId(), fromId, toId: nodeId })
+    if (!has(nodeId, toId)) added.push({ id: createId(), fromId: nodeId, toId })
+    next = { ...next, edges: [...rest, ...added] }
+  }
+  return next
+}
+
+function hasAlternatePath(
+  plan: FloorPlan,
+  fromId: string,
+  toId: string,
+  avoidEdgeId: string,
+): boolean {
+  const adj = buildAdjacency(plan)
+  const queue = [fromId]
+  const seen = new Set<string>([fromId])
+  while (queue.length > 0) {
+    const cur = queue.shift()!
+    for (const link of adj.get(cur) ?? []) {
+      if (link.edgeId === avoidEdgeId) continue
+      if (link.neighborId === toId) return true
+      if (seen.has(link.neighborId)) continue
+      seen.add(link.neighborId)
+      queue.push(link.neighborId)
+    }
+  }
+  return false
+}
+
+/**
+ * Sehnen entfernen: Kante zwischen zwei Verzweigungen, wenn ein Umweg existiert
+ * (z. B. Parent-Segment über Erker-Mündung nach T-Split) — sonst bleibt die Decke ein Rechteck.
+ */
+export function removePlanChords(plan: FloorPlan): FloorPlan {
+  const adj = buildAdjacency(plan)
+  const remove = new Set<string>()
+  for (const edge of plan.edges) {
+    const degA = (adj.get(edge.fromId) ?? []).length
+    const degB = (adj.get(edge.toId) ?? []).length
+    if (degA < 3 || degB < 3) continue
+    if (hasAlternatePath(plan, edge.fromId, edge.toId, edge.id)) {
+      remove.add(edge.id)
+    }
+  }
+  if (remove.size === 0) return plan
+  return { ...plan, edges: plan.edges.filter((e) => !remove.has(e.id)) }
+}
+
+/** Schärfste Linkskurve (positives atan2) für Face-Walk am Outer. */
+function pickLeftTurnEdgeId(
+  prev: PlanNode,
+  curr: PlanNode,
+  candidates: Array<{ edgeId: string; neighborId: string }>,
+  nodeById: Map<string, PlanNode>,
+): string | undefined {
+  if (candidates.length === 0) return undefined
+  if (candidates.length === 1) return candidates[0]!.edgeId
+  const incoming = unitDelta(prev, curr)
+  let bestId = candidates[0]!.edgeId
+  let bestTurn = -Infinity
+  for (const link of candidates) {
+    const next = nodeById.get(link.neighborId)
+    if (!next) continue
+    const outgoing = unitDelta(curr, next)
+    const cross = incoming.dx * outgoing.dz - incoming.dz * outgoing.dx
+    const dot = incoming.dx * outgoing.dx + incoming.dz * outgoing.dz
+    const turn = Math.atan2(cross, dot)
+    if (turn > bestTurn) {
+      bestTurn = turn
+      bestId = link.edgeId
+    }
+  }
+  return bestId
+}
+
 /** Ringe und Ketten aus dem Grundriss. Geschlossene Ringe sind gegen den Uhrzeigersinn. */
 export function extractPlanRings(plan: FloorPlan): PlanRing[] {
   const nodeById = new Map(plan.nodes.map((node) => [node.id, node]))
@@ -470,10 +595,15 @@ export function extractPlanRings(plan: FloorPlan): PlanRing[] {
       currentId = next.id
       if (currentId === startId) break
       const prevId = nodes[nodes.length - 2]?.id
+      const prevNode = nodeById.get(prevId!)
+      const currNode = nodeById.get(currentId)
       const nextLinks = (adj.get(currentId) ?? []).filter(
         (link) => unused.has(link.edgeId) && link.neighborId !== prevId,
       )
-      edgeId = nextLinks[0]?.edgeId
+      edgeId =
+        prevNode && currNode
+          ? pickLeftTurnEdgeId(prevNode, currNode, nextLinks, nodeById)
+          : nextLinks[0]?.edgeId
     }
     return nodes
   }
@@ -798,7 +928,7 @@ export function floorPlanFromWalls(walls: Wall[]): FloorPlan {
     if (fromGx === toGx && fromGz === toGz) continue
     plan = drawPlanLine(plan, fromGx, fromGz, toGx, toGz)
   }
-  return sealNearClosedPlanGaps(plan)
+  return removePlanChords(splitEdgesAtTJoints(sealNearClosedPlanGaps(plan)))
 }
 
 /**
