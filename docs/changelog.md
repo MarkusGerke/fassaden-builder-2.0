@@ -2,6 +2,10 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Segmente: Extrudieren, Verschmelzen, Shift-Folgewände (2026-09-04) — v2.0.143
+
+**Bibliothek Wände:** `isLibraryCardApplied` prüft `armedLibraryWallPresetId` vor dem „ohne Auswahl → Keines“-Zweig — bewaffnete Karte ist schwarz umrandet, Drag bleibt. **Front-Pfeil:** `offsetStudioWallsAlongFront` neu mit `collinear?: boolean` und `returnWalls?: boolean` (`buildReturnWall`); `main.ts` übergibt nur die markierten Studio-Wände (`frontMoveSeedIds` ohne `expandCollinearPlanLinkedIds`) → Segment wird extrudiert, Rückwände entstehen/wachsen. **Kontextmenü:** `canMergeWallSegments`/`mergeWallSegments`/`mergeWallSegmentCandidates` in `wallSplit.ts` → „Wand verknüpfen“ verschmilzt kollineare Segmente (Kette bei einem Seed, sonst Auswahl; Etagen-Stapel). **Greifer + Shift kollinear:** `shiftWallsBeyondEnd` (Segment + Stapel strecken, alles jenseits der Ebene verschieben, parallele Kreuzer strecken); Branch-Pfad (`snapBranchYawDeg === null`) nutzt das statt `return baseState`. `stretchSingleStudioWall` exportiert. Tests: `wallResize.test.ts`, `wallSplit.test.ts`. Docs: [ux.md](ux.md#wandsegment-herauslösen-srcstudiowallsplitts-v20142).
+
 ### Reload-Fenster stabil, Wandsegment herauslösen (2026-09-04) — v2.0.142
 
 **Fenster nach Reload versetzt:** `loadInitialState` ließ den eigenen Live-`#f=`-Hash gegen localStorage gewinnen; der Hash trug keine `schemaVersion` und lief bei jedem Reload durch alle Migrationen ab v7 — `align-masonry-openings` (13→14) zog alle Öffnungen um 4 cm (nicht idempotent gegen das 4-cm-Clamp). Außerdem Race 350 ms (localStorage) vs. 1200 ms (Hash) und veralteter Hash bei > 12 000 Zeichen. Fix: `SharePayload.schemaVersion` + Export-`schemaVersion`; Marker `fassaden-builder-live-hash` → eigener Hash lädt nicht, localStorage gewinnt; zu langer Hash wird aus der URL entfernt. Test `facadeLoad.idempotent.test.ts`. Dateien: `share.ts`, `main.ts`, Docs ([ux.md](ux.md), [migration.md](migration.md)).

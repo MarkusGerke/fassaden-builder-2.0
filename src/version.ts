@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.142'
+export const APP_VERSION = '2.0.143'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,18 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.143',
+    date: '2026-09-04',
+    title: 'Segmente extrudieren, verschmelzen, mit Shift nachrücken',
+    changes: [
+      'Bibliothek Wände: die angeklickte Breite ist schwarz umrandet und bleibt zugleich ziehbar',
+      'Blauer Pfeil an einem Segment extrudiert nur dieses Segment (+ Etagen) — Nachbarn bleiben stehen, an den Schnitten entstehen automatisch 90°-Rückwände, die beim weiteren Ziehen mitwachsen',
+      'Rechtsklick „Wand verknüpfen“ auf ein oder mehrere Segmente verschmilzt sie wieder zu einer Wand ohne Schnitte (ein Segment = ganze Flucht, mehrere = nur Auswahl; alle Etagen, Öffnungen bleiben)',
+      'Greifer links/rechts + Shift entlang der Wand: Segment wächst/schrumpft und alle Wände dahinter rücken mit (Ecken verschieben, parallele Rückwand wird gestreckt); Shift schräg bleibt „neue Wand“',
+      'Bitte hart neu laden, bis v2.0.143 in der Titelleiste steht',
+    ],
+  },
   {
     version: '2.0.142',
     date: '2026-09-04',

@@ -5,7 +5,15 @@ import { WALL_DEPTH } from '../constants/presets'
 import { PLAN_DIAGONAL_STEP } from './constants'
 import { finalizeStudioGeometry } from './planGeometry'
 import { wallEndPoint, wallStartPoint } from './walls'
-import { splitStudioWallRange, splitWallStackRange, wallSplitRangeAt, wallSplitStack } from './wallSplit'
+import {
+  canMergeWallSegments,
+  mergeWallSegments,
+  shiftWallsBeyondEnd,
+  splitStudioWallRange,
+  splitWallStackRange,
+  wallSplitRangeAt,
+  wallSplitStack,
+} from './wallSplit'
 
 function studio(id: string, originX: number, width: number, y = 0, openings: Opening[] = [], yawDeg = 0): Wall {
   return {
@@ -140,5 +148,89 @@ describe('splitWallStackRange', () => {
     const result = splitWallStackRange(state, 'eg', { startCm: 192, endCm: 384 })!
     expect(result.middleIds).toHaveLength(1)
     expect(result.state.buildings[0]!.walls.find((w) => w.id === 'og')!.width).toBe(96)
+  })
+})
+
+describe('mergeWallSegments („Wand verknüpfen“)', () => {
+  it('ein Segment: verschmilzt die ganze kollineare Kette auf allen Etagen, Öffnungen bleiben', () => {
+    const opening: Opening = {
+      id: 'o1',
+      type: 'window',
+      x: 400,
+      y: 100,
+      width: 96,
+      height: 144,
+    } as Opening
+    const base = stateWith([studio('eg', 0, 576, 0, [opening]), studio('og', 0, 576, 448)])
+    const split = splitWallStackRange(base, 'eg', { startCm: 192, endCm: 384 })!
+    expect(split.state.buildings[0]!.walls).toHaveLength(6)
+    expect(canMergeWallSegments(split.state, [split.middleId])).toBe(true)
+
+    const merged = mergeWallSegments(split.state, [split.middleId])!
+    const walls = merged.state.buildings[0]!.walls
+    expect(walls).toHaveLength(2)
+    for (const w of walls) {
+      expect(w.width).toBe(576)
+      expect(w.originX).toBeCloseTo(0)
+    }
+    const eg = walls.find((w) => w.y === 0)!
+    expect(eg.openings).toHaveLength(1)
+    expect(eg.openings[0]!.x).toBeCloseTo(400)
+    expect(merged.selectedIds).toHaveLength(1)
+    expect(walls.some((w) => w.id === merged.selectedIds[0])).toBe(true)
+  })
+
+  it('mehrere Segmente: nur die Auswahl verschmilzt', () => {
+    const base = stateWith([studio('eg', 0, 576, 0)])
+    const split = splitWallStackRange(base, 'eg', { startCm: 192, endCm: 384 })!
+    const walls0 = split.state.buildings[0]!.walls
+    const left = walls0.find((w) => Math.abs((w.originX ?? 0) - 0) < 0.5)!
+    const merged = mergeWallSegments(split.state, [left.id, split.middleId])!
+    const walls = merged.state.buildings[0]!.walls
+    expect(walls).toHaveLength(2)
+    expect(walls.map((w) => w.width).sort((a, b) => a - b)).toEqual([192, 384])
+  })
+
+  it('nichts zu verschmelzen → null', () => {
+    const state = stateWith([studio('a', 0, 192), studio('b', 1000, 192)])
+    expect(canMergeWallSegments(state, ['a'])).toBe(false)
+    expect(mergeWallSegments(state, ['a'])).toBeNull()
+  })
+})
+
+describe('shiftWallsBeyondEnd (Greifer + Shift)', () => {
+  it('streckt das Segment und rückt Folgewände (auch Ecke + parallele Rückwand) mit', () => {
+    // Front: a | b | c entlang X; rechte Seitenwand bei x=576; Rückwand parallel bei z=-384.
+    const state = stateWith([
+      studio('a', 0, 192),
+      studio('b', 192, 192),
+      studio('c', 384, 192),
+      { ...studio('side', 576, 384), yawDeg: 90 },
+      { ...studio('back', 0, 576), originZ: -384 },
+    ])
+    const next = shiftWallsBeyondEnd(state, 'b', 'end', 48)
+    const walls = next.buildings[0]!.walls
+    const get = (id: string) => walls.find((w) => w.id === id)!
+    expect(get('a').width).toBe(192)
+    expect(get('a').originX).toBeCloseTo(0)
+    expect(get('b').width).toBe(240)
+    expect(get('c').width).toBe(192)
+    expect(get('c').originX).toBeCloseTo(432)
+    expect(get('side').originX).toBeCloseTo(624)
+    expect(get('side').width).toBe(384)
+    expect(get('back').width).toBe(624)
+    expect(get('back').originX).toBeCloseTo(0)
+  })
+
+  it('Start-Ende: verschiebt alles davor in Gegenrichtung', () => {
+    const state = stateWith([studio('a', 0, 192), studio('b', 192, 192)])
+    const next = shiftWallsBeyondEnd(state, 'b', 'start', 48)
+    const walls = next.buildings[0]!.walls
+    const a = walls.find((w) => w.id === 'a')!
+    const b = walls.find((w) => w.id === 'b')!
+    expect(a.originX).toBeCloseTo(-48)
+    expect(a.width).toBe(192)
+    expect(b.originX).toBeCloseTo(144)
+    expect(b.width).toBe(240)
   })
 })

@@ -229,7 +229,7 @@ export function translateStudioCorner(
   }))
 }
 
-function stretchSingleStudioWall(wall: Wall, side: 'start' | 'end', deltaCm: number): Wall {
+export function stretchSingleStudioWall(wall: Wall, side: 'start' | 'end', deltaCm: number): Wall {
   const yaw = wall.yawDeg ?? 0
   const unit = wallAlongDelta(yaw, 1)
   const deltaVec =
@@ -956,6 +956,41 @@ export function unselectedLinkedDiagonalWalls(walls: Wall[], selectedIds: Iterab
 }
 
 /**
+ * Rückwand fürs Extrudieren: von der alten Ecke `from` zur neuen Ecke `to`,
+ * Stil der bewegten Wand; Außenseite zeigt vom Segment weg (Richtung des gegriffenen Endes).
+ */
+function buildReturnWall(
+  moved: Wall,
+  from: { x: number; z: number },
+  to: { x: number; z: number },
+  end: 'start' | 'end',
+): Wall | null {
+  const dx = to.x - from.x
+  const dz = to.z - from.z
+  const width = Math.hypot(dx, dz)
+  if (width < 1) return null
+  const yawDeg = normalizeYawDeg((Math.atan2(-dz, dx) * 180) / Math.PI)
+  if (width < wallWidthStepCm(yawDeg) - 0.01) return null
+  const along = wallAlongDelta(moved.yawDeg ?? 0, 1)
+  const wantX = end === 'start' ? -along.x : along.x
+  const wantZ = end === 'start' ? -along.z : along.z
+  const flipTrue = facadeOutward(yawDeg, true)
+  const flipFalse = facadeOutward(yawDeg, false)
+  const panelFlip =
+    flipTrue.x * wantX + flipTrue.z * wantZ >= flipFalse.x * wantX + flipFalse.z * wantZ
+  const wall = buildStudioWallAt({
+    originX: from.x,
+    originZ: from.z,
+    y: moved.y,
+    yawDeg,
+    width,
+    panelFlip,
+    styleFrom: moved,
+  })
+  return { ...wall, panelFlip, planLinked: true, openings: [], profiles: [] }
+}
+
+/**
  * Verschiebt die gewählten Wände entlang der Front der Samenwand.
  * 90°-Nachbarn werden am Stoß mitgezogen (gestreckt), 45°-Wände müssen in `moveIds` liegen.
  */
@@ -964,7 +999,16 @@ export function offsetStudioWallsAlongFront(
   seedId: string,
   moveIds: string[],
   distanceCm: number,
-  opts?: { singleFloor?: boolean },
+  opts?: {
+    singleFloor?: boolean
+    /** `false`: nur die Seeds (+ Etagen), nicht die kollineare Flucht (Default `true`). */
+    collinear?: boolean
+    /**
+     * Extrudieren: Wo ein bewegtes Wandende nur kollineare (nicht bewegte) Nachbarn hat,
+     * entsteht eine neue 90°-Rückwand zwischen alter und neuer Ecke (Default `false`).
+     */
+    returnWalls?: boolean
+  },
 ): FacadeState {
   if (Math.abs(distanceCm) < 0.5) return state
   const building = findBuildingForWall(state, seedId)
@@ -974,14 +1018,16 @@ export function offsetStudioWallsAlongFront(
   const out = facadeOutward(seed.yawDeg ?? 0, seed.panelFlip ?? true)
   const dx = out.x * distanceCm
   const dz = out.z * distanceCm
-  const moveSet = new Set(expandCollinearPlanLinkedIds(building.walls, moveIds))
+  const collinear = opts?.collinear !== false
+  const expand = (ids: string[]) => (collinear ? expandCollinearPlanLinkedIds(building.walls, ids) : ids)
+  const moveSet = new Set(expand(moveIds))
   if (!opts?.singleFloor) {
     for (const id of [...moveSet]) {
       const item = building.walls.find((w) => w.id === id)
       if (!item || !isStudioWall(item)) continue
       for (const upper of findVerticalAlignedWalls(item, building.walls, building.wallHeight)) {
         moveSet.add(upper.id)
-        for (const linked of expandCollinearPlanLinkedIds(building.walls, [upper.id])) {
+        for (const linked of expand([upper.id])) {
           moveSet.add(linked)
         }
       }
@@ -989,35 +1035,53 @@ export function offsetStudioWallsAlongFront(
   }
   type Fix = { wallId: string; end: 'start' | 'end'; point: { x: number; z: number } }
   const fixes: Fix[] = []
+  const returnWalls: Wall[] = []
+  const returnKeys = new Set<string>()
+  const outLen = Math.hypot(out.x, out.z) || 1
   for (const id of moveSet) {
     const wall = building.walls.find((item) => item.id === id)
     if (!wall || !isStudioWall(wall)) continue
     for (const end of ['start', 'end'] as const) {
       const pt = end === 'start' ? wallStartPoint(wall) : wallEndPoint(wall)
       const nextPt = { x: pt.x + dx, z: pt.z + dz }
+      let neighbors = 0
+      let bridged = 0
       for (const other of building.walls) {
         if (moveSet.has(other.id) || !isStudioWall(other)) continue
         if (Math.abs((other.y ?? 0) - (wall.y ?? 0)) > 1) continue
-        if (pointsMeet(wallStartPoint(other), pt)) {
-          fixes.push({ wallId: other.id, end: 'start', point: nextPt })
-        }
-        if (pointsMeet(wallEndPoint(other), pt)) {
-          fixes.push({ wallId: other.id, end: 'end', point: nextPt })
-        }
+        const meetsStart = pointsMeet(wallStartPoint(other), pt)
+        const meetsEnd = pointsMeet(wallEndPoint(other), pt)
+        if (!meetsStart && !meetsEnd) continue
+        neighbors += 1
+        // Nachbar kann der Bewegung folgen, wenn seine Achse einen Anteil in Front-Richtung hat.
+        const u = wallAlongDelta(other.yawDeg ?? 0, 1)
+        const ulen = Math.hypot(u.x, u.z) || 1
+        if (Math.abs((u.x * out.x + u.z * out.z) / (ulen * outLen)) > 0.2) bridged += 1
+        if (meetsStart) fixes.push({ wallId: other.id, end: 'start', point: nextPt })
+        if (meetsEnd) fixes.push({ wallId: other.id, end: 'end', point: nextPt })
       }
+      if (!opts?.returnWalls || neighbors === 0 || bridged > 0) continue
+      const key = `${Math.round(wall.y ?? 0)}|${Math.round(pt.x)},${Math.round(pt.z)}`
+      if (returnKeys.has(key)) continue
+      returnKeys.add(key)
+      const returnWall = buildReturnWall(wall, pt, nextPt, end)
+      if (returnWall) returnWalls.push(returnWall)
     }
   }
   let next = updateBuilding(state, building.id, (b) => ({
     ...b,
-    walls: b.walls.map((wall) => {
-      if (!moveSet.has(wall.id) || !isStudioWall(wall)) return cloneWall(wall)
-      return {
-        ...cloneWall(wall),
-        originX: (wall.originX ?? wall.x) + dx,
-        originZ: (wall.originZ ?? 0) + dz,
-        x: wall.x + dx,
-      }
-    }),
+    walls: [
+      ...b.walls.map((wall) => {
+        if (!moveSet.has(wall.id) || !isStudioWall(wall)) return cloneWall(wall)
+        return {
+          ...cloneWall(wall),
+          originX: (wall.originX ?? wall.x) + dx,
+          originZ: (wall.originZ ?? 0) + dz,
+          x: wall.x + dx,
+        }
+      }),
+      ...returnWalls,
+    ],
   }))
   const posed = new Map<string, Wall>()
   for (const fix of fixes) {

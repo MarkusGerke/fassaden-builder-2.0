@@ -583,6 +583,20 @@ Beim **Verschieben** und **Zeichnen/Abzweigen** von Studio-Wänden: Hilfslinien 
 
 **Modus** (`wallSplitModeActive` in `main.ts`): `libraryTab === 'walls'` ∧ `armedLibraryWallPresetId` mit Länge (kein Endstück) ∧ keine Wand-/Öffnungs-/Licht-Auswahl ∧ Ansicht 3D/Front ∧ Gebäude editierbar. Hover in `pointermove` (nur ohne gedrückte Taste, `updateWallSplitHover` → `wallDockGhostGroup`), Klick in `pointerdown` **vor** der normalen Wand-Auswahl (`tryWallSplitAtEvent` → `splitWallStackRange` → `finalizeStudioGeometry` → `commitState`). Marker verschwindet bei Auswahl, Tabwechsel, „Keines“, `pointerleave`. Draft-Modus „Segment tauschen“ (`trySwapDraftWallSegmentAtClick`) bleibt unverändert — der braucht eine bereits markierte Wand. Tests: `src/studio/wallSplit.test.ts`.
 
+**Bibliothek-Karte (v2.0.143):** Die angeklickte Breite-Karte ist **schwarz umrandet** (`library-card-applied`/`active`, auch ohne Auswahl — `isLibraryCardApplied` prüft `armedLibraryWallPresetId` zuerst); die Karte bleibt gleichzeitig ziehbar (Greifer-Cursor).
+
+#### Segment extrudieren (blauer Front-Pfeil, v2.0.143)
+
+Der Front-Pfeil eines markierten Segments verschiebt **nur die Auswahl (+ Etagen-Stapel)** — nicht mehr die kollineare Flucht (`offsetStudioWallsAlongFront(..., { collinear: false, returnWalls: true })`, `frontMoveSeedIds` = markierte Studio-Wände). Wo ein bewegtes Wandende **nur kollineare** Nachbarn hat (kein Nachbar mit Achsanteil in Front-Richtung), entsteht automatisch eine **Rückwand** (`buildReturnWall`): 90° von der alten zur neuen Ecke, Breite = Verschiebung, Stil der bewegten Wand, `planLinked`, Außenseite zeigt vom Segment weg. Beim nächsten Ziehen werden diese Rückwände wie 90°-Nachbarn **gestreckt** (kein Duplikat). Shift = nur aktuelle Etage (wie bisher). Tests: `wallResize.test.ts` („extrudiert ein Mittelsegment“).
+
+#### „Wand verknüpfen“ auf Segmenten (Rechtsklick, v2.0.143)
+
+Kontextmenü einer Wand: Sind kollinear angedockte Stücke vorhanden (`canMergeWallSegments`), zeigt **Wand verknüpfen** und verschmilzt sie zu **einer Wandgeometrie ohne Schnitte** (`mergeWallSegments` → `mergeCollinearDockedWalls`, `finalizeStudioGeometry`). Regeln (`mergeWallSegmentCandidates`): **ein** markiertes Segment → ganze kollineare Kette an beiden Enden (`collinearChainFromEnd`); **mehrere** markierte → nur die Auswahl. Immer inklusive **Etagen-Stapel** (`wallSplitStack`). Öffnungen wandern mit korrektem `x` in die Zielwand, der behaltene Seed behält seine ID und bleibt ausgewählt. Das bisherige „Wand verknüpfen“ (planLinked-Dock mit Stil-Abfrage) erscheint nur noch, wenn es nichts zu verschmelzen gibt.
+
+#### Greifer + Shift entlang der Achse (v2.0.143)
+
+Links/Rechts-Greifer eines Segments zwischen zwei Wänden: ohne Shift streckt das Segment und der Nachbar wird kürzer (`stretchStudioFacade` → `translateStudioCorner`). **Shift + Ziehen entlang der Wandachse** streckt das Segment (+ Stapel) und **rückt alles jenseits dieses Wandendes mit** (`shiftWallsBeyondEnd`): Wände komplett hinter der Ebene am Wandende werden um Δ verschoben (auch Ecken/Rückwände, alle Etagen), **parallele** Wände, die die Ebene kreuzen (z. B. die Rückwand des Grundrisses), werden am jenseitigen Ende gestreckt/gekürzt; schräge Kreuzer bleiben. Raster wie ohne Shift (`clampWallResizeDelta`). Shift + **schräg** ziehen bleibt „neue Wand 45°/90°“ (`snapBranchYawDeg`). Statuszeile: „Shift: Segment +48 cm, Folgewände rücken mit“. Tests: `wallSplit.test.ts` („shiftWallsBeyondEnd“).
+
 ### Grundriss zeichnen (v0.7.240)
 
 Während eine Wandlinie gezogen wird (`floorPlanDrawPreview`): orangene Hilfslinien, sobald Cursor-X oder -Z mit einem anderen Plan-Knoten oder Wandende bündig ist (`collectPlanDrawGuides`, `floorPlanView.showAlignGuides`). Der Startpunkt der aktuellen Linie zählt nicht als Treffer.

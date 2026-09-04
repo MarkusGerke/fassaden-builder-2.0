@@ -92,5 +92,5 @@
 | Edit-Scope (Element/Typ/Etage/Fassade) | `src/studio/editScope.ts` |
 | Ausrichtungs-Hilfslinien (Öffnungen) | `src/studio/openingGuides.ts` |
 | Wand verbreitern / Front verschieben | `src/studio/walls.ts` (`stretchStudioFacade`, `attachAngledWallFromEnd`, `offsetStudioWallsAlongFront`) |
-| Wandsegment herauslösen (Hover/Klick, alle Etagen) | `src/studio/wallSplit.ts`, [ux.md](ux.md#wandsegment-herauslösen-srcstudiowallsplitts-v20142) |
+| Wandsegment herauslösen (Hover/Klick, alle Etagen) · extrudieren (Front-Pfeil + Rückwände) · „Wand verknüpfen“ verschmelzen · Greifer + Shift rückt Folgewände | `src/studio/wallSplit.ts`, `offsetStudioWallsAlongFront` in `src/studio/walls.ts`, [ux.md](ux.md#wandsegment-herauslösen-srcstudiowallsplitts-v20142) |
 | Plan-Geometrie verschieben (Knoten/Kante → 3D) | `src/studio/planGeometry.ts` |

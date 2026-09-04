@@ -619,4 +619,45 @@ describe('Front-Verschieben', () => {
     expect(diag.width).toBeCloseTo(diagWidth)
     expect(diag.yawDeg).toBe(before.yawDeg)
   })
+
+  it('extrudiert ein Mittelsegment: Nachbarn bleiben, Rückwände entstehen (collinear: false)', () => {
+    const a = wallAt('a', 0, 0, 0, 192)
+    const b = wallAt('b', 192, 0, 0, 192)
+    const c = wallAt('c', 384, 0, 0, 192)
+    const next = offsetStudioWallsAlongFront(stateWith([a, b, c]), 'b', ['b'], 48, {
+      collinear: false,
+      returnWalls: true,
+    })
+    const walls = next.buildings[0]!.walls
+    expect(walls.find((w) => w.id === 'a')!.originZ).toBeCloseTo(0)
+    expect(walls.find((w) => w.id === 'c')!.originZ).toBeCloseTo(0)
+    const mid = walls.find((w) => w.id === 'b')!
+    expect(mid.originZ).toBeCloseTo(-48)
+    expect(mid.width).toBe(192)
+    const returns = walls.filter((w) => !['a', 'b', 'c'].includes(w.id))
+    expect(returns).toHaveLength(2)
+    for (const r of returns) {
+      expect(r.width).toBeCloseTo(48)
+      expect(r.planLinked).toBe(true)
+      const s = wallStartPoint(r)
+      const e = wallEndPoint(r)
+      expect(Math.min(s.z, e.z)).toBeCloseTo(-48)
+      expect(Math.max(s.z, e.z)).toBeCloseTo(0)
+    }
+    expect(returns.map((r) => Math.round(wallStartPoint(r).x)).sort((p, q) => p - q)).toEqual([192, 384])
+
+    // Zweites Extrudieren: Rückwände werden verlängert, keine neuen
+    const again = offsetStudioWallsAlongFront(next, 'b', ['b'], 48, { collinear: false, returnWalls: true })
+    const walls2 = again.buildings[0]!.walls
+    expect(walls2).toHaveLength(5)
+    const returns2 = walls2.filter((w) => !['a', 'b', 'c'].includes(w.id))
+    for (const r of returns2) expect(r.width).toBeCloseTo(96)
+  })
+
+  it('ohne collinear: false zieht die Flucht weiter mit (bestehendes Verhalten)', () => {
+    const a = wallAt('a', 0, 0, 0, 192)
+    const b = wallAt('b', 192, 0, 0, 192)
+    const next = offsetStudioWallsAlongFront(stateWith([a, b]), 'b', ['b'], 48)
+    expect(next.buildings[0]!.walls.find((w) => w.id === 'a')!.originZ).toBeCloseTo(-48)
+  })
 })

@@ -372,10 +372,16 @@ import { createStudioWall, isStudioWall, stretchStudioFacade, studioWallTransfor
   offsetStudioWallsAlongFront,
   unselectedLinkedDiagonalWalls,
   frontMoveStepCm,
-  expandCollinearPlanLinkedIds,
   updateTwoHorizontalCladdingBands,
 } from './studio/walls'
-import { splitWallStackRange, wallSplitRangeAt, wallSplitStack } from './studio/wallSplit'
+import {
+  canMergeWallSegments,
+  mergeWallSegments,
+  shiftWallsBeyondEnd,
+  splitWallStackRange,
+  wallSplitRangeAt,
+  wallSplitStack,
+} from './studio/wallSplit'
 import {
   defaultUpperBandWidth,
   isTwoHorizontalBandCladding,
@@ -2840,6 +2846,26 @@ function updateWallSplitHover(event: { clientX: number; clientY: number }) {
     : `Klick: Segment ${Math.round(range.endCm - range.startCm)} cm herauslösen (${stack.length} Etage${stack.length === 1 ? '' : 'n'})`
 }
 
+/** Kontextmenü „Wand verknüpfen“ auf Segmenten: kollineare Stücke zu einer Wand verschmelzen. */
+function mergeSelectedWallSegments() {
+  const seeds = editor.selectedWallIds.filter((id) => {
+    const wall = getWall(state, id)
+    return Boolean(wall && isStudioWall(wall))
+  })
+  if (seeds.length === 0) return
+  const result = mergeWallSegments(state, seeds)
+  if (!result) {
+    planStatus.textContent = 'Keine kollinear angedockten Segmente zum Verschmelzen'
+    return
+  }
+  commitState(finalizeStudioGeometry(result.state), {
+    ...createDefaultEditorState(),
+    selectedWallIds: result.selectedIds,
+  })
+  rebuildFloorPlanOverlay()
+  planStatus.textContent = 'Segmente zu einer Wand verschmolzen'
+}
+
 /** Klick im Segment-Modus: Wand (alle Etagen) teilen und Mittelstück auswählen. */
 function tryWallSplitAtEvent(event: { clientX: number; clientY: number }): boolean {
   if (!wallSplitModeActive()) return false
@@ -3393,17 +3419,15 @@ function applyWallResizePreview(
     const step = frontMoveStepCm(wall)
     const dist = Math.round(along / step) * step
     if (Math.abs(dist) < 0.5) return drag.baseState
-    // Nur Auswahl (+ kollinear / Etagen) — nicht den ganzen Ring (`expandPlanLinkedWallIds`).
-    const seeds =
-      drag.frontMoveSeedIds ??
-      expandCollinearPlanLinkedIds(
-        activeBuilding(drag.baseState).walls,
-        drag.moveWallIds ?? [drag.wallId],
-      )
+    // Nur Auswahl (+ Etagen) — weder kollineare Kette noch Grundriss-Ring: ein herausgelöstes
+    // Segment wird so extrudiert (Rückwände entstehen automatisch, v2.0.143).
+    const seeds = drag.frontMoveSeedIds ?? drag.moveWallIds ?? [drag.wallId]
     const singleFloor = Boolean(opts?.shift)
     const moveIds = wallIdsForMoveDrag(drag.baseState, seeds, singleFloor, { planLinked: false })
     const next = offsetStudioWallsAlongFront(drag.baseState, drag.wallId, seeds, dist, {
       singleFloor,
+      collinear: false,
+      returnWalls: true,
     })
     const building = next.buildings.find((item) => item.id === next.activeBuildingId) ?? next.buildings[0]
     const idSet = new Set(moveIds)
@@ -3420,7 +3444,18 @@ function applyWallResizePreview(
   if (shift && floorDelta) {
     const { dx, dz } = floorDelta
     const yaw = snapBranchYawDeg(wall.yawDeg ?? 0, wallEnd, dx, dz)
-    if (yaw === null) return drag.baseState
+    if (yaw === null) {
+      // Shift + Ziehen entlang der Achse: Segment strecken und alles jenseits des Endes mitschieben.
+      const raw = alongWidthDeltaFromMove(wall.yawDeg ?? 0, wallEnd, dx, dz)
+      const delta = clampWallResizeDelta(drag.grip, raw, drag.baseWidth, drag.baseStoreyHeight, wall.yawDeg ?? 0)
+      if (Math.abs(delta) < 0.5) return drag.baseState
+      drag.branchWallId = undefined
+      planStatus.textContent = `Shift: Segment ${delta > 0 ? '+' : ''}${Math.round(delta)} cm, Folgewände rücken mit`
+      return withDraftPresetOpeningsAfterResize(
+        finalizeStudioGeometry(shiftWallsBeyondEnd(drag.baseState, drag.wallId, wallEnd, delta)),
+        drag,
+      )
+    }
     const presetSeg = armedDraftSegmentCm()
     const joint = wallEnd === 'start' ? wallStartPoint(wall) : wallEndPoint(wall)
     const away = wallAlongDelta(yaw, 1)
@@ -3523,13 +3558,10 @@ function beginWallResizeDrag(wall: Wall, grip: WallResizeGrip, event: PointerEve
   }
   const moveWallIds =
     grip === 'front'
-      ? expandCollinearPlanLinkedIds(
-          building.walls,
-          editor.selectedWallIds.filter((id) => {
-            const item = getWall(state, id)
-            return Boolean(item && isStudioWall(item))
-          }),
-        )
+      ? editor.selectedWallIds.filter((id) => {
+          const item = getWall(state, id)
+          return Boolean(item && isStudioWall(item))
+        })
       : undefined
 
   wallResizeDrag = {
@@ -3563,7 +3595,7 @@ function beginWallResizeDrag(wall: Wall, grip: WallResizeGrip, event: PointerEve
         ? 'Höhe ziehen (24 cm)'
         : grip === 'front'
           ? 'Wand in Front-Richtung ziehen'
-          : 'Wandkante: 48 cm achsparallel, 45° = Diagonale 48×48 · Shift: neue Wand, Ecke oder Wand schließt den Pfad'
+          : 'Wandkante: 48 cm achsparallel, 45° = Diagonale 48×48 · Shift entlang der Achse: Folgewände rücken mit · Shift schräg: neue Wand'
   }
 
   controls.enabled = false
@@ -3914,7 +3946,12 @@ function isLibraryCardApplied(card: HTMLElement): boolean {
   if (libraryTab === 'profiles' || libraryTab === 'pediment') {
     return card.classList.contains('active')
   }
+  // Bewaffnete Wand-Breite (Segment-Modus / Ziehen) ist auch ohne Auswahl „aktiv“ umrandet.
+  if (armedLibraryWallPresetId && card.dataset.wallPresetId) {
+    return card.dataset.wallPresetId === armedLibraryWallPresetId
+  }
   if (!hasSelection) {
+    if (armedLibraryWallPresetId && card.dataset.libraryNone === '1') return false
     return card.dataset.libraryNone === '1' || card.dataset.panelPattern === 'none'
   }
   if (card.dataset.libraryNone === '1') {
@@ -10040,7 +10077,16 @@ function wallContextItems(wallId: string): MenuItem[] {
     const item = getWall(state, id)
     return item && isStudioWall(item) && !isWallPlanLinked(item)
   })
-  if (touchingOthers.length > 0 && selectionHasUnlinked) {
+  if (canMergeWallSegments(state, menuWallIds)) {
+    // Segmente (kollinear angedockt) zu einer Wand ohne Schnitte verschmelzen — alle Etagen.
+    items.push({
+      label: 'Wand verknüpfen',
+      action: () => {
+        ensureWallSelected(wallId)
+        mergeSelectedWallSegments()
+      },
+    })
+  } else if (touchingOthers.length > 0 && selectionHasUnlinked) {
     items.push({
       label: 'Wand verknüpfen',
       action: () => {
