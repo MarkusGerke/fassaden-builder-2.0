@@ -965,24 +965,31 @@ function buildReturnWall(
   to: { x: number; z: number },
   end: 'start' | 'end',
 ): Wall | null {
-  const dx = to.x - from.x
-  const dz = to.z - from.z
-  const width = Math.hypot(dx, dz)
+  const width = Math.hypot(to.x - from.x, to.z - from.z)
   if (width < 1) return null
-  const yawDeg = normalizeYawDeg((Math.atan2(-dz, dx) * 180) / Math.PI)
-  if (width < wallWidthStepCm(yawDeg) - 0.01) return null
+  // panelFlip wie die bewegte Wand (Ring-Konvention: Gehrungs-Vorzeichen hängen von der
+  // Laufrichtung ab, nicht von panelFlip). Die Laufrichtung so wählen, dass die Außenseite
+  // vom Segment weg zeigt — das ist zugleich die ring-konsistente Richtung
+  // (Start-Ende: alt → neu, End-Ende: neu → alt).
+  const panelFlip = moved.panelFlip ?? true
   const along = wallAlongDelta(moved.yawDeg ?? 0, 1)
   const wantX = end === 'start' ? -along.x : along.x
   const wantZ = end === 'start' ? -along.z : along.z
-  const flipTrue = facadeOutward(yawDeg, true)
-  const flipFalse = facadeOutward(yawDeg, false)
-  const panelFlip =
-    flipTrue.x * wantX + flipTrue.z * wantZ >= flipFalse.x * wantX + flipFalse.z * wantZ
+  const candidates = [
+    { origin: from, dx: to.x - from.x, dz: to.z - from.z },
+    { origin: to, dx: from.x - to.x, dz: from.z - to.z },
+  ].map((c) => {
+    const yawDeg = normalizeYawDeg((Math.atan2(-c.dz, c.dx) * 180) / Math.PI)
+    const out = facadeOutward(yawDeg, panelFlip)
+    return { ...c, yawDeg, score: out.x * wantX + out.z * wantZ }
+  })
+  const best = candidates[0]!.score >= candidates[1]!.score ? candidates[0]! : candidates[1]!
+  if (width < wallWidthStepCm(best.yawDeg) - 0.01) return null
   const wall = buildStudioWallAt({
-    originX: from.x,
-    originZ: from.z,
+    originX: best.origin.x,
+    originZ: best.origin.z,
     y: moved.y,
-    yawDeg,
+    yawDeg: best.yawDeg,
     width,
     panelFlip,
     styleFrom: moved,
@@ -1084,17 +1091,28 @@ export function offsetStudioWallsAlongFront(
     ],
   }))
   const posed = new Map<string, Wall>()
+  const removed = new Set<string>()
   for (const fix of fixes) {
     const current =
       posed.get(fix.wallId) ?? next.buildings.find((b) => b.id === building.id)?.walls.find((w) => w.id === fix.wallId)
-    if (!current) continue
+    if (!current || removed.has(fix.wallId)) continue
+    // Rückwand fällt auf 0 (Segment zurückgeschoben): Wand entfernen statt stehen lassen —
+    // sonst bleiben die Seitenwände stehen und nur die Front wandert.
+    const fixed = fix.end === 'start' ? wallEndPoint(current) : wallStartPoint(current)
+    const u = wallAlongDelta(current.yawDeg ?? 0, 1)
+    const ulen = Math.hypot(u.x, u.z) || 1
+    const alongCm = ((fix.point.x - fixed.x) * u.x + (fix.point.z - fixed.z) * u.z) / ulen
+    if (Math.abs(alongCm) < 0.5 && current.openings.length === 0) {
+      removed.add(fix.wallId)
+      continue
+    }
     const updated = poseWallEndAt(current, fix.end, fix.point, { lockYaw: true })
     if (updated) posed.set(fix.wallId, updated)
   }
-  if (posed.size > 0) {
+  if (posed.size > 0 || removed.size > 0) {
     next = updateBuilding(next, building.id, (b) => ({
       ...b,
-      walls: b.walls.map((wall) => posed.get(wall.id) ?? cloneWall(wall)),
+      walls: b.walls.filter((wall) => !removed.has(wall.id)).map((wall) => posed.get(wall.id) ?? cloneWall(wall)),
     }))
   }
   return next

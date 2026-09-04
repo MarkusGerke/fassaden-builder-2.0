@@ -2,6 +2,10 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Extrudieren: Gehrung und Verbund der Rückwände (2026-09-04) — v2.0.144
+
+`buildReturnWall`: Rückwand mit `panelFlip` der bewegten Wand, Laufrichtung ring-konsistent (Start: alt→neu, Ende: neu→alt) statt beliebiger `panelFlip`-Wahl — Gehrungs-Vorzeichen (`miterInsetAgainstNeighbor`, richtungsabhängig) stimmen an allen vier Ecken; Front nicht mehr um die Wandstärke versetzt. `offsetStudioWallsAlongFront`: Fix-Nachbar ohne Öffnungen, dessen Länge auf 0 fällt, wird entfernt (vorher `poseWallEndAt` → `null` → Rückwände blieben stehen). Test mit Gehrungs-Werten, Zurückschieben und Nische. Dateien: `walls.ts`, `wallResize.test.ts`, Docs.
+
 ### Segmente: Extrudieren, Verschmelzen, Shift-Folgewände (2026-09-04) — v2.0.143
 
 **Bibliothek Wände:** `isLibraryCardApplied` prüft `armedLibraryWallPresetId` vor dem „ohne Auswahl → Keines“-Zweig — bewaffnete Karte ist schwarz umrandet, Drag bleibt. **Front-Pfeil:** `offsetStudioWallsAlongFront` neu mit `collinear?: boolean` und `returnWalls?: boolean` (`buildReturnWall`); `main.ts` übergibt nur die markierten Studio-Wände (`frontMoveSeedIds` ohne `expandCollinearPlanLinkedIds`) → Segment wird extrudiert, Rückwände entstehen/wachsen. **Kontextmenü:** `canMergeWallSegments`/`mergeWallSegments`/`mergeWallSegmentCandidates` in `wallSplit.ts` → „Wand verknüpfen“ verschmilzt kollineare Segmente (Kette bei einem Seed, sonst Auswahl; Etagen-Stapel). **Greifer + Shift kollinear:** `shiftWallsBeyondEnd` (Segment + Stapel strecken, alles jenseits der Ebene verschieben, parallele Kreuzer strecken); Branch-Pfad (`snapBranchYawDeg === null`) nutzt das statt `return baseState`. `stretchSingleStudioWall` exportiert. Tests: `wallResize.test.ts`, `wallSplit.test.ts`. Docs: [ux.md](ux.md#wandsegment-herauslösen-srcstudiowallsplitts-v20142).

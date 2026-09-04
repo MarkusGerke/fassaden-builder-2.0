@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.143'
+export const APP_VERSION = '2.0.144'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,16 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.144',
+    date: '2026-09-04',
+    title: 'Extrudieren: saubere Gehrung, Rückwände bleiben verbunden',
+    changes: [
+      'Extrudierte Segmente: Rückwände laufen jetzt in Ringrichtung — Gehrungen an allen Ecken korrekt, die Front sitzt nicht mehr um die Wandstärke versetzt',
+      'Segment zurückschieben: Rückwände schrumpfen mit und verschwinden bei 0 cm (blieben vorher stehen, nur die Front wanderte); weiter nach innen ergibt eine Nische',
+      'Bitte hart neu laden, bis v2.0.144 in der Titelleiste steht',
+    ],
+  },
   {
     version: '2.0.143',
     date: '2026-09-04',

@@ -645,6 +645,33 @@ describe('Front-Verschieben', () => {
       expect(Math.max(s.z, e.z)).toBeCloseTo(0)
     }
     expect(returns.map((r) => Math.round(wallStartPoint(r).x)).sort((p, q) => p - q)).toEqual([192, 384])
+    // Ring-konsistente Laufrichtung: a → (192,0)→(192,-48) → b → (384,-48)→(384,0) → c
+    const left = returns.find((r) => Math.round(wallStartPoint(r).x) === 192)!
+    const right = returns.find((r) => Math.round(wallStartPoint(r).x) === 384)!
+    expect(wallStartPoint(left).z).toBeCloseTo(0)
+    expect(wallEndPoint(left).z).toBeCloseTo(-48)
+    expect(wallStartPoint(right).z).toBeCloseTo(-48)
+    expect(wallEndPoint(right).z).toBeCloseTo(0)
+    expect(left.panelFlip).toBe(true)
+    expect(right.panelFlip).toBe(true)
+    // Gehrungen wie in einem normalen Ring (Ecke: miterEnd der einlaufenden = −miterStart der
+    // auslaufenden Wand; Außenecke +/−, Innenecke −/+). Vorher war die rechte Rückwand
+    // gegen die Ringrichtung orientiert → Gehrung an zwei Ecken falsch herum.
+    const fin = finalizeStudioGeometry(next).buildings[0]!.walls
+    const f = (id: string) => fin.find((w) => w.id === id)!
+    const fLeft = fin.find((w) => w.id === left.id)!
+    const fRight = fin.find((w) => w.id === right.id)!
+    const depth = WALL_DEPTH
+    // Innenecken (alte Ecken)
+    expect(f('a').miterEnd).toBeCloseTo(-depth)
+    expect(fLeft.miterStart).toBeCloseTo(depth)
+    expect(fRight.miterEnd).toBeCloseTo(-depth)
+    expect(f('c').miterStart).toBeCloseTo(depth)
+    // Außenecken (neue Ecken)
+    expect(fLeft.miterEnd).toBeCloseTo(depth)
+    expect(f('b').miterStart).toBeCloseTo(-depth)
+    expect(f('b').miterEnd).toBeCloseTo(depth)
+    expect(fRight.miterStart).toBeCloseTo(-depth)
 
     // Zweites Extrudieren: Rückwände werden verlängert, keine neuen
     const again = offsetStudioWallsAlongFront(next, 'b', ['b'], 48, { collinear: false, returnWalls: true })
@@ -652,6 +679,22 @@ describe('Front-Verschieben', () => {
     expect(walls2).toHaveLength(5)
     const returns2 = walls2.filter((w) => !['a', 'b', 'c'].includes(w.id))
     for (const r of returns2) expect(r.width).toBeCloseTo(96)
+
+    // Zurückschieben auf die Flucht: Rückwände verschwinden, Front liegt wieder bei z=0
+    const back = offsetStudioWallsAlongFront(again, 'b', ['b'], -96, { collinear: false, returnWalls: true })
+    const walls3 = back.buildings[0]!.walls
+    expect(walls3.map((w) => w.id).sort()).toEqual(['a', 'b', 'c'])
+    expect(walls3.find((w) => w.id === 'b')!.originZ).toBeCloseTo(0)
+
+    // Weiter nach innen (Nische): Rückwände kippen mit, Außenseite zeigt in die Nische
+    const recess = offsetStudioWallsAlongFront(next, 'b', ['b'], -96, { collinear: false, returnWalls: true })
+    const walls4 = recess.buildings[0]!.walls
+    expect(walls4).toHaveLength(5)
+    const recessReturns = walls4.filter((w) => !['a', 'b', 'c'].includes(w.id))
+    for (const r of recessReturns) {
+      expect(r.width).toBeCloseTo(48)
+      expect(Math.max(wallStartPoint(r).z, wallEndPoint(r).z)).toBeCloseTo(48)
+    }
   })
 
   it('ohne collinear: false zieht die Flucht weiter mit (bestehendes Verhalten)', () => {
