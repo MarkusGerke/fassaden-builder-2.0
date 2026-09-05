@@ -336,7 +336,7 @@ Tab **Schrift** (`data-settings-section="label"`): Checkbox, Textfeld mit **Spei
 - Bei Teil-Fokus (`part !== 'group'`): rechte Toolbar zeigt **nur** den passenden Reiter (andere `.settings-section` per `hidden`; verschachtelte Sektionen zählen nur wenn kein Vorfahre ausgeblendet ist). Maße/Aktionen und irrelevante Farben ausgeblendet. **Ausnahme Paneele (`cladding`):** **v2.0.156** / v0.7.227 — **wie Wand ganz** (alle Bibliothek-Tabs und Studio-Reiter); nur 3D-Highlight bleibt auf dem Paneel.
 - **v0.7.176:** Anklicken in 3D behält Teil-Fokus für Profil, Bänke, Verdachung, Konsolen, Treppe, Gesims, Sockel, Paneele, Schrift. Rahmen/Glas → Ganz-Öffnung (`group`) mit Tab Farben. Rahmen-/Glasfarbe nur bei Öffnungsauswahl.
 - 3D-Highlight: Treppe = Stufen-Meshes orange (kein flaches Overlay in der Sockelzone); Wand-Teil = markierte Meshes + Overlay. Öffnungs-Overlay folgt der Maske (`openingForShellCut` + `openingWallFaceMaskPolyline`).
-- **Verschieben (v2.0.156):** Ghost, Hilfslinien und Pick-Ebene auf derselben Fassadentiefe (`OPENING_DRAG_FLOAT_CM` = 4 cm) und derselben Maskenkontur — Orange = Linien = Loch nach Drop.
+- **Verschieben (v2.0.156 / v2.0.171 / v2.0.173):** Ghost, Hilfslinien und Pick-Ebene auf derselben Fassadentiefe (`OPENING_DRAG_FLOAT_CM` = 4 cm) und derselben Maskenkontur — Orange = Linien = Loch nach Drop. **v2.0.171:** kein Shadow-Bake beim Zug-Start (Sockel/Gesims). **v2.0.173:** auch beim Loslassen kein sofortiges Bake — sonst Profile ~0,5–1 s dunkelgrau.
 
 - 3D: `tagPickable(..., { openingPart })` an Rahmen, Profil-Sweeps, Leibung (`trim`), Bänke, Verdachung, Treppe, Gitter, Freiraum-Kappe; Raycast inkl. `profileGroup`. Pick-Priorität: **Treppe vor Öffnung vor Verkleidung**; Treffer im Öffnungsloch auf Paneel/Wand zählen als Fenster.
 - 2D: Bank/Treppe/Verdachung mit `data-opening-part` pickbar; Öffnungspfade `pointer-events: all`.
@@ -398,8 +398,8 @@ UI-Felder und Konstanten: [profiles.md](profiles.md) / [opening-features.md](ope
 | Wand ganz | + Fassade · Gesims · Zierbänder · Sockel · Schrift · Fenster · Türen · Nischen · Licht | je Katalog **Keine/Keines** zuerst |
 | Wand-Teil Fassade (`cladding`) | **wie Wand ganz** (Highlight bleibt auf Paneel) | Verbände + **Keine** |
 | Wand-Teil Gesims / Sockel / Zierband / Schrift | nur dieser Katalog | Profile/Fonts; Gesims/Sockel/Zierband **Keines** |
-| Fenster ganz | Fenster · Profile · Verdachung | Typen; Bogenformen; Rahmen+Bank; Verdachung |
-| Tür ganz | Türen · Profile · Verdachung · Treppen | + Treppen-Anzahl/Form |
+| Fenster ganz | Fenster · Fensterform · Profile · Verdachung | Typen; Bogenformen; Rahmen+Bank; Verdachung |
+| Tür ganz | Türen · Fensterform · Profile · Verdachung · Treppen | + Treppen-Anzahl/Form |
 | Nische/Konche ganz | Nischen | Nischen-Presets |
 | Teil Profil (`trim`) | Profile | **nur Rahmen** |
 | Teil Fensterbrett | Profile | **Keines** · Brett |
@@ -570,9 +570,9 @@ Karten Tab **Wände**: SVG ohne cm-Zahl über der Box; Thumb füllt die Höhe, S
 
 Oben links in der Viewport-Chrome: Segmented Control **Einfach | Komplex** (`#ui-mode-simple` / `#ui-mode-complex`). Default **Einfach**, Persistenz `localStorage` Key `fassaden-builder-ui-mode`. Setzt `document.documentElement.dataset.uiMode`. In Einfach sind Blöcke mit `data-ui-level="advanced"` per CSS ausgeblendet (Bloom/LOD/Debug/Nebel, Fugen/Bossen-Details, Gesims-Orientierung/Vorstand-Zahlen, Paneel-Trapez/Alternierende Ebenen, Konsolen, Bank-Profil-Orientierung, manuelle Offsets). Preset-Karten, ±-Maße, Profilkarten und Rundbogen bleiben sichtbar. Kein separates Speichernformat.
 
-### Bibliothek: Wände / Fenster / Türen / Nischen / Paneele / Profile / Verdachung (v0.7.65–v0.7.66)
+### Bibliothek: Wände / Fenster / Fensterform / Türen / Nischen / Paneele / Profile / Verdachung (v0.7.65–v0.7.66 / v2.0.171)
 
-Tabs in `#opening-library`: **Wände** | **Fenster** | **Türen** | **Nischen** | **Paneele** | **Profile** | **Verdachung** (`libraryTab` in `main.ts`).
+Tabs in `#opening-library`: **Wände** | **Fenster** | **Fensterform** | **Türen** | **Nischen** | **Paneele** | **Profile** | **Verdachung** (`libraryTab` in `main.ts`). **v2.0.171:** Bogenformen nur noch unter **Fensterform** (nicht mehr als Gruppe „Form“ in Fenster/Türen).
 
 | Tab | Inhalt | Ablegen |
 |---|---|---|

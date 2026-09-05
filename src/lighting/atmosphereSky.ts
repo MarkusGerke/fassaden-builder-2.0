@@ -199,12 +199,15 @@ export class AtmosphereSky {
       correctAltitude: true,
     })
     this.skyMaterial.depthWrite = false
-    this.skyMaterial.depthTest = true
+    // Vor der Geometrie zeichnen (kein Depth-Test): Im EffectComposer/HalfFloat-RT
+    // scheitert sonst der Far-Plane-Depth-Test → scene.background (#616161) als
+    // „grauer Kasten“ statt Himmel (nur Bloom-Pfad). Geometrie übermalt danach.
+    this.skyMaterial.depthTest = false
     patchSkyDisplayToneMap(this.skyMaterial)
 
     this.skyMesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.skyMaterial)
     this.skyMesh.frustumCulled = false
-    this.skyMesh.renderOrder = 1000
+    this.skyMesh.renderOrder = -1000
     this.root.add(this.skyMesh)
     this.root.visible = false
 
@@ -217,10 +220,10 @@ export class AtmosphereSky {
       intensity: 1,
     })
     this.starsMaterial.depthWrite = false
-    this.starsMaterial.depthTest = true
+    this.starsMaterial.depthTest = false
     this.stars = new THREE.Points(new THREE.BufferGeometry(), this.starsMaterial)
     this.stars.frustumCulled = false
-    this.stars.renderOrder = 999
+    this.stars.renderOrder = -999
     this.root.add(this.stars)
     this.root.visible = false
   }

@@ -5,6 +5,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
 import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js'
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
+import { FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js'
 import {
   applyTemplateDraft,
   createOpeningTemplate,
@@ -1063,6 +1064,7 @@ ground.position.y = GROUND_Y
 ground.receiveShadow = true
 ground.castShadow = false
 ground.layers.set(SHADOW_LAYER_EXTERIOR)
+ground.frustumCulled = false
 siteOffset.add(ground)
 
 /** Neutrale Studio-Kugel: nur Innenfläche (BackSide) — von außen hindurchschauen. */
@@ -1083,6 +1085,7 @@ studioSphere.position.y = GROUND_Y
 studioSphere.receiveShadow = true
 studioSphere.castShadow = false
 studioSphere.visible = false
+studioSphere.frustumCulled = false
 studioSphere.layers.set(SHADOW_LAYER_EXTERIOR)
 siteOffset.add(studioSphere)
 
@@ -1125,8 +1128,10 @@ siteOffset.add(sceneLightRuntime.root)
 const leafRuntime = new LeafRuntime()
 siteOffset.add(leafRuntime.root)
 
-/** Canvas-MSAA gilt nicht für EffectComposer-RTs — ohne Samples wirken Bloom-Kanten pixelig. */
-const BLOOM_MSAA_SAMPLES = Math.min(8, renderer.capabilities.maxSamples)
+/** Composer-RTs ohne GPU-MSAA: UnrealBloomPass + HalfFloat + samples>0 kann auf Metal
+ *  intermittierend den Default-Framebuffer unvollständig lassen (Viewport-Grau als „Kasten“).
+ *  Kantenglättung im Bloom-Pfad über SMAA. */
+const BLOOM_MSAA_SAMPLES = 0
 const composer = new EffectComposer(
   renderer,
   new THREE.WebGLRenderTarget(1, 1, {
@@ -1144,18 +1149,94 @@ const bloomPass = new UnrealBloomPass(
   DEFAULT_BLOOM_SETTINGS.threshold,
 )
 composer.addPass(bloomPass)
-/** SMAA nur falls kein MSAA (WebGL1) — sonst weicher als der Pfad ohne Bloom. */
-const smaaPass = BLOOM_MSAA_SAMPLES === 0 ? new SMAAPass() : null
-if (smaaPass) composer.addPass(smaaPass)
+// Bloom-Composite: Alpha 1, sonst schreibt Output a=0 (Three-Context intern alpha:true).
+{
+  const comp = bloomPass.compositeMaterial
+  if (comp?.fragmentShader?.includes('vec4( bloom, bloomAlpha )')) {
+    comp.fragmentShader = comp.fragmentShader.replace(
+      'gl_FragColor = vec4( bloom, bloomAlpha );',
+      'gl_FragColor = vec4( bloom, 1.0 ); /*opaque-bloom-a*/',
+    )
+    comp.needsUpdate = true
+  }
+}
+const smaaPass = new SMAAPass()
+smaaPass.enabled = false
+composer.addPass(smaaPass)
 const outputPass = new OutputPass()
+outputPass.enabled = false
 composer.addPass(outputPass)
+// Canvas muss undurchsichtig sein (Three-Context hat intern alpha:true) —
+// sonst scheinen Viewport-Grau/Clear durch. Kein Screen-Clear vor dem Blit
+// (sonst intermittierende schwarze Flächen statt Inhalt).
+{
+  const mat = outputPass.material
+  const forceOpaqueA = (src: string) => {
+    if (src.includes('/*opaque-a*/')) return src
+    let next = src.replace(
+      /gl_FragColor\s*=\s*sRGBTransferOETF\(\s*gl_FragColor\s*\);/,
+      'gl_FragColor = sRGBTransferOETF( gl_FragColor ); gl_FragColor.a = 1.0; /*opaque-a*/',
+    )
+    if (!next.includes('/*opaque-a*/')) {
+      next = next.replace(/}\s*$/, '  gl_FragColor.a = 1.0; /*opaque-a*/\n}')
+    }
+    return next
+  }
+  mat.fragmentShader = forceOpaqueA(mat.fragmentShader)
+  const prevCompile = mat.onBeforeCompile.bind(mat)
+  mat.onBeforeCompile = (parameters, r) => {
+    prevCompile(parameters, r)
+    parameters.fragmentShader = forceOpaqueA(parameters.fragmentShader)
+  }
+  mat.transparent = false
+  mat.blending = THREE.NoBlending
+  mat.depthTest = false
+  mat.depthWrite = false
+  mat.needsUpdate = true
+}
 
+/** Composer schreibt nie auf den Canvas. Bloom nur als Additiv-Overlay. */
+composer.renderToScreen = false
+const composerBlitMaterial = new THREE.ShaderMaterial({
+  uniforms: { tDiffuse: { value: null as THREE.Texture | null } },
+  vertexShader: /* glsl */ `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    varying vec2 vUv;
+    void main() {
+      vec4 bloom = texture2D(tDiffuse, vUv);
+      gl_FragColor = vec4(bloom.rgb, 1.0);
+    }
+  `,
+  depthTest: false,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+  transparent: true,
+  toneMapped: false,
+})
+const composerBlitQuad = new FullScreenQuad(composerBlitMaterial)
+
+let _composerSyncW = 0
+let _composerSyncH = 0
+let _composerSyncPr = -1
 syncComposerPixelRatio = () => {
-  composer.setPixelRatio(renderer.getPixelRatio())
+  const pr = renderer.getPixelRatio()
   const w = viewportRenderWidth()
   const h = viewportRenderHeight()
+  // Jeden Orbit-Frame setSize → unnötige RT-Touchs; nur bei echter Änderung.
+  if (w === _composerSyncW && h === _composerSyncH && pr === _composerSyncPr) return
+  _composerSyncW = w
+  _composerSyncH = h
+  _composerSyncPr = pr
+  composer.setPixelRatio(pr)
   composer.setSize(w, h)
-  bloomPass.resolution.set(w * renderer.getPixelRatio(), h * renderer.getPixelRatio())
+  bloomPass.resolution.set(w * pr, h * pr)
 }
 syncComposerPixelRatio()
 
@@ -1246,6 +1327,7 @@ type LibraryTab =
   | 'plinth'
   | 'label'
   | 'profiles'
+  | 'openingForm'
   | 'pediment'
   | 'lights'
 
@@ -1269,14 +1351,14 @@ function allowedLibraryTabs(): Set<LibraryTab> {
     if (part === 'pediment' || part === 'consoles') return new Set<LibraryTab>(['pediment'])
     if (part === 'trim') return new Set<LibraryTab>(['profiles'])
     if (part === 'frame' || part === 'grille') {
-      if (isDoor) return new Set<LibraryTab>(['doors', 'profiles'])
+      if (isDoor) return new Set<LibraryTab>(['doors', 'profiles', 'openingForm'])
       if (isNiche) return new Set<LibraryTab>(['niches'])
-      return new Set<LibraryTab>(['windows', 'profiles'])
+      return new Set<LibraryTab>(['windows', 'profiles', 'openingForm'])
     }
     // Öffnung ganz
-    if (isDoor) return new Set<LibraryTab>(['doors', 'profiles', 'pediment', 'stairs'])
+    if (isDoor) return new Set<LibraryTab>(['doors', 'profiles', 'openingForm', 'pediment', 'stairs'])
     if (isNiche) return new Set<LibraryTab>(['niches'])
-    return new Set<LibraryTab>(['windows', 'profiles', 'pediment'])
+    return new Set<LibraryTab>(['windows', 'profiles', 'openingForm', 'pediment'])
   }
 
   if (editor.selectedWallIds.length > 0) {
@@ -4202,7 +4284,7 @@ function matchingBayLibraryPresetId(wall: Wall): string | null {
 
 function isLibraryCardApplied(card: HTMLElement): boolean {
   const hasSelection = editor.selectedWallIds.length > 0 || editor.selectedOpenings.length > 0
-  if (libraryTab === 'profiles' || libraryTab === 'pediment' || libraryTab === 'cornice' || libraryTab === 'plinth') {
+  if (libraryTab === 'profiles' || libraryTab === 'pediment' || libraryTab === 'openingForm' || libraryTab === 'cornice' || libraryTab === 'plinth') {
     return card.classList.contains('active')
   }
   // Bewaffnete Wand-Breite (Segment-Modus / Ziehen) ist auch ohne Auswahl „aktiv“ umrandet.
@@ -4387,8 +4469,9 @@ function bloomIsActive(): boolean {
 function applyBloomRenderer() {
   const enabled = bloomIsActive()
   bloomPass.enabled = enabled
-  if (smaaPass) smaaPass.enabled = enabled
-  outputPass.enabled = enabled
+  // Szene geht direkt auf den Canvas; SMAA/Output würden den Framebuffer wieder überschreiben.
+  smaaPass.enabled = false
+  outputPass.enabled = false
   atmosphereSky.setDisplayExposure(enabled ? SKY_DISPLAY_EXPOSURE_BLOOM : SKY_DISPLAY_EXPOSURE_PLAIN)
   bloomPass.strength = bloomSettings.strength
   bloomPass.radius = bloomSettings.radius
@@ -4568,13 +4651,32 @@ function renderLitSceneFrame(activeCamera: THREE.Camera) {
     !(bloomSettings.disableDuringMotion && (orbitLite || orbitLitePointer))
   renderPass.camera = activeCamera
   if (bloomOn) {
-    composer.render()
+    composer.renderToScreen = false
+    renderer.autoClear = true
+    renderer.setRenderTarget(null)
+    renderer.render(scene, activeCamera)
+    renderer.autoClear = false
+    try {
+      composer.render()
+      renderer.resetState()
+      renderer.setRenderTarget(null)
+      const bloomRts = (bloomPass as unknown as { renderTargetsHorizontal?: THREE.WebGLRenderTarget[] })
+        .renderTargetsHorizontal
+      const bloomTex = bloomRts?.[0]?.texture ?? null
+      composerBlitMaterial.uniforms.tDiffuse.value = bloomTex
+      if (bloomTex) composerBlitQuad.render(renderer)
+    } finally {
+      renderer.setRenderTarget(null)
+      renderer.autoClear = true
+    }
   } else {
+    renderer.autoClear = true
     renderer.render(scene, activeCamera)
   }
 }
 
 function render3dFrame() {
+  syncStageMeshVisibility()
   renderLitSceneFrame(camera)
 }
 
@@ -8693,6 +8795,11 @@ function initOpeningLibrary() {
     return
   }
 
+  if (libraryTab === 'openingForm') {
+    appendOpeningFormLibraryCards(host)
+    return
+  }
+
   if (libraryTab === 'niches') {
     appendLibraryIdleNoneCard(host, 'Keines')
     for (const preset of WALL_OPENING_PRESETS.filter(
@@ -8714,44 +8821,44 @@ function initOpeningLibrary() {
     appendOpeningPresetCard(preset)
   }
 
-  // Bogenform — Presets in der Bibliothek (rechts nur Parameter).
-  if (libraryTab === 'windows' || libraryTab === 'doors') {
-    appendLibraryGroupLabel(host, 'Form')
-    const currentArch = selectedWindowOpening()?.opening.arch
-    for (const form of ARCH_FORM_IDS) {
-      const card = document.createElement('button')
-      card.type = 'button'
-      card.className = 'opening-library-card'
-      const applied =
-        form === 'rect'
-          ? !currentArch?.enabled || currentArch.form === 'rect'
-          : Boolean(currentArch?.enabled && currentArch.form === form)
-      if (applied) card.classList.add('library-card-applied')
-      card.title = `${archFormLabel(form)} — Öffnungsform`
-      const thumb = document.createElement('div')
-      thumb.className = 'opening-library-thumb'
-      thumb.innerHTML = archFormPreviewSvg(form)
-      const label = document.createElement('span')
-      label.textContent = archFormLabel(form)
-      card.append(thumb, label)
-      card.addEventListener('click', () => {
-        if (!selectedWindowOpening()) {
-          planStatus.textContent = 'Zuerst ein Fenster oder eine Tür auswählen'
-          return
-        }
-        commitOpeningArchPatch({ form, enabled: form !== 'rect' })
-        initOpeningLibrary()
-      })
-      host.appendChild(card)
-    }
-  }
-
   const divider = document.createElement('div')
   divider.className = 'opening-library-divider'
   divider.setAttribute('aria-hidden', 'true')
   host.appendChild(divider)
 
   appendTemplateCards(openingType)
+  syncLibraryAppliedOutline()
+}
+
+function appendOpeningFormLibraryCards(host: HTMLElement): void {
+  appendLibraryGroupLabel(host, 'Fensterform')
+  const currentArch = selectedWindowOpening()?.opening.arch
+  for (const form of ARCH_FORM_IDS) {
+    const card = document.createElement('button')
+    card.type = 'button'
+    card.className = 'opening-library-card'
+    const applied =
+      form === 'rect'
+        ? !currentArch?.enabled || currentArch.form === 'rect'
+        : Boolean(currentArch?.enabled && currentArch.form === form)
+    if (applied) card.classList.add('library-card-applied')
+    card.title = `${archFormLabel(form)} — Öffnungsform`
+    const thumb = document.createElement('div')
+    thumb.className = 'opening-library-thumb'
+    thumb.innerHTML = archFormPreviewSvg(form)
+    const label = document.createElement('span')
+    label.textContent = archFormLabel(form)
+    card.append(thumb, label)
+    card.addEventListener('click', () => {
+      if (!selectedWindowOpening()) {
+        planStatus.textContent = 'Zuerst ein Fenster oder eine Tür auswählen'
+        return
+      }
+      commitOpeningArchPatch({ form, enabled: form !== 'rect' })
+      initOpeningLibrary()
+    })
+    host.appendChild(card)
+  }
   syncLibraryAppliedOutline()
 }
 
@@ -10082,8 +10189,15 @@ function applyState(nextState: FacadeState, nextEditor = editor) {
     syncSiteTransform()
     updateGroundPlane()
     syncCameraDistanceLimits()
-    applySunLighting({ updateShadowMap: true })
-    syncSceneLightRuntime()
+    if (openingDragCommit) {
+      // Sofortiges Shadow-Bake + Material-Invalidate färbt Profile kurz dunkelgrau.
+      applySunLighting({ live: true })
+      scheduleShadowMapUpdate({ sun: true, reflections: false })
+      syncSceneLightRuntime({ scheduleShadows: true })
+    } else {
+      applySunLighting({ updateShadowMap: true })
+      syncSceneLightRuntime()
+    }
     syncLeafRuntime()
   } else if (lightsChanged) {
     // Licht-only (Fallback): kein Sonnen-/EnvMap-/Boden-Pfad; Schatten verzögert.
@@ -10257,7 +10371,8 @@ function previewOpeningDrag(
   const dragStarted = facade.beginOpeningDragMode(refs)
   previewMeshDrag(nextState, editor, applyMeshes)
   if (dragStarted) {
-    applySunLighting({ updateShadowMap: true })
+    // Kein sofortiges Shadow-Bake — sonst Sockel/Gesims „einfärben“ (Map-Flush).
+    scheduleShadowMapUpdate({ sun: true, reflections: false })
   }
 }
 
@@ -14261,7 +14376,7 @@ function refreshAllProfileCards() {
 
 function fillAllProfileSelects() {
   refreshAllProfileCards()
-  if (libraryTab === 'profiles' || libraryTab === 'pediment' || libraryTab === 'cornice' || libraryTab === 'plinth' || libraryTab === 'label' || libraryTab === 'panels') initOpeningLibrary()
+  if (libraryTab === 'profiles' || libraryTab === 'pediment' || libraryTab === 'openingForm' || libraryTab === 'cornice' || libraryTab === 'plinth' || libraryTab === 'label' || libraryTab === 'panels') initOpeningLibrary()
 }
 
 function drawProfileSectionPreview() {
@@ -20498,6 +20613,7 @@ function syncBloomUi() {
   bloomEnabledInput.checked = bloomSettings.enabled
   bloomOptions.hidden = !bloomSettings.enabled
   bloomDisableDuringMotionInput.checked = bloomSettings.disableDuringMotion === true
+  bloomDisableDuringMotionInput.disabled = false
   bloomThreshold.value = String(bloomSettings.threshold)
   bloomThresholdNum.value = String(bloomSettings.threshold)
   bloomThresholdValue.textContent = bloomSettings.threshold.toFixed(3)
@@ -20599,6 +20715,7 @@ function commitBloomPatch(patch: Partial<BloomSettings>) {
   bloomOptions.hidden = !bloomSettings.enabled
   if (patch.disableDuringMotion != null) {
     bloomDisableDuringMotionInput.checked = bloomSettings.disableDuringMotion === true
+  bloomDisableDuringMotionInput.disabled = false
   }
   if (patch.threshold != null) {
     bloomThreshold.value = String(bloomSettings.threshold)

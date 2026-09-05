@@ -492,8 +492,11 @@ function cornicePlanMiterTan(wall: Wall, adjacent: Wall, end: 'start' | 'end'): 
 }
 
 /** Sweep: x += z × planMiter mit planMiter = −tan(Knick/2) (vorzeichenbehaftet). */
+const PLAN_MITER_ABS_MAX = 8
+
 function pictureFramePlanMiter(tan: number, _end?: 'start' | 'end'): number {
-  return -tan
+  const t = Number.isFinite(tan) ? tan : 0
+  return -THREE.MathUtils.clamp(t, -PLAN_MITER_ABS_MAX, PLAN_MITER_ABS_MAX)
 }
 
 function corniceEndJoin(

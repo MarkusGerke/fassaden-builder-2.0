@@ -1093,12 +1093,12 @@ export class FacadeController {
     if (walls.length === 0) return
 
     this.rebuildWallBodiesForWallIds(wallIds)
-    this.removeCladdingMeshesForWallIds(wallIds)
+    this.removeCladdingMeshesForWallIds(wallIds, { keepPlinth: true })
 
     if (this.isPerfPresentation()) {
-      this.rebuildCladdingForWalls(walls, 'high')
+      this.rebuildCladdingForWalls(walls, 'high', { skipPlinth: true })
     } else {
-      this.rebuildCladdingForWalls(walls, 'low')
+      this.rebuildCladdingForWalls(walls, 'low', { skipPlinth: true })
       const buildingIds = new Set(
         walls.map((wall) => wall.buildingId).filter((id): id is string => Boolean(id)),
       )
@@ -1107,11 +1107,13 @@ export class FacadeController {
         this.rebuildCladdingForWalls(
           walls.filter((wall) => wall.buildingId === buildingId),
           'high',
+          { skipPlinth: true },
         )
       }
     }
 
     this.applyLodVisibility()
+    this.applyFacadeBacklitShade()
     this.syncLabelShadowReceivers()
   }
 
@@ -1130,11 +1132,13 @@ export class FacadeController {
     }
   }
 
-  private removeCladdingMeshesForWallIds(wallIds: Set<string>) {
+  private removeCladdingMeshesForWallIds(wallIds: Set<string>, opts?: { keepPlinth?: boolean }) {
     const removeFrom = (list: THREE.Mesh[]) => {
       for (let i = list.length - 1; i >= 0; i -= 1) {
         const mesh = list[i]
         if (!wallIds.has(mesh.userData.wallId as string)) continue
+        // Beim Fensterziehen Sockel stehen lassen — sonst kurzes „Einfärben“/Verschwinden.
+        if (opts?.keepPlinth && mesh.userData.lodTier === 'plinth') continue
         this.claddingGroup.remove(mesh)
         mesh.geometry.dispose()
         list.splice(i, 1)
@@ -2748,6 +2752,7 @@ export class FacadeController {
     mesh.castShadow = true
     mesh.receiveShadow = true
     mesh.userData.buildingId = buildingId
+    mesh.userData.lodPart = 'farHull'
     mesh.visible = false
     this.wallGroup.add(mesh)
     this.farHullMeshes.push(mesh)
@@ -3361,10 +3366,15 @@ export class FacadeController {
     this.rebuildCladdingForWalls(getVisibleWalls(this.state), 'low')
   }
 
-  private rebuildCladdingForWalls(walls: Wall[], tier: 'low' | 'high') {
+  private rebuildCladdingForWalls(
+    walls: Wall[],
+    tier: 'low' | 'high',
+    opts?: { skipPlinth?: boolean },
+  ) {
     if (tier === 'high') this.scheduleLabelFontRefresh(walls)
     const box = new THREE.Box3()
     const targetList = tier === 'low' ? this.claddingLodLowMeshes : this.claddingLodHighMeshes
+    const skipPlinth = opts?.skipPlinth === true
 
     for (const wall of walls) {
       if (this.wallIsBare(wall)) continue
@@ -3513,7 +3523,7 @@ export class FacadeController {
                 }
               }
 
-              if (this.isPreviewPresentation()) {
+              if (this.isPreviewPresentation() && !skipPlinth) {
                 const profileId = panel.plinthProfileId ?? 'sockelprofil'
                 const decorativePlinth = profileId !== 'sockelStandard' && Boolean(profileId)
                 if (!decorativePlinth) {
@@ -3656,7 +3666,7 @@ export class FacadeController {
         }
         }
 
-        if (tier === 'high' && !this.isPerfPresentation()) {
+        if (tier === 'high' && !this.isPerfPresentation() && !skipPlinth) {
           const profileId = panel.plinthProfileId ?? 'sockelprofil'
           const decorativePlinth = profileId !== 'sockelStandard' && Boolean(profileId)
           // Dekoratives Profil ersetzt die Box — nur Sweep in profilePaths.
@@ -3983,6 +3993,8 @@ export class FacadeController {
       )
       if (this.isPerfPresentation()) applyWorkModeSurfaceLook(material)
       const mesh = new THREE.Mesh(geometry, material)
+      // Sonst flackern Profile/Bänke beim Orbit (falsche Bounding-Sphere vs. Wand-Transform).
+      mesh.frustumCulled = false
       const isPlinth = path.role === 'plinthProfile'
       mesh.castShadow = true
       // Sockel: Sonne wie Paneele; Punktlicht-Okklusion gegen Innenlicht-Leak.
@@ -4063,6 +4075,7 @@ export class FacadeController {
           sill.finish ?? wall.profileFinish,
         )
         const mesh = new THREE.Mesh(geometry, material)
+        mesh.frustumCulled = false
         mesh.castShadow = true
         mesh.receiveShadow = true
         mesh.userData.originalMaterial = material
@@ -4135,6 +4148,7 @@ export class FacadeController {
           normalized.finish ?? wall.profileFinish,
         )
         const mesh = new THREE.Mesh(geometry, material)
+        mesh.frustumCulled = false
         mesh.castShadow = true
         mesh.receiveShadow = true
         mesh.userData.originalMaterial = material
@@ -4207,6 +4221,7 @@ export class FacadeController {
         })
         if (sweep) {
           const mesh = new THREE.Mesh(sweep, material)
+          mesh.frustumCulled = false
           mesh.castShadow = true
           mesh.receiveShadow = !this.isPerfPresentation()
           mesh.userData.originalMaterial = material
@@ -4229,6 +4244,7 @@ export class FacadeController {
           simpleBar: this.isPerfPresentation(),
         })) {
           const mesh = new THREE.Mesh(consoleGeo, material)
+          mesh.frustumCulled = false
           mesh.castShadow = true
           mesh.receiveShadow = !this.isPerfPresentation()
           mesh.userData.originalMaterial = material

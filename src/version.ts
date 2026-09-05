@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.170'
+export const APP_VERSION = '2.0.173'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,33 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.173',
+    date: '2026-09-05',
+    title: 'Kein Profil-Dunkelgrau nach Öffnungs-Zug',
+    changes: [
+      'Nach dem Loslassen einer verschobenen Öffnung bleiben Profile in der richtigen Farbe — kein kurzes Dunkelgrau mehr (Shadow-Bake verzögert)',
+    ],
+  },
+  {
+    version: '2.0.172',
+    date: '2026-09-05',
+    title: 'Kein grauer Kasten mehr mit Bloom — Bloom bleibt beim Drehen an',
+    changes: [
+      'Himmel wird vor der Geometrie gezeichnet (ohne Depth-Test) — kein flächiger Viewport-Grau (#616161) mehr im Bloom-Pfad',
+      'Bloom bleibt beim Orbitieren an — als Leuchten über der Szene, ohne den Canvas zu löschen (kein grauer/schwarzer Kasten)',
+    ],
+  },
+  {
+    version: '2.0.171',
+    date: '2026-09-05',
+    title: 'Öffnungs-Zug ohne Farbflash, stabile Profile, Tab Fensterform',
+    changes: [
+      'Beim Verschieben einer Öffnung färben sich Sockel und Gesims nicht mehr kurz um (kein sofortiges Shadow-Bake, Sockel bleibt stehen)',
+      'Rahmenprofile und Fensterbänke flackern beim Navigieren nicht mehr als grauer Kasten',
+      'Bibliothek: neuer Tab „Fensterform“ (Bogenformen) — nicht mehr unter Fenster/Türen gemischt',
+    ],
+  },
   {
     version: '2.0.170',
     date: '2026-09-04',

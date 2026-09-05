@@ -1,0 +1,28 @@
+---
+description: Bloom darf den Default-Framebuffer nicht überschreiben (grauer/schwarzer Kasten beim Orbit)
+alwaysApply: true
+---
+
+# Bloom: kein Canvas-Overwrite
+
+## Symptom
+
+Beim Orbitieren mit Bloom an erschien ein großer **grauer** oder später **schwarzer** Kasten. Mit Bloom aus trat das nicht auf. Bloom soll beim Orbit **sichtbar bleiben**.
+
+## Ursache (runtime bestätigt)
+
+1. Himmel mit `depthTest` im EffectComposer/HalfFloat → Clear `#616161` statt Himmel.
+2. Schwerwiegender: Der Bloom-Composer (`UnrealBloomPass` / Output) schrieb **kachelnweise** auf den Default-Framebuffer. Auf Metal blieben unvollständige Frames als flächiges `#616161` (transparent → Viewport) oder `[0,0,0,255]` stehen — Raycast traf weiter die Fassade.
+
+## Fix (beibehalten)
+
+- Himmel/Sterne: `depthTest`/`depthWrite` aus, `renderOrder` −1000/−999 (`atmosphereSky.ts`).
+- Szene **direkt** auf den Canvas (`renderer.render`), Bloom nur **additiv** darüber aus dem Bloom-RT.
+- Composer **nicht** `renderToScreen` / nicht den Default-FB löschen oder ersetzen.
+- Nicht „Bloom bei Orbit aus“ als Lösung — Produkt will Bloom während Navigation.
+
+## Fallstricke
+
+- Screen-Clear auf Schwarz vor Output maskiert Löcher nur als schwarzen Kasten — nicht tun.
+- `autoClear`-Tweaks allein reichen nicht, solange der Composer den Canvas überschreibt.
+- Docs: `docs/shadows.md`, `docs/celestial-sky.md`, `docs/changelog.md` (v2.0.172).

@@ -77,7 +77,7 @@ Im **Render**-Modus (3D/Front) ist die Okklusion **automatisch aktiv**, sobald m
 | **Alle Lichter an** (Szene → Licht / Bibliothek → Licht) | an (wenn Lichter existieren) | Schaltet alle `sceneLights[].enabled` gemeinsam (`setAllSceneLightsEnabled`) |
 | **Lichtpunkte anzeigen** (Szene → Licht / Bibliothek → Licht) | an | Legacy-Schalter in der UI; **ab v2.0.153** erscheinen Kreismarken nur im **Licht-Modus** (`#light-mode-btn`, `lightEditMode`). **v2.0.159:** Marker unabhängig von Tag/Nacht und `enabled` — Ring + Positions-Kugel für jedes Licht; Beleuchtung selbst folgt weiter Sonne/Schedule |
 | **Bloom an** (Szene → Licht, unter Lichtpunkten) | aus | Full-Scene-Bloom; Optionen ausgeblendet wenn aus |
-| **Bloom bei Kamerabewegung aus** | aus (unchecked) | Wenn an: Bloom während Orbit/Zoom aus (wie früher Orbit-Lite). Default: Bloom bleibt auch beim Navigieren an. **v2.0.125:** Bei Bloom an und dieser Option aus bleibt die Pixelratio beim Orbit voll — kein Qualitätswechsel des Glühens. |
+| **Bloom bei Kamerabewegung aus** | aus (unchecked) | Wenn an: Bloom während Orbit/Zoom aus. Default: Bloom bleibt auch beim Navigieren an. **v2.0.125:** Bei Bloom an und dieser Option aus bleibt die Pixelratio beim Orbit voll. **v2.0.172:** grauer Kasten war Himmel-Depth im Composer, nicht Bloom-Aus. |
 | Voreinstellung | — | Laterne / Deckenlampe / Stehlampe / Leselampe / Fassadenlampe / Blaulicht |
 | Abstrahlung | `omni` | Omni · unten · oben · unten+oben |
 | Winkel unten / oben | `60`° / `55`° | Spot-Halbwinkel; nur sichtbar wenn relevant |

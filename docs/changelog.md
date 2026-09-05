@@ -2,6 +2,18 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Kein Profil-Dunkelgrau nach Öffnungs-Zug (2026-09-05) — v2.0.173
+
+Beim Commit nach Öffnungs-Verschieben hat `applySunLighting({ updateShadowMap: true })` Schatten-Maps sofort neu gebacken und Materialien invalidiert — Profile wirkten ~0,5–1 s dunkelgrau. Fix: wie beim Zug-Start Shadow-Bake verzögern (`live` + `scheduleShadowMapUpdate`). Datei: `main.ts`. Docs: [ux.md](ux.md), [shadows.md](shadows.md).
+
+### Bloom + Himmel ohne grauen Kasten (2026-09-05) — v2.0.172
+
+Der Bloom-Composer hat den Canvas kachelnweise schwarz/grau überschrieben (Metal, HalfFloat). Fix: Szene immer direkt rendern (Pfad ohne Kasten); Bloom nur additiv über die bereits sichtbare Fassade; Composer nicht auf den Default-Framebuffer. Himmel ohne Depth-Test. Bloom bleibt beim Orbit an. Dateien: `atmosphereSky.ts`, `main.ts`. Docs: [celestial-sky.md](celestial-sky.md), [shadows.md](shadows.md).
+
+### Öffnungs-Zug, Profile/Bänke, Fensterform-Tab (2026-09-05) — v2.0.171
+
+Beim Fensterziehen kein sofortiges Shadow-Bake und Sockel bleibt stehen (kein Farbflash an Sockel/Gesims). Profile, Bänke, Verdachung und Bühnenboden: `frustumCulled = false` (kein grauer Kasten-Flicker beim Orbit); Plan-Miter gekappt. Bibliothek-Tab **Fensterform**. Dateien: `main.ts`, `FacadeController.ts`, `profilePaths.ts`, `index.html`. Docs: [ux.md](ux.md).
+
 ### Flüssigere Navigation & Tag/Nacht + klassischer Loader (2026-09-04) — v2.0.170
 
 Loader: fester Nikolaus-Pfad. Orbit: PCSS-Lite + verzögerte EnvMap. Live-Uhr: kein Shadow-Bake jedes Frame, Studio-BG ohne EnvMap-Spam, stabile Lichtanzahl, soft „Alle Lichter an“, Key-Schatten-Hysterese. Dateien: `index.html`, `main.ts`, `sceneLightRuntime.ts`. Docs: [performance.md](performance.md), [views-and-state.md](views-and-state.md).
