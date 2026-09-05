@@ -13,7 +13,7 @@ import type {
   OpeningDoorConfig,
 } from '../types/facade'
 import { isTransparentGlass } from '../constants/colorPalettes'
-import { applySurfaceFinish, createGlassMaterial } from '../utils/threeColors'
+import { applySurfaceFinish, createGlassMaterial, markWindowFrameSurface } from '../utils/threeColors'
 import type { SurfaceFinish } from '../types/facade'
 import type { OpeningGlassConfig } from '../utils/glassConfig'
 import {
@@ -1670,11 +1670,13 @@ export function createGruenderzeitWindowMesh(
   const makeWood = (color: string) => {
     const mat = new THREE.MeshStandardMaterial({
       color,
-      roughness: 0.48,
-      metalness: 0.03,
+      roughness: 0.42,
+      metalness: 0.02,
       shadowSide: THREE.DoubleSide,
     })
     applySurfaceFinish(mat, frameFinish)
+    markWindowFrameSurface(mat)
+    mat.userData.skipFacadeShade = true
     return mat
   }
   const wood = makeWood(frameColor)

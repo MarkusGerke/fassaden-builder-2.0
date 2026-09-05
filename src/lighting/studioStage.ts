@@ -52,14 +52,21 @@ export function isStudioStage(mode: StageEnvironment): boolean {
 }
 
 /**
- * Mischt Tagesbeige → Nacht-Schwarz anhand des Celestial-`twilightFactor` (0 Tag … 1 Nacht).
+ * Mischt eine Tagesfarbe → Nacht-Schwarz anhand des Celestial-`twilightFactor` (0 Tag … 1 Nacht).
  */
-export function studioEnvironmentHex(twilightFactor: number): string {
+export function studioTintHex(dayHex: string, twilightFactor: number): string {
   const t = THREE.MathUtils.clamp(twilightFactor, 0, 1)
   const ease = THREE.MathUtils.smoothstep(t, 0.12, 0.92)
-  const day = new THREE.Color(STUDIO_DAY_BEIGE)
+  const day = new THREE.Color(dayHex || STUDIO_DAY_BEIGE)
   const night = new THREE.Color(STUDIO_NIGHT_NEAR_BLACK)
   return `#${day.clone().lerp(night, ease).getHexString()}`
+}
+
+/**
+ * Mischt Standard-Tagesbeige → Nacht-Schwarz (`twilightFactor` 0 Tag … 1 Nacht).
+ */
+export function studioEnvironmentHex(twilightFactor: number): string {
+  return studioTintHex(STUDIO_DAY_BEIGE, twilightFactor)
 }
 
 /**

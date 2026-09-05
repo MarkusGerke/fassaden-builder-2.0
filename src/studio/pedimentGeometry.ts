@@ -21,6 +21,7 @@ import {
   pedimentSegmentOutwards,
   pedimentSpanLocal,
   pedimentGableLayout,
+  pedimentTympanumPoints,
   type PedimentVec2,
 } from './pediment'
 
@@ -179,6 +180,49 @@ export function createPedimentSweepGeometry(
     )
   }
   return mergeBufferGeometries(parts)
+}
+
+/** Flache Tympanon-Platte hinter geschlossener Verdachung (kein Mauerwerk durchscheinend). */
+export function createPedimentSealedBackGeometry(
+  wall: Wall,
+  opening: Opening,
+  pediment: OpeningPediment,
+): THREE.BufferGeometry | null {
+  if (!pediment.enabled || !pediment.sealedBack) return null
+  if (!pedimentFormIsClosed(pediment.form)) return null
+  if (opening.type !== 'window' && opening.type !== 'door') return null
+  if (opening.type === 'window' && opening.basementWindow?.enabled) return null
+
+  const local = pedimentLocalLayout(wall, opening, pediment)
+  const pts = pedimentTympanumPoints(pediment.form, local)
+  if (pts.length < 3) return null
+
+  const shape = new THREE.Shape()
+  shape.moveTo(pts[0]!.x, pts[0]!.y)
+  for (let i = 1; i < pts.length; i += 1) {
+    shape.lineTo(pts[i]!.x, pts[i]!.y)
+  }
+  shape.closePath()
+
+  const depth = 1.2
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth,
+    bevelEnabled: false,
+    curveSegments: 1,
+  })
+  // Platte knapp hinter dem Profil an der Wandfläche (kein Mauerwerk durchs Tympanon).
+  const forwardSign = isStudioWall(wall) ? windowDepthForwardSign(wall) : 1
+  const faceZ = isStudioWall(wall)
+    ? studioProfileAnchorLocalZ(wall, pediment.offsetForward ?? 0)
+    : wall.depth
+  // Extrude +Z: bei positivem Forward an der Fläche starten und nach innen; sonst spiegeln.
+  if (forwardSign >= 0) {
+    geo.translate(0, 0, faceZ - depth - 0.3)
+  } else {
+    geo.scale(1, 1, -1)
+    geo.translate(0, 0, faceZ + depth + 0.3)
+  }
+  return geo
 }
 
 function buildConsolePath(

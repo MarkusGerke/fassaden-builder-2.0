@@ -56,11 +56,13 @@ function editorWith(opening: { wallId: string; openingId: string }): EditorState
 }
 
 describe('openingsMatchByType', () => {
-  it('trifft nur den Typ, nicht Maße oder Keller', () => {
+  it('trifft Typ und Maße (cm), nicht nur den Typ', () => {
     const a = opening('a', 'window', 0, 96, 160)
-    const b = opening('b', 'window', 48, 128, 192)
+    const same = opening('s', 'window', 48, 96, 160)
+    const otherSize = opening('b', 'window', 48, 128, 192)
     const door = opening('d', 'door')
-    expect(openingsMatchByType(a, b)).toBe(true)
+    expect(openingsMatchByType(a, same)).toBe(true)
+    expect(openingsMatchByType(a, otherSize)).toBe(false)
     expect(openingsMatchByType(a, door)).toBe(false)
   })
 })
@@ -83,10 +85,31 @@ describe('editOpeningTargets', () => {
     expect(refs).toEqual([{ wallId: 'north', openingId: 'n1' }])
   })
 
-  it('Typ: alle Fenster, unabhängig von der Größe', () => {
+  it('Typ: nur gleicher Typ und gleiche Maße', () => {
     const refs = editOpeningTargets(facade, editorWith({ wallId: 'north', openingId: 'n1' }), 'type')
     const ids = refs.map((r) => r.openingId).sort()
-    expect(ids).toEqual(['e1', 'n1', 'n2', 'u1'])
+    // n1 = 96×160; e1/u1 = Default 96×192; n2 = 128×192 — nur n1
+    expect(ids).toEqual(['n1'])
+  })
+
+  it('Typ: mehrere Größen in der Auswahl → alle passenden Maße', () => {
+    const editor: EditorState = {
+      selectedWallIds: [],
+      selectedOpenings: [
+        { wallId: 'north', openingId: 'n1' },
+        { wallId: 'north', openingId: 'n2' },
+      ],
+      selectedEdges: [],
+    }
+    const refs = editOpeningTargets(facade, editor, 'type')
+    const ids = refs.map((r) => r.openingId).sort()
+    expect(ids).toEqual(['n1', 'n2'])
+  })
+
+  it('Typ: Default-Fenster 96×192 trifft alle gleichen', () => {
+    const refs = editOpeningTargets(facade, editorWith({ wallId: 'east', openingId: 'e1' }), 'type')
+    const ids = refs.map((r) => r.openingId).sort()
+    expect(ids).toEqual(['e1', 'u1'])
   })
 
   it('Etage: alle Öffnungen derselben Etage', () => {
@@ -152,10 +175,25 @@ describe('editArchOpeningTargets', () => {
     expect(refs).toEqual([{ wallId: 'north', openingId: 'n1' }])
   })
 
-  it('Typ: Fenster und Türen im Haus (nicht nur Fenster)', () => {
+  it('Typ: nur gleicher Typ und gleiche Maße (nicht alle Fenster/Türen)', () => {
     const refs = editArchOpeningTargets(facade, editorWith({ wallId: 'north', openingId: 'n1' }), 'type')
     const ids = refs.map((r) => `${r.wallId}:${r.openingId}`).sort()
-    expect(ids).toEqual(['east:e1', 'east:ed', 'north-1:u1', 'north:n1', 'north:n2', 'north:nd'])
+    expect(ids).toEqual(['north:n1'])
+  })
+
+  it('Typ: zwei Größen → beide Maß-Gruppen', () => {
+    const editor: EditorState = {
+      selectedWallIds: [],
+      selectedOpenings: [
+        { wallId: 'north', openingId: 'n1' },
+        { wallId: 'east', openingId: 'e1' },
+      ],
+      selectedEdges: [],
+    }
+    const refs = editArchOpeningTargets(facade, editor, 'type')
+    const ids = refs.map((r) => `${r.wallId}:${r.openingId}`).sort()
+    // n1=96×160; e1/u1=96×192
+    expect(ids).toEqual(['east:e1', 'north-1:u1', 'north:n1'])
   })
 })
 

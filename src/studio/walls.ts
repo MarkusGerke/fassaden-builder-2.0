@@ -31,7 +31,9 @@ import { wallHasArcBay } from './arcWall'
 import { syncStairsToDoorWidth } from './stairs'
 import {
   DEFAULT_STUDIO_PANEL,
+  DUPLICATE_GAP_CM,
   PLINTH_OVERHANG,
+  PLAN_CLOSE_GAP_CM,
   PLAN_GRID,
   STUDIO_DEFAULT_HEIGHT,
   STUDIO_DEFAULT_WIDTH,
@@ -41,6 +43,7 @@ import {
   wallWidthStepCm,
   normalizeStudioPanel,
   studioPlinthActive,
+  snapWallWidthCm,
 } from './constants'
 import {
   applyTwoHorizontalCladdingZones,
@@ -54,29 +57,91 @@ export function isStudioWall(wall: Wall): boolean {
   return wall.kind === 'studio'
 }
 
-export function normalizeStudioWall(wall: Wall): Wall {
-  const dims = clampStudioWallDimensions(wall)
+/** Startpunkt und Länge auf das 8-cm-Welt-Raster (45°: Diagonale eines n×n-Feldes). */
+export function snapStudioWallToWorldGrid(wall: Wall): {
+  originX: number
+  originZ: number
+  width: number
+  x: number
+} {
+  const yaw = wall.yawDeg ?? 0
+  const ox = Math.round((wall.originX ?? wall.x) / PLAN_GRID) * PLAN_GRID
+  const oz = Math.round((wall.originZ ?? 0) / PLAN_GRID) * PLAN_GRID
+  const step = wallWidthStepCm(yaw)
+  let width = snapWallWidthCm(wall.width, yaw)
+  if (width < step - 1e-6) width = step
+  if (isDiagonalPlanYaw(yaw)) {
+    // Δx/Δz ganzzahlig × PLAN_GRID, Länge = n·√2·PLAN_GRID
+    const along = wallAlongDelta(yaw, 1)
+    const ulen = Math.hypot(along.x, along.z) || 1
+    const cells = Math.max(1, Math.round(width / step))
+    width = cells * step
+    // numerisch stabil: Endpunkt exakt auf Raster
+    const sx = Math.sign(along.x / ulen) || (Math.abs(along.x) < 1e-9 ? 0 : 1)
+    const sz = Math.sign(along.z / ulen) || (Math.abs(along.z) < 1e-9 ? 0 : 1)
+    const endX = ox + sx * cells * PLAN_GRID
+    const endZ = oz + sz * cells * PLAN_GRID
+    width = Math.hypot(endX - ox, endZ - oz)
+  }
+  return { originX: ox, originZ: oz, width, x: ox }
+}
+
+export function normalizeStudioWall(
+  wall: Wall,
+  opts?: { keepOpenings?: boolean; snapWorldOrigin?: boolean },
+): Wall {
+  // Länge immer auf Richtungs-Raster; Origin nur auf Wunsch (finalize/Ablegen) —
+  // sonst verschiebt Tiefenwechsel die Außenkante um bis zu ½ Raster.
+  const yaw = wall.yawDeg ?? 0
+  const step = wallWidthStepCm(yaw)
+  let width = snapWallWidthCm(wall.width, yaw)
+  if (width < step - 1e-6) width = step
+  let originX = wall.originX ?? wall.x
+  let originZ = wall.originZ ?? 0
+  if (opts?.snapWorldOrigin) {
+    const snapped = snapStudioWallToWorldGrid({ ...wall, width })
+    originX = snapped.originX
+    originZ = snapped.originZ
+    width = snapped.width
+  } else if (isDiagonalPlanYaw(yaw)) {
+    // Diagonale Länge stabil auf n·8√2, Origin unverändert
+    const cells = Math.max(1, Math.round(width / step))
+    width = cells * step
+  }
+  const dims = clampStudioWallDimensions({ ...wall, width })
   const cloned = cloneWall(wall)
+  const keepOpenings = opts?.keepOpenings === true
+  const openings = keepOpenings
+    ? cloned.openings.map((opening) => {
+        // Maße/Position nicht erzwingen — Stretch/Skew darf Öffnungen nicht löschen oder quetschen.
+        const next =
+          opening.type === 'door' && opening.stairs?.enabled
+            ? { ...opening, stairs: syncStairsToDoorWidth(opening.stairs, opening) }
+            : opening
+        return next.type === 'window' ? ensureWindowSills(next) : next
+      })
+    : cloned.openings
+        .filter((opening) => openingFitsWithinWall(opening, dims))
+        .map((opening) => {
+          const clamped = ensureWindowSills(clampOpeningToWall(opening, dims, STUDIO_MASONRY))
+          return clamped.type === 'door' && clamped.stairs?.enabled
+            ? { ...clamped, stairs: syncStairsToDoorWidth(clamped.stairs, clamped) }
+            : clamped
+        })
   return {
     ...cloned,
     kind: 'studio',
     ...dims,
-    originX: wall.originX ?? wall.x,
-    originZ: wall.originZ ?? 0,
+    originX,
+    originZ,
+    x: originX,
     yawDeg: wall.yawDeg ?? 0,
     panelFlip: wall.panelFlip ?? true,
     miterStart: wall.miterStart ?? 0,
     miterEnd: wall.miterEnd ?? 0,
     panel: normalizeStudioPanel(wall.panel),
     cornice: wall.cornice ? normalizeWallCornice(wall.cornice) : wall.cornice,
-    openings: cloned.openings
-      .filter((opening) => openingFitsWithinWall(opening, dims))
-      .map((opening) => {
-        const clamped = ensureWindowSills(clampOpeningToWall(opening, dims, STUDIO_MASONRY))
-        return clamped.type === 'door' && clamped.stairs?.enabled
-          ? { ...clamped, stairs: syncStairsToDoorWidth(clamped.stairs, clamped) }
-          : clamped
-      }),
+    openings,
   }
 }
 
@@ -133,7 +198,7 @@ export function duplicateStudioWallAtGrid(state: FacadeState, wallId: string): F
     return { ...opening, id: nextId }
   })
 
-  const perp = wallAlongDelta((wall.yawDeg ?? 0) + 90, PLAN_GRID)
+  const perp = wallAlongDelta((wall.yawDeg ?? 0) + 90, DUPLICATE_GAP_CM)
   const cloned = normalizeStudioWall({
     ...cloneWall(wall),
     id: createId(),
@@ -179,7 +244,9 @@ export function resizeStudioWalls(
 }
 
 /**
- * Verschiebt alle Wand-Endpunkte an einer Ecke (alle Etagen). Lückenfrei verbundene Wände bleiben verbunden.
+ * Verschiebt eine Gebäudeecke: Nachbarwände an dieser Ecke werden an der Stoßseite
+ * gestreckt/gekürzt (`poseWallEndAt`), ggf. senkrecht zur Achse mitverschoben —
+ * die **gegenüberliegende** Seite der Nachbarwand bleibt stehen (kein starres Verschieben).
  */
 export function translateStudioCorner(
   state: FacadeState,
@@ -207,24 +274,33 @@ export function translateStudioCorner(
       if (!isStudioWall(wall)) return cloneWall(wall)
       if (exclude.has(wall.id)) return cloneWall(wall)
       if (!isWallPlanLinked(wall)) return cloneWall(wall)
-      let next = cloneWall(wall)
-      let changed = false
-      const start = wallStartPoint(next)
-      const end = wallEndPoint(next)
-      if (pointsMeet(start, oldPoint)) {
-        next.originX = start.x + delta.x
-        next.originZ = start.z + delta.z
-        next.x = next.originX ?? next.x
-        changed = true
-      }
-      if (pointsMeet(end, oldPoint)) {
-        const along = wallAlongDelta(next.yawDeg ?? 0, next.width)
-        next.originX = end.x + delta.x - along.x
-        next.originZ = end.z + delta.z - along.z
-        next.x = next.originX ?? next.x
-        changed = true
-      }
-      return changed ? normalizeStudioWall(next) : next
+      const start = wallStartPoint(wall)
+      const end = wallEndPoint(wall)
+      const atStart = pointsMeet(start, oldPoint)
+      const atEnd = pointsMeet(end, oldPoint)
+      if (!atStart && !atEnd) return cloneWall(wall)
+      if (atStart && atEnd) return cloneWall(wall)
+      const wallEnd: 'start' | 'end' = atStart ? 'start' : 'end'
+      // Entlang der Wandachse: Stoßende bewegen, Gegenseite fix.
+      let next = poseWallEndAt(wall, wallEnd, newPoint, {
+        lockYaw: true,
+        preserveLocalOpenings: true,
+      })
+      if (!next) return cloneWall(wall)
+      // Senkrecht zur Achse: ganze Wand mit der Ecke mitführen (Gegenseite gleicht mit).
+      const join = wallEnd === 'start' ? wallStartPoint(next) : wallEndPoint(next)
+      const corrX = newPoint.x - join.x
+      const corrZ = newPoint.z - join.z
+      if (Math.hypot(corrX, corrZ) < 1e-6) return next
+      return normalizeStudioWall(
+        {
+          ...next,
+          originX: (next.originX ?? next.x) + corrX,
+          originZ: (next.originZ ?? 0) + corrZ,
+          x: (next.originX ?? next.x) + corrX,
+        },
+        { keepOpenings: true },
+      )
     }),
   }))
 }
@@ -249,7 +325,7 @@ export function stretchSingleStudioWall(wall: Wall, side: 'start' | 'end', delta
   } else {
     updated.width += deltaCm
   }
-  return normalizeStudioWall(updated)
+  return normalizeStudioWall(updated, { keepOpenings: true })
 }
 
 /**
@@ -352,6 +428,198 @@ export function snapBranchYawDeg(
   }
   if (Math.abs(best) < 1 || Math.abs(Math.abs(best) - 180) < 1) return null
   return normalizeYawDeg(awayYaw + best)
+}
+
+/** |ΔYaw| ≈ 45° (nicht 90°) — für Schrägstellen statt Abzweig. @deprecated siehe linkedCornerNeighbor */
+export function isSkewDiagonalBranchYaw(parentYawDeg: number, branchYawDeg: number): boolean {
+  const rel = Math.abs(shortestSignedYawDeltaDeg(parentYawDeg, branchYawDeg))
+  return Math.abs(rel - 45) < 8 || Math.abs(rel - 135) < 8
+}
+
+/**
+ * Verknüpfter, nicht-kollinearer Nachbar am Wandende (Ecke 90° oder 45°/135°).
+ * `null` = freies Ende → Shift darf abzweigen.
+ */
+export function linkedCornerNeighbor(
+  wall: Wall,
+  wallEnd: 'start' | 'end',
+  walls: Wall[],
+): Wall | null {
+  if (!isStudioWall(wall) || !isWallPlanLinked(wall)) return null
+  for (const adj of findAdjacentWalls(wall, wallEnd, walls)) {
+    if (!isStudioWall(adj) || !isWallPlanLinked(adj)) continue
+    if (wallsCollinearYaw(wall, adj)) continue
+    const diff = yawDeltaAbsDeg(wall.yawDeg ?? 0, adj.yawDeg ?? 0)
+    if (
+      Math.abs(diff - 90) < 15 ||
+      Math.abs(diff - 45) < 15 ||
+      Math.abs(diff - 135) < 15
+    ) {
+      return adj
+    }
+  }
+  return null
+}
+
+/** @deprecated Alias — nutze `linkedCornerNeighbor` (auch 45°/135°-Ecken). */
+export function linkedRightAngleNeighbor(
+  wall: Wall,
+  wallEnd: 'start' | 'end',
+  walls: Wall[],
+): Wall | null {
+  return linkedCornerNeighbor(wall, wallEnd, walls)
+}
+
+/** Schnitt zweier Geraden in XZ: `p1 + t·d1 = p2 + s·d2`. */
+function intersectLinesXZ(
+  p1: { x: number; z: number },
+  d1: { x: number; z: number },
+  p2: { x: number; z: number },
+  d2: { x: number; z: number },
+): { t: number; s: number } | null {
+  const det = d1.x * d2.z - d1.z * d2.x
+  if (Math.abs(det) < 1e-9) return null
+  const dx = p2.x - p1.x
+  const dz = p2.z - p1.z
+  // p1 + t d1 = p2 + s d2  →  t d1 - s d2 = p2 - p1
+  const t = (dx * d2.z - dz * d2.x) / det
+  const s = (dx * d1.z - dz * d1.x) / det
+  return { t, s }
+}
+
+/**
+ * An verknüpfter Ecke: markierte Wand zwischen 90° und 45°/135° zum Nachbarn umschalten.
+ * Freies Ende der markierten Wand bleibt fix; die neue Stoßecke liegt auf der Achse des
+ * Nachbarn (Schnitt). Nachbar: nur Länge entlang der Achse, keine Querverschiebung —
+ * Öffnungen bleiben in Weltlage. Kein `translateStudioCorner`.
+ *
+ * Nur die gegriffene Etage — plus vertikal ausgerichtete Wände, die in `selectedWallIds`
+ * stehen. Andere Geschosse ohne Auswahl bleiben unverändert (Boden/Decke pro Etage).
+ */
+export function skewStudioWallToDiagonal(
+  state: FacadeState,
+  wallId: string,
+  wallEnd: 'start' | 'end',
+  dx: number,
+  dz: number,
+  opts?: { selectedWallIds?: string[] },
+): FacadeState {
+  const building = findBuildingForWall(state, wallId)
+  if (!building) return state
+  const wall = building.walls.find((item) => item.id === wallId)
+  if (!wall || !isStudioWall(wall)) return state
+  const neighbor = linkedCornerNeighbor(wall, wallEnd, building.walls)
+  if (!neighbor) return state
+
+  const fixed = wallEnd === 'start' ? wallEndPoint(wall) : wallStartPoint(wall)
+  const oldCorner = wallEnd === 'start' ? wallStartPoint(wall) : wallEndPoint(wall)
+  const neighEnd = wallEndAtPoint(neighbor, oldCorner)
+  if (!neighEnd) return state
+
+  const proposed = { x: oldCorner.x + dx, z: oldCorner.z + dz }
+  const dirX = wallEnd === 'end' ? proposed.x - fixed.x : fixed.x - proposed.x
+  const dirZ = wallEnd === 'end' ? proposed.z - fixed.z : fixed.z - proposed.z
+  if (Math.hypot(dirX, dirZ) < 0.5) return state
+
+  const dragYaw = normalizeYawDeg((Math.atan2(-dirZ, dirX) * 180) / Math.PI)
+  const nYaw = neighbor.yawDeg ?? 0
+  const curDiff = yawDeltaAbsDeg(wall.yawDeg ?? 0, nYaw)
+  const currentlyOrthogonal = Math.abs(curDiff - 90) < 20
+  // Orthogonal → auf 45°/135°; schräg → zurück auf 90°.
+  const wantOblique = currentlyOrthogonal
+  const candidates = wantOblique
+    ? [normalizeYawDeg(nYaw + 45), normalizeYawDeg(nYaw - 45)]
+    : [normalizeYawDeg(nYaw + 90), normalizeYawDeg(nYaw - 90)]
+
+  let bestYaw = candidates[0]!
+  let bestDist = Math.abs(shortestSignedYawDeltaDeg(dragYaw, bestYaw))
+  for (const candidate of candidates) {
+    const dist = Math.abs(shortestSignedYawDeltaDeg(dragYaw, candidate))
+    if (dist < bestDist) {
+      bestDist = dist
+      bestYaw = candidate
+    }
+  }
+
+  // Strahl vom fixen Ende der markierten Wand in Wandrichtung zum Stoß.
+  const uSel = unitXZ(wallAlongDelta(bestYaw, 1))
+  const rayDir =
+    wallEnd === 'end' ? uSel : { x: -uSel.x, z: -uSel.z }
+  const nStart = wallStartPoint(neighbor)
+  const uNeigh = unitXZ(wallAlongDelta(nYaw, 1))
+  const hit = intersectLinesXZ(fixed, rayDir, nStart, uNeigh)
+  if (!hit || hit.t < wallWidthStepCm(bestYaw) - 0.01) return state
+
+  const newCorner = {
+    x: fixed.x + rayDir.x * hit.t,
+    z: fixed.z + rayDir.z * hit.t,
+  }
+
+  // Nachbar muss nach dem Zuschnitt noch Mindestlänge behalten.
+  const neighFar = neighEnd === 'start' ? wallEndPoint(neighbor) : wallStartPoint(neighbor)
+  const neighRemain = Math.hypot(neighFar.x - newCorner.x, neighFar.z - newCorner.z)
+  if (neighRemain < wallWidthStepCm(nYaw) - 0.01) return state
+
+  const selected = new Set(opts?.selectedWallIds?.length ? opts.selectedWallIds : [wallId])
+  selected.add(wallId)
+
+  type SkewPair = { selId: string; neighId: string; neighEnd: 'start' | 'end' }
+  const pairs: SkewPair[] = [{ selId: wallId, neighId: neighbor.id, neighEnd }]
+
+  for (const stacked of findVerticalAlignedWalls(wall, building.walls, building.wallHeight)) {
+    if (!selected.has(stacked.id)) continue
+    const stackedNeigh = linkedCornerNeighbor(stacked, wallEnd, building.walls)
+    if (!stackedNeigh) continue
+    const stackedCorner =
+      wallEnd === 'start' ? wallStartPoint(stacked) : wallEndPoint(stacked)
+    const stackedNeighEnd = wallEndAtPoint(stackedNeigh, stackedCorner)
+    if (!stackedNeighEnd) continue
+    pairs.push({
+      selId: stacked.id,
+      neighId: stackedNeigh.id,
+      neighEnd: stackedNeighEnd,
+    })
+  }
+
+  const selIds = new Set(pairs.map((p) => p.selId))
+  const neighById = new Map(pairs.map((p) => [p.neighId, p.neighEnd] as const))
+  const affectedFloors = new Set<number>()
+  for (const pair of pairs) {
+    const w = building.walls.find((item) => item.id === pair.selId)
+    if (w) affectedFloors.add(floorIndex(w, building.wallHeight))
+  }
+
+  const next = updateBuilding(state, building.id, (b) => ({
+    ...b,
+    walls: b.walls.map((item) => {
+      if (!isStudioWall(item)) return cloneWall(item)
+      if (selIds.has(item.id)) {
+        const posed = poseWallEndAt(item, wallEnd, newCorner, {
+          lockYaw: false,
+          preserveLocalOpenings: true,
+        })
+        return posed ?? cloneWall(item)
+      }
+      const nEnd = neighById.get(item.id)
+      if (nEnd) {
+        const posed = poseWallEndAt(item, nEnd, newCorner, {
+          lockYaw: true,
+          preserveLocalOpenings: false,
+        })
+        return posed ?? cloneWall(item)
+      }
+      return cloneWall(item)
+    }),
+  }))
+
+  // Betroffene Etagen: Decke/Boden sichtbar halten (Unter-/Oberseite abgedeckt).
+  return updateBuilding(next, building.id, (b) => ({
+    ...b,
+    floors: (b.floors ?? []).map((plan, fi) => {
+      if (!affectedFloors.has(fi) || plan.hidden) return plan
+      return { ...plan, showCeiling: true }
+    }),
+  }))
 }
 
 function xzCross(a: { x: number; z: number }, b: { x: number; z: number }): number {
@@ -550,8 +818,11 @@ export function repairPlanLinkedWallFronts(state: FacadeState): FacadeState {
   }
 }
 
-/** Magnet entlang der Abzweig: ein Rasterschritt der Zugrichtung (48 cm bzw. 48√2). */
-export const BRANCH_CLOSE_MAGNET_CM = PLAN_GRID
+/** Magnet entlang der Abzweig: ~48 cm (bzw. Diagonale) — unabhängig vom 8-cm-Greifer-Schritt. */
+export const BRANCH_CLOSE_MAGNET_CM = PLAN_CLOSE_GAP_CM
+export const BRANCH_CLOSE_MAGNET_DIAGONAL_CM = PLAN_CLOSE_GAP_CM * Math.SQRT2
+/** Auto-Andocken: Lücke zwischen Wandenden unter diesem Maß wird geschlossen. */
+export const WALL_END_SEAL_GAP_CM = PLAN_CLOSE_GAP_CM
 /** Exakte Ecken / achsparallele Stoßpunkte (cm). */
 const CORNER_EPS = 2
 /**
@@ -559,7 +830,7 @@ const CORNER_EPS = 2
  * Bei langen 45°-Wänden reichen winzige Winkel-/Rasterreste, um CORNER_EPS zu sprengen.
  * Länge wird weiterhin als Projektion `t` entlang des Strahls gesetzt.
  */
-const BRANCH_CLOSE_PERP_EPS = 24
+const BRANCH_CLOSE_PERP_EPS = PLAN_CLOSE_GAP_CM / 2
 /**
  * Join-Toleranz wenn mind. eine Wand diagonal ist (cm).
  * Nach Längen-Snap bleibt der Querversatz bis BRANCH_CLOSE_PERP_EPS;
@@ -567,6 +838,121 @@ const BRANCH_CLOSE_PERP_EPS = 24
  * Achsparallele Paare behalten CORNER_EPS — 90°-Tests unverändert.
  */
 const DIAGONAL_JOIN_EPS = BRANCH_CLOSE_PERP_EPS
+
+type NearWallEndGap = {
+  wallId: string
+  end: 'start' | 'end'
+  meet: { x: number; z: number }
+  otherId: string
+  collinear: boolean
+  dist: number
+}
+
+/**
+ * Freie Wandenden, die näher als 48 cm an einem anderen Ende liegen (kollinear oder
+ * im Winkel), werden automatisch zusammengeschoben — die Lücke („Wandöffnung“) schließt.
+ */
+export function sealNearWallEndGaps(state: FacadeState): FacadeState {
+  return {
+    ...state,
+    buildings: state.buildings.map((building) => ({
+      ...building,
+      walls: sealNearWallEndGapsInWalls(building.walls),
+    })),
+  }
+}
+
+function sealNearWallEndGapsInWalls(walls: Wall[]): Wall[] {
+  let next = walls.map((w) => cloneWall(w))
+  for (let pass = 0; pass < 12; pass += 1) {
+    const gap = findNearestWallEndGap(next)
+    if (!gap) break
+    const wall = next.find((item) => item.id === gap.wallId)
+    if (!wall || !isStudioWall(wall)) break
+    const posed = poseWallEndAt(wall, gap.end, gap.meet, {
+      lockYaw: gap.collinear,
+      preserveLocalOpenings: true,
+    })
+    if (!posed) break
+    const sealed = normalizeStudioWall(
+      { ...posed, planLinked: true },
+      { keepOpenings: true },
+    )
+    next = next.map((item) => {
+      if (item.id === sealed.id) return sealed
+      if (item.id === gap.otherId && isStudioWall(item)) {
+        return { ...cloneWall(item), planLinked: true }
+      }
+      return item
+    })
+    const after = next.find((item) => item.id === sealed.id)!
+    const afterPt = gap.end === 'start' ? wallStartPoint(after) : wallEndPoint(after)
+    if (!pointsMeet(afterPt, gap.meet, CORNER_EPS + 0.5)) break
+  }
+  return next
+}
+
+function findNearestWallEndGap(walls: Wall[]): NearWallEndGap | null {
+  type EndRef = { wall: Wall; end: 'start' | 'end'; pt: { x: number; z: number } }
+  const ends: EndRef[] = []
+  for (const wall of walls) {
+    if (!isStudioWall(wall) || isProtectedFromPoseReverse(wall)) continue
+    for (const end of ['start', 'end'] as const) {
+      // Schon angedockt (auch unverknüpft geometrisch) → nichts tun
+      if (findAdjacentWalls(wall, end, walls, { ignorePlanLink: true }).length > 0) continue
+      ends.push({
+        wall,
+        end,
+        pt: end === 'start' ? wallStartPoint(wall) : wallEndPoint(wall),
+      })
+    }
+  }
+
+  let best: NearWallEndGap | null = null
+  for (let i = 0; i < ends.length; i += 1) {
+    for (let j = i + 1; j < ends.length; j += 1) {
+      const a = ends[i]!
+      const b = ends[j]!
+      if (a.wall.id === b.wall.id) continue
+      if (Math.abs((a.wall.y ?? 0) - (b.wall.y ?? 0)) > 1) continue
+      const dist = Math.hypot(a.pt.x - b.pt.x, a.pt.z - b.pt.z)
+      if (dist <= CORNER_EPS || dist > WALL_END_SEAL_GAP_CM + 1e-6) continue
+      if (best && dist >= best.dist - 1e-6) continue
+
+      const collinear = wallsCollinearYaw(a.wall, b.wall)
+      // Bewegliche Seite: bei Kollinearität die, deren Achse zum Ziel zeigt;
+      // sonst kürzere Wand (weniger Öffnungsverschiebung).
+      let move = a
+      let meet = b.pt
+      let otherId = b.wall.id
+      if (collinear) {
+        const aFixed = a.end === 'start' ? wallEndPoint(a.wall) : wallStartPoint(a.wall)
+        const bFixed = b.end === 'start' ? wallEndPoint(b.wall) : wallStartPoint(b.wall)
+        const aReach = Math.hypot(b.pt.x - aFixed.x, b.pt.z - aFixed.z)
+        const bReach = Math.hypot(a.pt.x - bFixed.x, a.pt.z - bFixed.z)
+        if (bReach + 0.5 < aReach) {
+          move = b
+          meet = a.pt
+          otherId = a.wall.id
+        }
+      } else if (b.wall.width + 0.5 < a.wall.width) {
+        move = b
+        meet = a.pt
+        otherId = a.wall.id
+      }
+
+      best = {
+        wallId: move.wall.id,
+        end: move.end,
+        meet,
+        otherId,
+        collinear,
+        dist,
+      }
+    }
+  }
+  return best
+}
 
 export type BranchCloseSnap = {
   widthCm: number
@@ -614,7 +1000,7 @@ function partitionOpeningsAt(openings: Opening[], atCm: number): { first: Openin
   return { first, second }
 }
 
-/** Teilt eine Studio-Wand am Maß `atCm` vom Start; beide Stücke mindestens 48 cm. */
+/** Teilt eine Studio-Wand am Maß `atCm` vom Start; beide Stücke mindestens ein Greifer-Schritt. */
 export function splitStudioWallAt(wall: Wall, atCm: number): [Wall, Wall] | null {
   if (!isStudioWall(wall) || isProtectedFromPoseReverse(wall)) return null
   if (atCm < STUDIO_WALL_WIDTH_STEP - 0.5 || wall.width - atCm < STUDIO_WALL_WIDTH_STEP - 0.5) {
@@ -674,7 +1060,10 @@ export function snapBranchClose(
   const dir = unitXZ(wallAlongDelta(awayYawDeg, 1))
   const exclude = new Set(opts.excludeIds)
   const step = wallWidthStepCm(awayYawDeg)
-  const minT = step - 0.5
+  const magnet = isDiagonalPlanYaw(awayYawDeg)
+    ? BRANCH_CLOSE_MAGNET_DIAGONAL_CM
+    : BRANCH_CLOSE_MAGNET_CM
+  const minT = Math.max(step, STUDIO_WALL_WIDTH_STEP) - 0.5
   const perpEps = isDiagonalPlanYaw(awayYawDeg)
     ? Math.max(BRANCH_CLOSE_PERP_EPS, widthCm * 0.02)
     : CORNER_EPS
@@ -692,7 +1081,7 @@ export function snapBranchClose(
   ) => {
     if (t < minT) return
     const dist = Math.abs(t - widthCm)
-    if (dist > step + 1e-6) return
+    if (dist > magnet + 1e-6) return
     if (dist < bestDist - 0.5 || (Math.abs(dist - bestDist) <= 0.5 && rank < bestRank)) {
       bestDist = dist
       bestWidth = t
@@ -849,9 +1238,10 @@ export function poseWallEndAt(
   wall: Wall,
   wallEnd: 'start' | 'end',
   targetCorner: { x: number; z: number },
-  opts?: { lockYaw?: boolean },
+  opts?: { lockYaw?: boolean; preserveLocalOpenings?: boolean },
 ): Wall | null {
   if (!isStudioWall(wall)) return null
+  const prevStart = wallStartPoint(wall)
   const fixed = wallEnd === 'start' ? wallEndPoint(wall) : wallStartPoint(wall)
   const lockYaw = opts?.lockYaw !== false
   let mx = targetCorner.x
@@ -878,14 +1268,32 @@ export function poseWallEndAt(
   const width = Math.hypot(dx, dz)
   const yawDeg = normalizeYawDeg((Math.atan2(-dz, dx) * 180) / Math.PI)
   if (width < wallWidthStepCm(yawDeg) - 0.01) return null
-  return normalizeStudioWall({
-    ...cloneWall(wall),
-    originX: from.x,
-    originZ: from.z,
-    x: from.x,
-    yawDeg,
-    width,
-  })
+  let next = normalizeStudioWall(
+    {
+      ...cloneWall(wall),
+      originX: from.x,
+      originZ: from.z,
+      x: from.x,
+      yawDeg,
+      width,
+    },
+    { keepOpenings: true },
+  )
+  // Start verschoben, Ende fix: optional Öffnungen in Weltlage halten (nicht bei Nachbar-Mitwachsen).
+  if (wallEnd === 'start' && opts?.preserveLocalOpenings !== true) {
+    const u = wallAlongDelta(next.yawDeg ?? 0, 1)
+    const ulen = Math.hypot(u.x, u.z) || 1
+    const shift =
+      (prevStart.x - (next.originX ?? next.x)) * (u.x / ulen) +
+      (prevStart.z - (next.originZ ?? 0)) * (u.z / ulen)
+    if (Math.abs(shift) > 1e-6) {
+      next = {
+        ...next,
+        openings: next.openings.map((opening) => ({ ...opening, x: opening.x + shift })),
+      }
+    }
+  }
+  return next
 }
 
 export function applyWallGripCornerTarget(
@@ -912,7 +1320,7 @@ export function applyWallGripCornerTarget(
   return translateStudioCorner(next, oldCorner, newCorner, wallId, building.id)
 }
 
-/** Rasterschritt senkrecht zur Wand (Front): 48 cm achsparallel, sonst Diagonale. */
+/** Rasterschritt senkrecht zur Wand (Front): 8 cm achsparallel, sonst Diagonale. */
 export function frontMoveStepCm(wall: Wall): number {
   const out = facadeOutward(wall.yawDeg ?? 0, wall.panelFlip ?? true)
   return wallWidthStepCm(normalizeYawDeg((Math.atan2(-out.z, out.x) * 180) / Math.PI))
@@ -2223,6 +2631,8 @@ export function inheritFrontsFromNeighbors(
   let changed = false
   const walls = building.walls.map((wall) => {
     if (!targets.has(wall.id) || !isStudioWall(wall)) return wall
+    // Erker-/Balkon-Wände: Außenseite ist geometrisch festgelegt (weg vom Innenraum).
+    if (wall.bayParentId || wall.bayWindow) return wall
     let neighbor: Wall | undefined
     for (const end of ['start', 'end'] as const) {
       const adj =
@@ -2296,6 +2706,8 @@ export function unifyGroupFrontOrientation(state: FacadeState, seedWallId: strin
   let changed = false
   const walls = building.walls.map((wall) => {
     if (wall.groupId !== groupId || !isStudioWall(wall)) return wall
+    // Erker-Schenkel nie umdrehen — sonst zeigt eine Seite nach innen (v2.0.224).
+    if (wall.bayParentId || wall.bayWindow) return wall
     if (!yawAligned(wall.yawDeg ?? 0, referenceYaw)) return wall
     if ((wall.panelFlip ?? true) === referenceFlip) return wall
     changed = true

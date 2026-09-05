@@ -42,17 +42,18 @@ export interface SceneAppearance {
   lineStrokeScale: number
 }
 
+/** Neutral-Studio-Tagesbeige — siehe `STUDIO_DAY_BEIGE` in `studioStage.ts`. */
 export const DEFAULT_SCENE_APPEARANCE: SceneAppearance = {
-  background: '#555555',
-  ground: '#555555',
-  skyReflection: '#555555',
+  background: '#E8E3DD',
+  ground: '#E8E3DD',
+  skyReflection: '#E8E3DD',
   lineStrokeScale: 1,
 }
 
 /** Alte Defaults — gelten als nicht vom Nutzer überschrieben und werden migriert. */
-export const PREVIOUS_SKY_REFLECTION_DEFAULTS = ['#ffffff', '#3a6084'] as const
-export const PREVIOUS_BACKGROUND_DEFAULTS = ['#ffffff'] as const
-export const PREVIOUS_GROUND_DEFAULTS = ['#ffffff'] as const
+export const PREVIOUS_SKY_REFLECTION_DEFAULTS = ['#ffffff', '#3a6084', '#555555'] as const
+export const PREVIOUS_BACKGROUND_DEFAULTS = ['#ffffff', '#555555'] as const
+export const PREVIOUS_GROUND_DEFAULTS = ['#ffffff', '#555555'] as const
 
 function normalizeLineStrokeScale(value: unknown): number {
   const n = typeof value === 'number' ? value : Number(value)

@@ -1,6 +1,5 @@
 import type { Opening, Wall } from '../types/facade'
 import { wallElevationAlong } from './elevation'
-import { openingForShellCut, openingWallFaceMaskPolyline } from '../utils/openingGeometry'
 
 /** Anzeige-Toleranz für Hilfslinien (cm); Snap bleibt 8 cm. */
 export const OPENING_GUIDE_TOLERANCE = 0.5
@@ -82,35 +81,15 @@ const WALL_Y_MARKS: { kind: OpeningGuideKind; frac: number }[] = [
 ]
 
 function edgesOf(opening: Opening): EdgeValues {
-  const shell = openingForShellCut(opening)
-  const pts = openingWallFaceMaskPolyline(shell, 0)
-  if (pts.length < 2) {
-    return {
-      left: opening.x,
-      right: opening.x + opening.width,
-      bottom: opening.y,
-      top: opening.y + opening.height,
-      midX: opening.x + opening.width / 2,
-      midY: opening.y + opening.height / 2,
-    }
-  }
-  let left = Infinity
-  let right = -Infinity
-  let bottom = Infinity
-  let top = -Infinity
-  for (const p of pts) {
-    left = Math.min(left, p.x)
-    right = Math.max(right, p.x)
-    bottom = Math.min(bottom, p.y)
-    top = Math.max(top, p.y)
-  }
+  // Nenn-Rechteck der Öffnung (ohne Reveal-Embed/Masken-Aufweitung) —
+  // Abstandslabels müssen zum sichtbaren Elementabstand passen, nicht zum erweiterten Mauerloch.
   return {
-    left,
-    right,
-    bottom,
-    top,
-    midX: (left + right) / 2,
-    midY: (bottom + top) / 2,
+    left: opening.x,
+    right: opening.x + opening.width,
+    bottom: opening.y,
+    top: opening.y + opening.height,
+    midX: opening.x + opening.width / 2,
+    midY: opening.y + opening.height / 2,
   }
 }
 
@@ -330,9 +309,15 @@ function pushDistanceLine(
   lines.push(line)
 }
 
+function edgesOverlap1D(a0: number, a1: number, b0: number, b1: number, minOverlap: number): boolean {
+  const lo = Math.max(a0, b0)
+  const hi = Math.min(a1, b1)
+  return hi - lo >= minOverlap
+}
+
 /**
  * Abstandslinien zum nächsten Objekt in vier Himmelsrichtungen (wand-lokal bzw. Aufriss-X).
- * Horizontal über Wandgrenzen auf derselben Etage (SVG); vertikal nur auf derselben Wand.
+ * Horizontal nur Öffnungen mit Y-Überlappung (gleiche Reihe); vertikal nur mit X-Überlappung.
  */
 export function computeOpeningDistanceLines(
   wall: Wall,
@@ -345,6 +330,7 @@ export function computeOpeningDistanceLines(
   const activeRightGlobal = globalOpeningX(wall, a.right)
   const wallLeftGlobal = globalOpeningX(wall, 0)
   const wallRightGlobal = globalOpeningX(wall, wall.width)
+  const minOverlap = Math.min(8, Math.max(1, (a.top - a.bottom) * 0.15))
 
   let nearestLeftGlobal = wallLeftGlobal
   let nearestRightGlobal = wallRightGlobal
@@ -353,6 +339,7 @@ export function computeOpeningDistanceLines(
     if (peerWall.id !== wall.id) {
       const peerLeft = globalOpeningX(peerWall, 0)
       const peerRight = globalOpeningX(peerWall, peerWall.width)
+      // Wandkanten nur wenn Etagen-Fußabdruck vertikal zur aktiven Öffnung passt (volle Wandhöhe).
       if (peerRight <= activeLeftGlobal + 1e-6) {
         nearestLeftGlobal = Math.max(nearestLeftGlobal, peerRight)
       }
@@ -361,8 +348,10 @@ export function computeOpeningDistanceLines(
       }
     }
     for (const peer of peerWall.openings) {
+      if (peer.hidden) continue
       if (peerWall.id === wall.id && peer.id === active.id) continue
       const p = edgesOf(peer)
+      if (!edgesOverlap1D(a.bottom, a.top, p.bottom, p.top, minOverlap)) continue
       const peerLeftGlobal = globalOpeningX(peerWall, p.left)
       const peerRightGlobal = globalOpeningX(peerWall, p.right)
       if (peerRightGlobal <= activeLeftGlobal + 1e-6) {
@@ -377,64 +366,41 @@ export function computeOpeningDistanceLines(
   const leftDist = activeLeftGlobal - nearestLeftGlobal
   if (leftDist >= 1) {
     const localNearest = nearestLeftGlobal - wallLeftGlobal
-    if (localNearest >= 0 && localNearest <= a.left + 1e-6) {
-      pushDistanceLine(lines, {
-        direction: 'left',
-        distanceCm: Math.round(leftDist),
-        wallId: wall.id,
-        fromX: a.left,
-        fromY: a.midY,
-        toX: localNearest,
-        toY: a.midY,
-        space: 'wallLocal',
-      })
-    } else {
-      pushDistanceLine(lines, {
-        direction: 'left',
-        distanceCm: Math.round(leftDist),
-        wallId: wall.id,
-        fromX: activeLeftGlobal,
-        fromY: a.midY,
-        toX: nearestLeftGlobal,
-        toY: a.midY,
-        space: 'elevationX',
-      })
-    }
+    // Auch Endpunkte knapp außerhalb der Wand lokal zeichnen (3D filtert elevationX sonst weg).
+    pushDistanceLine(lines, {
+      direction: 'left',
+      distanceCm: Math.round(leftDist),
+      wallId: wall.id,
+      fromX: a.left,
+      fromY: a.midY,
+      toX: localNearest,
+      toY: a.midY,
+      space: 'wallLocal',
+    })
   }
 
   const rightDist = nearestRightGlobal - activeRightGlobal
   if (rightDist >= 1) {
     const localNearest = nearestRightGlobal - wallLeftGlobal
-    if (localNearest >= a.right - 1e-6 && localNearest <= wall.width + 1e-6) {
-      pushDistanceLine(lines, {
-        direction: 'right',
-        distanceCm: Math.round(rightDist),
-        wallId: wall.id,
-        fromX: a.right,
-        fromY: a.midY,
-        toX: localNearest,
-        toY: a.midY,
-        space: 'wallLocal',
-      })
-    } else {
-      pushDistanceLine(lines, {
-        direction: 'right',
-        distanceCm: Math.round(rightDist),
-        wallId: wall.id,
-        fromX: activeRightGlobal,
-        fromY: a.midY,
-        toX: nearestRightGlobal,
-        toY: a.midY,
-        space: 'elevationX',
-      })
-    }
+    pushDistanceLine(lines, {
+      direction: 'right',
+      distanceCm: Math.round(rightDist),
+      wallId: wall.id,
+      fromX: a.right,
+      fromY: a.midY,
+      toX: localNearest,
+      toY: a.midY,
+      space: 'wallLocal',
+    })
   }
 
   let nearestBottom = 0
   let nearestTop = wall.height
+  const minXOverlap = Math.min(8, Math.max(1, (a.right - a.left) * 0.15))
   for (const peer of wall.openings) {
-    if (peer.id === active.id) continue
+    if (peer.hidden || peer.id === active.id) continue
     const p = edgesOf(peer)
+    if (!edgesOverlap1D(a.left, a.right, p.left, p.right, minXOverlap)) continue
     if (p.top <= a.bottom + 1e-6) nearestBottom = Math.max(nearestBottom, p.top)
     if (p.bottom >= a.top - 1e-6) nearestTop = Math.min(nearestTop, p.bottom)
   }
@@ -466,6 +432,10 @@ export function computeOpeningDistanceLines(
       space: 'wallLocal',
     })
   }
+
+  // #region agent log
+  fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c6b426'},body:JSON.stringify({sessionId:'c6b426',runId:'pre-fix',hypothesisId:'D',location:'openingGuides.ts:computeOpeningDistanceLines',message:'distance edges',data:{openingId:active.id,wallId:wall.id,local:{x:active.x,w:active.width,y:active.y,h:active.height},edges:a,activeLeftGlobal,activeRightGlobal,nearestLeftGlobal,nearestRightGlobal,leftDist,rightDist,bottomDist,topDist,labels:lines.map((l)=>({dir:l.direction,cm:l.distanceCm,fromX:l.fromX,toX:l.toX,fromY:l.fromY,toY:l.toY,space:l.space})),wallW:wall.width},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
 
   return lines
 }

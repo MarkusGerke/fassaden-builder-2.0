@@ -188,6 +188,19 @@ export function centeredOpeningX(
   return snapToGrid(centerX - newWidth / 2, openingCenterGrid(grid))
 }
 
+/** X bei Breitenänderung: `right` = linke Kante fest, `left` = rechte Kante fest. */
+export function anchoredOpeningX(
+  opening: Pick<Opening, 'x' | 'width'>,
+  newWidth: number,
+  grow: 'left' | 'right',
+  grid: number = GRID_SIZE,
+): number {
+  if (grow === 'right') {
+    return snapToGrid(opening.x, openingCenterGrid(grid))
+  }
+  return snapToGrid(opening.x + opening.width - newWidth, openingCenterGrid(grid))
+}
+
 function mapWall(
   state: FacadeState,
   wallId: string,
@@ -544,7 +557,14 @@ export function addOpening(
     const useMasonry = wallUsesOpeningMasonrySnap(wall)
     let placed = opening
     if (useMasonry) {
-      placed = { ...opening, ...alignOpeningToMasonry(wall, allWalls, opening) }
+      // Nur Position an Fugen; Bibliotheksmaße (z. B. 96×192) bleiben erhalten.
+      placed = {
+        ...opening,
+        ...alignOpeningToMasonry(wall, allWalls, opening, {
+          snapWidth: false,
+          snapHeight: false,
+        }),
+      }
     }
     cloned.openings = [
       ...wall.openings,
@@ -793,8 +813,8 @@ export function updateOpening(
           patch.height !== undefined)
       ) {
         const aligned = alignOpeningToMasonry(wall, allWalls, merged, {
-          snapWidth: patch.width !== undefined || patch.x !== undefined,
-          snapHeight: patch.height !== undefined || patch.y !== undefined,
+          snapWidth: patch.width !== undefined,
+          snapHeight: patch.height !== undefined,
         })
         merged = { ...merged, ...aligned }
       }

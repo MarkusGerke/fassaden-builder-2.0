@@ -29,6 +29,8 @@ import {
   setGlassGroundReflectionColor,
   bindMaterialsToGlassEnv,
   clearGlassEnvironmentBindings,
+  setExteriorEnvFillFactor,
+  syncEnvMapFillIntensities,
 } from './utils/threeColors'
 import {
   DEFAULT_GLASS_IOR,
@@ -44,7 +46,7 @@ import {
   markSceneReflectionsDirty,
   reflectionViewBucket,
 } from './studio/roomEnvironment'
-import { BAY_WINDOW_PRESETS, buildBayWindowWalls, buildBayWindowAtPose, bayWindowGhostSegments, bayWallSelectionIds, type BayWindowPreset, bayPresetKind} from './studio/bayWindow'
+import { BAY_WINDOW_PRESETS, buildBayWindowWalls, buildBayWindowAtPose, bayWindowGhostSegments, bayWallSelectionIds, bayMetaForWall, type BayWindowPreset, bayPresetKind, scaleBayPresetToMouthWidth, bayMinMouthWidthCm, bayMouthWidthCm, bayWindowPreviewSvg } from './studio/bayWindow'
 import {
   DEFAULT_CEILING_COLOR,
   DEFAULT_FRAME_COLOR,
@@ -114,6 +116,7 @@ import {
   removeOpening,
   removeProfilesFromOpenings,
   centeredOpeningX,
+  anchoredOpeningX,
   replaceOpeningsWithPreset,
   normalizeOpeningSillOuter,
   outerSillUsesProfile,
@@ -253,12 +256,19 @@ import {
   isOwnLiveFacadeHash,
 } from './utils/share'
 import { openingDragFloatLocalZ, wallLocalToWorld } from './utils/liveDrag'
+import {
+  allClientPointsInRect,
+  lightMarkerSiteLocalCorners,
+  normalizeClientRect,
+  openingFaceSiteLocalCorners,
+  wallObbSiteLocalCorners,
+  type SiteLocalPoint,
+} from './utils/marqueeSelect'
 import { facadeHasNeedsReview } from './utils/schemaMigrations'
 import {
   buildLayerOrder,
   floorIndex,
   floorLabel,
-  layerIndexForWall,
   type LayerItem,
 } from './utils/layers'
 import { matchingCladdings, resolveCladding } from './meshes/catalog'
@@ -326,7 +336,7 @@ import {
   showFloorResizeGrid,
   showWallFacePlacementGrid,
 } from './studio/placementGrid'
-import { computeSegmentAlignGuides, computeWallMoveGuides, snapPointToWallEdges } from './studio/wallGuides'
+import { computeSegmentAlignGuides, computeWallMoveGuides, snapBranchLengthToWallEdges } from './studio/wallGuides'
 import {
   applyDirectionalSun,
   applyYawAroundYToBox,
@@ -366,6 +376,8 @@ import { createStudioWall, isStudioWall, stretchStudioFacade, studioWallTransfor
   studioFacadeOutwardDepth,
   alongWidthDeltaFromMove,
   snapBranchYawDeg,
+  linkedCornerNeighbor,
+  skewStudioWallToDiagonal,
   attachAngledWallFromEnd,
   attachAngledWallFromEndForVerticalStack,
   findVerticalAlignedWalls,
@@ -384,6 +396,17 @@ import {
   wallSplitRangeAt,
   wallSplitStack,
 } from './studio/wallSplit'
+import {
+  bayHostWall,
+  canSlideBaySegment,
+  flattenBayToFlatWall,
+  insertBayAsWallSegment,
+  bayPresetFittedToWallWidth,
+  baySlideDeltaFromWorldMove,
+  replaceWallWithBayPreset,
+  slideBaySegmentAlong,
+  swapBayPreset,
+} from './studio/baySegment'
 import {
   defaultUpperBandWidth,
   isTwoHorizontalBandCladding,
@@ -444,6 +467,8 @@ import { computeOpeningGuidesForRefs, computeOpeningDistanceLinesForRefs } from 
 import { panelCourseCount, visiblePanelRowRange } from './studio/panelLayout'
 import {
   DEFAULT_STUDIO_PANEL,
+  DUPLICATE_GAP_CM,
+  PLAN_CLOSE_GAP_CM,
   PLAN_GRID,
   STUDIO_DEFAULT_HEIGHT,
   STUDIO_MIN_SIZE,
@@ -473,7 +498,7 @@ import {
 } from './studio/roof'
 import { buildingCentroid, canRotateBuildingGeometry, canRotateStudioBuilding, rotateBuildingByDeg, rotateStudioBuilding } from './studio/rotateBuilding'
 import { defaultOpeningStairs, normalizeOpeningStairs, snapStairMeasure, syncStairsToDoorWidth } from './studio/stairs'
-import { normalizeOpeningPediment, pedimentFormIsClosed } from './studio/pediment'
+import { normalizeOpeningPediment, pedimentFormIsClosed, pedimentFormSupportsGableDims } from './studio/pediment'
 import { normalizeOpeningTaperedField } from './studio/taperedField'
 import {
   normalizeOpeningRollerShutter,
@@ -537,11 +562,11 @@ import {
   disablePcssShadows,
   enablePcssShadows,
   invalidateShadowMaterials,
-  setPcssLiteMode,
   shadowFrustumWidthCm,
   updatePcssShadowParameters,
 } from './lighting/pcssShadows'
 import {
+  exteriorEnvFillFromCelestial,
   prepareCelestialShadowBox,
   resolveCelestialState,
   skyPaletteFromCelestial,
@@ -563,7 +588,7 @@ import {
   isStudioStage,
   loadStageEnvironment,
   saveStageEnvironment,
-  studioEnvironmentHex,
+  studioTintHex,
   studioFlatFloorSize,
   studioSphereRadius,
   STUDIO_AMBIENT_BOOST,
@@ -689,6 +714,8 @@ let bloomKeepFullPixelRatioDuringOrbit = false
  * Früh deklariert: `applyRendererPixelRatio()` liest den Wert beim Modul-Start.
  */
 let lightEditMode = false
+/** Entwurf / Vorschau / Render — früh: Orbit-Pixelratio liest den Modus. */
+let presentationMode: PresentationMode = loadPresentationMode()
 /** Session: Laub auf dem Boden platzieren (Klick/Zug); Wind wirkt auch danach. */
 let leafEditMode = false
 /** Laub streuen während Pointer gezogen wird. */
@@ -702,10 +729,13 @@ let leafWindLastZ = 0
 let leafWindLastMs = 0
 let leafPersistTimer = 0
 
-/** Früher adaptives PCSS-Lite — bleibt als Stub für Aufrufe im Animate-Loop. */
-function orbitProbeReset() {}
-function orbitProbeFrame(_now: number) {
-  void _now
+/**
+ * Orbit darf weiche Schatten nicht „kurz hart“ wirken lassen.
+ * Volle Pixelratio bei Bloom und im Render-Modus (PCSS bei DPR 1 wirkt hart).
+ */
+function keepFullPixelRatioDuringOrbit(): boolean {
+  if (bloomKeepFullPixelRatioDuringOrbit) return true
+  return !presentationUsesWorkLikeShading(presentationMode)
 }
 
 /** Licht-Modus: Transmission-Pass (physisches Glas) mit halber Auflösung — viertelt dessen Kosten. */
@@ -715,7 +745,7 @@ function applyRendererPixelRatio() {
   // Licht-Modus: Pixel-Ratio 1 wie Orbit-Lite. Die Fragment-Kosten skalieren mit Lichtanzahl ×
   // Pixelzahl (Glas-Transmission rendert die Szene zweimal); 1,5² = 2,25× weniger Fragmente.
   const cap =
-    lightEditMode || (orbitLite && !bloomKeepFullPixelRatioDuringOrbit) ? 1 : MAX_PIXEL_RATIO
+    lightEditMode || (orbitLite && !keepFullPixelRatioDuringOrbit()) ? 1 : MAX_PIXEL_RATIO
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, cap))
   renderer.transmissionResolutionScale = lightEditMode ? LIGHT_EDIT_TRANSMISSION_SCALE : 1
   // Composer erst nach Init vorhanden; danach Ratio immer mitsynchronisieren (sonst Bloom-Pfad weich/pixelig).
@@ -855,9 +885,7 @@ function setOrbitLite(active: boolean) {
     clearOrbitLiteTimer()
     if (!orbitLite) {
       orbitLite = true
-      orbitProbeReset()
-      // Navigation: 1-Tap-Schatten (Uniform) — Idle bleibt weiches PCSS.
-      setPcssLiteMode(true)
+      // Kein PCSS-Lite, kein DPR-Drop im Render: sonst wirken Schatten/Wand kurz hart bzw. umgefärbt.
       applyRendererPixelRatio()
     }
     markViewportDirty()
@@ -866,8 +894,6 @@ function setOrbitLite(active: boolean) {
   clearOrbitLiteTimer()
   if (!orbitLite) return
   orbitLite = false
-  orbitProbeReset()
-  setPcssLiteMode(false)
   applyRendererPixelRatio()
   // EnvMap erst nach kurzer Pause — sonst 1‑s-Hänger direkt am Gestenende.
   scheduleShadowMapUpdate({ reflections: true })
@@ -1286,8 +1312,10 @@ function sceneColorsForLighting(): { sky: string; ground: string; background: st
   }
   if (isStudioStage(stageEnvironment)) {
     const celestial = resolveCelestialState(sunSettings)
-    const hex = studioEnvironmentHex(celestial.twilightFactor)
-    return { sky: hex, ground: hex, background: hex }
+    const bg = studioTintHex(sceneAppearance.background, celestial.twilightFactor)
+    const ground = studioTintHex(sceneAppearance.ground, celestial.twilightFactor)
+    // Kuppel/Reflexion folgen dem Hintergrund; Boden separat wählbar.
+    return { sky: bg, ground, background: bg }
   }
   return {
     sky: sceneAppearance.skyReflection,
@@ -1368,8 +1396,8 @@ function allowedLibraryTabs(): Set<LibraryTab> {
     if (part === 'trimBand') return new Set<LibraryTab>(['trimBands'])
     if (part === 'label') return new Set<LibraryTab>(['label'])
     // Fassade (cladding) = Wand ganz: dieselben Kataloge (Highlight bleibt auf Paneel).
+    // Wände/Licht nur ohne Auswahl — bei Wand auf der Bühne redundant.
     return new Set<LibraryTab>([
-      'walls',
       'bay',
       'balcony',
       'panels',
@@ -1380,7 +1408,6 @@ function allowedLibraryTabs(): Set<LibraryTab> {
       'windows',
       'doors',
       'niches',
-      'lights',
     ])
   }
 
@@ -1551,48 +1578,6 @@ function wallEndPiecePreviewSvg(hand: EndPieceHand = 'left'): string {
   return `<svg viewBox="0 0 ${size} ${size}" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
     <rect x="${pad}" y="${pad}" width="${arm}" height="${bar}" fill="#d8d0c4" stroke="#6a6358" stroke-width="1.5"/>
     <rect x="${vx}" y="${pad}" width="${bar}" height="${arm}" fill="#cfc6b8" stroke="#6a6358" stroke-width="1.2"/>
-  </svg>`
-}
-
-function bayWindowPreviewSvg(preset: BayWindowPreset): string {
-  const w = preset.frontWidthCm / 8
-  const d = preset.depthCm / 8
-  const pad = 6
-  const totalW = w + d * 2 + pad * 2
-  const totalH = d + pad * 2
-  const ox = pad + d
-  const oy = pad
-  const inward = (preset.kind ?? 'bay') === 'loggia'
-  const fill = inward ? '#c4cdd8' : '#d8d0c4'
-  const fillSide = inward ? '#b8c2cf' : '#cfc6b8'
-  if (preset.shape === 'round') {
-    // Halbkreis-Skizze: Sehne oben (Fassade), Bogen nach unten (= außen) bzw. nach oben bei Loggia.
-    const cy = inward ? oy + d : oy
-    const sweep = inward ? 0 : 1
-    return `<svg viewBox="0 0 ${totalW} ${totalH}" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <path d="M ${ox},${cy} A ${w / 2},${d} 0 0 ${sweep} ${ox + w},${cy} Z" fill="${fill}" stroke="#6a6358" stroke-width="1.5"/>
-      <line x1="${ox}" y1="${cy}" x2="${ox + w}" y2="${cy}" stroke="#6a6358" stroke-width="1.2"/>
-    </svg>`
-  }
-  if (preset.shape === 'angled45') {
-    const y0 = inward ? oy + d : oy
-    const y1 = inward ? oy : oy + d
-    return `<svg viewBox="0 0 ${totalW} ${totalH}" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <polygon points="${ox},${y0} ${ox + w},${y0} ${ox + w + d},${y1} ${ox - d},${y1}" fill="${fill}" stroke="#6a6358" stroke-width="1.5"/>
-    </svg>`
-  }
-  // U-Form (Erker / Balkon / Loggia)
-  if (inward) {
-    return `<svg viewBox="0 0 ${totalW} ${totalH}" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <rect x="${ox}" y="${oy + d - 8}" width="${w}" height="8" fill="${fill}" stroke="#6a6358" stroke-width="1.5"/>
-      <rect x="${ox - d}" y="${oy}" width="${d}" height="${d - 8}" fill="${fillSide}" stroke="#6a6358" stroke-width="1.2"/>
-      <rect x="${ox + w}" y="${oy}" width="${d}" height="${d - 8}" fill="${fillSide}" stroke="#6a6358" stroke-width="1.2"/>
-    </svg>`
-  }
-  return `<svg viewBox="0 0 ${totalW} ${totalH}" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-    <rect x="${ox}" y="${oy}" width="${w}" height="8" fill="${fill}" stroke="#6a6358" stroke-width="1.5"/>
-    <rect x="${ox - d}" y="${oy + 8}" width="${d}" height="${d - 8}" fill="${fillSide}" stroke="#6a6358" stroke-width="1.2"/>
-    <rect x="${ox + w}" y="${oy + 8}" width="${d}" height="${d - 8}" fill="${fillSide}" stroke="#6a6358" stroke-width="1.2"/>
   </svg>`
 }
 
@@ -1937,6 +1922,8 @@ function refreshWallMoveGuides(wallIds: string[]) {
   )
   const guides = computeWallMoveGuides(active, floorWalls)
   floorPlanView.showWallMoveGuides(guides)
+  const height = Math.max(...active.map((w) => w.height), activeWallHeight())
+  facade.setPlanWallGuides(guides, { floorY, height })
 }
 
 function disposeWallDockGhostObject(obj: THREE.Object3D) {
@@ -2358,6 +2345,11 @@ function updateWallDockPreviewAtClient(clientX: number, clientY: number, presetI
     (w) => isStudioWall(w) && Math.abs((w.y ?? 0) - floorY) < 1,
   )
   floorPlanView.showWallMoveGuides(computeSegmentAlignGuides(segments, floorWalls))
+  const dockHeight = Math.max(activeWallHeight(), 120)
+  facade.setPlanWallGuides(computeSegmentAlignGuides(segments, floorWalls), {
+    floorY,
+    height: dockHeight,
+  })
   showPlacementGridForDockTargets(
     place.gx * PLAN_GRID,
     place.gz * PLAN_GRID,
@@ -2372,6 +2364,7 @@ function clearWallDockPreview() {
   clearWallDockSceneGhost()
   clearPlacementGridOverlay()
   floorPlanView.clearWallMoveGuides()
+  facade.clearPlanWallGuides()
 }
 
 /** Übernimmt yawDeg/panelFlip von kollinearer Nachbarwand am Andock-Knoten (Front bündig). */
@@ -2888,11 +2881,17 @@ function applyPanelPresetFromLibrary(
   if (!canEditActiveBuildingNow()) return
   let ids: string[]
   if (options?.wallId) {
-    const multi =
-      editor.selectedWallIds.includes(options.wallId) && editor.selectedWallIds.length > 1
-    ids = multi ? [...editor.selectedWallIds] : [options.wallId]
+    const anchorEditor: EditorState = editor.selectedWallIds.includes(options.wallId)
+      ? editor
+      : {
+          ...editor,
+          selectedWallIds: [options.wallId],
+          selectedOpenings: [],
+        }
+    ids = editWallTargets(state, anchorEditor, editScope, editFacadeYawFilter)
+    if (ids.length === 0) ids = [options.wallId]
   } else {
-    ids = [...editor.selectedWallIds]
+    ids = scopedWallIds()
   }
   ids = ids.filter((id) => canEditWallNow(id) && isStudioWall(getWall(state, id)!))
   if (ids.length === 0) {
@@ -3223,11 +3222,11 @@ function tryWallSplitAtEvent(event: { clientX: number; clientY: number }): boole
   }
   commitState(finalizeStudioGeometry(result.state), {
     ...createDefaultEditorState(),
-    selectedWallIds: [result.middleId],
+    selectedWallIds: result.middleIds,
   })
   rebuildFloorPlanOverlay()
   const widthCm = Math.round(target.range.endCm - target.range.startCm)
-  planStatus.textContent = `Segment ${widthCm} cm herausgelöst (${result.middleIds.length} Etage${result.middleIds.length === 1 ? '' : 'n'}) — Links/Rechts ± verlängert, Paneele/Farben wirken nur auf dieses Stück`
+  planStatus.textContent = `Segment ${widthCm} cm herausgelöst (${result.middleIds.length} Etage${result.middleIds.length === 1 ? '' : 'n'}) — Erker-Tab: Segment durch 90°/45°-Erker austauschen`
   return true
 }
 
@@ -3344,10 +3343,10 @@ function applyDraftPresetOpeningsIncrementalToWall(
     ...b,
     walls: b.walls.map((item) => {
       if (item.id !== wallId || !isStudioWall(item)) return cloneWall(item)
-      let openings = openingsWithinWallWidth(item.openings, item.width)
+      // Bestehende Öffnungen behalten — nicht wegen kürzerer Wand löschen.
+      let openings = [...item.openings]
       if (Math.abs(delta) < 0.5 || !presetId) {
-        if (openings.length === item.openings.length) return item
-        return alignOpeningElementsToWallFront({ ...cloneWall(item), openings })
+        return item
       }
 
       const segment = wallPresetLengthCm(presetId)
@@ -3617,7 +3616,8 @@ function updateWallResizeGizmos() {
     host.hidden = true
     return
   }
-  const showSideGrips = walls.length === 1
+  const showSideGrips =
+    walls.length === 1 && !wall.bayWindow && !wall.bayParentId && !wall.bayRole
   const frontLocked = frontGripLockedForSelection(
     wallResizeDrag ? (wallResizeDrag.moveWallIds ?? [wall.id]) : editor.selectedWallIds,
   )
@@ -3784,9 +3784,34 @@ function applyWallResizePreview(
 
   if (shift && floorDelta) {
     const { dx, dz } = floorDelta
+    const buildingNow = activeBuilding(drag.baseState)
+    const linkedCorner = linkedCornerNeighbor(wall, wallEnd, buildingNow.walls)
     const yaw = snapBranchYawDeg(wall.yawDeg ?? 0, wallEnd, dx, dz)
+
+    // Verknüpfte Ecke (90° oder 135°): niemals neue Wand — nur Achsen-Shift oder Winkel umschalten.
+    if (linkedCorner) {
+      if (yaw === null) {
+        const raw = alongWidthDeltaFromMove(wall.yawDeg ?? 0, wallEnd, dx, dz)
+        const delta = clampWallResizeDelta(drag.grip, raw, drag.baseWidth, drag.baseStoreyHeight, wall.yawDeg ?? 0)
+        if (Math.abs(delta) < 0.5) return drag.baseState
+        drag.branchWallId = undefined
+        planStatus.textContent = `Shift: Segment ${delta > 0 ? '+' : ''}${Math.round(delta)} cm, Folgewände rücken mit`
+        return withDraftPresetOpeningsAfterResize(
+          finalizeStudioGeometry(shiftWallsBeyondEnd(drag.baseState, drag.wallId, wallEnd, delta)),
+          drag,
+        )
+      }
+      drag.branchWallId = undefined
+      planStatus.textContent = 'Shift: Eckenwinkel umschalten (90° ↔ 135°)'
+      return finalizeStudioGeometry(
+        skewStudioWallToDiagonal(drag.baseState, drag.wallId, wallEnd, dx, dz, {
+          selectedWallIds: editor.selectedWallIds,
+        }),
+      )
+    }
+
+    // Freies Ende: Abzweig 45°/90° oder Achsen-Shift.
     if (yaw === null) {
-      // Shift + Ziehen entlang der Achse: Segment strecken und alles jenseits des Endes mitschieben.
       const raw = alongWidthDeltaFromMove(wall.yawDeg ?? 0, wallEnd, dx, dz)
       const delta = clampWallResizeDelta(drag.grip, raw, drag.baseWidth, drag.baseStoreyHeight, wall.yawDeg ?? 0)
       if (Math.abs(delta) < 0.5) return drag.baseState
@@ -3804,23 +3829,27 @@ function applyWallResizePreview(
     const ux = away.x / awayLen
     const uz = away.z / awayLen
     let rawLen = Math.hypot(dx, dz)
-    // Projektion auf Abzweig-Richtung (Maus kann leicht abweichen).
     const alongMouse = dx * ux + dz * uz
     if (alongMouse > 0) rawLen = alongMouse
-    let width = presetSeg ?? snapWallWidthCm(rawLen, yaw)
-    if (width < wallWidthStepCm(yaw) && presetSeg == null) return drag.baseState
-    const freeGuess = { x: joint.x + ux * width, z: joint.z + uz * width }
     const building0 = activeBuilding(drag.baseState)
     const floorY = wall.y ?? 0
     const floorWalls = building0.walls.filter(
       (w) => isStudioWall(w) && Math.abs((w.y ?? 0) - floorY) < 1,
     )
-    const snapped = snapPointToWallEdges(freeGuess, floorWalls, [wall.id, drag.branchWallId].filter(Boolean) as string[])
-    if (snapped.guides.length > 0) {
-      const proj = (snapped.point.x - joint.x) * ux + (snapped.point.z - joint.z) * uz
-      if (proj >= wallWidthStepCm(yaw) * 0.5) {
-        width = presetSeg ?? snapWallWidthCm(proj, yaw)
-      }
+    const edgeSnap = snapBranchLengthToWallEdges(
+      joint,
+      { x: ux, z: uz },
+      rawLen,
+      floorWalls,
+      [wall.id, drag.branchWallId].filter(Boolean) as string[],
+    )
+    let width: number
+    if (edgeSnap && edgeSnap.lengthCm >= wallWidthStepCm(yaw) * 0.5) {
+      width = snapWallWidthCm(edgeSnap.lengthCm, yaw)
+      if (width < wallWidthStepCm(yaw)) return drag.baseState
+    } else {
+      width = presetSeg ?? snapWallWidthCm(rawLen, yaw)
+      if (width < wallWidthStepCm(yaw) && presetSeg == null) return drag.baseState
     }
     if (!drag.branchWallId) drag.branchWallId = createId()
     return withDraftPresetOpeningsAfterResize(
@@ -3840,7 +3869,13 @@ function applyWallResizePreview(
 
   if (floorDelta) {
     const raw = alongWidthDeltaFromMove(wall.yawDeg ?? 0, wallEnd, floorDelta.dx, floorDelta.dz)
-    const delta = clampWallResizeDelta(drag.grip, raw, drag.baseWidth, drag.baseStoreyHeight, wall.yawDeg ?? 0)
+    const delta = clampWallResizeDelta(
+      drag.grip,
+      raw,
+      drag.baseWidth,
+      drag.baseStoreyHeight,
+      wall.yawDeg ?? 0,
+    )
     return withDraftPresetOpeningsAfterResize(
       applyWallResizeDelta(drag.baseState, drag.wallId, drag.grip, wallEnd, delta),
       drag,
@@ -3850,7 +3885,13 @@ function applyWallResizePreview(
   const local = pick3dLocalAt(clientX, clientY)
   if (!local) return drag.baseState
   const raw = wallEnd === 'start' ? drag.anchorLocal.x - local.x : local.x - drag.anchorLocal.x
-  const delta = clampWallResizeDelta(drag.grip, raw, drag.baseWidth, drag.baseStoreyHeight, wall.yawDeg ?? 0)
+  const delta = clampWallResizeDelta(
+    drag.grip,
+    raw,
+    drag.baseWidth,
+    drag.baseStoreyHeight,
+    wall.yawDeg ?? 0,
+  )
   return withDraftPresetOpeningsAfterResize(
     applyWallResizeDelta(drag.baseState, drag.wallId, drag.grip, wallEnd, delta),
     drag,
@@ -3872,7 +3913,7 @@ function updateWallResizeBranchCloseHint(
     next.buildings.find((item) => item.id === next.activeBuildingId) ?? next.buildings[0]
   const walls = building?.walls ?? []
   if (!branch || !branchClosesAgainstWalls(branch, drag.wallId, walls)) {
-    planStatus.textContent = 'Neue Wand 45°/90° · Raster: 48 cm bzw. Diagonale 48×48 · Ecke oder Wand schließt'
+    planStatus.textContent = 'Neue Wand 45°/90° · Raster: 8 cm bzw. Diagonale 8×8 · Ecke oder Wand schließt'
     clearWallDockSceneGhost()
     floorPlanView.clearWallDockPreview()
     return
@@ -3885,8 +3926,117 @@ function updateWallResizeBranchCloseHint(
   updateWallMoveDockHighlight(ids)
 }
 
+function formatWallResizeDeltaLabel(deltaCm: number): string {
+  const rounded = Math.round(deltaCm)
+  if (Math.abs(rounded) < 1) return ''
+  return `${rounded > 0 ? '+' : ''}${rounded} cm`
+}
+
+/** Gelbe Maßlinie: Delta Breite/Höhe/Front zum Drag-Start. */
+function updateWallResizeMeasureOverlay(
+  drag: NonNullable<typeof wallResizeDrag>,
+  next: FacadeState,
+): void {
+  const before = getWall(drag.baseState, drag.wallId)
+  const after = getWall(next, drag.wallId)
+  if (!before || !after) {
+    facade.clearWallResizeMeasure()
+    return
+  }
+
+  if (drag.grip === 'top') {
+    const delta = after.height - before.height
+    const label = formatWallResizeDeltaLabel(delta)
+    if (!label) {
+      facade.clearWallResizeMeasure()
+      return
+    }
+    const start = wallStartPoint(after)
+    const end = wallEndPoint(after)
+    const midX = (start.x + end.x) / 2
+    const midZ = (start.z + end.z) / 2
+    const outward = facadeOutward(after.yawDeg ?? 0, after.panelFlip ?? true)
+    const floatOut =
+      (after.depth ?? WALL_DEPTH) / 2 + studioFacadeOutwardDepth(after) + 4
+    facade.setWallResizeMeasure({
+      from: new THREE.Vector3(
+        midX + outward.x * floatOut,
+        before.y + before.height,
+        midZ + outward.z * floatOut,
+      ),
+      to: new THREE.Vector3(
+        midX + outward.x * floatOut,
+        after.y + after.height,
+        midZ + outward.z * floatOut,
+      ),
+      label,
+    })
+    return
+  }
+
+  if (drag.grip === 'front') {
+    const out = facadeOutward(before.yawDeg ?? 0, before.panelFlip ?? true)
+    const beforeOx = before.originX ?? before.x
+    const beforeOz = before.originZ ?? 0
+    const afterOx = after.originX ?? after.x
+    const afterOz = after.originZ ?? 0
+    const delta = (afterOx - beforeOx) * out.x + (afterOz - beforeOz) * out.z
+    const label = formatWallResizeDeltaLabel(delta)
+    if (!label) {
+      facade.clearWallResizeMeasure()
+      return
+    }
+    const start = wallStartPoint(before)
+    const end = wallEndPoint(before)
+    const midX = (start.x + end.x) / 2
+    const midZ = (start.z + end.z) / 2
+    const y = before.y + before.height / 2
+    const floatOut =
+      (before.depth ?? WALL_DEPTH) / 2 + studioFacadeOutwardDepth(before) + 4
+    const ax = midX + out.x * floatOut
+    const az = midZ + out.z * floatOut
+    facade.setWallResizeMeasure({
+      from: new THREE.Vector3(ax, y, az),
+      to: new THREE.Vector3(ax + out.x * delta, y, az + out.z * delta),
+      label,
+    })
+    return
+  }
+
+  // left / right — Breite am bewegten Ende
+  const delta = after.width - before.width
+  const label = formatWallResizeDeltaLabel(delta)
+  if (!label) {
+    facade.clearWallResizeMeasure()
+    return
+  }
+  const wallEnd = drag.wallEnd ?? 'end'
+  const oldPt = wallEnd === 'start' ? wallStartPoint(before) : wallEndPoint(before)
+  const newPt = wallEnd === 'start' ? wallStartPoint(after) : wallEndPoint(after)
+  const y = before.y + before.height / 2
+  const outward = facadeOutward(before.yawDeg ?? 0, before.panelFlip ?? true)
+  const floatOut =
+    (before.depth ?? WALL_DEPTH) / 2 + studioFacadeOutwardDepth(before) + 4
+  facade.setWallResizeMeasure({
+    from: new THREE.Vector3(
+      oldPt.x + outward.x * floatOut,
+      y,
+      oldPt.z + outward.z * floatOut,
+    ),
+    to: new THREE.Vector3(
+      newPt.x + outward.x * floatOut,
+      y,
+      newPt.z + outward.z * floatOut,
+    ),
+    label,
+  })
+}
+
 function beginWallResizeDrag(wall: Wall, grip: WallResizeGrip, event: PointerEvent) {
   if (!canEditActiveBuildingNow()) return
+  if ((grip === 'left' || grip === 'right') && (wall.bayWindow || wall.bayParentId || wall.bayRole)) {
+    return
+  }
   if (grip === 'front' && frontGripLockedForSelection(editor.selectedWallIds)) return
   const building = activeBuilding()
   const wallEnd = grip === 'left' || grip === 'right' ? visualSideToWallEnd(wall, grip) : undefined
@@ -3926,6 +4076,7 @@ function beginWallResizeDrag(wall: Wall, grip: WallResizeGrip, event: PointerEve
   }
 
   showWallResizeFloorGrid(wall)
+  facade.clearWallResizeMeasure()
   if (isDraftWallModuleEdit()) {
     planStatus.textContent = armedLibraryWallPresetId
       ? 'Entwurf: Greifer in Segment-Schritten der Bibliothek (eine Wand, alle Etagen)'
@@ -3933,10 +4084,10 @@ function beginWallResizeDrag(wall: Wall, grip: WallResizeGrip, event: PointerEve
   } else {
     planStatus.textContent =
       grip === 'top'
-        ? 'Höhe ziehen (24 cm)'
+        ? 'Höhe ziehen (16 cm)'
         : grip === 'front'
           ? 'Wand in Front-Richtung ziehen'
-          : 'Wandkante: 48 cm achsparallel, 45° = Diagonale 48×48 · Shift entlang der Achse: Folgewände rücken mit · Shift schräg: neue Wand'
+          : 'Wandkante: 8 cm achsparallel, 45° = Diagonale 8×8 · Shift entlang der Achse: Folgewände rücken mit · Shift schräg: neue Wand'
   }
 
   controls.enabled = false
@@ -3958,6 +4109,7 @@ function beginWallResizeDrag(wall: Wall, grip: WallResizeGrip, event: PointerEve
       ? [wallResizeDrag.branchWallId]
       : wallResizeDrag.moveWallIds ?? [wallResizeDrag.wallId]
     refreshWallMoveGuides(guideIds)
+    updateWallResizeMeasureOverlay(wallResizeDrag, next)
     markViewportDirty()
   }
   wallResizePointerUp = (upEvent: PointerEvent) => {
@@ -4018,6 +4170,8 @@ function finishWallResizeDrag(event: PointerEvent) {
   clearWallDockSceneGhost()
   floorPlanView.clearWallDockPreview()
   floorPlanView.clearWallMoveGuides()
+  facade.clearPlanWallGuides()
+  facade.clearWallResizeMeasure()
   updateWallResizeGizmos()
   markViewportDirty()
   try {
@@ -4247,20 +4401,35 @@ function matchingOpeningLibraryIds(): { presetIds: Set<string>; templateIds: Set
   } else {
     for (const wall of selectedWalls()) openings.push(...wall.openings)
   }
+  /** Max. Abweichung für Highlight (Fugen-Snap kann 96→104 machen). */
+  const MATCH_TOL_CM = 16
   for (const opening of openings) {
-    const preset = WALL_OPENING_PRESETS.find(
+    const typed = WALL_OPENING_PRESETS.filter(
       (item) =>
+        item.id !== 'opening-empty-96' &&
         item.type === opening.type &&
-        item.width === opening.width &&
-        item.height === opening.height &&
         (item.type !== 'cutout' || (item.cutoutShape ?? 'rect') === (opening.cutoutShape ?? 'rect')),
     )
-    if (preset) presetIds.add(preset.id)
+    let best: (typeof WALL_OPENING_PRESETS)[number] | undefined
+    let bestScore = Number.POSITIVE_INFINITY
+    for (const item of typed) {
+      const dw = Math.abs(item.width - opening.width)
+      const dh = Math.abs(item.height - opening.height)
+      if (dw > MATCH_TOL_CM || dh > MATCH_TOL_CM) continue
+      const score = dw + dh
+      if (score < bestScore) {
+        bestScore = score
+        best = item
+      }
+    }
+    if (best) presetIds.add(best.id)
     for (const template of openingTemplates) {
+      const dw = Math.abs(template.draft.width - opening.width)
+      const dh = Math.abs(template.draft.height - opening.height)
       if (
         template.draft.type === opening.type &&
-        template.draft.width === opening.width &&
-        template.draft.height === opening.height
+        dw <= MATCH_TOL_CM &&
+        dh <= MATCH_TOL_CM
       ) {
         templateIds.add(template.id)
       }
@@ -4270,13 +4439,14 @@ function matchingOpeningLibraryIds(): { presetIds: Set<string>; templateIds: Set
 }
 
 function matchingBayLibraryPresetId(wall: Wall): string | null {
-  const bay = wall.bayWindow
+  const bay = bayMetaForWall(getAllWalls(state), wall)
   if (!bay) return null
   const kind = bay.kind ?? 'bay'
   const match = BAY_WINDOW_PRESETS.find(
     (preset) =>
       bayPresetKind(preset) === kind &&
       preset.frontWidthCm === bay.frontWidthCm &&
+      preset.depthCm === bay.depthCm &&
       preset.shape === bay.shape,
   )
   return match?.id ?? null
@@ -4297,7 +4467,7 @@ function isLibraryCardApplied(card: HTMLElement): boolean {
   }
   if (card.dataset.libraryNone === '1') {
     if (libraryTab === 'bay' || libraryTab === 'balcony' || libraryTab === 'loggia') {
-      return !selectedWalls().some((wall) => wall.bayWindow)
+      return !selectedWalls().some((wall) => bayMetaForWall(getAllWalls(state), wall))
     }
     if (libraryTab === 'panels') {
       const wall = selectedWalls()[0]
@@ -4354,7 +4524,188 @@ function syncLibraryAppliedOutline() {
   }
 }
 
-let lastSelectionAnchor: number | null = null
+/** Anker für Shift-Bereichsauswahl im sichtbaren Ebenenbaum (Licht/Wand/Öffnung). */
+let lastLayerTreeAnchor: number | null = null
+
+type LayerTreeEntry =
+  | { kind: 'light'; lightId: string }
+  | { kind: 'wall'; wallId: string }
+  | { kind: 'opening'; wallId: string; openingId: string }
+
+/** Sichtbare auswählbare Zeilen — gleiche Reihenfolge wie im Ebenenbaum. */
+function buildLayerTreeEntries(): LayerTreeEntry[] {
+  const entries: LayerTreeEntry[] = []
+  const { sceneLights: lights, sceneLightGroups } = normalizeSceneLightState(state)
+  if (!sceneLightsLayerCollapsed) {
+    const groupedIds = new Set<string>()
+    for (const group of sceneLightGroups) {
+      const members = lights.filter((light) => group.memberLightIds.includes(light.id))
+      if (members.length === 0) continue
+      members.forEach((m) => groupedIds.add(m.id))
+      if (collapsedSceneLightGroups.has(group.id)) continue
+      for (const light of members) entries.push({ kind: 'light', lightId: light.id })
+    }
+    for (const light of lights) {
+      if (groupedIds.has(light.id)) continue
+      entries.push({ kind: 'light', lightId: light.id })
+    }
+  }
+
+  for (const building of [...state.buildings].reverse()) {
+    if (collapsedBuildings.has(building.id)) continue
+    const byFloor = groupWallsByFloorForBuilding(building)
+    for (const floor of sortedFloorIndicesForBuilding(building)) {
+      if (collapsedFloors.has(floor)) continue
+      const walls = byFloor.get(floor) ?? []
+      const wallGroups = (building.groups ?? [])
+        .map((group) => ({
+          ...group,
+          memberWalls: group.memberWallIds
+            .map((id) => walls.find((wall) => wall.id === id))
+            .filter((wall): wall is Wall => Boolean(wall)),
+        }))
+        .filter((group) => group.memberWalls.length > 0)
+      const groupedWallIds = new Set(
+        wallGroups.flatMap((group) => group.memberWalls.map((wall) => wall.id)),
+      )
+      const wallEntries: Array<
+        { kind: 'group'; group: WallGroup; memberWalls: Wall[] } | { kind: 'wall'; wall: Wall }
+      > = [
+        ...wallGroups.map((group) => ({
+          kind: 'group' as const,
+          group,
+          memberWalls: group.memberWalls,
+        })),
+        ...walls
+          .filter((wall) => !groupedWallIds.has(wall.id))
+          .map((wall) => ({ kind: 'wall' as const, wall })),
+      ]
+      for (const entry of wallEntries) {
+        const wallsForEntry = entry.kind === 'group' ? entry.memberWalls : [entry.wall]
+        const primaryWall = wallsForEntry[0]
+        if (!primaryWall) continue
+        if (entry.kind === 'group') {
+          for (const wall of wallsForEntry) entries.push({ kind: 'wall', wallId: wall.id })
+        } else {
+          entries.push({ kind: 'wall', wallId: primaryWall.id })
+        }
+        const expandKey = entry.kind === 'group' ? entry.group.id : primaryWall.id
+        if (!expandedWalls.has(expandKey)) continue
+        for (const wall of wallsForEntry) {
+          for (const opening of wall.openings) {
+            entries.push({ kind: 'opening', wallId: wall.id, openingId: opening.id })
+          }
+        }
+      }
+    }
+  }
+  return entries
+}
+
+function layerTreeIndexOf(entry: LayerTreeEntry): number {
+  const key =
+    entry.kind === 'light'
+      ? `light:${entry.lightId}`
+      : entry.kind === 'wall'
+        ? `wall:${entry.wallId}`
+        : `opening:${entry.wallId}:${entry.openingId}`
+  return buildLayerTreeEntries().findIndex((item) => {
+    const itemKey =
+      item.kind === 'light'
+        ? `light:${item.lightId}`
+        : item.kind === 'wall'
+          ? `wall:${item.wallId}`
+          : `opening:${item.wallId}:${item.openingId}`
+    return itemKey === key
+  })
+}
+
+function applyLayerTreeRange(from: number, to: number): void {
+  const items = buildLayerTreeEntries()
+  const start = Math.min(from, to)
+  const end = Math.max(from, to)
+  const slice = items.slice(start, end + 1)
+  if (slice.length === 0) return
+
+  const lightIds = slice.filter((e) => e.kind === 'light').map((e) => e.lightId)
+  const wallIds = slice.filter((e) => e.kind === 'wall').map((e) => e.wallId)
+  const openings = slice
+    .filter((e): e is Extract<LayerTreeEntry, { kind: 'opening' }> => e.kind === 'opening')
+    .map((e) => ({ wallId: e.wallId, openingId: e.openingId }))
+
+  if (lightIds.length > 0 && wallIds.length === 0 && openings.length === 0) {
+    pendingSelectionToolbarTab = 'sceneLight'
+    applyEditorSelection({
+      ...createDefaultEditorState(),
+      selectedSceneLightId: lightIds[lightIds.length - 1],
+      selectedSceneLightIds: [...new Set(lightIds)],
+    })
+    return
+  }
+
+  const selectedWallIds = [
+    ...new Set([...wallIds, ...openings.map((o) => o.wallId)]),
+  ]
+  applyEditorSelection({
+    ...createDefaultEditorState(),
+    selectedWallIds,
+    selectedOpenings: openings,
+    selectedEdges:
+      openings.length === 1 ? openingEdgesForSelection(openings[0]!) : [],
+    selectedOpeningPart: openings.length > 0 ? 'group' : undefined,
+  })
+}
+
+function selectLayerTreeEntry(
+  entry: LayerTreeEntry,
+  shiftKey: boolean,
+  additive: boolean,
+): void {
+  const index = layerTreeIndexOf(entry)
+  if (index < 0) {
+    // Zeile nicht sichtbar (z. B. Öffnung eingeklappt) — Fallback Einzelwahl.
+    if (entry.kind === 'light') {
+      selectSceneLight(entry.lightId, additive)
+      return
+    }
+    if (entry.kind === 'wall') {
+      selectWall(entry.wallId, additive)
+      return
+    }
+    selectOpening(entry.wallId, entry.openingId, additive, 'group')
+    return
+  }
+
+  if (additive) {
+    lastLayerTreeAnchor = index
+    if (entry.kind === 'light') {
+      selectSceneLight(entry.lightId, true)
+      return
+    }
+    if (entry.kind === 'wall') {
+      selectWall(entry.wallId, true)
+      return
+    }
+    selectOpening(entry.wallId, entry.openingId, true, 'group')
+    return
+  }
+
+  if (shiftKey && lastLayerTreeAnchor !== null) {
+    applyLayerTreeRange(lastLayerTreeAnchor, index)
+    return
+  }
+
+  lastLayerTreeAnchor = index
+  if (entry.kind === 'light') {
+    selectSceneLight(entry.lightId, false)
+    return
+  }
+  if (entry.kind === 'wall') {
+    selectWall(entry.wallId, false)
+    return
+  }
+  selectOpening(entry.wallId, entry.openingId, false, 'group')
+}
 
 let currentElevation: ElevationFilter = { kind: 'yaw', yaw: 0 }
 let editScope: EditScope = DEFAULT_EDIT_SCOPE
@@ -4370,7 +4721,6 @@ let sceneAppearance: SceneAppearance = { ...DEFAULT_SCENE_APPEARANCE }
 let bloomSettings: BloomSettings = { ...DEFAULT_BLOOM_SETTINGS }
 let fogSettings: FogSettings = { ...DEFAULT_FOG_SETTINGS }
 let lodSettings: LodSettings = normalizeLodSettings(DEFAULT_LOD_SETTINGS)
-let presentationMode: PresentationMode = loadPresentationMode()
 let stageEnvironment: StageEnvironment = loadStageEnvironment()
 
 /** Sonnen-/Licht-Zustand vor dem Licht-Modus — beim Verlassen wiederherstellen. */
@@ -4381,6 +4731,14 @@ let lightEditSunRestore: {
   /** enabled pro Licht-ID vor dem Erzwingen von „alle an“. */
   lightEnabledById: Record<string, boolean>
 } | null = null
+
+/**
+ * Manueller Master aus dem Ebenen-Mehr-Menü / „Alle Lichter an“.
+ * `false`/`true` blockiert Auto-Sonne + Schedule (sonst schaltet der Animationsloop
+ * ausgeblendete Lichter in der Nacht sofort wieder ein).
+ * `null` = Auto darf steuern.
+ */
+let sceneLightsManualHold: boolean | null = null
 
 const collapsedFloors = new Set<number>()
 const collapsedBuildings = new Set<string>()
@@ -4564,6 +4922,7 @@ function applyPresentationMode() {
   applyWorkModeShadowStyle()
   applyStageEnvironmentVisuals()
   applySunLighting({ updateShadowMap: true })
+  applyRendererPixelRatio()
   markViewportDirty()
   updateWallLibraryGizmos()
 }
@@ -4613,6 +4972,7 @@ const reflectionSiteBox = new THREE.Box3()
 let lastReflectionViewBucket = Number.NaN
 
 function renderLitSceneFrame(activeCamera: THREE.Camera) {
+  facade.updateMeasureLabelScales(activeCamera)
   dirLight.visible = true
   const roomOcclusion = sceneLightRoomOcclusionActive()
   dirLightIndoor.visible = roomOcclusion
@@ -4643,8 +5003,14 @@ function renderLitSceneFrame(activeCamera: THREE.Camera) {
       markSceneReflectionsDirty()
     }
     exteriorReflectionProbe(reflectionSiteBox, reflectionCamPos, reflectionProbePos)
-    bakeSceneReflectionsIfNeeded(renderer, scene, reflectionProbePos, sceneReflectionHideRoots)
-    bindMaterialsToGlassEnv(scene)
+    const baked = bakeSceneReflectionsIfNeeded(
+      renderer,
+      scene,
+      reflectionProbePos,
+      sceneReflectionHideRoots,
+    )
+    // Nur nach Bake binden — jedes Frame needsUpdate ließ Wände beim Orbit-Ende flackern.
+    if (baked) bindMaterialsToGlassEnv(scene)
   }
   const bloomOn =
     bloomIsActive() &&
@@ -4945,13 +5311,13 @@ function pasteWallsFromClipboard(opts?: {
         })),
       }
       if (isStudioWall(source)) {
-        const along = wallAlongDelta(source.yawDeg ?? 0, source.width + PLAN_GRID)
+        const along = wallAlongDelta(source.yawDeg ?? 0, source.width + DUPLICATE_GAP_CM)
         cloned.originX = (source.originX ?? source.x) + along.x
         cloned.originZ = (source.originZ ?? 0) + along.z
-        cloned.x = source.x + source.width + PLAN_GRID
+        cloned.x = source.x + source.width + DUPLICATE_GAP_CM
         cloned.planLinked = false
       } else {
-        cloned.x = source.x + source.width + PLAN_GRID
+        cloned.x = source.x + source.width + DUPLICATE_GAP_CM
       }
       clones.push(cloned)
     }
@@ -5103,6 +5469,8 @@ const sceneToolbarTabs = document.querySelector<HTMLElement>('#scene-toolbar-tab
 const sceneToolbarPanels = document.querySelector<HTMLElement>('#scene-toolbar-panels')!
 /** Aktiver Options-Reiter der Auswahl (kein „Alles“ — Tabs sitzen oben rechts). */
 let selectionToolbarTab = ''
+/** Zuletzt vom Nutzer gewählter/bearbeiteter Auswahl-Tab — bleibt bei neuer Markierung, falls verfügbar. */
+let lastStickySelectionToolbarTab = ''
 /** Nach 3D-Klick auf Wandteil: gewünschter Reiter einmalig übernehmen. */
 let pendingSelectionToolbarTab: string | null = null
 let selectionToolbarKind = ''
@@ -5163,6 +5531,8 @@ const pedimentSideArmWidth = document.querySelector<HTMLInputElement>('#pediment
 const pedimentSideArmLabel = document.querySelector<HTMLLabelElement>('#pediment-side-arm-label')!
 const pedimentSideArmsRow = document.querySelector<HTMLLabelElement>('#pediment-side-arms-row')!
 const pedimentSideArmsEnabled = document.querySelector<HTMLInputElement>('#pediment-side-arms-enabled')!
+const pedimentSealedBackRow = document.querySelector<HTMLLabelElement>('#pediment-sealed-back-row')!
+const pedimentSealedBack = document.querySelector<HTMLInputElement>('#pediment-sealed-back')!
 const pedimentScale = document.querySelector<HTMLInputElement>('#pediment-scale')!
 const pedimentExtentOut = document.querySelector<HTMLInputElement>('#pediment-extent-out')!
 const pedimentExtentForward = document.querySelector<HTMLInputElement>('#pediment-extent-forward')!
@@ -5179,6 +5549,10 @@ const taperedFieldRatio = document.querySelector<HTMLInputElement>('#tapered-fie
 const taperedFieldOffsetUp = document.querySelector<HTMLInputElement>('#tapered-field-offset-up')!
 const taperedFieldInvert = document.querySelector<HTMLInputElement>('#tapered-field-invert')!
 const openingWidthInput = document.querySelector<HTMLInputElement>('#opening-width')!
+const openingWidthDirLeft = document.querySelector<HTMLButtonElement>('#opening-width-dir-left')!
+const openingWidthDirRight = document.querySelector<HTMLButtonElement>('#opening-width-dir-right')!
+/** Breitenänderung: `right` = linke Kante fest, `left` = rechte Kante fest. */
+let openingWidthGrow: 'left' | 'right' = 'right'
 const openingHeightInput = document.querySelector<HTMLInputElement>('#opening-height')!
 const openingFillMode = document.querySelector<HTMLSelectElement>('#opening-fill-mode')!
 const openingTypeSection = document.querySelector<HTMLDivElement>('#opening-type-section')!
@@ -5589,6 +5963,10 @@ const studioStretchStartPlus = document.querySelector<HTMLButtonElement>('#studi
 const studioStretchEndMinus = document.querySelector<HTMLButtonElement>('#studio-stretch-end-minus')!
 const studioStretchEndPlus = document.querySelector<HTMLButtonElement>('#studio-stretch-end-plus')!
 const studioWallWidthInput = document.querySelector<HTMLInputElement>('#studio-wall-width')!
+const studioWallWidthDirLeft = document.querySelector<HTMLButtonElement>('#studio-wall-width-dir-left')!
+const studioWallWidthDirRight = document.querySelector<HTMLButtonElement>('#studio-wall-width-dir-right')!
+/** Richtung der Maß-Eingabe: start = nach links, end = nach rechts. */
+let studioWallWidthGrowSide: 'start' | 'end' = 'end'
 const studioHeightMinus = document.querySelector<HTMLButtonElement>('#studio-height-minus')!
 const studioHeightPlus = document.querySelector<HTMLButtonElement>('#studio-height-plus')!
 const studioWallHeightInput = document.querySelector<HTMLInputElement>('#studio-wall-height')!
@@ -6284,6 +6662,29 @@ function finishDragUndo() {
   }
 }
 
+/** Drag-Commit: Undo speichert den Vorher-Stand (`*DragBase`), nicht den schon live gemuteten State. */
+function commitDragFromBase(
+  base: FacadeState | null,
+  nextEditor: EditorState = editor,
+  status?: string,
+) {
+  if (base) {
+    editHistory.record({
+      facade: cloneFacadeState(base),
+      editor: {
+        selectedWallIds: [...editor.selectedWallIds],
+        selectedOpenings: editor.selectedOpenings.map((ref) => ({ ...ref })),
+        selectedEdges: [...editor.selectedEdges],
+      },
+    })
+    applyState(state, nextEditor)
+  } else {
+    commitState(state, nextEditor)
+  }
+  if (status) planStatus.textContent = status
+  updateHistoryButtons()
+}
+
 function selectedWalls(): Wall[] {
   return editor.selectedWallIds
     .map((id) => getWall(state, id))
@@ -6705,13 +7106,25 @@ function syncAllSceneLightsEnabledControl(): void {
 }
 
 function commitAllSceneLightsEnabled(enabled: boolean): void {
+  sceneLightsManualHold = enabled
   const next = setAllSceneLightsEnabled(state, enabled)
-  if (next === state) return
+  if (next === state) {
+    // Zustand schon so — trotzdem Auto blockieren und UI/Runtime angleichen.
+    syncIndoorFillForSceneLights()
+    syncSceneLightRuntime({ scheduleShadows: true })
+    sceneLightRuntime.snapFadesToEnabled()
+    syncAllSceneLightsEnabledControl()
+    renderLayerList()
+    markViewportDirty()
+    planStatus.textContent = enabled ? 'Alle Lichter einblenden' : 'Alle Lichter ausblenden'
+    return
+  }
   // Soft wie Auto-Sonne: kein volles applyState — Fade + gedrosseltes Cube-Bake.
   editHistory.record(currentSnapshot())
   state = next
   syncIndoorFillForSceneLights()
   syncSceneLightRuntime({ scheduleShadows: true })
+  sceneLightRuntime.snapFadesToEnabled()
   schedulePersistApp()
   syncAllSceneLightsEnabledControl()
   renderLayerList()
@@ -6845,11 +7258,17 @@ function focusCameraOnFloorPlan(walls: Wall[]) {
   if (!bounds) return
   const { cx, cy, cz, span } = bounds
   controls.target.set(cx, cy, cz)
-  camera.position.set(cx + span * 0.85, cy * 0.75 + span * 0.35, cz + span * 0.85)
+  // Überblick: genug Abstand für die echte Spannweite (früher span≤900 → eine Wand nah).
+  const dist = Math.max(span * 1.15, 220)
+  const elev = Math.max(cy * 0.55, span * 0.28)
+  const horiz = dist * Math.SQRT1_2
+  camera.position.set(cx + horiz, elev, cz + horiz)
   controls.update()
 }
 
 function focusCameraExterior(walls: Wall[]) {
+  // maxDistance zuerst an die Site — sonst klemmt OrbitControls die Position auf 4000.
+  if (!isGalleryModeActive()) syncCameraDistanceLimits()
   if (isGalleryModeActive()) {
     focusCameraOnFloorPlan(galleryEntryFocusWalls(walls))
     applyGalleryOrbitTuning()
@@ -7500,10 +7919,78 @@ function confirmOpeningInsert(message: string, canReplace: boolean): Promise<'re
   })
 }
 
+/** Bibliotheksklick bei Öffnungsauswahl: Maße/Typ ersetzen statt neue Öffnung legen. */
+function replaceSelectedOpeningsWithLibraryPreset(presetId: string): boolean {
+  const preset = WALL_OPENING_PRESETS.find((item) => item.id === presetId)
+  const refs =
+    scopedOpeningRefs().length > 0 ? scopedOpeningRefs() : [...editor.selectedOpenings]
+  if (!preset || refs.length === 0) return false
+
+  if (preset.id === 'opening-empty-96') {
+    let next = state
+    for (const ref of refs) next = removeOpening(next, ref.wallId, ref.openingId)
+    commitState(next, {
+      ...editor,
+      selectedOpenings: [],
+      selectedWallIds: [...new Set(refs.map((ref) => ref.wallId))],
+      selectedEdges: [],
+    })
+    return true
+  }
+
+  if (preset.type === 'door' || preset.type === 'window') {
+    commitState(replaceOpeningsWithPreset(state, refs, preset), {
+      ...editor,
+      selectedOpenings: refs,
+      selectedWallIds: [...new Set(refs.map((ref) => ref.wallId))],
+      selectedEdges: [],
+    })
+    return true
+  }
+
+  // Nischen / Konchen: Typ und Maße am Ort ersetzen
+  let next = state
+  for (const ref of refs) {
+    const wall = getWall(next, ref.wallId)
+    const opening = wall?.openings.find((item) => item.id === ref.openingId)
+    if (!wall || !opening) continue
+    const grid = STUDIO_MASONRY
+    const width = preset.width
+    const height = preset.height
+    const x = anchoredOpeningX(opening, width, openingWidthGrow, grid)
+    const y =
+      preset.y !== undefined
+        ? preset.y
+        : snapToGrid(opening.y + opening.height / 2 - height / 2, grid)
+    let patch: Partial<Opening> = {
+      type: preset.type,
+      width,
+      height,
+      x,
+      y,
+      cutoutShape: preset.cutoutShape ?? opening.cutoutShape,
+      fill: preset.fill ?? opening.fill,
+      windowModel: undefined,
+    }
+    next = updateOpening(next, ref.wallId, ref.openingId, patch)
+  }
+  commitState(next, {
+    ...editor,
+    selectedOpenings: refs,
+    selectedWallIds: [...new Set(refs.map((ref) => ref.wallId))],
+    selectedEdges: [],
+  })
+  return true
+}
+
 async function addOpeningPresetToSelection(
   presetId: string,
   options?: { wallId?: string; at?: { x: number; y?: number } },
 ) {
+  // Mit Öffnungsauswahl: Bibliothek ersetzt die markierten Öffnungen (nicht zusätzlich platzieren).
+  if (!options?.wallId && !options?.at && editor.selectedOpenings.length > 0) {
+    if (replaceSelectedOpeningsWithLibraryPreset(presetId)) return
+  }
   const preset = WALL_OPENING_PRESETS.find((item) => item.id === presetId)
   const wallIds = options?.wallId ? [options.wallId] : [...editor.selectedWallIds]
   if (!preset || wallIds.length === 0) return
@@ -8202,18 +8689,25 @@ function initOpeningLibrary() {
 
   if (libraryTab === 'bay') {
     appendLibraryIdleNoneCard(host, 'Keines')
+    let lastGroup = ''
     for (const preset of BAY_WINDOW_PRESETS.filter((item) => bayPresetKind(item) === 'bay')) {
+      const group = preset.libraryGroup ?? (preset.shape === 'angled45' ? '45°' : '90°')
+      if (group !== lastGroup) {
+        appendLibraryGroupLabel(host, group)
+        lastGroup = group
+      }
       const card = document.createElement('button')
       card.type = 'button'
       card.className = 'opening-library-card'
       card.draggable = true
       card.dataset.bayPresetId = preset.id
-      card.title = `${preset.label} — in die Fläche oder auf eine Wand ziehen`
+      const frontWins = preset.frontWidthCm
+      card.title = `${preset.label} — Front ${frontWins} cm, Tiefe ${preset.depthCm} cm · Segment markieren = austauschen; sonst ablegen`
       const thumb = document.createElement('div')
       thumb.className = 'opening-library-thumb opening-library-thumb-wall'
       thumb.innerHTML = bayWindowPreviewSvg(preset)
       const label = document.createElement('span')
-      label.textContent = preset.label
+      label.textContent = preset.cardLabel ?? preset.label
       card.append(thumb, label)
       card.addEventListener('click', () => {
         if (card.dataset.didDrag === '1') {
@@ -8862,10 +9356,59 @@ function appendOpeningFormLibraryCards(host: HTMLElement): void {
   syncLibraryAppliedOutline()
 }
 
+function replaceSelectedOpeningsWithTemplate(templateId: string): boolean {
+  const template = openingTemplates.find((t) => t.id === templateId)
+  const refs =
+    scopedOpeningRefs().length > 0 ? scopedOpeningRefs() : [...editor.selectedOpenings]
+  if (!template || refs.length === 0) return false
+
+  let next = state
+  for (const ref of refs) {
+    const wall = getWall(next, ref.wallId)
+    const opening = wall?.openings.find((item) => item.id === ref.openingId)
+    if (!wall || !opening) continue
+    const width = template.draft.width
+    const height = template.draft.height
+    const x = anchoredOpeningX(opening, width, openingWidthGrow, STUDIO_MASONRY)
+    const y =
+      template.draft.type === 'door'
+        ? 0
+        : snapToGrid(opening.y + opening.height / 2 - height / 2, STUDIO_MASONRY)
+    let updated: Opening = {
+      ...opening,
+      type: template.draft.type,
+      width,
+      height,
+      x,
+      y,
+    }
+    updated = applyTemplateDraft(updated, template.draft)
+    next = updateOpening(next, ref.wallId, ref.openingId, updated)
+    if (template.draft.profileId) {
+      next = assignProfilesToOpenings(
+        next,
+        [{ wallId: ref.wallId, openingId: ref.openingId }],
+        [...ALL_EDGES],
+        template.draft.profileId,
+      )
+    }
+  }
+  commitState(next, {
+    ...editor,
+    selectedOpenings: refs,
+    selectedWallIds: [...new Set(refs.map((ref) => ref.wallId))],
+    selectedEdges: [],
+  })
+  return true
+}
+
 async function addOpeningTemplateToSelection(
   templateId: string,
   options?: { wallId?: string; at?: { x: number; y?: number } },
 ) {
+  if (!options?.wallId && !options?.at && editor.selectedOpenings.length > 0) {
+    if (replaceSelectedOpeningsWithTemplate(templateId)) return
+  }
   const template = openingTemplates.find((t) => t.id === templateId)
   const wallIds = options?.wallId ? [options.wallId] : [...editor.selectedWallIds]
   if (!template || wallIds.length === 0) return
@@ -9084,16 +9627,6 @@ function normalizeEditor(nextState: FacadeState, nextEditor: EditorState): Edito
 
 function buildLayerOrderForState(facadeState: FacadeState = state): LayerItem[] {
   return buildLayerOrder(facadeState)
-}
-
-function editorFromLayerRange(from: number, to: number): EditorState {
-  const items = buildLayerOrderForState()
-  const start = Math.min(from, to)
-  const end = Math.max(from, to)
-  const wallIds = items
-    .slice(start, end + 1)
-    .map((item) => item.wallId)
-  return { selectedWallIds: wallIds, selectedOpenings: [], selectedEdges: [] }
 }
 
 function sitePlanBounds(): { minX: number; maxX: number; minZ: number; maxZ: number } | null {
@@ -9518,8 +10051,16 @@ let sunShadowFirstQueueMs = 0
 let sunShadowScheduleReflections = false
 let sunShadowScheduleSun = false
 let sunSliderPersistTimer = 0
+/**
+ * Sonnen-Slider wird gezogen/angeklickt: Box gecacht, Map-Größe fix,
+ * Schedule-Actors erst beim `change`; Sonnen-Shadow pro Lighting-Frame (kein Debounce-Sprung).
+ */
+let sunSliderScrubbing = false
+let sunScrubWorldBox: THREE.Box3 | null = null
 /** Letzter Studio-Hintergrund (Live) — EnvMap nur bei spürbarer Änderung dirty. */
 let lastStudioLiveBgHex = ''
+/** Env-Reflexion: Dirty nur bei spürbarem Tag/Nacht-/Mond-Wechsel. */
+let lastReflectionLightingKey = ''
 /** Hysterese für Key-Licht-Schatten (Sonne/Mond), vermeidet Shader-Flip an der Schwelle. */
 let keyCastShadowLatched = true
 
@@ -9774,6 +10315,8 @@ function selectSceneLight(lightId: string | null, additive = false): void {
     }
     return
   }
+  const treeIdx = layerTreeIndexOf({ kind: 'light', lightId })
+  if (treeIdx >= 0) lastLayerTreeAnchor = treeIdx
   pendingSelectionToolbarTab = 'sceneLight'
   if (additive) {
     const current =
@@ -9957,7 +10500,15 @@ function applySunLighting(opts?: { updateShadowMap?: boolean; live?: boolean }) 
   setFacadeShadeParams(facadeShadeParamsFromSun(sunSettings))
   syncCladdingReceiveShadows()
   const preCelestial = resolveCelestialState(sunSettings)
-  const localBox = buildingWorldBox(getAllWalls(state))
+  const live = opts?.live === true
+  // Scrub: Gebäudebox nicht jedes Input neu berechnen (teuer bei vielen Wänden).
+  let localBox: THREE.Box3
+  if (sunSliderScrubbing && sunScrubWorldBox) {
+    localBox = sunScrubWorldBox
+  } else {
+    localBox = buildingWorldBox(getAllWalls(state))
+    if (sunSliderScrubbing) sunScrubWorldBox = localBox.clone()
+  }
   const centroid = buildingCentroid(state) ?? { x: 0, z: 0 }
   const siteYaw = siteYawForView()
   const box = applyYawAroundYToBox(localBox, siteYaw, centroid.x, centroid.z)
@@ -9979,10 +10530,15 @@ function applySunLighting(opts?: { updateShadowMap?: boolean; live?: boolean }) 
   // Licht-Modus (00:00): kein Sonnen-/Mondschatten. Der Mond wirft sonst PCSS mit 96 Taps
   // auf eine 8192²-Map — bei Intensität 0,01 unsichtbar, kostete aber ~95 ms/Frame.
   // Hysterese: vermeidet Shader-Flip (USE_SHADOWMAP) an der Elevations-Schwelle.
+  const moonKey = preCelestial.activeLight === 'moon'
   const wantKeyCast =
-    mood.keyCastShadow && !lightEditMode && preCelestial.lightIntensity > 0.08
+    mood.keyCastShadow &&
+    !lightEditMode &&
+    preCelestial.lightIntensity > (moonKey ? 0.04 : 0.08)
   if (wantKeyCast) keyCastShadowLatched = true
-  else if (!mood.keyCastShadow || preCelestial.lightIntensity < 0.05) keyCastShadowLatched = false
+  else if (!mood.keyCastShadow || preCelestial.lightIntensity < (moonKey ? 0.025 : 0.05)) {
+    keyCastShadowLatched = false
+  }
   lastCelestialState = atmosphereSky.update(sunSettings, {
     intensityScale,
     castShadow: keyCastShadowLatched && !lightEditMode,
@@ -9994,6 +10550,22 @@ function applySunLighting(opts?: { updateShadowMap?: boolean; live?: boolean }) 
   hemiLight.intensity = skyFill
   hemiLight.color.copy(mood.hemiSkyColor)
   hemiLight.groundColor.copy(mood.groundHemiColor)
+
+  // Paneel/Glas-EnvMap: Farbe + Stärke folgen Tag/Nacht (sonst bleibt Mittelgrau-IBL).
+  const envFill = exteriorEnvFillFromCelestial(preCelestial)
+  setExteriorEnvFillFactor(envFill)
+  const reflectSky = `#${palette.zenith.clone().lerp(palette.horizon, 0.35).getHexString()}`
+  const reflectGround = `#${palette.ground.getHexString()}`
+  const reflectionKey = `${preCelestial.activeLight}:${Math.round(preCelestial.twilightFactor * 8)}:${Math.round(preCelestial.moonIllumination * 4)}:${reflectSky}`
+  if (reflectionKey !== lastReflectionLightingKey) {
+    lastReflectionLightingKey = reflectionKey
+    setGlassSkyReflectionColor(reflectSky)
+    setGlassGroundReflectionColor(reflectGround)
+    markSceneReflectionsDirty()
+  }
+  if (facadeReady) {
+    syncEnvMapFillIntensities(scene)
+  }
 
   const bounceDist = Math.max(900, distance)
   const bd = mood.bounceDirection
@@ -10010,11 +10582,10 @@ function applySunLighting(opts?: { updateShadowMap?: boolean; live?: boolean }) 
 
   if (studio) {
     groundMat.color.set(sceneColors.ground)
-    studioSphereMat.color.set(sceneColors.ground)
+    studioSphereMat.color.set(sceneColors.background)
   }
   updateGroundMoodUniformValues(mood, groundMat.color)
   setGroundShadowHard(presentationUsesWorkLikeShading(presentationMode))
-  const live = opts?.live === true
   // Live-Uhr: kein Material-Invalidate / needsUpdate — sonst Shadow-Bake jedes Frame.
   applyWorkModeShadowStyle(!live)
 
@@ -10033,10 +10604,13 @@ function applySunLighting(opts?: { updateShadowMap?: boolean; live?: boolean }) 
   }
   dirLightIndoor.castShadow = false
 
-  // Zuerst Map-Größe (ggf. dispose), dann Frustum — sonst Texel-Snap/RT falsch und Schatten „zerstört“.
-  const siteSpan = Math.max(box.max.x - box.min.x, box.max.z - box.min.z, 400)
-  const shadowSize = shadowMapSizeForSiteSpan(siteSpan)
-  ensureDirectionalShadowMapSize(dirLight, shadowSize)
+  // Scrub: Map-Größe nicht wechseln (RT-Allokation); Frustum weiter fitten,
+  // sonst bleiben Schatten beim Sonnenwinkel/Tageszeit-Ziehen stehen.
+  if (!sunSliderScrubbing) {
+    const siteSpan = Math.max(box.max.x - box.min.x, box.max.z - box.min.z, 400)
+    const shadowSize = shadowMapSizeForSiteSpan(siteSpan)
+    ensureDirectionalShadowMapSize(dirLight, shadowSize)
+  }
   dirLight.shadow.camera.layers.set(SHADOW_LAYER_EXTERIOR)
   fitDirectionalShadowCamera(dirLight, shadowBox)
 
@@ -10069,7 +10643,13 @@ function applySunLighting(opts?: { updateShadowMap?: boolean; live?: boolean }) 
   if (opts?.updateShadowMap === true) {
     flushSunShadowMap({ sceneLights: true })
   } else if (live) {
-    scheduleSunShadowMapUpdate()
+    if (sunSliderScrubbing) {
+      // Sofort 1×/Frame (Lighting ist schon rAF-gedrosselt) — Debounce ließ Schatten springen.
+      flushSunShadowMap({ reflections: false })
+    } else {
+      // Tagzyklus u. a.: weiter gedrosselt (~120–280 ms).
+      scheduleSunShadowMapUpdate()
+    }
   } else if (opts?.updateShadowMap !== false && startupShadowReady) {
     flushSunShadowMap({ sceneLights: true })
   }
@@ -10113,6 +10693,7 @@ function applyState(nextState: FacadeState, nextEditor = editor) {
   const openingDragWallIds = facade.peekOpeningDragWallIds()
   facade.endLiveDrag()
   const prevState = state
+  const prevLayerSelKey = editorLayerSelectionKey(editor)
   const openingDragCommit = openingDragWallIds.size > 0
   const lightOnly =
     !openingDragCommit && facadeStateDiffersOnlyBySceneLights(prevState, nextState)
@@ -10135,7 +10716,10 @@ function applyState(nextState: FacadeState, nextEditor = editor) {
     schedulePersistApp()
     const layerListChanged =
       sceneLightsLayerListKey(prevState) !== sceneLightsLayerListKey(state)
-    renderUi({ skipLayerList: !layerListChanged })
+    const selChanged = prevLayerSelKey !== editorLayerSelectionKey(editor)
+    if (selChanged) revealSelectionInLayerTree()
+    renderUi({ skipLayerList: !layerListChanged && !selChanged })
+    if (selChanged) scrollSelectedLayerRowIntoView()
     updateHistoryButtons()
     updateWallLibraryGizmos()
     markViewportDirty()
@@ -10190,9 +10774,11 @@ function applyState(nextState: FacadeState, nextEditor = editor) {
     updateGroundPlane()
     syncCameraDistanceLimits()
     if (openingDragCommit) {
-      // Sofortiges Shadow-Bake + Material-Invalidate färbt Profile kurz dunkelgrau.
+      // Live-Licht: kein sofortiges Shadow-Invalidate. EnvMap muss aber neu gebacken
+      // werden — sonst spiegeln neue Rahmen/Profile eine alte/dunkle Map (grau statt weiß).
       applySunLighting({ live: true })
-      scheduleShadowMapUpdate({ sun: true, reflections: false })
+      scheduleShadowMapUpdate({ sun: true, reflections: true })
+      bindMaterialsToGlassEnv(scene)
       syncSceneLightRuntime({ scheduleShadows: true })
     } else {
       applySunLighting({ updateShadowMap: true })
@@ -10225,21 +10811,165 @@ function applyState(nextState: FacadeState, nextEditor = editor) {
     facade.updatePerformanceLod(camera, viewportRenderHeight())
   }
   schedulePersistApp()
-  renderUi({ skipLayerList: geometryUnchanged && !labelOnly && !lightsChanged })
+  const selChanged = prevLayerSelKey !== editorLayerSelectionKey(editor)
+  if (selChanged) revealSelectionInLayerTree()
+  renderUi({
+    skipLayerList: geometryUnchanged && !labelOnly && !lightsChanged && !selChanged,
+  })
+  if (selChanged) scrollSelectedLayerRowIntoView()
   updateHistoryButtons()
   updateWallLibraryGizmos()
   markViewportDirty()
 }
 
+/** Fingerprint der Ebenen-relevanten Auswahl (ohne Toolbar-Teil wie Gesims-Tab). */
+function editorLayerSelectionKey(ed: EditorState): string {
+  const lights = [
+    ...(ed.selectedSceneLightIds ?? []),
+    ...(ed.selectedSceneLightId ? [ed.selectedSceneLightId] : []),
+  ]
+    .sort()
+    .join(',')
+  const openings = ed.selectedOpenings
+    .map((ref) => `${ref.wallId}:${ref.openingId}`)
+    .sort()
+    .join(',')
+  const walls = [...ed.selectedWallIds].sort().join(',')
+  const ceiling = ed.selectedCeiling
+    ? `${ed.selectedCeiling.buildingId}:${ed.selectedCeiling.floorIndex}`
+    : ''
+  const roof = ed.selectedRoofBuildingId
+    ? `${ed.selectedRoofBuildingId}:${ed.selectedRoofPart ?? 'group'}`
+    : ''
+  return [
+    walls,
+    openings,
+    ed.selectedOpeningPart ?? '',
+    roof,
+    ceiling,
+    ed.selectedBuildingId ?? '',
+    lights,
+  ].join('|')
+}
+
+/** Haus/Etage/Wand/Dach/Lichter aufklappen, damit die gewählte Zeile im Baum existiert. */
+function revealSelectionInLayerTree(): void {
+  const lightIds = selectedSceneLightIds()
+  if (lightIds.length > 0) {
+    sceneLightsLayerCollapsed = false
+    const { sceneLightGroups } = normalizeSceneLightState(state)
+    for (const group of sceneLightGroups) {
+      if (group.memberLightIds.some((id) => lightIds.includes(id))) {
+        collapsedSceneLightGroups.delete(group.id)
+      }
+    }
+  }
+
+  if (editor.selectedBuildingId) {
+    collapsedBuildings.delete(editor.selectedBuildingId)
+  }
+
+  if (editor.selectedRoofBuildingId) {
+    collapsedBuildings.delete(editor.selectedRoofBuildingId)
+    if ((editor.selectedRoofPart ?? 'group') !== 'group') {
+      expandedRoofs.add(editor.selectedRoofBuildingId)
+    }
+  }
+
+  if (editor.selectedCeiling) {
+    collapsedBuildings.delete(editor.selectedCeiling.buildingId)
+    collapsedFloors.delete(editor.selectedCeiling.floorIndex)
+  }
+
+  const openingWallIds = editor.selectedOpenings.map((ref) => ref.wallId)
+  const wallIds = openingWallIds.length > 0 ? openingWallIds : editor.selectedWallIds
+  for (const wallId of wallIds) {
+    const building = findBuildingForWall(state, wallId)
+    const wall = getWall(state, wallId)
+    if (!building || !wall) continue
+    collapsedBuildings.delete(building.id)
+    collapsedFloors.delete(floorIndex(wall, building.wallHeight))
+    if (openingWallIds.length > 0) {
+      expandedWalls.add(wall.groupId ?? wall.id)
+    }
+  }
+}
+
+function scrollSelectedLayerRowIntoView(): void {
+  const el =
+    layerList.querySelector<HTMLElement>('.layer-row.selected') ??
+    layerList.querySelector<HTMLElement>('.layer-floor-toggle.selected') ??
+    layerList.querySelector<HTMLElement>('.layer-selected-building > .layer-building-header > .layer-floor-toggle')
+  el?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+}
+
 /** Schneller Pfad: nur Auswahl/Editor — ohne Geometrie, svgView oder Shadow-Rebuild. */
 function applyEditorSelection(nextEditor: EditorState) {
+  const prevSelKey = editorLayerSelectionKey(editor)
   editor = normalizeEditor(state, nextEditor)
   facade.setEditor(editor)
   syncSceneLightRuntime()
   schedulePersistApp()
-  renderUi({ skipLayerList: true })
+  const selChanged = prevSelKey !== editorLayerSelectionKey(editor)
+  // Bühnenwahl (Wand, Öffnung, Licht, …) muss die Ebenen-Zeile mitmarkieren.
+  if (selChanged) revealSelectionInLayerTree()
+  renderUi({ skipLayerList: !selChanged })
+  if (selChanged) scrollSelectedLayerRowIntoView()
   updateWallLibraryGizmos()
   markViewportDirty()
+}
+
+/** Cmd/Ctrl+A: alle sichtbaren Studio-Wände des aktiven Hauses (Lichtmodus: alle Lichter). */
+function selectAllSceneElements(): void {
+  if (lightEditMode) {
+    const { sceneLights: lights } = normalizeSceneLightState(state)
+    const ids = lights.filter((light) => light.enabled).map((light) => light.id)
+    if (ids.length === 0) {
+      planStatus.textContent = 'Keine Lichter zum Auswählen'
+      return
+    }
+    applyEditorSelection({
+      ...createDefaultEditorState(),
+      selectedSceneLightId: ids[ids.length - 1],
+      selectedSceneLightIds: ids,
+    })
+    planStatus.textContent =
+      ids.length === 1 ? '1 Licht ausgewählt' : `${ids.length} Lichter ausgewählt`
+    return
+  }
+
+  const building = activeBuilding()
+  if (!building || building.hidden) {
+    planStatus.textContent = 'Kein aktives Haus'
+    return
+  }
+  const wallIds = building.walls
+    .filter((wall) => {
+      if (!isStudioWall(wall) || wall.hidden) return false
+      const fi = floorIndex(wall, building.wallHeight)
+      return building.floors[fi]?.hidden !== true
+    })
+    .map((wall) => wall.id)
+  if (wallIds.length === 0) {
+    planStatus.textContent = 'Keine Wände zum Auswählen'
+    return
+  }
+  applyEditorSelection({
+    selectedWallIds: wallIds,
+    selectedOpenings: [],
+    selectedEdges: [],
+    selectedRoofBuildingId: undefined,
+    selectedRoofPart: undefined,
+    selectedCeiling: undefined,
+    selectedBuildingId: undefined,
+    selectedWallPart: 'group',
+    selectedTrimBandId: undefined,
+    selectedOpeningPart: undefined,
+    selectedSceneLightId: undefined,
+    selectedSceneLightIds: [],
+  })
+  planStatus.textContent =
+    wallIds.length === 1 ? '1 Wand ausgewählt' : `${wallIds.length} Wände ausgewählt`
 }
 
 let liveGeomRaf = 0
@@ -10301,7 +11031,9 @@ function flushLiveGeometryPreview() {
   facade.setEditor(editor)
   reapplyOpeningMotionPlayback()
   reapplyRollerShutterPlayback()
-  syncSiteTransform()
+  // Während Wand-Greifer: Site-Ursprung nicht verschieben — sonst driftet grabFloor
+  // (site-lokal) und die Wand wächst unkontrolliert.
+  if (!wallResizeDrag) syncSiteTransform()
   // Frustum an neue Wand-Ausdehnung anpassen — sonst fehlen Schatten an neuen Flügeln.
   applySunLighting({ live: true })
   updateWallLibraryGizmos()
@@ -10385,6 +11117,7 @@ selectionToolbar.addEventListener(
     if (!(target instanceof Element)) return
     if (!target.closest('input, select, textarea, button')) return
     selectionToolbarTabLocked = true
+    if (selectionToolbarTab) lastStickySelectionToolbarTab = selectionToolbarTab
   },
   true,
 )
@@ -10399,10 +11132,41 @@ selectionToolbar.addEventListener('focusout', () => {
 function finishRenderUi() {
   syncSelectionToolbarTabs()
   syncSceneToolbarTabs()
+  syncLibraryTabForOpeningSelection()
   syncLibraryTabVisibility()
   syncLibraryAppliedOutline()
   updateWallLibraryGizmos()
   requestAnimationFrame(positionToolbar)
+}
+
+/** Bei neuer Öffnungsauswahl Bibliothek auf Fenster/Tür/Nische schalten (Highlight sichtbar). */
+let lastLibraryOpeningSelectionKey = ''
+function syncLibraryTabForOpeningSelection() {
+  if (editor.selectedOpenings.length === 0) {
+    lastLibraryOpeningSelectionKey = ''
+    return
+  }
+  const part = editor.selectedOpeningPart ?? 'group'
+  const key =
+    editor.selectedOpenings
+      .map((ref) => `${ref.wallId}:${ref.openingId}`)
+      .sort()
+      .join('|') + `:${part}`
+  if (key === lastLibraryOpeningSelectionKey) return
+  lastLibraryOpeningSelectionKey = key
+  if (part !== 'group' && part !== 'frame' && part !== 'grille') return
+
+  const opening = selectedWindowOpening()?.opening
+  if (!opening) return
+  const want: LibraryTab =
+    opening.type === 'door'
+      ? 'doors'
+      : opening.type === 'cutout' || opening.type === 'conch' || openingLacksWindowChrome(opening)
+        ? 'niches'
+        : 'windows'
+  if (libraryTab !== want && allowedLibraryTabs().has(want)) {
+    setLibraryTab(want)
+  }
 }
 
 function renderUi(opts?: { skipLayerList?: boolean }) {
@@ -10703,7 +11467,7 @@ function copyStylesFromOpening(wallId: string, openingId: string) {
       wall.profiles.find((profile) => profile.openingId === opening.id)?.profileId ?? null,
   }
   styleClipboardKeys = null
-  planStatus.textContent = 'Stile kopiert — Rechtsklick auf ein Ziel zum Einfügen'
+  planStatus.textContent = 'Stil kopiert — Rechtsklick auf ein Ziel zum Einfügen'
 }
 
 function openingObjectCopyLabel(type: Opening['type'] | undefined): string {
@@ -11215,11 +11979,11 @@ function wallContextItems(wallId: string): MenuItem[] {
       label: 'Stile einfügen…',
       action: () => {
         ensureWallSelected(wallId)
-        askStylePaste({ kind: 'wall', ids: [...editor.selectedWallIds] })
+        askStylePaste({ kind: 'wall', ids: scopedWallIds() })
       },
     })
   }
-  const templateItems = styleTemplateMenuItems({ kind: 'wall', ids: [...editor.selectedWallIds] })
+  const templateItems = styleTemplateMenuItems({ kind: 'wall', ids: scopedWallIds() })
   if (templateItems.length > 0) {
     items.push({
       label: 'Stil-Vorlage anwenden',
@@ -11283,23 +12047,18 @@ function openingContextItems(wallId: string, openingId: string): MenuItem[] {
     { label: 'Ersetzen durch', children: openingReplaceItems(wallId, openingId) },
   ]
   items.push({
-    label: 'Kopieren',
-    children: [
-      {
-        label: `Objekt (${openingObjectCopyLabel(opening?.type)})`,
-        action: () => {
-          ensureOpeningSelected(wallId, openingId)
-          copyOpeningsToClipboard([...editor.selectedOpenings])
-        },
-      },
-      {
-        label: 'Stile',
-        action: () => {
-          ensureOpeningSelected(wallId, openingId)
-          copyStylesFromOpening(wallId, openingId)
-        },
-      },
-    ],
+    label: `${openingObjectCopyLabel(opening?.type)} kopieren`,
+    action: () => {
+      ensureOpeningSelected(wallId, openingId)
+      copyOpeningsToClipboard([...editor.selectedOpenings])
+    },
+  })
+  items.push({
+    label: 'Stil kopieren',
+    action: () => {
+      ensureOpeningSelected(wallId, openingId)
+      copyStylesFromOpening(wallId, openingId)
+    },
   })
   items.push(...elementPasteMenuItems({ wallId }))
   if (styleClipboard) {
@@ -11307,13 +12066,13 @@ function openingContextItems(wallId: string, openingId: string): MenuItem[] {
       label: 'Stile einfügen…',
       action: () => {
         ensureOpeningSelected(wallId, openingId)
-        askStylePaste({ kind: 'opening', refs: [...editor.selectedOpenings] })
+        askStylePaste({ kind: 'opening', refs: scopedOpeningRefs() })
       },
     })
   }
   const openingTemplateItems = styleTemplateMenuItems({
     kind: 'opening',
-    refs: [...editor.selectedOpenings],
+    refs: scopedOpeningRefs(),
   })
   if (openingTemplateItems.length > 0) {
     items.push({
@@ -11520,7 +12279,14 @@ function sceneLightGroupContextItems(groupId: string): MenuItem[] {
     },
     {
       label: allOn ? 'Alle ausblenden' : 'Alle einblenden',
-      action: () => commitState(setSceneLightGroupEnabled(state, groupId, !allOn)),
+      action: () => {
+        commitState(setSceneLightGroupEnabled(state, groupId, !allOn))
+        const lights = normalizeSceneLights(state.sceneLights)
+        if (lights.length > 0 && lights.every((item) => !item.enabled)) sceneLightsManualHold = false
+        else if (lights.length > 0 && lights.every((item) => item.enabled)) sceneLightsManualHold = true
+        else sceneLightsManualHold = null
+        sceneLightRuntime.snapFadesToEnabled()
+      },
     },
     {
       label: 'Umbenennen…',
@@ -11545,10 +12311,14 @@ function setSceneLightsEnabled(ids: string[], enabled: boolean): void {
   if (ids.length === 0) return
   if (ids.length === 1) {
     commitState(updateSceneLight(state, ids[0]!, { enabled }))
-    return
+  } else {
+    const map = new Map(ids.map((id) => [id, enabled] as const))
+    commitState(setSceneLightsEnabledById(state, map))
   }
-  const map = new Map(ids.map((id) => [id, enabled] as const))
-  commitState(setSceneLightsEnabledById(state, map))
+  const lights = normalizeSceneLights(state.sceneLights)
+  if (lights.length > 0 && lights.every((item) => !item.enabled)) sceneLightsManualHold = false
+  else if (lights.length > 0 && lights.every((item) => item.enabled)) sceneLightsManualHold = true
+  else sceneLightsManualHold = null
 }
 
 function duplicateSceneLights(ids: string[]): void {
@@ -12057,6 +12827,7 @@ function renderSceneLightsLayerSection() {
 
       const btn = document.createElement('button')
       btn.type = 'button'
+      btn.dataset.layerLightId = light.id
       const selected = selectedIds.has(light.id)
       btn.className = (selected ? 'layer-row selected' : 'layer-row') + layerHiddenClass(!light.enabled)
       // Art als Hauptname (Blaulicht, Stehlampe 2, …) — kein generisches „Licht“.
@@ -12068,7 +12839,12 @@ function renderSceneLightsLayerSection() {
       meta.textContent = `${Math.round(light.intensity)} W`
       btn.append(label, meta)
       btn.addEventListener('click', (event) => {
-        selectSceneLight(light.id, event.shiftKey || event.metaKey || event.ctrlKey)
+        const additive = event.metaKey || event.ctrlKey
+        selectLayerTreeEntry(
+          { kind: 'light', lightId: light.id },
+          event.shiftKey && !additive,
+          additive,
+        )
       })
 
       const lightMoreBtn = document.createElement('button')
@@ -12516,11 +13292,11 @@ function renderLayerList() {
               openingBtn.addEventListener('click', (e) => {
                 e.stopPropagation()
                 if (!isActive) activateBuilding(building.id)
-                selectOpening(
-                  wall.id,
-                  opening.id,
-                  e.shiftKey || e.ctrlKey || e.metaKey,
-                  'group',
+                const additive = e.metaKey || e.ctrlKey
+                selectLayerTreeEntry(
+                  { kind: 'opening', wallId: wall.id, openingId: opening.id },
+                  e.shiftKey && !additive,
+                  additive,
                 )
               })
               const openingMoreBtn = createLayerMoreButton(openingContextItems(wall.id, opening.id))
@@ -12705,6 +13481,8 @@ function renderColorControl(
     __colorPick?: (color: string) => void
     __colorPreview?: (color: string | null) => void
     __colorPicking?: boolean
+    __colorExpanded?: boolean
+    __colorOutsideBound?: boolean
   }
   const host = container as ColorHost
   host.__colorPick = onPick
@@ -12714,11 +13492,16 @@ function renderColorControl(
   const isTransparent = active === TRANSPARENT_GLASS
   const hex = isTransparent || !/^#[0-9a-fA-F]{6}$/i.test(active) ? '#ffffff' : active.toUpperCase()
 
+  const setExpanded = (on: boolean) => {
+    host.__colorExpanded = on
+    host.classList.toggle('color-picker-expanded', on)
+  }
   const beginPick = () => {
     if (!host.__colorPicking) {
       host.__colorPicking = true
       activeColorPickerCount += 1
     }
+    setExpanded(true)
   }
   const endPick = () => {
     if (host.__colorPicking) {
@@ -12726,6 +13509,22 @@ function renderColorControl(
       activeColorPickerCount = Math.max(0, activeColorPickerCount - 1)
     }
   }
+  if (!host.__colorOutsideBound) {
+    host.__colorOutsideBound = true
+    document.addEventListener(
+      'pointerdown',
+      (event) => {
+        if (!host.__colorExpanded) return
+        const target = event.target
+        if (target instanceof Node && host.contains(target)) return
+        endPick()
+        setExpanded(false)
+        host.__colorPreview?.(null)
+      },
+      true,
+    )
+  }
+  host.classList.toggle('color-picker-expanded', Boolean(host.__colorExpanded))
 
   let top = host.querySelector<HTMLDivElement>('.color-picker-top')
   if (!top) {
@@ -13842,12 +14641,61 @@ function bayWindowParentEligible(wall: Wall | undefined): wall is Wall {
 function applyBayWindowOnWall(
   preset: (typeof BAY_WINDOW_PRESETS)[number],
   wall: Wall,
-  mode: 'replace' | 'left' | 'right' | 'above',
+  mode: 'segment' | 'fit' | 'replace' | 'left' | 'right' | 'above',
   localX: number,
 ) {
   if (!canEditActiveBuildingNow()) return
   const building = activeBuilding()
-  if (mode === 'replace') {
+  const kind = bayPresetKind(preset)
+
+  // Erker: Segment in Vorlagenbreite (Default) oder an ganze Wandbreite anpassen.
+  if (kind === 'bay' && (mode === 'segment' || mode === 'fit' || mode === 'replace')) {
+    if (mode === 'fit' || mode === 'replace') {
+      const fitted = bayPresetFittedToWallWidth(preset, wall.width)
+      if (!fitted) {
+        planStatus.textContent = `${preset.label}: Wand mindestens ${bayMinMouthWidthCm(preset)} cm (aktuell ${Math.round(wall.width)} cm)`
+        return
+      }
+      const replaced = replaceWallWithBayPreset(state, wall.id, fitted)
+      if (!replaced) {
+        planStatus.textContent = 'Erker konnte die Wand nicht ersetzen'
+        return
+      }
+      commitState(replaced.state, {
+        selectedWallIds: replaced.bayWallIds,
+        selectedOpenings: [],
+        selectedEdges: [],
+      })
+      rebuildFloorPlanOverlay()
+      planStatus.textContent = `${fitted.label} an Wandbreite angepasst (Mund ${Math.round(bayMouthWidthCm(fitted))} cm)`
+      return
+    }
+    const mouth = bayMouthWidthCm(preset)
+    if (mouth > wall.width + 0.5) {
+      planStatus.textContent = `${preset.label}: braucht ${Math.round(mouth)} cm (Wand ${Math.round(wall.width)} cm) — oder „An Wandbreite“`
+      return
+    }
+    const inserted = insertBayAsWallSegment(state, wall.id, preset, localX)
+    if (!inserted) {
+      planStatus.textContent = 'Erker-Segment konnte hier nicht eingesetzt werden'
+      return
+    }
+    commitState(inserted.state, {
+      selectedWallIds: inserted.bayWallIds,
+      selectedOpenings: [],
+      selectedEdges: [],
+    })
+    rebuildFloorPlanOverlay()
+    planStatus.textContent = `${preset.label} als Segment eingesetzt (${Math.round(mouth)} cm) — zum Verschieben Erker ziehen`
+    return
+  }
+
+  if (mode === 'replace' || mode === 'fit') {
+    const scaled = scaleBayPresetToMouthWidth(preset, wall.width)
+    if (!scaled) {
+      planStatus.textContent = `${preset.label}: Segment mindestens ${bayMinMouthWidthCm(preset)} cm (aktuell ${Math.round(wall.width)} cm)`
+      return
+    }
     const walls = buildBayWindowAtPose(
       {
         originX: wall.originX ?? wall.x,
@@ -13857,16 +14705,16 @@ function applyBayWindowOnWall(
         panelFlip: wall.panelFlip ?? true,
         height: wall.height,
       },
-      preset,
+      scaled,
       wall,
     )
     if (walls.length === 0) {
-      planStatus.textContent = 'Erker konnte die Wand nicht ersetzen'
+      planStatus.textContent = 'Baugruppe konnte die Wand nicht ersetzen'
       return
     }
     const others = building.walls.filter((item) => item.id !== wall.id)
     if (incomingWallsCollide(others, walls)) {
-      planStatus.textContent = 'Erker würde bestehende Wände überlagern'
+      planStatus.textContent = 'Baugruppe würde bestehende Wände überlagern'
       return
     }
     const groupId = createId()
@@ -13874,7 +14722,7 @@ function applyBayWindowOnWall(
     const wallsNext = others.concat(grouped)
     const groups = [
       ...(building.groups ?? []).filter((group) => group.id !== wall.groupId),
-      { id: groupId, name: preset.label, memberWallIds: grouped.map((item) => item.id) },
+      { id: groupId, name: scaled.label, memberWallIds: grouped.map((item) => item.id) },
     ]
     let next = updateActiveBuilding(state, { walls: wallsNext, groups })
     next = linkStudioWalls(next, grouped.map((item) => item.id))
@@ -13886,13 +14734,12 @@ function applyBayWindowOnWall(
       selectedEdges: [],
     })
     rebuildFloorPlanOverlay()
-    planStatus.textContent = `${preset.label} ersetzt die Wand`
+    planStatus.textContent = `${scaled.label} ersetzt Wand`
     return
   }
   let attachCenter = localX
   if (mode === 'left' || mode === 'right') {
-    const attachW =
-      preset.shape === 'angled45' ? preset.frontWidthCm + 2 * preset.depthCm : preset.frontWidthCm
+    const attachW = bayMouthWidthCm(preset)
     const end = visualSideToWallEnd(wall, mode)
     attachCenter = end === 'start' ? attachW / 2 : wall.width - attachW / 2
   } else if (mode === 'above') {
@@ -13900,11 +14747,11 @@ function applyBayWindowOnWall(
   }
   const built = buildBayWindowWalls(wall, preset, attachCenter)
   if (!built) {
-    planStatus.textContent = 'Erker passt nicht auf diese Wand'
+    planStatus.textContent = 'Baugruppe passt nicht auf diese Wand'
     return
   }
   if (incomingWallsCollide(building.walls, built.walls)) {
-    planStatus.textContent = 'Erker würde bestehende Wände überlagern'
+    planStatus.textContent = 'Baugruppe würde bestehende Wände überlagern'
     return
   }
   const removeBayIds = new Set(wall.bayWindow?.wallIds ?? [])
@@ -13938,7 +14785,14 @@ function askBayWindowPlacement(presetId: string, wallId: string, localX: number)
   const onClose = () => {
     dialog.removeEventListener('close', onClose)
     const value = dialog.returnValue
-    if (value === 'replace' || value === 'left' || value === 'right' || value === 'above') {
+    if (
+      value === 'segment' ||
+      value === 'fit' ||
+      value === 'replace' ||
+      value === 'left' ||
+      value === 'right' ||
+      value === 'above'
+    ) {
       applyBayWindowOnWall(preset, wall, value, localX)
     }
   }
@@ -13973,15 +14827,44 @@ function placeBayWindowAtWall(presetId: string, clientX: number, clientY: number
 
 function placeBayWindowFromLibrary(presetId: string) {
   if (!canEditActiveBuildingNow()) return
+  const preset = BAY_WINDOW_PRESETS.find((item) => item.id === presetId)
+  if (!preset) return
+  // Markierter Erker → durch anderes Preset austauschen (Mundzentrum bleibt).
+  if (bayPresetKind(preset) === 'bay' && editor.selectedWallIds.length > 0) {
+    const seed = editor.selectedWallIds.find((id) => bayHostWall(getAllWalls(state), id))
+    if (seed) {
+      const swapped = swapBayPreset(state, seed, preset)
+      if (swapped) {
+        commitState(swapped.state, {
+          selectedWallIds: swapped.bayWallIds,
+          selectedOpenings: [],
+          selectedEdges: [],
+        })
+        rebuildFloorPlanOverlay()
+        planStatus.textContent = `${preset.label} ausgetauscht`
+        return
+      }
+      planStatus.textContent = 'Erker-Tausch nicht möglich (Mundbreite / Reststücke)'
+      return
+    }
+  }
   const ids = editor.selectedWallIds.filter((id) => bayWindowParentEligible(getWall(state, id)))
-  if (ids.length === 1) {
-    const wall = getWall(state, ids[0])!
-    askBayWindowPlacement(presetId, wall.id, wall.width / 2)
+  if (ids.length >= 1) {
+    for (const id of ids) {
+      const wall = getWall(state, id)
+      if (!bayWindowParentEligible(wall)) continue
+      if (bayPresetKind(preset) === 'bay') {
+        // Markiertes Segment: Vorlagenbreite einsetzen (Mitte), nicht auf volle Wand dehnen.
+        applyBayWindowOnWall(preset, wall, 'segment', wall.width / 2)
+      } else {
+        applyBayWindowOnWall(preset, wall, 'replace', wall.width / 2)
+      }
+    }
     return
   }
   if (currentView !== 'top') {
     setView('top')
-    planStatus.textContent = 'Erker: in der Draufsicht ablegen oder auf eine markierte Wand ziehen'
+    planStatus.textContent = 'Erker: Segment markieren zum Austauschen, oder in der Draufsicht ablegen'
     return
   }
   const grid = planViewCenterGrid()
@@ -14515,12 +15398,29 @@ function syncPedimentControls() {
     pediment.extentForwardCm != null && pediment.extentForwardCm > 0
       ? String(pediment.extentForwardCm)
       : ''
-  const showGable = pediment.form !== 'straight'
+  const showGable = pedimentFormSupportsGableDims(pediment.form)
+  const closedForm = pedimentFormIsClosed(pediment.form)
+  const openGable =
+    showGable &&
+    (pediment.form === 'triangle' ||
+      pediment.form === 'segment' ||
+      pediment.form === 'round' ||
+      pediment.form === 'pointed' ||
+      pediment.form === 'segmental' ||
+      pediment.form === 'lancet' ||
+      pediment.form === 'ellipse' ||
+      pediment.form === 'tudor')
   pedimentGableLabel.hidden = !showGable
-  /** Breite folgt der Öffnung; nur Überstand und Firsthöhe sind editierbar. */
-  pedimentGableSizeRow.hidden = true
-  if (pedimentSideArmsRow) pedimentSideArmsRow.hidden = true
-  if (pedimentSideArmLabel) pedimentSideArmLabel.hidden = true
+  pedimentGableSizeRow.hidden = !showGable
+  if (pedimentGableWidthLabel) pedimentGableWidthLabel.hidden = !showGable
+  const showSideArms = openGable && !closedForm
+  if (pedimentSideArmsRow) pedimentSideArmsRow.hidden = !showSideArms
+  if (pedimentSideArmLabel) pedimentSideArmLabel.hidden = !showSideArms
+  if (pedimentSideArmsEnabled) {
+    pedimentSideArmsEnabled.checked = (pediment.sideArmWidth ?? 0) > 0
+  }
+  if (pedimentSealedBackRow) pedimentSealedBackRow.hidden = !closedForm
+  if (pedimentSealedBack) pedimentSealedBack.checked = Boolean(pediment.sealedBack)
   const overhangRow = pedimentOverhang.closest<HTMLElement>('.toolbar-row-2')
   if (overhangRow) overhangRow.hidden = false
   pedimentConsolesEnabled.checked = Boolean(pediment.consoles?.enabled)
@@ -14966,7 +15866,8 @@ function syncSelectionToolbarTabs() {
   if (kind !== selectionToolbarKind) {
     selectionToolbarKind = kind
     if (!selectionToolbarTabLocked) {
-      selectionToolbarTab = pendingSelectionToolbarTab ?? ''
+      selectionToolbarTab =
+        pendingSelectionToolbarTab ?? lastStickySelectionToolbarTab ?? ''
       pendingSelectionToolbarTab = null
     }
   } else if (pendingSelectionToolbarTab) {
@@ -14999,8 +15900,13 @@ function syncSelectionToolbarTabs() {
     return
   }
 
+  // Sticky zuletzt genutzt, sonst erster Tab (Maße / …) — nie erzwungenes „Farben“.
   if (!selectionToolbarTab || !labels.has(selectionToolbarTab)) {
-    selectionToolbarTab = orderedIds[0]!
+    if (lastStickySelectionToolbarTab && labels.has(lastStickySelectionToolbarTab)) {
+      selectionToolbarTab = lastStickySelectionToolbarTab
+    } else {
+      selectionToolbarTab = orderedIds[0]!
+    }
   }
 
   for (const id of orderedIds) {
@@ -15013,6 +15919,7 @@ function syncSelectionToolbarTabs() {
     btn.textContent = labels.get(id) ?? id
     btn.addEventListener('click', () => {
       selectionToolbarTab = id
+      lastStickySelectionToolbarTab = id
       syncSelectionToolbarTabs()
     })
     selectionRightTabs.appendChild(btn)
@@ -15950,34 +16857,7 @@ function selectLayerItem(index: number, shiftKey: boolean, additive = false) {
   if (index < 0) return
   const item = buildLayerOrderForState()[index]
   if (!item) return
-
-  if (additive) {
-    const exists = editor.selectedWallIds.includes(item.wallId)
-    const selectedWallIds = exists
-      ? editor.selectedWallIds.filter((id) => id !== item.wallId)
-      : [...editor.selectedWallIds, item.wallId]
-    lastSelectionAnchor = index
-    applyState(state, {
-      selectedWallIds,
-      selectedOpenings: [],
-      selectedEdges: [],
-      selectedRoofBuildingId: undefined,
-    })
-    return
-  }
-
-  if (shiftKey && lastSelectionAnchor !== null) {
-    applyState(state, editorFromLayerRange(lastSelectionAnchor, index))
-    return
-  }
-
-  lastSelectionAnchor = index
-  applyState(state, {
-    selectedWallIds: [item.wallId],
-    selectedOpenings: [],
-    selectedEdges: [],
-    selectedRoofBuildingId: undefined,
-  })
+  selectLayerTreeEntry({ kind: 'wall', wallId: item.wallId }, shiftKey, additive)
 }
 
 function wallPartToSettingsTab(
@@ -16015,12 +16895,26 @@ function openingPartToSettingsTab(part: OpeningPart): string | null {
       return 'stairs'
     case 'rollerShutter':
       return 'roller-shutter'
+    // Rahmen/Glas: Ganz-Öffnung — Tab nicht auf Farben erzwingen (erster bzw. Sticky).
     case 'frame':
     case 'grille':
-      return 'colors'
+    case 'group':
+      return null
     default:
       return null
   }
+}
+
+/** Teil-Objekt → eigener Tab; sonst Sticky/erster Tab (kein erzwungenes Farben). */
+function queueSelectionToolbarTab(preferredTab: string | null) {
+  if (selectionToolbarTabLocked) return
+  if (preferredTab) {
+    // Nur für diese Markierung — Sticky bleibt der vom Nutzer gewählte Reiter.
+    pendingSelectionToolbarTab = preferredTab
+    return
+  }
+  // Ganz-Objekt: Sticky behalten, falls der Tab beim neuen Objekt existiert.
+  pendingSelectionToolbarTab = lastStickySelectionToolbarTab || null
 }
 
 function selectWall(
@@ -16031,7 +16925,7 @@ function selectWall(
 ) {
   if (id === null) {
     if (additive) return
-    lastSelectionAnchor = null
+    lastLayerTreeAnchor = null
     applyEditorSelection({
       selectedWallIds: [],
       selectedOpenings: [],
@@ -16047,15 +16941,13 @@ function selectWall(
     return
   }
 
-  const preferredTab = wallPartToSettingsTab(wallPart)
-  if (preferredTab && !selectionToolbarTabLocked) {
-    pendingSelectionToolbarTab = preferredTab
-  }
+  queueSelectionToolbarTab(wallPartToSettingsTab(wallPart))
   const wall = getWall(state, id)
   if (!additive) {
     const bayIds = bayWallSelectionIds(getAllWalls(state), id)
     if (bayIds && bayIds.length > 1 && wallPart === 'group') {
-      lastSelectionAnchor = layerIndexForWall(state, bayIds[0]!)
+      const treeIdx = layerTreeIndexOf({ kind: 'wall', wallId: bayIds[0]! })
+      if (treeIdx >= 0) lastLayerTreeAnchor = treeIdx
       applyEditorSelection({
         selectedWallIds: [...bayIds],
         selectedOpenings: [],
@@ -16080,7 +16972,8 @@ function selectWall(
   if (!additive && wall?.groupId && wallPart === 'group') {
     const group = activeBuilding().groups?.find((item) => item.id === wall.groupId)
     if (group && group.memberWallIds.length > 1) {
-      lastSelectionAnchor = layerIndexForWall(state, group.memberWallIds[0])
+      const treeIdx = layerTreeIndexOf({ kind: 'wall', wallId: group.memberWallIds[0]! })
+      if (treeIdx >= 0) lastLayerTreeAnchor = treeIdx
       applyEditorSelection({
         selectedWallIds: [...group.memberWallIds],
         selectedOpenings: [],
@@ -16102,7 +16995,8 @@ function selectWall(
     const selectedWallIds = exists
       ? editor.selectedWallIds.filter((item) => item !== id)
       : [...editor.selectedWallIds, id]
-    lastSelectionAnchor = layerIndexForWall(state, id)
+    const treeIdxAdd = layerTreeIndexOf({ kind: 'wall', wallId: id })
+    if (treeIdxAdd >= 0) lastLayerTreeAnchor = treeIdxAdd
     applyEditorSelection({
       selectedWallIds,
       selectedOpenings: [],
@@ -16125,7 +17019,8 @@ function selectWall(
     return
   }
 
-  lastSelectionAnchor = layerIndexForWall(state, id)
+  const treeIdx = layerTreeIndexOf({ kind: 'wall', wallId: id })
+  if (treeIdx >= 0) lastLayerTreeAnchor = treeIdx
   applyEditorSelection({
     selectedWallIds: [id],
     selectedOpenings: [],
@@ -16150,14 +17045,12 @@ function selectOpening(
   additive: boolean,
   openingPartArg: OpeningPart = 'group',
 ) {
-  // Rahmen/Glas → Ganz-Öffnung (Farben/Maße); sonst Teil-Fokus behalten.
+  // Rahmen/Glas → Ganz-Öffnung (Maße/Sticky); sonst Teil-Fokus behalten.
   const openingPart: OpeningPart =
     openingPartArg === 'frame' || openingPartArg === 'grille' ? 'group' : openingPartArg
-  const preferredTab = openingPartToSettingsTab(openingPartArg)
-  if (preferredTab && !selectionToolbarTabLocked) {
-    pendingSelectionToolbarTab = preferredTab
-  }
-  lastSelectionAnchor = null
+  queueSelectionToolbarTab(openingPartToSettingsTab(openingPartArg))
+  const treeIdx = layerTreeIndexOf({ kind: 'opening', wallId, openingId })
+  if (treeIdx >= 0) lastLayerTreeAnchor = treeIdx
   const ref: OpeningRef = { wallId, openingId}
 
   if (additive) {
@@ -16731,6 +17624,24 @@ selectionToolbar.addEventListener('pointerdown', (event) => {
 })
 
 deleteWallButton.addEventListener('click', () => {
+  // Markierter Erker → flache Wand über die Mundöffnung (Reststücke verschmelzen).
+  const baySeed = editor.selectedWallIds.find((id) => {
+    const wall = getWall(state, id)
+    return wall && bayMetaForWall(getAllWalls(state), wall)
+  })
+  if (baySeed && editor.selectedOpenings.length === 0) {
+    const flattened = flattenBayToFlatWall(state, baySeed)
+    if (flattened) {
+      commitState(flattened.state, {
+        selectedWallIds: [flattened.flatWallId],
+        selectedOpenings: [],
+        selectedEdges: [],
+      })
+      rebuildFloorPlanOverlay()
+      planStatus.textContent = 'Erker entfernt — flache Wand'
+      return
+    }
+  }
   let next = state
   for (const id of editor.selectedWallIds) {
     next = removeWall(next, id)
@@ -17400,6 +18311,7 @@ pedimentSideArmWidth.addEventListener('change', () => {
   commitOpeningPedimentPatch({
     sideArmWidth: snapToGrid(Number(pedimentSideArmWidth.value), STUDIO_MASONRY),
   })
+  syncPedimentControls()
 })
 pedimentSideArmsEnabled.addEventListener('change', () => {
   if (pedimentSideArmsEnabled.checked) {
@@ -17410,6 +18322,10 @@ pedimentSideArmsEnabled.addEventListener('change', () => {
   } else {
     commitOpeningPedimentPatch({ sideArmWidth: 0 })
   }
+  syncPedimentControls()
+})
+pedimentSealedBack.addEventListener('change', () => {
+  commitOpeningPedimentPatch({ sealedBack: pedimentSealedBack.checked })
   syncPedimentControls()
 })
 pedimentScale.addEventListener('change', () => {
@@ -17550,7 +18466,7 @@ function commitOpeningSizePatch(patch: { width?: number; height?: number }) {
     if (patch.width !== undefined) {
       openingPatch = {
         ...openingPatch,
-        x: centeredOpeningX(opening, patch.width, STUDIO_MASONRY),
+        x: anchoredOpeningX(opening, patch.width, openingWidthGrow, STUDIO_MASONRY),
       }
     }
     if (patch.width !== undefined && opening.type === 'door' && opening.stairs?.enabled) {
@@ -17559,7 +18475,17 @@ function commitOpeningSizePatch(patch: { width?: number; height?: number }) {
         stairs: syncStairsToDoorWidth(opening.stairs, { ...opening, width: patch.width }),
       }
     }
+    // #region agent log
+    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c6b426'},body:JSON.stringify({sessionId:'c6b426',runId:'post-fix',hypothesisId:'C',location:'main.ts:commitOpeningSizePatch',message:'size patch before update',data:{openingId:ref.openingId,prevW:opening.width,prevX:opening.x,patchW:patch.width,patchH:patch.height,grow:openingWidthGrow,anchoredX:openingPatch.x},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     next = updateOpening(next, ref.wallId, ref.openingId, openingPatch)
+    // #region agent log
+    {
+      const w2 = getWall(next, ref.wallId)
+      const o2 = w2?.openings.find((item) => item.id === ref.openingId)
+      fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c6b426'},body:JSON.stringify({sessionId:'c6b426',runId:'post-fix',hypothesisId:'C',location:'main.ts:commitOpeningSizePatch:after',message:'size patch after update',data:{openingId:ref.openingId,outW:o2?.width,outX:o2?.x,outH:o2?.height},timestamp:Date.now()})}).catch(()=>{});
+    }
+    // #endregion
   }
   commitState(next)
   syncOpeningPositionControls()
@@ -17568,12 +18494,25 @@ function commitOpeningSizePatch(patch: { width?: number; height?: number }) {
 
 openingWidthInput.addEventListener('change', () => {
   const width = snapToGrid(Number(openingWidthInput.value), STUDIO_MASONRY)
+  // #region agent log
+  fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c6b426'},body:JSON.stringify({sessionId:'c6b426',runId:'post-fix',hypothesisId:'C',location:'main.ts:openingWidth:change',message:'width input change',data:{raw:openingWidthInput.value,snapped:width,grow:openingWidthGrow},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   if (!Number.isFinite(width) || width < STUDIO_MASONRY) {
     syncOpeningPositionControls()
     return
   }
   commitOpeningSizePatch({ width })
 })
+
+function setOpeningWidthGrow(grow: 'left' | 'right') {
+  openingWidthGrow = grow
+  openingWidthDirLeft.classList.toggle('active', grow === 'left')
+  openingWidthDirRight.classList.toggle('active', grow === 'right')
+  openingWidthDirLeft.setAttribute('aria-pressed', grow === 'left' ? 'true' : 'false')
+  openingWidthDirRight.setAttribute('aria-pressed', grow === 'right' ? 'true' : 'false')
+}
+openingWidthDirLeft.addEventListener('click', () => setOpeningWidthGrow('left'))
+openingWidthDirRight.addEventListener('click', () => setOpeningWidthGrow('right'))
 
 openingHeightInput.addEventListener('change', () => {
   const height = snapToGrid(Number(openingHeightInput.value), STUDIO_MASONRY)
@@ -18154,14 +19093,17 @@ svgView.setOpeningsMoveHandler((dx, dy, commit, source) => {
   )
   const refs = inSel ? scopedOpeningRefs() : [source]
   if (commit) {
+    const base = openingDragBase
     openingDragBase = null
     facade.clearOpeningGuides()
     svgView.clearOpeningGuides()
-    commitState(state, {
-      ...editor,
-      selectedOpenings: inSel ? editor.selectedOpenings : [source],
-      selectedWallIds: [...new Set(refs.map((ref) => ref.wallId))],
-    })
+    if (base) {
+      commitDragFromBase(base, {
+        ...editor,
+        selectedOpenings: inSel ? editor.selectedOpenings : [source],
+        selectedWallIds: [...new Set(refs.map((ref) => ref.wallId))],
+      })
+    }
     return
   }
   if (dx === 0 && dy === 0) return
@@ -18217,6 +19159,231 @@ let pointerDown: {
   y: number
   additive: boolean
 } | null = null
+
+/** Shift+Drag Rechteckauswahl — nur bei leerer Auswahl. */
+let marqueeSelect: {
+  pointerId: number
+  startClientX: number
+  startClientY: number
+  currentClientX: number
+  currentClientY: number
+  active: boolean
+  /** Pick beim Start — für Klick ohne Bewegung. */
+  startHit: {
+    wallId?: string
+    openingId?: string
+    openingPart?: OpeningPart
+    wallPart?: NonNullable<EditorState['selectedWallPart']>
+    bandId?: string
+    ceiling?: { buildingId: string; floorIndex: number }
+    sceneLightId?: string
+  } | null
+} | null = null
+
+const marqueeOverlay = document.querySelector<HTMLDivElement>('#marquee-select-overlay')
+const _marqueeProject = new THREE.Vector3()
+
+function hasViewportSelection(): boolean {
+  return (
+    editor.selectedWallIds.length > 0 ||
+    editor.selectedOpenings.length > 0 ||
+    Boolean(editor.selectedCeiling) ||
+    Boolean(editor.selectedRoofBuildingId) ||
+    Boolean(editor.selectedBuildingId) ||
+    Boolean(editor.selectedSceneLightId) ||
+    (editor.selectedSceneLightIds?.length ?? 0) > 0
+  )
+}
+
+function projectSiteLocalToClient(point: SiteLocalPoint): { x: number; y: number } | null {
+  _marqueeProject.set(point.x, point.y, point.z)
+  siteOffset.localToWorld(_marqueeProject)
+  const cam = getActiveCamera()
+  cam.updateMatrixWorld()
+  const ndc = _marqueeProject.project(cam)
+  if (ndc.z > 1 || ndc.z < -1) return null
+  const rect = canvas.getBoundingClientRect()
+  return {
+    x: ((ndc.x + 1) / 2) * rect.width + rect.left,
+    y: ((-ndc.y + 1) / 2) * rect.height + rect.top,
+  }
+}
+
+function siteLocalCornersFullyInMarquee(
+  corners: SiteLocalPoint[],
+  rect: ReturnType<typeof normalizeClientRect>,
+): boolean {
+  return allClientPointsInRect(
+    corners.map((c) => projectSiteLocalToClient(c)),
+    rect,
+  )
+}
+
+function updateMarqueeOverlay(): void {
+  if (!marqueeOverlay || !marqueeSelect?.active) {
+    if (marqueeOverlay) marqueeOverlay.hidden = true
+    return
+  }
+  const stage = viewportStage.getBoundingClientRect()
+  const r = normalizeClientRect(
+    marqueeSelect.startClientX,
+    marqueeSelect.startClientY,
+    marqueeSelect.currentClientX,
+    marqueeSelect.currentClientY,
+  )
+  marqueeOverlay.hidden = false
+  marqueeOverlay.style.left = `${r.left - stage.left}px`
+  marqueeOverlay.style.top = `${r.top - stage.top}px`
+  marqueeOverlay.style.width = `${Math.max(1, r.right - r.left)}px`
+  marqueeOverlay.style.height = `${Math.max(1, r.bottom - r.top)}px`
+}
+
+function clearMarqueeSelect(): void {
+  marqueeSelect = null
+  if (marqueeOverlay) marqueeOverlay.hidden = true
+}
+
+function beginMarqueeSelect(event: PointerEvent): void {
+  marqueeSelect = {
+    pointerId: event.pointerId,
+    startClientX: event.clientX,
+    startClientY: event.clientY,
+    currentClientX: event.clientX,
+    currentClientY: event.clientY,
+    active: false,
+    startHit: pickFromEvent(event),
+  }
+  if (currentView === '3d') controls.enabled = false
+  canvas.setPointerCapture(event.pointerId)
+}
+
+function applyMarqueeSelection(rect: ReturnType<typeof normalizeClientRect>): void {
+  const wallIds: string[] = []
+  const openings: OpeningRef[] = []
+  const lightIds: string[] = []
+
+  if (!lightEditMode) {
+    for (const building of state.buildings) {
+      if (building.hidden) continue
+      for (const wall of building.walls) {
+        if (!isStudioWall(wall) || wall.hidden) continue
+        const fi = floorIndex(wall, building.wallHeight)
+        if (building.floors[fi]?.hidden) continue
+        const wallIn = siteLocalCornersFullyInMarquee(wallObbSiteLocalCorners(wall), rect)
+        if (wallIn) {
+          wallIds.push(wall.id)
+          continue
+        }
+        for (const opening of wall.openings) {
+          if (opening.hidden) continue
+          if (siteLocalCornersFullyInMarquee(openingFaceSiteLocalCorners(wall, opening), rect)) {
+            openings.push({ wallId: wall.id, openingId: opening.id })
+          }
+        }
+      }
+    }
+  }
+
+  const { sceneLights: lights } = normalizeSceneLightState(state)
+  for (const light of lights) {
+    if (!light.enabled) continue
+    if (
+      siteLocalCornersFullyInMarquee(
+        lightMarkerSiteLocalCorners(light.x, light.y, light.z),
+        rect,
+      )
+    ) {
+      lightIds.push(light.id)
+    }
+  }
+
+  if (openings.length > 0 || wallIds.length > 0) {
+    const openingWallIds = openings.map((ref) => ref.wallId)
+    applyEditorSelection({
+      selectedWallIds: [...new Set([...wallIds, ...openingWallIds])],
+      selectedOpenings: openings,
+      selectedEdges:
+        openings.length === 1 ? openingEdgesForSelection(openings[0]!) : [],
+      selectedOpeningPart: openings.length > 0 ? 'group' : undefined,
+      selectedWallPart: openings.length === 0 ? 'group' : undefined,
+      selectedTrimBandId: undefined,
+      selectedRoofBuildingId: undefined,
+      selectedRoofPart: undefined,
+      selectedCeiling: undefined,
+      selectedBuildingId: undefined,
+      selectedSceneLightId: undefined,
+      selectedSceneLightIds: [],
+    })
+    const n = wallIds.length + openings.length
+    planStatus.textContent =
+      n === 1
+        ? openings.length === 1
+          ? '1 Öffnung ausgewählt'
+          : '1 Wand ausgewählt'
+        : `${n} Elemente ausgewählt`
+    return
+  }
+
+  if (lightIds.length > 0) {
+    applyEditorSelection({
+      ...createDefaultEditorState(),
+      selectedSceneLightId: lightIds[lightIds.length - 1],
+      selectedSceneLightIds: lightIds,
+    })
+    planStatus.textContent =
+      lightIds.length === 1 ? '1 Licht ausgewählt' : `${lightIds.length} Lichter ausgewählt`
+    return
+  }
+
+  planStatus.textContent = 'Keine vollständig eingerahmten Elemente'
+}
+
+function finishMarqueeSelect(event: PointerEvent): boolean {
+  if (!marqueeSelect || event.pointerId !== marqueeSelect.pointerId) return false
+  const drag = marqueeSelect
+  const dx = event.clientX - drag.startClientX
+  const dy = event.clientY - drag.startClientY
+  const moved = drag.active || dx * dx + dy * dy > 16
+  clearMarqueeSelect()
+  if (currentView === '3d') controls.enabled = true
+  if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId)
+
+  if (moved) {
+    const rect = normalizeClientRect(
+      drag.startClientX,
+      drag.startClientY,
+      event.clientX,
+      event.clientY,
+    )
+    if (rect.right - rect.left < 4 || rect.bottom - rect.top < 4) return true
+    applyMarqueeSelection(rect)
+    return true
+  }
+
+  // Klick ohne Zug: bisheriges Shift-Verhalten (additiv auf Treffer).
+  const hit = drag.startHit
+  if (lightEditMode) {
+    if (hit?.sceneLightId) selectSceneLight(hit.sceneLightId, true)
+    return true
+  }
+  if (hit?.sceneLightId) {
+    selectSceneLight(hit.sceneLightId, true)
+    return true
+  }
+  if (hit?.ceiling) {
+    selectCeiling(hit.ceiling.buildingId, hit.ceiling.floorIndex)
+    return true
+  }
+  if (hit?.openingId && hit.wallId) {
+    selectOpening(hit.wallId, hit.openingId, true, hit.openingPart)
+    return true
+  }
+  if (hit?.wallId) {
+    selectWall(hit.wallId, true, hit.wallPart ?? 'group', hit.bandId)
+    return true
+  }
+  return true
+}
 
 // Pending-Click-State: selectOpening wird erst beim pointerup ohne Bewegung ausgeführt
 let planNavPendingSelect: {
@@ -18561,7 +19728,7 @@ function offsetStudioWallsByGrid(
   let dx = dgx * PLAN_GRID
   let dz = dgz * PLAN_GRID
   // Magnet: Endpunkte in Reichweite an Nachbarenden ziehen (auch bei ungeraden Wandbreiten)
-  const MAGNET_CM = PLAN_GRID
+  const MAGNET_CM = PLAN_CLOSE_GAP_CM
   const fixedEnds: Array<{ x: number; z: number }> = []
   for (const wall of buildingNow?.walls ?? []) {
     if (!isStudioWall(wall) || idSet.has(wall.id)) continue
@@ -18588,8 +19755,9 @@ function offsetStudioWallsByGrid(
     }
   }
   if (bestAdj) {
-    dx = bestAdj.dx
-    dz = bestAdj.dz
+    // Nach Magnet wieder aufs 8-cm-Raster — sonst nie bündig mit anderen freien Wänden
+    dx = Math.round(bestAdj.dx / PLAN_GRID) * PLAN_GRID
+    dz = Math.round(bestAdj.dz / PLAN_GRID) * PLAN_GRID
   }
   let next = updateActiveBuilding(facadeState, (building) => ({
     ...building,
@@ -18746,6 +19914,18 @@ canvas.addEventListener('pointerdown', (event) => {
       canvas.setPointerCapture(event.pointerId)
       return
     }
+    // Leere Auswahl + Shift = Rechteckauswahl (kein Pan).
+    if (
+      event.button === 0 &&
+      event.shiftKey &&
+      !hasViewportSelection() &&
+      !leafEditMode &&
+      !wallSplitModeActive()
+    ) {
+      event.preventDefault()
+      beginMarqueeSelect(event)
+      return
+    }
     if (event.button === 0 && event.shiftKey && !isSelectablePickHit(pickFromEvent(event))) {
       event.preventDefault()
       frontPanActive = true
@@ -18770,6 +19950,17 @@ canvas.addEventListener('pointerdown', (event) => {
       canvas.setPointerCapture(event.pointerId)
       return
     }
+    if (
+      event.button === 0 &&
+      event.shiftKey &&
+      !hasViewportSelection() &&
+      !leafEditMode &&
+      !wallSplitModeActive()
+    ) {
+      event.preventDefault()
+      beginMarqueeSelect(event)
+      return
+    }
     if (event.button === 0 && event.shiftKey && !isSelectablePickHit(pickFromEvent(event))) {
       event.preventDefault()
       planPanActive = true
@@ -18788,6 +19979,19 @@ canvas.addEventListener('pointerdown', (event) => {
       if (currentView === '3d') controls.enabled = false
       canvas.setPointerCapture(event.pointerId)
     }
+    return
+  }
+
+  // 3D: leere Auswahl + Shift → Rechteckauswahl (auch über Objekten; Zug entscheidet).
+  if (
+    currentView === '3d' &&
+    event.shiftKey &&
+    !hasViewportSelection() &&
+    !wallSplitModeActive() &&
+    !(event.metaKey || event.ctrlKey || modKeyHeld)
+  ) {
+    event.preventDefault()
+    beginMarqueeSelect(event)
     return
   }
 
@@ -18949,6 +20153,18 @@ canvas.addEventListener('pointermove', (event) => {
     return
   }
 
+  if (marqueeSelect && event.pointerId === marqueeSelect.pointerId) {
+    marqueeSelect.currentClientX = event.clientX
+    marqueeSelect.currentClientY = event.clientY
+    const dx = event.clientX - marqueeSelect.startClientX
+    const dy = event.clientY - marqueeSelect.startClientY
+    if (!marqueeSelect.active && dx * dx + dy * dy > 16) {
+      marqueeSelect.active = true
+    }
+    if (marqueeSelect.active) updateMarqueeOverlay()
+    return
+  }
+
   if (currentView === 'front' && frontPanActive) {
     panFrontByPixels(event.clientX - frontPanLastX, event.clientY - frontPanLastY)
     frontPanLastX = event.clientX
@@ -19021,6 +20237,49 @@ canvas.addEventListener('pointermove', (event) => {
     const dgx = grid.gx - drag3dWallMove.startGx
     const dgz = grid.gz - drag3dWallMove.startGz
     if (dgx === drag3dWallMove.lastDgx && dgz === drag3dWallMove.lastDgz) return
+    const startBuilding =
+      drag3dWallMove.startState.buildings.find(
+        (b) => b.id === drag3dWallMove!.startState.activeBuildingId,
+      ) ?? drag3dWallMove.startState.buildings[0]
+    const seedId = drag3dWallMove.seedWallIds[0]
+    // Eingebetteter Erker: entlang der Fassade gleiten (Reststücke links/rechts), nicht freischieben.
+    if (
+      seedId &&
+      startBuilding &&
+      canSlideBaySegment(startBuilding.walls, seedId) &&
+      !event.shiftKey
+    ) {
+      const along = baySlideDeltaFromWorldMove(
+        startBuilding.walls,
+        seedId,
+        dgx * PLAN_GRID,
+        dgz * PLAN_GRID,
+      )
+      const slid =
+        along != null ? slideBaySegmentAlong(drag3dWallMove.startState, seedId, along) : null
+      drag3dWallMove.lastDgx = dgx
+      drag3dWallMove.lastDgz = dgz
+      if (slid) {
+        const bayIds =
+          bayWallSelectionIds(slid.buildings.find((b) => b.id === slid.activeBuildingId)?.walls ?? [], seedId) ??
+          drag3dWallMove.seedWallIds
+        drag3dWallMove.lastWallIds = bayIds
+        previewMeshDrag(
+          slid,
+          {
+            ...editor,
+            selectedWallIds: bayIds,
+            selectedOpenings: [],
+          },
+          () => {
+            facade.applyLiveWallOffsets(drag3dWallMove!.startState, state, bayIds)
+          },
+        )
+        updateWallMoveDockHighlight(bayIds)
+        planStatus.textContent = 'Erker entlang der Wand verschieben'
+      }
+      return
+    }
     const wallIds = wallIdsForMoveDrag(
       drag3dWallMove.startState,
       drag3dWallMove.seedWallIds,
@@ -19211,6 +20470,10 @@ canvas.addEventListener('pointerup', (event) => {
     if (currentView === '3d') controls.enabled = true
     scheduleSoftPersistLeaves()
   }
+  if (marqueeSelect && event.pointerId === marqueeSelect.pointerId) {
+    finishMarqueeSelect(event)
+    return
+  }
   if (currentView === '3d') {
     if (event.button === 2) {
       controls.enablePan = false
@@ -19259,12 +20522,15 @@ canvas.addEventListener('pointerup', (event) => {
   if (isSceneEditView() && drag3dWallMove) {
     if (drag3dWallMoved) {
       const movedIds = [...drag3dWallMove.lastWallIds]
-      commitState(state, {
-        ...editor,
-        selectedWallIds: movedIds,
-        selectedOpenings: [],
-      })
-      planStatus.textContent = 'Wand verschoben'
+      commitDragFromBase(
+        wallMoveDragBase,
+        {
+          ...editor,
+          selectedWallIds: movedIds,
+          selectedOpenings: [],
+        },
+        'Wand verschoben',
+      )
       promptJoinIfTouching(movedIds)
     } else if (drag3dWallMove.lastWallIds.length === 1) {
       const hit = pickFromEvent(event)
@@ -19285,13 +20551,16 @@ canvas.addEventListener('pointerup', (event) => {
 
   if (isSceneEditView() && drag3dLabel) {
     if (drag3dLabelMoved) {
-      commitState(state, {
-        ...editor,
-        selectedWallIds: [drag3dLabel.wallId],
-        selectedWallPart: 'label',
-        selectedOpenings: [],
-      })
-      planStatus.textContent = 'Schrift verschoben'
+      commitDragFromBase(
+        labelDragBase,
+        {
+          ...editor,
+          selectedWallIds: [drag3dLabel.wallId],
+          selectedWallPart: 'label',
+          selectedOpenings: [],
+        },
+        'Schrift verschoben',
+      )
     }
     drag3dLabel = null
     drag3dLabelMoved = false
@@ -19304,14 +20573,17 @@ canvas.addEventListener('pointerup', (event) => {
 
   if (isSceneEditView() && drag3dTrimBand) {
     if (drag3dTrimBandMoved) {
-      commitState(state, {
-        ...editor,
-        selectedWallIds: [drag3dTrimBand.wallId],
-        selectedWallPart: 'trimBand',
-        selectedTrimBandId: drag3dTrimBand.bandId,
-        selectedOpenings: [],
-      })
-      planStatus.textContent = 'Zierband verschoben'
+      commitDragFromBase(
+        trimDragBase,
+        {
+          ...editor,
+          selectedWallIds: [drag3dTrimBand.wallId],
+          selectedWallPart: 'trimBand',
+          selectedTrimBandId: drag3dTrimBand.bandId,
+          selectedOpenings: [],
+        },
+        'Zierband verschoben',
+      )
     }
     drag3dTrimBand = null
     drag3dTrimBandMoved = false
@@ -19330,13 +20602,14 @@ canvas.addEventListener('pointerup', (event) => {
         drag3dPendingSelect.shiftKey,
         drag3dPendingSelect.openingPart,
       )
+    } else if (drag3dMoved) {
+      commitDragFromBase(openingDragBase)
     }
     drag3dPendingSelect = null
     drag3dMoved = false
     facade.clearOpeningGuides()
     svgView.clearOpeningGuides()
     clearPlacementGridOverlay()
-    commitState(state)
     drag3dOpening = null
     openingDragBase = null
     drag3dWallPlane = null
@@ -19390,6 +20663,12 @@ canvas.addEventListener('pointerleave', () => {
 
 canvas.addEventListener('pointercancel', (event) => {
   clearWallSplitHover()
+  if (marqueeSelect && event.pointerId === marqueeSelect.pointerId) {
+    clearMarqueeSelect()
+    if (currentView === '3d') controls.enabled = true
+    if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId)
+    return
+  }
   if (currentView === '3d') {
     endNav3d(event)
     return
@@ -19952,6 +21231,7 @@ function setLightEditMode(on: boolean) {
     syncSunUi()
     applySunLighting({ live: true })
     // Alle Lichter an (auch ohne Auto-mit-Sonne / Schedule), damit Bearbeitung möglich ist.
+    sceneLightsManualHold = null
     state = setAllSceneLightsEnabled(state, true)
     syncIndoorFillForSceneLights()
     syncSceneLightRuntime()
@@ -19963,6 +21243,7 @@ function setLightEditMode(on: boolean) {
   } else if (lightEditSunRestore) {
     const restore = lightEditSunRestore
     lightEditSunRestore = null
+    sceneLightsManualHold = null
     sunSettings = syncSunSettingsFromSolar(
       {
         ...sunSettings,
@@ -20138,26 +21419,62 @@ function bindSunSlider(
   apply: (value: number) => void,
   format: (value: number) => string,
 ) {
+  let liveRaf = 0
+  let scrubStartTod: number | null = null
+
+  const beginScrub = () => {
+    if (sunSliderScrubbing) return
+    sunSliderScrubbing = true
+    sunScrubWorldBox = null
+    scrubStartTod = lastScheduleTimeOfDay ?? sunSettings.timeOfDay
+  }
+
+  const flushLiveLighting = () => {
+    liveRaf = 0
+    applySunLighting({ live: true })
+    syncAutoSceneLightsWithSun(false, { updateLayerList: false })
+  }
+
+  const queueLiveLighting = () => {
+    if (liveRaf) return
+    liveRaf = requestAnimationFrame(flushLiveLighting)
+  }
+
+  input.addEventListener('pointerdown', beginScrub)
+
   input.addEventListener('input', () => {
+    beginScrub()
     const value = Number.parseFloat(input.value)
     apply(value)
     output.textContent = format(value)
-    applySunLighting({ live: true })
-    // Live Tag/Nacht: Lichter soft umschalten (kein applyState/History/Voll-Bake).
-    syncAutoSceneLightsWithSun(false, { updateLayerList: false })
-    noteScheduleTimeOfDay(sunSettings.timeOfDay, true)
+    // Zeitstempel fortschreiben, aber keine Fenster/Rollladen-Crossings während des Scrubs.
+    noteScheduleTimeOfDay(sunSettings.timeOfDay, false)
+    queueLiveLighting()
     if (sunSliderPersistTimer) window.clearTimeout(sunSliderPersistTimer)
     sunSliderPersistTimer = window.setTimeout(() => {
       sunSliderPersistTimer = 0
       persistApp()
     }, 400)
   })
+
   input.addEventListener('change', () => {
+    if (liveRaf) {
+      window.cancelAnimationFrame(liveRaf)
+      liveRaf = 0
+    }
+    sunSliderScrubbing = false
+    sunScrubWorldBox = null
+    // Frustum + Map-Größe finalisieren; Sofort-Bake + EnvMap.
+    applySunLighting({ live: true })
+    syncAutoSceneLightsWithSun(false, { updateLayerList: false })
     // Nur Sonnen-Shadow + EnvMap — keine Punktlicht-Cubes (unabhängig vom Azimut).
     flushSunShadowMap({ reflections: true })
     syncSceneLightRuntime()
     syncAutoSceneLightsWithSun()
-    noteScheduleTimeOfDay(sunSettings.timeOfDay, true)
+    const from = scrubStartTod
+    scrubStartTod = null
+    if (from != null) tickActorDaySchedules(from, sunSettings.timeOfDay)
+    lastScheduleTimeOfDay = sunSettings.timeOfDay
     if (sunSliderPersistTimer) {
       window.clearTimeout(sunSliderPersistTimer)
       sunSliderPersistTimer = 0
@@ -20233,6 +21550,8 @@ function syncAutoSceneLightsWithSun(
   if (!facadeReady) return
   // Licht-Modus erzwingt „alle an“ — Sonnen-/Zeitplan-Kopplung erst wieder beim Verlassen.
   if (lightEditMode) return
+  // Manuelles Alle ein-/ausblenden hat Vorrang vor Auto-Sonne und Schedule.
+  if (sceneLightsManualHold !== null) return
   const celestial = resolveCelestialState(sunSettings)
   const night = !celestial.sunAboveHorizon
   const autoSun = sunSettings.autoSceneLightsWithSun !== false
@@ -20338,6 +21657,7 @@ animDayCycleMinutesInput.addEventListener('change', () => {
 
 animAutoLightsInput.addEventListener('change', () => {
   sunSettings = { ...sunSettings, autoSceneLightsWithSun: animAutoLightsInput.checked }
+  sceneLightsManualHold = null
   if (animAutoLightsInput.checked) syncAutoSceneLightsWithSun(true)
   persistApp()
 })
@@ -20436,20 +21756,19 @@ bindSunSlider(
 function applySceneAppearance(override?: Partial<SceneAppearance>) {
   const appearance = override ? { ...sceneAppearance, ...override } : sceneAppearance
   const line = currentRenderStyle === 'line'
-  // Preview-Override: manuelle Farben; sonst Studio-Beige/Nacht oder Nutzerfarben.
-  const colors =
-    override || !isStudioStage(stageEnvironment)
-      ? {
-          sky: line ? '#ffffff' : appearance.skyReflection,
-          ground: line ? '#ffffff' : appearance.ground,
-          background: line ? '#ffffff' : appearance.background,
-        }
-      : sceneColorsForLighting()
+  // Preview-Override: Rohfarben (Picker-Live). Sonst: Neutral tintet nach Tageszeit, Himmel nutzt Nutzerfarben.
+  const colors = override
+    ? {
+        sky: line ? '#ffffff' : appearance.skyReflection,
+        ground: line ? '#ffffff' : appearance.ground,
+        background: line ? '#ffffff' : appearance.background,
+      }
+    : sceneColorsForLighting()
   const bg = colors.background
   const groundColor = colors.ground
   const skyColor = colors.sky
   groundMat.color.set(groundColor)
-  studioSphereMat.color.set(groundColor)
+  studioSphereMat.color.set(isStudioStage(stageEnvironment) ? bg : groundColor)
   setGlassSkyReflectionColor(skyColor)
   setGlassGroundReflectionColor(groundColor)
   atmosphereSky.setGroundAlbedo(groundColor)
@@ -20488,20 +21807,23 @@ function syncStageEnvironmentUi() {
     ?.classList.toggle('active', stageEnvironment === 'studio')
 }
 
-/** Im Neutralmodus steuern Tageszeit die Beige/Schwarz-Farben — manuelle Szenenfarben ausblenden. */
+/**
+ * Neutral: Hintergrund + Bodenfarbe sichtbar (Default Beige).
+ * Ausgeblendet (IDs bleiben): Umgebung-Duplikat, Laub, Alle drei, Himmelsfarbe; Farben im Himmel-Modus.
+ */
 function syncStudioSceneColorVisibility() {
-  const hideManual = isStudioStage(stageEnvironment)
-  for (const id of [
-    'scene-all-color-host',
-    'scene-bg-color-host',
-    'scene-ground-color-host',
-    'scene-sky-color-host',
-  ]) {
+  const studio = isStudioStage(stageEnvironment)
+  for (const id of ['scene-bg-color-host', 'scene-ground-color-host']) {
     const host = document.getElementById(id)
     const group = host?.closest('.toolbar-group') as HTMLElement | null
-    group?.toggleAttribute('hidden', hideManual)
+    group?.toggleAttribute('hidden', !studio)
   }
-  document.getElementById('studio-stage-hint')?.toggleAttribute('hidden', !hideManual)
+  for (const id of ['scene-all-color-host', 'scene-sky-color-host']) {
+    const host = document.getElementById(id)
+    const group = host?.closest('.toolbar-group') as HTMLElement | null
+    group?.toggleAttribute('hidden', true)
+  }
+  document.getElementById('studio-stage-hint')?.toggleAttribute('hidden', !studio)
 }
 
 function setStageEnvironment(mode: StageEnvironment) {
@@ -21195,6 +22517,15 @@ window.addEventListener('keydown', (event) => {
     return
   }
 
+  // Alles auswählen: nur Bühnen-Inhalte — nie UI-/Seitentext (außer in Eingabefeldern)
+  if (mod && !event.shiftKey && !event.altKey && (event.key === 'a' || event.key === 'A')) {
+    if (isTypingInInput()) return
+    event.preventDefault()
+    window.getSelection()?.removeAllRanges()
+    if (isSceneEditView()) selectAllSceneElements()
+    return
+  }
+
   if (handle3dCameraArrowKeys(event)) return
 
   // Pfeiltasten: Öffnungen in 8-cm-Schritten (Numpad 1–9 = Vielfaches; ohne ⌘/Ctrl/⇧)
@@ -21462,7 +22793,6 @@ function animate() {
       viewportDirty = true
     }
     if (sceneLightingReady && !viewportDirty && !perfOn && !liveMotion) {
-      orbitProbeReset()
       return
     }
     viewportDirty = false
@@ -21476,7 +22806,6 @@ function animate() {
       facade.updatePerformanceLod(camera, viewportRenderHeight())
     }
     render3dFrame()
-    if (orbitLite) orbitProbeFrame(performance.now())
     perfRendered = true
     updateViewCompass()
     if (!orbitLite) updateWallLibraryGizmos()
@@ -21603,17 +22932,74 @@ studioWallUnlinkButton.addEventListener('click', () => {
   unlinkSelectedStudioWalls()
 })
 
+studioWallWidthInput.addEventListener('change', () => {
+  // #region agent log
+  fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c6b426'},body:JSON.stringify({sessionId:'c6b426',runId:'post-fix',hypothesisId:'F',location:'main.ts:studioWallWidth:change:enter',message:'wall width change enter',data:{raw:studioWallWidthInput.value,selectedCount:editor.selectedWallIds.length,selectedIds:editor.selectedWallIds.slice(0,5)},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
+  if (editor.selectedWallIds.length !== 1) {
+    // #region agent log
+    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c6b426'},body:JSON.stringify({sessionId:'c6b426',runId:'post-fix',hypothesisId:'H',location:'main.ts:studioWallWidth:change:abort',message:'abort not single wall',data:{selectedCount:editor.selectedWallIds.length},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    return
+  }
+  const wallId = editor.selectedWallIds[0]!
+  const wall = getWall(state, wallId)
+  if (!wall || !isStudioWall(wall)) {
+    // #region agent log
+    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c6b426'},body:JSON.stringify({sessionId:'c6b426',runId:'post-fix',hypothesisId:'H',location:'main.ts:studioWallWidth:change:abort',message:'abort not studio wall',data:{wallId,hasWall:Boolean(wall),isStudio:wall?isStudioWall(wall):false},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    return
+  }
+  // Strecken (Breite) darf bei planLinked — wie 3D-Greifer via stretchStudioFacade / translateStudioCorner.
+  // Sperre „Wand lösen“ gilt nur für Verschieben/Drehen, nicht für Links/Rechts ± und #studio-wall-width.
+  const yaw = wall.yawDeg ?? 0
+  const nextWidth = snapWallWidthCm(Number(studioWallWidthInput.value), yaw)
+  if (!Number.isFinite(nextWidth) || nextWidth < STUDIO_MIN_SIZE) {
+    studioWallWidthInput.value = String(Math.round(wall.width))
+    // #region agent log
+    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c6b426'},body:JSON.stringify({sessionId:'c6b426',runId:'post-fix',hypothesisId:'G',location:'main.ts:studioWallWidth:change:invalid',message:'abort invalid snap',data:{raw:studioWallWidthInput.value,nextWidth,yaw,prevW:wall.width,step:wallWidthStepCm(yaw)},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    return
+  }
+  const delta = nextWidth - wall.width
+  if (Math.abs(delta) < 0.5) {
+    // #region agent log
+    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c6b426'},body:JSON.stringify({sessionId:'c6b426',runId:'post-fix',hypothesisId:'G',location:'main.ts:studioWallWidth:change:nodelta',message:'abort zero delta',data:{raw:studioWallWidthInput.value,nextWidth,prevW:wall.width,yaw,step:wallWidthStepCm(yaw)},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    return
+  }
+  studioWallWidthInput.value = String(nextWidth)
+  const beforeW = wall.width
+  const nextState = finalizeStudioGeometry(
+    stretchStudioFacade(state, wallId, studioWallWidthGrowSide, delta),
+  )
+  const afterW = getWall(nextState, wallId)?.width
+  // #region agent log
+  fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c6b426'},body:JSON.stringify({sessionId:'c6b426',runId:'post-fix',hypothesisId:'I',location:'main.ts:studioWallWidth:change:commit',message:'wall width stretch commit',data:{wallId,beforeW,delta,nextWidth,afterW,yaw,planLinked:wall.planLinked,side:studioWallWidthGrowSide},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
+  commitState(nextState)
+})
+
+function setStudioWallWidthGrowSide(side: 'start' | 'end') {
+  studioWallWidthGrowSide = side
+  studioWallWidthDirLeft.classList.toggle('active', side === 'start')
+  studioWallWidthDirRight.classList.toggle('active', side === 'end')
+  studioWallWidthDirLeft.setAttribute('aria-pressed', side === 'start' ? 'true' : 'false')
+  studioWallWidthDirRight.setAttribute('aria-pressed', side === 'end' ? 'true' : 'false')
+}
+studioWallWidthDirLeft.addEventListener('click', () => setStudioWallWidthGrowSide('start'))
+studioWallWidthDirRight.addEventListener('click', () => setStudioWallWidthGrowSide('end'))
+
 function stretchSelectedWall(side: 'start' | 'end', sign: 1 | -1) {
   if (editor.selectedWallIds.length !== 1) return
   const wallId = editor.selectedWallIds[0]
   const wall = getWall(state, wallId)
   if (!wall || !isStudioWall(wall)) return
-  if (selectionLockedToUnselected(activeBuilding().walls, [wallId])) {
-    planStatus.textContent = 'Zuerst Wand lösen (Rechtsklick)'
-    return
-  }
   const yaw = wall.yawDeg ?? 0
   const delta = snapWallWidthDelta(wall.width, sign * wallWidthStepCm(yaw), yaw)
+  // #region agent log
+  fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c6b426'},body:JSON.stringify({sessionId:'c6b426',runId:'post-fix',hypothesisId:'I',location:'main.ts:stretchSelectedWall',message:'stretch button',data:{wallId,side,sign,prevW:wall.width,delta,yaw,planLinked:wall.planLinked},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   if (delta === 0) return
   commitState(finalizeStudioGeometry(stretchStudioFacade(state, wallId, side, delta)))
 }
@@ -21629,28 +23015,6 @@ studioStretchEndMinus.addEventListener('click', () => {
 })
 studioStretchEndPlus.addEventListener('click', () => {
   stretchSelectedWall('end', 1)
-})
-
-studioWallWidthInput.addEventListener('change', () => {
-  if (editor.selectedWallIds.length !== 1) return
-  const wallId = editor.selectedWallIds[0]!
-  const wall = getWall(state, wallId)
-  if (!wall || !isStudioWall(wall)) return
-  if (selectionLockedToUnselected(activeBuilding().walls, [wallId])) {
-    planStatus.textContent = 'Zuerst Wand lösen (Rechtsklick)'
-    studioWallWidthInput.value = String(Math.round(wall.width))
-    return
-  }
-  const yaw = wall.yawDeg ?? 0
-  const nextWidth = snapWallWidthCm(Number(studioWallWidthInput.value), yaw)
-  if (!Number.isFinite(nextWidth) || nextWidth < STUDIO_MIN_SIZE) {
-    studioWallWidthInput.value = String(Math.round(wall.width))
-    return
-  }
-  const delta = nextWidth - wall.width
-  if (Math.abs(delta) < 0.5) return
-  studioWallWidthInput.value = String(nextWidth)
-  commitState(finalizeStudioGeometry(stretchStudioFacade(state, wallId, 'end', delta)))
 })
 
 studioHeightMinus.addEventListener('click', () => {

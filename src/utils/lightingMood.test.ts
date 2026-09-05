@@ -113,6 +113,60 @@ describe('lightingMood', () => {
     expect(lowMood.groundAmbientColor.r).toBeGreaterThan(lowMood.groundAmbientColor.b * 0.9)
   })
 
+  it('Nacht ohne Mond: kaum Ambient, kein Key', () => {
+    const celestial = resolveCelestialState({
+      ...DEFAULT_SUN_SETTINGS,
+      month: 9,
+      day: 20,
+      timeOfDay: 0,
+      elevationRad: -0.4,
+      azimuth: 0,
+    })
+    // Illumination erzwingen unter Mond-Schwelle
+    const forced = { ...celestial, activeLight: 'night' as const, lightIntensity: 0, skyAmbientFactor: 0.01 }
+    const palette = skyPaletteFromCelestial(forced, '#3a6084', '#888', '#666')
+    const mood = resolveLightingMood(
+      { ...DEFAULT_SUN_SETTINGS, month: 9, day: 20, timeOfDay: 0, elevationRad: -0.4 },
+      forced,
+      palette,
+      '#888',
+    )
+    expect(mood.skyIntensity).toBeLessThan(0.02)
+    expect(mood.keyCastShadow).toBe(false)
+    expect(mood.hemiSkyColor.r + mood.hemiSkyColor.g + mood.hemiSkyColor.b).toBeLessThan(0.2)
+  })
+
+  it('Mondlicht: bläuliches Fill, Schatten möglich', () => {
+    const solar = solarPosition(dayOfYearFromMonthDay(9, 5), 0)
+    const celestial = resolveCelestialState({
+      ...DEFAULT_SUN_SETTINGS,
+      month: 9,
+      day: 5,
+      timeOfDay: 0,
+      azimuth: solar.azimuthDeg,
+      elevationRad: solar.elevationRad,
+    })
+    expect(celestial.activeLight).toBe('moon')
+    expect(celestial.lightColorTemp).toBeGreaterThan(7000)
+    const palette = skyPaletteFromCelestial(celestial, '#3a6084', '#888', '#666')
+    const mood = resolveLightingMood(
+      {
+        ...DEFAULT_SUN_SETTINGS,
+        month: 9,
+        day: 5,
+        timeOfDay: 0,
+        azimuth: solar.azimuthDeg,
+        elevationRad: solar.elevationRad,
+      },
+      celestial,
+      palette,
+      '#888',
+    )
+    expect(mood.skyIntensity).toBeLessThan(0.05)
+    expect(mood.keyCastShadow).toBe(true)
+    expect(mood.hemiSkyColor.b).toBeGreaterThan(mood.hemiSkyColor.r * 0.85)
+  })
+
   it('bounceDirection liegt gegenüber der Sonne', () => {
     const bounce = bounceDirectionFromKey(90, 0.8)
     const sun = new THREE.Vector3()

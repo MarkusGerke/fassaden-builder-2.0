@@ -1,0 +1,32 @@
+---
+description: Beim Orbitieren dürfen Schatten/Wandfarbe nicht kurz hart oder umgefärbt wirken
+alwaysApply: true
+---
+
+# Orbit: keine sichtbaren Qualitäts-Sprünge
+
+## Symptom (mehrfach regrediert)
+
+Beim Drehen/Zoomen/Schwenken wirkt die **Wandfarbe** kurz um oder **weiche Schatten** werden für einen Moment **hart**. Nutzer haben das bereits mehrfach korrigieren lassen (u. a. v2.0.151 → wieder kaputt in v2.0.170 → v2.0.196/197).
+
+## Produktregel
+
+Während Navigation (`orbitLite`) darf sich die **sichtbare** Licht-/Schattenqualität **nicht** ändern. Orbit-Lite spart nur unsichtbare Arbeit (EnvMap-Bake pausieren, Gizmo-Update pausieren). Keine „Lite“-Schatten, kein Qualitäts-Toggle als Performance-Hebel.
+
+## Verboten (nicht wieder einführen)
+
+- `setPcssLiteMode(true)` / Uniform `pcssLite` / 1-Tap-Schatten beim Orbit — **entfernt** in v2.0.197; nicht zurückbauen.
+- Adaptives PCSS-Lite nach Frame-Zeit (früher `orbitProbe*`) — ebenfalls verboten.
+- Pixelratio beim Orbit auf 1 senken, solange **Render**-Modus (weiches PCSS) aktiv ist — DPR 1 lässt weiche Schatten hart wirken.
+- EnvMap: `bindMaterialsToGlassEnv` / `needsUpdate` jedes Idle-Frame; Bake während Orbit; Bake ohne Restore von Render-Target/Intensität.
+- Bloom: Composer auf den Default-Framebuffer schreiben (siehe `bloom-canvas-kasten.mdc`).
+
+## Erlaubt / beibehalten
+
+- Orbit-Lite: EnvMap-Bake pausieren, Gizmos im Loop pausieren, Hold `ORBIT_LITE_HOLD_MS`.
+- Pixelratio 1 nur in Entwurf/Vorschau (ohnehin harte Schatten) oder Licht-Edit; im **Render** und bei Bloom (ohne „bei Bewegung aus“) volle Pixelratio.
+- Volles PCSS während Orbit (Shader-Optimierung `const`-Disk + entrollte Taps reicht, siehe `pcssShadows.ts`).
+
+## Docs
+
+- `docs/shadows.md`, `docs/performance.md`, `docs/camera.md`, `docs/changelog.md` (v2.0.151, v2.0.196, v2.0.197).

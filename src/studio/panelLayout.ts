@@ -597,6 +597,7 @@ function diagonalBondWallIsFirst(wall: Wall, adj: Wall): boolean {
  * An 45°-Ecken: komplementär 0,5 und 1 Stein auf der **Front** (pro Lage getauscht).
  * Halbstein = exakt ½ des (ggf. gerasterten) Läufers — nicht `snapMasonryCm(header)`:
  * bei 24 cm würde 12 auf 16 snappen und der Versatz auf ~⅓ abrutschen.
+ * Kopfverband: nur Binder — komplementär ½-Binder / 1 Binder (nicht Läuferbreite).
  */
 function diagonalBondEndWidth(
   wall: Wall,
@@ -608,6 +609,9 @@ function diagonalBondEndWidth(
   const header = full / 2
   const aFirst = diagonalBondWallIsFirst(wall, adj)
   const even = rowIndex % 2 === 0
+  if (panel.pattern === 'headerBond') {
+    return aFirst === even ? header / 2 : header
+  }
   return aFirst === even ? header : full
 }
 
@@ -1199,8 +1203,9 @@ function layoutWildBondRow(
 
 /**
  * Paneel-/Mauerwerk-Raster startet immer am Wandfuß (Y=0).
- * Der Sockel überlagert die unteren Reihen; `clipTilesAbovePlinth` entfernt sie.
- * Sockelhöhe verschiebt die Paneel-Y-Koordinaten nicht.
+ * Sockelhöhe verschiebt die Y-Koordinaten nicht. Überlappende Steine werden
+ * auf die Sockeloberkante gekürzt (`clipTilesAbovePlinth`); ganz unter dem Sockel
+ * entfallen sie (Kellerfenster im Sockelstreifen). Der Sockelkörper liegt davor.
  */
 function masonryOriginY(_panel: StudioPanelConfig): number {
   return 0
@@ -1396,14 +1401,28 @@ function tileOverlapsJambHoles(
 type JambHole = { x: number; y: number; width: number; height: number }
 
 /**
- * Sockelzone: Steine/Paneele unter der Sockeloberkante entfernen — nicht kürzen,
- * sonst bleibt eine abgeschnittene unterste Reihe.
+ * Sockelzone: Steine ganz unter der Sockeloberkante entfernen.
+ * Steine, die den Sockel überlappen (typisch bei Paneelhöhe > Sockelhöhe), auf die
+ * Oberkante kürzen — nicht die ganze Reihe verwerfen (sonst Lücke, v2.0.200).
+ * Der Sockelkörper liegt vor den Paneelen (Tiefe / renderOrder).
  */
-function clipTilesAbovePlinth(tiles: PanelTile[], panel: StudioPanelConfig): PanelTile[] {
+export function clipTilesAbovePlinth(tiles: PanelTile[], panel: StudioPanelConfig): PanelTile[] {
   if (!studioPlinthActive(panel)) return tiles
   const plinthH = panel.plinthHeight ?? 0
   if (plinthH < 0.5) return tiles
-  return tiles.filter((tile) => tile.y >= plinthH - CLIP_EPS && tile.y + tile.height > plinthH + CLIP_EPS)
+  const out: PanelTile[] = []
+  for (const tile of tiles) {
+    const top = tile.y + tile.height
+    if (top <= plinthH + CLIP_EPS) continue
+    if (tile.y >= plinthH - CLIP_EPS) {
+      out.push(tile)
+      continue
+    }
+    const height = top - plinthH
+    if (height <= MIN_TILE) continue
+    out.push({ ...tile, y: plinthH, height })
+  }
+  return out
 }
 
 /**

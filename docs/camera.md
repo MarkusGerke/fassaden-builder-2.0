@@ -19,7 +19,7 @@ Dieses Dokument beschreibt Perspektivkamera, OrbitControls und die eigene ⌘/Ct
 
 ## Orbit-Mittelpunkt (`controls.target`)
 
-- **Initial:** `initCameraTarget()` setzt das Ziel über `galleryFocusBounds(getAllWalls(state))` — inkl. `originX`/`originZ` und Wand-Yaw, nicht nur Layout-`x`/`y`.
+- **Initial / Reload (v2.0.203):** `focusCameraExterior()` rahmt das **gesamte** Gebäude (volle Grundriss-Spannweite). Früher deckelte `galleryFocusBounds` `span` auf 900 cm → bei größeren Häusern wirkte die Startkamera wie „eine Wand nah“. Vor dem Frame: `syncCameraDistanceLimits`, damit OrbitControls nicht auf 4000 cm klemmt.
 - **3D-Ansicht:** `focusCameraExterior()` rahmt beim Wechsel nach 3D ein und setzt target/position.
 - **Galerie / Doppelklick:** `focusGalleryOnWalls()` verschiebt nur das Ziel oder rahmt neu ein.
 - **Kompass:** `orbitCameraToYaw()` dreht die Kamera um das bestehende Ziel, Abstand bleibt.
@@ -62,12 +62,13 @@ Mausschwenk mit ⌘/Ctrl+⇧ nutzt bewusst dieselbe Skala wie die Pfeiltasten �
 
 ## Performance (Orbit-Lite)
 
-Während Navigation (`nav3d`, OrbitControls `start`/`change`, Pfeiltasten): `orbitLite = true` → LOD pausiert, EnvMap-Bake pausiert (v2.0.100); Pixelratio 1 außer bei aktivem Bloom ohne „bei Bewegung aus“ (v2.0.125); Bloom bleibt an (v2.0.124), außer `#bloom-disable-during-motion`; Sonnenschatten bleibt weich wie Idle (kein adaptives 1-Tap mehr, v2.0.151). Nach Loslassen: `ORBIT_LITE_HOLD_MS` (320 ms), dann wieder volles Pixelratio. Details: [performance.md](performance.md).
+Während Navigation (`nav3d`, OrbitControls `start`/`change`, Pfeiltasten): `orbitLite = true` → LOD pausiert, EnvMap-Bake pausiert (v2.0.100); Pixelratio 1 nur in Entwurf/Vorschau — im **Render** volle Pixelratio (v2.0.197, sonst wirken weiche Schatten hart); Bloom behält ebenfalls volle Pixelratio wenn an und „bei Bewegung aus“ nicht gesetzt (v2.0.125). Bloom bleibt an (v2.0.124), außer `#bloom-disable-during-motion`. Sonnenschatten immer volles PCSS (kein 1-Tap; v2.0.151 / endgültig v2.0.197). Nach Loslassen: `ORBIT_LITE_HOLD_MS` (320 ms). Details: [performance.md](performance.md), Rule `orbit-visual-stability.mdc`.
 
 ---
 
 ## Bekannte Fallstricke
 
+- **Startkamera in einer Wand (v2.0.203):** `galleryFocusBounds` darf die Spannweite nicht auf 900 cm kappen — das war für Galerie-Einstieg gedacht, betraf aber auch normales 3D-Einrahmen.
 - **`controls.enabled = false`** während Auswahl-Drag — ⌘-Orbit deaktiviert Controls nur in `nav3d`, nicht dauerhaft.
 - **Rechtsklick ohne ⌘:** kein Pan (Kontextmenü); Pan nur mit ⌘/Ctrl+Rechtsklick oder ⌘/Ctrl+⇧+Links.
 - **Galerie:** engere `minDistance`/`maxDistance`, `screenSpacePanning = true`, höheres `panSpeed` (1,35) — siehe [gallery.md](gallery.md).

@@ -100,10 +100,10 @@ describe('applyWallPresetToSegment', () => {
     const base = wall({ id: 'w1', width: 192 })
     const state = stateWithWall(base)
     const layout = inferWallSegmentLayout(base, 192)
-    const next = applyWallPresetToSegment(state, 'w1', 0, 'wall-192-window-96', layout)
+    // Wand+Öffnung-Presets sind aus der Bibliothek entfernt; reine Längen-Presets leeren Öffnungen im Band.
+    const next = applyWallPresetToSegment(state, 'w1', 0, 'wall-192', layout)
     const result = next!.buildings[0]!.walls[0]!
     expect(result.width).toBe(192)
-    expect(result.openings).toHaveLength(1)
-    expect(result.openings[0]!.type).toBe('window')
+    expect(result.openings).toHaveLength(0)
   })
 })

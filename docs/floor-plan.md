@@ -2,7 +2,7 @@
 
 ## Übersicht
 
-Die gezeichnete Linie ist die **Außenkante**; die Wanddicke (`building.wallDepth`) liegt nach innen. Verknüpfung und Gehrung sitzen an den Außenecken. **v0.7.280:** `fitLoopWalls` folgt der Planrichtung (73dbdc9-Verhalten, ohne gegenläufigen 40-cm-Schnitt). **v0.7.279:** Altstände mit Origin innen (`panelFlip: false`) werden beim Laden auf diese Außenkante gelegt. **v2.0.93:** Außenkanten-Fit beim Load nur noch bei Mehrheit `panelFlip: false` — nicht bei „unverbundenen“ Ringen (sonst wanderten Origins beim Hard-Reload). **v2.0.92–v2.0.128:** Sichtbare Innenboden/Zwischendecke folgten zeitweise dem Plan-Außenring (lichtdicht über die Wandstärke, aber Flackern/Durchscheinen an der Fassade). **v2.0.129:** Sichtbare Platten wieder an der **Innenkante** (`innerFaceRingWorld` + `INDOOR_SLAB_VISUAL_INSET_CM`); Lichtdichte über unsichtbare Außenring-Punktlicht-Okkluder und `sunCeilingOccluder`. **v2.0.100:** Unsichtbarer Sonnen-Okkluder an der Innenkante, damit die Sonne die Decke trifft ohne horizontale Streifen auf der Außenfassade. Die **Oberkante** des Innenbodens liegt auf der unteren Türkante der Etage (`storeyFloorSurfaceY`); ohne Tür auf dem Wandfuß. Die Platte sitzt um `INDOOR_SLAB_THICKNESS` darunter. **v2.0.121:** An Öffnungen, die die Platte schneiden oder berühren (Kellerfenster unter angehobenem Boden, Türschwelle mit Treppe), weicht der Ring auf die Wandinnenseite zurück (`notchSlabRingAtOpenings` in `src/studio/slabNotches.ts`) — sonst lief die Plattenkante sichtbar durch die Öffnung.
+Die gezeichnete Linie ist die **Außenkante**; die Wanddicke (`building.wallDepth`) liegt nach innen. Verknüpfung und Gehrung sitzen an den Außenecken. **v0.7.280:** `fitLoopWalls` folgt der Planrichtung (73dbdc9-Verhalten, ohne gegenläufigen 40-cm-Schnitt). **v0.7.279:** Altstände mit Origin innen (`panelFlip: false`) werden beim Laden auf diese Außenkante gelegt. **v2.0.93:** Außenkanten-Fit beim Load nur noch bei Mehrheit `panelFlip: false` — nicht bei „unverbundenen“ Ringen (sonst wanderten Origins beim Hard-Reload). **v2.0.92–v2.0.128:** Sichtbare Innenboden/Zwischendecke folgten zeitweise dem Plan-Außenring (lichtdicht über die Wandstärke, aber Flackern/Durchscheinen an der Fassade). **v2.0.129:** Sichtbare Platten wieder an der **Innenkante** (`innerFaceRingWorld` + `INDOOR_SLAB_VISUAL_INSET_CM`); Lichtdichte über unsichtbare Außenring-Punktlicht-Okkluder und `sunCeilingOccluder`. **v2.0.100:** Unsichtbarer Sonnen-Okkluder an der Innenkante, damit die Sonne die Decke trifft ohne horizontale Streifen auf der Außenfassade. Die **Oberkante** des Innenbodens liegt auf der unteren Türkante der Etage (`storeyFloorSurfaceY`); ohne Tür auf dem Wandfuß. Die Platte sitzt um `INDOOR_SLAB_THICKNESS` darunter. **v2.0.121:** An Öffnungen, die die Platte schneiden oder berühren (Kellerfenster unter angehobenem Boden, Türschwelle mit Treppe), weicht der Ring auf die Wandinnenseite zurück (`notchSlabRingAtOpenings` in `src/studio/slabNotches.ts`) — sonst lief die Plattenkante sichtbar durch die Öffnung. **v2.0.218:** Boden/Decke nutzen nur Wände derselben Etage (`floorIndex`) — wichtig wenn Geschosse unterschiedliche Fußabdrücke haben (z. B. Schrägstellen nur einer Etage).
 
 ---
 
@@ -30,7 +30,7 @@ interface PlanEdge {
 }
 ```
 
-**Gitterauflösung:** `PLAN_GRID = 48 cm` pro Zelle. Eine 45°-Kante über ein Feld hat die Länge \(48\sqrt{2}\) (`planLineLengthCm`, `PLAN_DIAGONAL_STEP`). Derselbe Schritt gilt in 3D für Greifer/Shift-Abzweig (`wallWidthStepCm`).
+**Gitterauflösung:** `PLAN_GRID = 8 cm` pro Zelle (v2.0.221; vorher 48). Ablegen, Verschieben und Strecken liegen auf demselben Raster — freie Wände können bündig abschließen. Eine 45°-Kante über ein Feld hat die Länge \(8\sqrt{2}\) (`planLineLengthCm` / `PLAN_DIAGONAL_STEP`). Greifer und Toolbar nutzen denselben Schritt (`STUDIO_WALL_WIDTH_STEP` = 8, bei 45° die Feld-Diagonale). Andocken/Lücken-Schluss bleibt bei ~48 cm (`PLAN_CLOSE_GAP_CM`). Alt-Projekte: Schema 14→15 skaliert Plan-Knoten ×6 (Weltmaße unverändert).
 
 **Erlaubte Richtungen:** Achsparallel (0°/90°/180°/270°) und diagonal (45°/135°/225°/315°).
 
@@ -151,7 +151,7 @@ Erzeugt `Wall[]` aus einem `FloorPlan`:
 5. `planLinked: true` — Wand gehört zum Grundriss-Graphen
 6. `wallY` als y-Offset (Etagenindex × `wallHeight`)
 
-`floorPlanFromWalls` / `syncFloorPlansFromWalls` lassen Wände mit `planLinked: false` weg. Freie Wände liegen nur in 3D; Gehrung zu Nachbarn erst nach Verknüpfen. **v2.0.145:** `sealNearClosedPlanGaps` nach dem Zeichnen — Grad-1-Enden mit Chebyshev-Abstand 1 werden verschmolzen/verbunden, damit Raster-Snap nach Extrusion keinen offenen Ring (und damit keine Decke) hinterlässt.
+`floorPlanFromWalls` / `syncFloorPlansFromWalls` lassen Wände mit `planLinked: false` weg. Freie Wände liegen nur in 3D; Gehrung zu Nachbarn erst nach Verknüpfen. **v2.0.145:** `sealNearClosedPlanGaps` nach dem Zeichnen — Grad-1-Enden mit Chebyshev-Abstand 1 werden verschmolzen/verbunden, damit Raster-Snap nach Extrusion keinen offenen Ring (und damit keine Decke) hinterlässt. **v2.0.219:** `floorPlanFromWalls` clustert gemeinsame Welt-Stoßecken vor dem 48-cm-Rasten (wichtig nach 45°-Schrägstellen); `normalizePlanCell` verhindert `−0`-Doppelknoten; Seal bis Abstand 2. **v2.0.220:** In 3D schließen freie Wandenden mit Lücke unter 48 cm automatisch (`sealNearWallEndGaps` in `finalizeStudioGeometry`) — kollinear oder im Winkel.
 
 ### `wallYawDegFromSegment(from, to)`
 
@@ -234,3 +234,17 @@ Im `navigate`-Modus können Öffnungen per Drag entlang der Wand verschoben werd
 **Pfeiltasten im Plan-View:**
 - Links/Rechts: Öffnung entlang der Wand (dx ±16 cm)
 - Hoch/Runter: Öffnung vertikal (dy ±16 cm)
+
+---
+
+## Fallstricke
+
+### Decken/Böden/Dach fehlen nach Reload (v2.0.199)
+
+**Symptom:** Nach Hard-Reload keine sichtbaren Decken/Fußböden (Dach oft auch weg); Ebenenliste und `showCeiling`/`hidden` wirken korrekt („Ausblenden“ im Menü).
+
+**Geprüft, half nicht:** Flags in localStorage/Hash umbiegeln; `viewOptions.showCeiling`; Galerie-Defaults.
+
+**Ursache:** `FacadeController`-Konstruktor baute nur `rebuild()` (Wände). Erster `applyState` ohne Geometrie-Diff → `setState({ rebuildBuildingIds: [] })` ohne `rebuildIndoorFloor`/`rebuildRoof`.
+
+**Lösung:** Beim Start Indoor + Dach + FarHulls mitbauen; leeres `rebuildBuildingIds` holt Indoor nach, wenn die Gruppe leer ist (`FacadeController.ts`).

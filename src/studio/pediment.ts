@@ -57,6 +57,7 @@ export function defaultOpeningPediment(): OpeningPediment {
     gableHeight: 24,
     gableWidth: 0,
     sideArmWidth: 0,
+    sealedBack: false,
     scale: 1,
     offsetUp: 0,
     offsetForward: 0,
@@ -155,6 +156,7 @@ export function normalizeOpeningPediment(
     ),
     gableWidth: snapPedimentMeasure(raw?.gableWidth ?? 0, 0, GABLE_WIDTH_MAX),
     sideArmWidth: snapPedimentMeasure(raw?.sideArmWidth ?? 0, 0, OVERHANG_MAX),
+    sealedBack: Boolean(raw?.sealedBack),
     scale:
       Number.isFinite(raw?.scale) && (raw?.scale as number) > 0
         ? Math.min(4, Math.max(0.25, raw!.scale!))
@@ -197,20 +199,36 @@ export function normalizeOpeningPediment(
   }
 }
 
-/** Giebel-Layout in Wand-XY (0 = links/unten). Breite = Öffnung + 2× Überstand. */
+/** Giebel-Layout in Wand-XY (0 = links/unten).
+ * Offene Formen: optional Horizontale (`sideArmWidth`) links/rechts neben dem Giebel.
+ * Geschlossene Formen: nur Giebel (`gableWidth` oder Öffnung + 2× Überstand), keine Seitenarme.
+ */
 export function pedimentGableLayout(
   opening: Opening,
   pediment: OpeningPediment,
   baseLiftCm = 0,
 ): PedimentGableLayout {
   const overhang = pediment.overhang ?? pediment.overhangLeft ?? pediment.overhangRight ?? 8
-  const x0 = opening.x - overhang
-  const x1 = opening.x + opening.width + overhang
   const midX = opening.x + opening.width / 2
   const lift = Number.isFinite(baseLiftCm) ? baseLiftCm : 0
   const yBase = opening.y + opening.height + lift
   const gable = pediment.gableHeight ?? 24
-  return { x0, x1, gableLeft: x0, gableRight: x1, midX, yBase, gable }
+  const closed = pedimentFormIsClosed(pediment.form)
+  const sideArm = closed ? 0 : Math.max(0, pediment.sideArmWidth ?? 0)
+  const spanWithOverhang = opening.width + 2 * overhang
+  let gableSpan: number
+  if (pediment.gableWidth && pediment.gableWidth > 0) {
+    gableSpan = pediment.gableWidth
+  } else if (closed) {
+    gableSpan = spanWithOverhang
+  } else {
+    gableSpan = Math.max(STUDIO_MASONRY, spanWithOverhang - 2 * sideArm)
+  }
+  const gableLeft = midX - gableSpan / 2
+  const gableRight = midX + gableSpan / 2
+  const x0 = closed ? gableLeft : gableLeft - sideArm
+  const x1 = closed ? gableRight : gableRight + sideArm
+  return { x0, x1, gableLeft, gableRight, midX, yBase, gable }
 }
 
 /** Spannweite und Basis-Y der Verdachung in Wand-Lokalraum (Wandmitte = 0). */
@@ -283,6 +301,22 @@ export function pedimentFormPoints(
   for (const p of arc) points.push(p)
   if (x1 > gableRight + 1e-6) points.push({ x: x1, y: yBase })
   return points
+}
+
+/** Geschlossene Polygonpunkte für Tympanon-/Rückseitenfüllung (Wand-XY). */
+export function pedimentTympanumPoints(
+  form: PedimentForm,
+  layout: PedimentGableLayout,
+): PedimentVec2[] {
+  if (!pedimentFormIsClosed(form)) return []
+  const outline = pedimentFormPoints(form, layout)
+  if (outline.length < 3) return []
+  if (form === 'segmentClosed') {
+    const { gableLeft, gableRight, yBase } = layout
+    return [...outline, { x: gableRight, y: yBase }, { x: gableLeft, y: yBase }]
+  }
+  // triangleClosed: leftBase → peak → rightBase → zurück zu leftBase (Shape schließt selbst)
+  return outline
 }
 
 

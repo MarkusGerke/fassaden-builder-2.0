@@ -33,7 +33,34 @@ describe('galleryCamera', () => {
     expect(entry.length).toBeLessThanOrEqual(4)
     const bounds = galleryFocusBounds(entry)
     expect(bounds).not.toBeNull()
-    expect(bounds!.span).toBeLessThanOrEqual(900)
+    expect(bounds!.span).toBeGreaterThanOrEqual(192)
+    // Bis 4 Wände der ersten Reihe — Spannweite folgt den Origins, kein 900-Cap.
+    expect(bounds!.cx).toBeGreaterThan(0)
+  })
+
+  it('liefert die volle Grundriss-Spannweite ohne Cap', () => {
+    const rect = [
+      normalizeStudioWall({
+        ...createStudioWall(0, 0),
+        originX: 0,
+        originZ: 0,
+        width: 2000,
+        yawDeg: 0,
+        planLinked: false,
+      }),
+      normalizeStudioWall({
+        ...createStudioWall(0, 0),
+        originX: 2000,
+        originZ: 0,
+        width: 1500,
+        yawDeg: 90,
+        planLinked: false,
+      }),
+    ]
+    const bounds = galleryFocusBounds(rect)
+    expect(bounds).not.toBeNull()
+    expect(bounds!.span).toBeGreaterThan(900)
+    expect(bounds!.span).toBeGreaterThanOrEqual(1500)
   })
 
   it('beschleunigt Zoom nahe am Ziel und hält far knapp über Cull-Distanz', () => {

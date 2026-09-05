@@ -69,4 +69,15 @@ describe('computeOpeningDistanceLines', () => {
     expect(lines.find((l) => l.direction === 'left')).toBeUndefined()
     expect(lines.find((l) => l.direction === 'bottom')).toBeUndefined()
   })
+
+  it('ignoriert horizontal Nachbarn ohne Y-Überlappung', () => {
+    const wall = studioWall('w', 0, 480, [
+      opening('o1', 96, 96, 96, 96),
+      // Weiter rechts, aber tiefer — darf die Distanz nicht auf 32 verkürzen
+      opening('o2', 224, 0, 96, 64),
+      opening('o3', 288, 96, 96, 96),
+    ])
+    const lines = computeOpeningDistanceLines(wall, wall.openings[0], [wall])
+    expect(lines.find((l) => l.direction === 'right')?.distanceCm).toBe(96)
+  })
 })

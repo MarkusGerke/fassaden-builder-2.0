@@ -135,8 +135,8 @@ export function bakeSceneReflectionsIfNeeded(
   scene: THREE.Scene,
   probe: THREE.Vector3,
   extraHide: THREE.Object3D[] = [],
-): void {
-  if (!reflectionsDirty || baking || !pmrem || !cubeRT || !cubeCamera) return
+): boolean {
+  if (!reflectionsDirty || baking || !pmrem || !cubeRT || !cubeCamera) return false
   baking = true
   reflectionsDirty = false
 
@@ -147,6 +147,13 @@ export function bakeSceneReflectionsIfNeeded(
     obj.visible = false
   }
 
+  const intensityRestore: Array<{ material: THREE.MeshStandardMaterial; intensity: number }> = []
+  const prevTarget = renderer.getRenderTarget()
+  const prevAutoClear = renderer.autoClear
+  const prevTone = renderer.toneMapping
+  const prevExposure = renderer.toneMappingExposure
+  const prevFog = scene.fog
+
   try {
     for (const obj of extraHide) hide(obj)
     scene.traverse((obj) => {
@@ -155,26 +162,30 @@ export function bakeSceneReflectionsIfNeeded(
       if (isGlassMesh(obj)) hide(obj)
     })
 
+    // EnvMap-Feedback brechen: sonst spiegeln graue Paneele sich selbst → Mittelgrau-IBL.
+    // Intensität nur während der Cube-Renders (nicht auf dem sichtbaren Canvas).
+    scene.traverse((obj) => {
+      if (!(obj instanceof THREE.Mesh)) return
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material]
+      for (const mat of mats) {
+        if (!(mat instanceof THREE.MeshStandardMaterial)) continue
+        if (!mat.envMap && mat.envMapIntensity <= 0) continue
+        intensityRestore.push({ material: mat, intensity: mat.envMapIntensity })
+        mat.envMapIntensity = 0
+      }
+    })
+
     const sky = createSkyGroundMesh(glassSkyReflectionColor, glassGroundReflectionColor)
     sky.position.copy(probe)
     scene.add(sky)
 
-    const prevFog = scene.fog
     scene.fog = null
-    const prevTone = renderer.toneMapping
-    const prevExposure = renderer.toneMappingExposure
-    const prevAutoClear = renderer.autoClear
     renderer.toneMapping = THREE.NoToneMapping
     renderer.toneMappingExposure = 1
     renderer.autoClear = true
 
     cubeCamera.position.copy(probe)
     cubeCamera.update(renderer, scene)
-
-    renderer.toneMapping = prevTone
-    renderer.toneMappingExposure = prevExposure
-    renderer.autoClear = prevAutoClear
-    scene.fog = prevFog
 
     scene.remove(sky)
     sky.geometry.dispose()
@@ -184,8 +195,17 @@ export function bakeSceneReflectionsIfNeeded(
     roomEnvTarget?.dispose()
     roomEnvTarget = generated
     setGlassEnvironment(generated.texture)
+    return true
   } finally {
+    for (const item of intensityRestore) {
+      item.material.envMapIntensity = item.intensity
+    }
     for (const item of hidden) item.obj.visible = item.visible
+    scene.fog = prevFog
+    renderer.toneMapping = prevTone
+    renderer.toneMappingExposure = prevExposure
+    renderer.autoClear = prevAutoClear
+    renderer.setRenderTarget(prevTarget)
     baking = false
   }
 }

@@ -12,7 +12,7 @@ Physikalischer Himmel in **3D** und **Oben** (Bruneton Precomputed Atmospheric S
 - **Szenenfarben**
   - **Bodenfarbe** (`#scene-ground-color`) färbt die Bodenplatte (Albedo). Licht folgt der Sonne wie beim Mauerwerk.
   - **Himmel/Hintergrund** steuern Glas-Reflexion bzw. `scene.background` (Fallback).
-- **Umgebung Neutral (v2.0.164):** Himmel aus; Schalen-Plattform mit Beige/Nacht — siehe [stage-environment.md](stage-environment.md).
+- **Umgebung Neutral (v2.0.164 / v2.0.209):** Himmel aus; Schalen-Plattform; Farben über Szene-Picker (Default Beige) — siehe [stage-environment.md](stage-environment.md).
 
 ## Technik
 
@@ -33,9 +33,12 @@ Physikalischer Himmel in **3D** und **Oben** (Bruneton Precomputed Atmospheric S
 ### Lichtquellen
 
 1. **Sonne:** `SunDirectionalLight` (`dirLight`) — **Farbe aus dem Kelvin-Slider** (`#sun-color-temp` / `SunSettings.colorTemperature`); Intensität × Nutzer-Slider. Der Himmel bleibt physikalisch (Takram-Transmittance), das Key-Light nicht.
-2. **Himmels-Fill:** `SkyLightProbe` + reduziertes `HemisphereLight` (Nutzer-Umgebungslicht).
-3. **Bodenreflex:** `bounceDirLight` unverändert.
-4. **Innen:** `dirLightIndoor` unverändert (Layer Interior).
+2. **Mond (v2.0.184):** Wenn die Sonne unter dem Horizont ist und der Mond scheint (`moonIllumination > 0,08`): Key aus Mondrichtung, **~8200 K** plus leichter Blaustich, schwaches Himmels-Fill; **leichte Schatten** ab Mondhöhe ≈ 3,5° und Illumination ≈ 0,12.
+3. **Sternennacht (v2.0.184 / v2.0.185):** Kein Mond / zu schwach → Key-Intensität **0**, Ambient ≈ 0,01. **v2.0.185:** Paneel-/Glas-EnvMap wird mitgedämpft (`exteriorEnvFillFromCelestial` ≈ 0,05) und die CubeCamera-Himmelskugel folgt der Nachtpalette — sonst wirkten Flächen weiter Mittelgrau trotz schwarzer Laibung.
+4. **Himmels-Fill:** `SkyLightProbe` + reduziertes `HemisphereLight` (Nutzer-Umgebungslicht; nachts stark gedämpft).
+5. **Bodenreflex:** `bounceDirLight` (Tag; Mond nur minimal).
+6. **Innen:** `dirLightIndoor` unverändert (Layer Interior).
+7. **EnvMap-Bake (v2.0.185):** Während des Cube-Bakes `envMapIntensity` temporär 0 — verhindert, dass graue Paneele sich selbst als IBL einbrennen.
 
 Schatten: weiter ortho Shadow-Map auf `dirLight`; Nacht/Mond über `resolveCelestialState` → `keyCastShadow`.
 

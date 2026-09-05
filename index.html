@@ -35,12 +35,16 @@
         display: flex; align-items: center; justify-content: center;
         background: #e4e4e4;
         transition: opacity 0.35s ease;
+        /* Eigenes Layer — Lade-JS blockiert die Strichanimation nicht. */
+        transform: translateZ(0);
+        contain: layout style paint;
       }
       #app-loading.is-done { opacity: 0; pointer-events: none; }
       .app-loading-inner { text-align: center; color: #333; }
       .app-loading-house {
         display: block;
         width: 2.4rem; height: 2.4rem; margin: 0 auto 0.85rem;
+        transform: translateZ(0);
       }
       .app-loading-house path {
         fill: none;
@@ -48,7 +52,16 @@
         stroke-width: 1.35;
         stroke-linecap: square;
         stroke-linejoin: miter;
+        /* pathLength="1" → Dash 0…1; 720 ms Zeichnen + 280 ms Pause = 1 s Loop */
+        stroke-dasharray: 1;
+        stroke-dashoffset: 1;
+        animation: app-loading-house-draw 1s linear infinite;
         will-change: stroke-dashoffset;
+      }
+      @keyframes app-loading-house-draw {
+        0% { stroke-dashoffset: 1; }
+        72% { stroke-dashoffset: 0; }
+        100% { stroke-dashoffset: 0; }
       }
       .app-loading-inner p { margin: 0; font-size: 0.92rem; }
     </style>
@@ -57,109 +70,16 @@
     <div id="app-loading" role="status" aria-live="polite" aria-busy="true">
       <div class="app-loading-inner">
         <svg class="app-loading-house" viewBox="0 0 24 24" aria-hidden="true">
-          <path id="app-loading-house-path" d="" />
+          <!-- Klassisches Haus vom Nikolaus (Eulerweg); pathLength normalisiert für CSS-Anim. -->
+          <path
+            id="app-loading-house-path"
+            pathLength="1"
+            d="M5 20L5 11L12 3.5L19 11L19 20L5 20L19 11L5 11L19 20"
+          />
         </svg>
         <p>Studio wird geladen …</p>
       </div>
     </div>
-    <script>
-      (function () {
-        var root = document.getElementById('app-loading')
-        var pathEl = document.getElementById('app-loading-house-path')
-        if (!root || !pathEl) return
-
-        // Klassisches Haus vom Nikolaus (5 Knoten, 8 Kanten, ein Eulerweg).
-        // 0/1 Boden, 2/3 Traufe, 4 First — immer derselbe Pfad, kein Wechsel.
-        var P = [
-          [5, 20],
-          [19, 20],
-          [19, 11],
-          [5, 11],
-          [12, 3.5],
-        ]
-        var HOUSE_PATH = [0, 3, 4, 2, 1, 0, 2, 3, 1]
-        var DRAW_MS = 720
-        var PAUSE_MS = 280
-
-        function pathD(nodes) {
-          var d = ''
-          for (var i = 0; i < nodes.length; i++) {
-            var p = P[nodes[i]]
-            d += (i === 0 ? 'M' : 'L') + p[0] + ' ' + p[1]
-          }
-          return d
-        }
-
-        var raf = 0
-        var timer = 0
-        var cancelled = false
-
-        function clearAnim() {
-          if (raf) {
-            cancelAnimationFrame(raf)
-            raf = 0
-          }
-          if (timer) {
-            clearTimeout(timer)
-            timer = 0
-          }
-        }
-
-        function stillActive() {
-          return !cancelled && root.isConnected && !root.classList.contains('is-done')
-        }
-
-        function run() {
-          if (!stillActive()) return
-          clearAnim()
-
-          pathEl.setAttribute('d', pathD(HOUSE_PATH))
-
-          var total = pathEl.getTotalLength()
-          if (!(total > 0)) {
-            timer = setTimeout(run, 80)
-            return
-          }
-
-          pathEl.style.strokeDasharray = String(total)
-          pathEl.style.strokeDashoffset = String(total)
-
-          var t0 = performance.now()
-
-          function frame(now) {
-            if (!stillActive()) return
-            var t = Math.min(1, (now - t0) / DRAW_MS)
-            pathEl.style.strokeDashoffset = String(total * (1 - t))
-
-            if (t < 1) {
-              raf = requestAnimationFrame(frame)
-              return
-            }
-
-            pathEl.style.strokeDashoffset = '0'
-            timer = setTimeout(function () {
-              if (!stillActive()) return
-              pathEl.style.strokeDashoffset = String(total)
-              t0 = performance.now()
-              raf = requestAnimationFrame(frame)
-            }, PAUSE_MS)
-          }
-
-          raf = requestAnimationFrame(frame)
-        }
-
-        var observer = new MutationObserver(function () {
-          if (!root.isConnected || root.classList.contains('is-done')) {
-            cancelled = true
-            clearAnim()
-            observer.disconnect()
-          }
-        })
-        observer.observe(root, { attributes: true, attributeFilter: ['class'] })
-
-        run()
-      })()
-    </script>
     <div id="app">
       <div id="ui">
         <h1>Fassaden-Builder 2.0</h1>
@@ -267,13 +187,14 @@
               Licht
             </button>
           </div>
-          <div class="view-mode-toggle" role="group" aria-label="Laub-Modus">
+          <div class="view-mode-toggle" role="group" aria-label="Laub-Modus" hidden>
             <button
               type="button"
               class="preset-btn view-mode-btn"
               id="leaf-mode-btn"
               title="Laub-Modus: Herbstlaub auf dem Boden platzieren; danach reagiert es auf den Cursor als Wind"
               aria-pressed="false"
+              hidden
             >
               Laub
             </button>
@@ -332,6 +253,7 @@
             </span>
           </div>
         </div>
+        <div id="marquee-select-overlay" hidden></div>
         <button id="nav-help-btn" class="nav-help-btn" type="button" title="Navigation" aria-label="Navigation">?</button>
         <dialog id="nav-help-dialog">
           <form method="dialog">
@@ -752,14 +674,18 @@
           </div>
           <div id="toolbar-studio" hidden>
 
-<div class="settings-section" data-settings-section="dimensions" data-settings-label="Maße">
+<div class="settings-section" data-settings-section="dimensions" data-settings-label="Maße" data-settings-order="10">
               <p class="settings-subheading">Wand</p>
               <div class="toolbar-group">
                 <span class="toolbar-label">Breite (48 cm, 45°: Diagonale)</span>
+                <div class="preset-group scope-toggle" id="studio-wall-width-dir" role="group" aria-label="Breitenänderung Richtung">
+                  <button id="studio-wall-width-dir-left" class="preset-btn" type="button" aria-pressed="false">nach links</button>
+                  <button id="studio-wall-width-dir-right" class="preset-btn active" type="button" aria-pressed="true">nach rechts</button>
+                </div>
                 <div class="preset-group">
                   <button id="studio-stretch-start-minus" class="preset-btn" type="button">Links −</button>
                   <button id="studio-stretch-start-plus" class="preset-btn" type="button">Links +</button>
-                  <input id="studio-wall-width" type="number" min="48" step="48" value="192" aria-label="Wandbreite in cm" />
+                  <input id="studio-wall-width" type="number" min="8" step="8" value="192" aria-label="Wandbreite in cm" />
                   <button id="studio-stretch-end-minus" class="preset-btn" type="button">Rechts −</button>
                   <button id="studio-stretch-end-plus" class="preset-btn" type="button">Rechts +</button>
                 </div>
@@ -792,7 +718,7 @@
               </div>
             
 </div>
-<div class="settings-section" data-settings-section="colors" data-settings-label="Farben">
+<div class="settings-section" data-settings-section="colors" data-settings-label="Farben" data-settings-order="20">
             <div id="wall-color-section-studio" class="toolbar-group">
                 <span class="toolbar-label">Wandfarbe</span>
                 <div id="wall-color-swatches-studio" class="color-swatches"></div>
@@ -814,8 +740,26 @@
                 <div id="ceiling-color-swatches-studio" class="color-swatches"></div>
               </div>
               <div id="cladding-color-section-studio" class="toolbar-group">
-                <span class="toolbar-label">Verkleidungsfarbe</span>
+                <span class="toolbar-label">Paneele / Ziegel</span>
                 <div id="cladding-color-swatches-studio" class="color-swatches"></div>
+              </div>
+              <div id="studio-tile-color-section">
+              <div class="toolbar-group" id="studio-tile-variance-row">
+                <label class="slider-label" for="studio-tile-variance">
+                  <span>Stein-Kontrast</span>
+                  <output id="studio-tile-variance-value">0</output>
+                </label>
+                <input id="studio-tile-variance" type="range" min="0" max="100" step="1" value="0" />
+                <p class="toolbar-hint compact-hint">Hell- und Dunkeltöne um die Paneelfarbe (Paneele und Ziegel). 0 = alle Steine gleich.</p>
+              </div>
+              <div class="toolbar-group" id="studio-tile-variety-row" hidden>
+                <label class="slider-label" for="studio-tile-variety">
+                  <span>Stein-Häufigkeit</span>
+                  <output id="studio-tile-variety-value">0</output>
+                </label>
+                <input id="studio-tile-variety" type="range" min="0" max="100" step="1" value="0" />
+                <p class="toolbar-hint compact-hint">Wie oft abweichende Steine vorkommen — 1 bis 8 Farbstufen, zufällig über das Mauerwerk verteilt.</p>
+              </div>
               </div>
               <div class="toolbar-group">
                 <span class="toolbar-label">Oberfläche Paneele</span>
@@ -844,24 +788,6 @@
               <div id="glass-color-section-studio" class="toolbar-group" hidden>
                 <span class="toolbar-label">Fensterglasfarbe</span>
                 <div id="glass-color-swatches-studio" class="color-swatches"></div>
-              </div>
-<div id="studio-tile-color-section">
-              <div class="toolbar-group" id="studio-tile-variance-row">
-                <label class="slider-label" for="studio-tile-variance">
-                  <span>Stein-Kontrast</span>
-                  <output id="studio-tile-variance-value">0</output>
-                </label>
-                <input id="studio-tile-variance" type="range" min="0" max="100" step="1" value="0" />
-                <p class="toolbar-hint compact-hint">Hell- und Dunkeltöne um die Paneelfarbe (Paneele und Ziegel). 0 = alle Steine gleich.</p>
-              </div>
-              <div class="toolbar-group" id="studio-tile-variety-row" hidden>
-                <label class="slider-label" for="studio-tile-variety">
-                  <span>Stein-Häufigkeit</span>
-                  <output id="studio-tile-variety-value">0</output>
-                </label>
-                <input id="studio-tile-variety" type="range" min="0" max="100" step="1" value="0" />
-                <p class="toolbar-hint compact-hint">Wie oft abweichende Steine vorkommen — 1 bis 8 Farbstufen, zufällig über das Mauerwerk verteilt.</p>
-              </div>
               </div>
 
 </div>
@@ -921,7 +847,7 @@
               <div id="studio-trim-bands-list"></div>
               <button id="studio-trim-band-add" class="preset-btn" type="button">Band hinzufügen</button>
 </div>
-<div class="settings-section" data-settings-section="panels" data-settings-label="Fassade">
+<div class="settings-section" data-settings-section="panels" data-settings-label="Fassade" data-settings-order="40">
               <div class="toolbar-group" hidden>
                 <label class="toolbar-check">
                   <input id="studio-panels-enabled" type="checkbox" checked />
@@ -929,11 +855,11 @@
                 </label>
               </div>
               <div id="studio-panel-options">
-              <div class="toolbar-group">
+              <div class="toolbar-group" hidden>
                 <span class="toolbar-label">Paneele</span>
                 <div id="studio-pattern-panel-cards" class="tpl-card-row pattern-picker-row sidebar-library-picker" role="listbox" aria-label="Paneelmuster"></div>
               </div>
-              <div class="toolbar-group">
+              <div class="toolbar-group" hidden>
                 <span class="toolbar-label">Mauerwerk</span>
                 <div id="studio-pattern-masonry-cards" class="tpl-card-row pattern-picker-row sidebar-library-picker" role="listbox" aria-label="Mauerwerksmuster"></div>
               </div>
@@ -1132,10 +1058,10 @@
                 </div>
                 <div class="toolbar-group">
                   <span class="toolbar-label">Sockelprofil</span>
-                  <p class="toolbar-hint compact-hint">Profil in der Bibliothek (Tab Profile) wählen oder auf die Wand ziehen.</p>
+                  <p class="toolbar-hint compact-hint">Profil in der Bibliothek (Tab Sockel) wählen oder auf die Wand ziehen.</p>
                   <div id="studio-plinth-profile-cards" class="tpl-card-row profile-picker-row sidebar-library-picker" role="listbox" aria-label="Sockelprofil"></div>
-                  <svg id="studio-plinth-preview" class="profile-section-preview" viewBox="-2 -2 18 18" aria-label="Sockelprofil-Querschnitt"></svg>
-                  <p class="toolbar-hint">Links = Wand, unten = Boden. Drehen und spiegeln, bis die Dekorseite stimmt.</p>
+                  <svg id="studio-plinth-preview" class="profile-section-preview" viewBox="-2 -2 18 18" aria-label="Sockelprofil-Querschnitt" hidden></svg>
+                  <p class="toolbar-hint" hidden>Links = Wand, unten = Boden. Drehen und spiegeln, bis die Dekorseite stimmt.</p>
                 </div>
                 <div id="studio-plinth-profile-options" data-ui-level="advanced">
                   <div class="toolbar-group">
@@ -1146,7 +1072,7 @@
                     <span class="toolbar-label">Profilfarbe</span>
                     <div id="studio-plinth-profile-color-swatches" class="color-swatches"></div>
                   </div>
-                  <div class="toolbar-group">
+                  <div class="toolbar-group" hidden>
                     <span class="toolbar-label">Drehung</span>
                     <div class="preset-group profile-orient-group">
                       <button id="studio-plinth-rotate-ccw" class="preset-btn" type="button">90° links</button>
@@ -1249,7 +1175,7 @@
               <select id="cladding-select"></select>
             </div>
             </div>
-            <div class="settings-section" data-settings-section="colors" data-settings-label="Farben">
+            <div class="settings-section" data-settings-section="colors" data-settings-label="Farben" data-settings-order="20">
             <div id="wall-color-section" class="toolbar-group">
               <span class="toolbar-label">Wandfarbe</span>
               <div id="wall-color-swatches" class="color-swatches"></div>
@@ -1351,15 +1277,19 @@
             <div id="opening-measures-section" class="settings-section toolbar-group" data-settings-section="measures" data-settings-label="Maße" data-settings-order="10">
               <div id="opening-size-section" class="toolbar-group">
                 <span class="toolbar-label">Breite (cm)</span>
+                <div class="preset-group scope-toggle" id="opening-width-dir" role="group" aria-label="Breitenänderung Richtung">
+                  <button id="opening-width-dir-left" class="preset-btn" type="button" aria-pressed="false">nach links</button>
+                  <button id="opening-width-dir-right" class="preset-btn active" type="button" aria-pressed="true">nach rechts</button>
+                </div>
                 <input id="opening-width" type="number" step="8" value="96" />
                 <span class="toolbar-label">Höhe (cm)</span>
                 <input id="opening-height" type="number" step="8" value="192" />
               </div>
               <div id="opening-window-depth-section" class="toolbar-group">
                 <span class="toolbar-label">Frontlage (cm von Außenkante)</span>
-                <input id="opening-window-depth-offset" type="number" step="1" min="0" max="120" value="24" title="Tiefe der Fensterfront ab Wand-Außenkante. Pro Öffnung einstellbar; ohne eigenen Wert gilt der Gebäude-Standard (24 cm + Gebäude-Offset)." />
+                <input id="opening-window-depth-offset" type="number" step="1" min="0" max="120" value="32" title="Tiefe der Fensterfront ab Wand-Außenkante. Pro Öffnung einstellbar; ohne eigenen Wert gilt der Gebäude-Standard (32 cm = 24 cm Laibung + 8 cm Offset)." />
                 <button id="opening-window-depth-reset" class="preset-btn" type="button" title="Eigene Tiefe löschen — Gebäude-Standard verwenden">Gebäude-Standard</button>
-                <p id="opening-window-depth-hint" class="toolbar-hint compact-hint">Pro Öffnung. Standard-Laibung 24 cm; hier die effektive Frontlage.</p>
+                <p id="opening-window-depth-hint" class="toolbar-hint compact-hint">Pro Öffnung. Standard-Frontlage 32 cm (Laibung 24 cm + Offset 8 cm).</p>
               </div>
               <div id="opening-position-section" class="toolbar-group">
                 <div class="preset-group" title="Verschieben in 8-cm-Schritten. Numpad-Ziffer 1–9 halten = Vielfaches (z. B. 3 → 24 cm).">
@@ -1984,37 +1914,37 @@
               <div id="pediment-options">
                   <div class="toolbar-group">
                   <span class="toolbar-label">Form</span>
-                  <p class="toolbar-hint compact-hint">Form in der Bibliothek (Tab Verdachung) wählen oder auf die Öffnung ziehen.</p>
-                  <div id="pediment-form-cards" class="tpl-card-row pediment-form-row sidebar-library-picker" role="listbox" aria-label="Verdachungsform">
+                  <p class="toolbar-hint compact-hint">Unten offen (mit optionalen Horizontalen), unten geschlossen, oder Bogenformen. Auch in der Bibliothek wählbar.</p>
+                  <div id="pediment-form-cards" class="tpl-card-row pediment-form-row" role="listbox" aria-label="Verdachungsform">
                     <button type="button" class="tpl-card pediment-form-btn" data-form="straight" title="Gerade">
                       <div class="tpl-card-thumb" aria-hidden="true">
                         <svg viewBox="0 0 48 28" width="48" height="28"><path d="M6 20 H42" fill="none" stroke="currentColor" stroke-width="2.5"/></svg>
                       </div>
                       <span>Gerade</span>
                     </button>
-                    <button type="button" class="tpl-card pediment-form-btn" data-form="triangle" title="Dreieck">
+                    <button type="button" class="tpl-card pediment-form-btn" data-form="triangle" title="Dreieck unten offen">
                       <div class="tpl-card-thumb" aria-hidden="true">
                         <svg viewBox="0 0 48 28" width="48" height="28"><path d="M6 22 L24 6 L42 22" fill="none" stroke="currentColor" stroke-width="2.5"/></svg>
                       </div>
-                      <span>Dreieck</span>
+                      <span>Offen △</span>
                     </button>
-                    <button type="button" class="tpl-card pediment-form-btn" data-form="segment" title="Segmentbogen">
+                    <button type="button" class="tpl-card pediment-form-btn" data-form="segment" title="Segmentbogen unten offen">
                       <div class="tpl-card-thumb" aria-hidden="true">
                         <svg viewBox="0 0 48 28" width="48" height="28"><path d="M6 22 Q24 2 42 22" fill="none" stroke="currentColor" stroke-width="2.5"/></svg>
                       </div>
-                      <span>Segment</span>
+                      <span>Offen ⌒</span>
                     </button>
                     <button type="button" class="tpl-card pediment-form-btn" data-form="triangleClosed" title="Dreieck unten geschlossen">
                       <div class="tpl-card-thumb" aria-hidden="true">
                         <svg viewBox="0 0 48 28" width="48" height="28"><path d="M12 22 L24 6 L36 22 Z" fill="none" stroke="currentColor" stroke-width="2.5"/></svg>
                       </div>
-                      <span>Dreieck zu</span>
+                      <span>Zu △</span>
                     </button>
                     <button type="button" class="tpl-card pediment-form-btn" data-form="segmentClosed" title="Segment unten geschlossen">
                       <div class="tpl-card-thumb" aria-hidden="true">
                         <svg viewBox="0 0 48 28" width="48" height="28"><path d="M12 22 Q24 4 36 22 Z" fill="none" stroke="currentColor" stroke-width="2.5"/></svg>
                       </div>
-                      <span>Segment zu</span>
+                      <span>Zu ⌒</span>
                     </button>
                     <button type="button" class="tpl-card pediment-form-btn" data-form="round" title="Rundbogen">
                       <div class="tpl-card-thumb" aria-hidden="true" data-arch-thumb="round"></div>
@@ -2063,12 +1993,16 @@
                     <label>Versatz Tiefe (cm) <input id="pediment-offset-forward" type="number" step="0.5" value="0" title="Verschiebung senkrecht zur Wand" /></label>
                   </div>
                   <div id="pediment-gable-size-row" class="toolbar-row-2" hidden>
-                    <label id="pediment-gable-width-label">Giebelbreite (cm) <input id="pediment-gable-width" type="number" min="0" max="384" step="8" value="0" title="0 = volle Breite bis Überstand" /></label>
-                    <label id="pediment-side-arm-label">Seitenlinie (cm) <input id="pediment-side-arm-width" type="number" min="0" max="96" step="8" value="0" title="Horizontale Linie links und rechts je Seite" /></label>
+                    <label id="pediment-gable-width-label">Giebelbreite (cm) <input id="pediment-gable-width" type="number" min="0" max="384" step="8" value="0" title="0 = automatisch aus Öffnung und Überstand" /></label>
+                    <label id="pediment-side-arm-label">Horizontale je Seite (cm) <input id="pediment-side-arm-width" type="number" min="0" max="96" step="8" value="0" title="Horizontale Linie links und rechts je Seite (nur offene Formen)" /></label>
                   </div>
                   <label id="pediment-side-arms-row" class="toolbar-check" hidden>
                     <input id="pediment-side-arms-enabled" type="checkbox" />
-                    Seitenlinien links/rechts
+                    Horizontalen links/rechts
+                  </label>
+                  <label id="pediment-sealed-back-row" class="toolbar-check" hidden>
+                    <input id="pediment-sealed-back" type="checkbox" />
+                    Rückseite verschließen (kein Mauerwerk durchscheinend)
                   </label>
                   <span class="toolbar-label">Verdachungsfarbe</span>
                   <div id="pediment-color-swatches" class="color-swatches"></div>
@@ -2263,8 +2197,8 @@
                   <span>Schatten-Kontrast</span>
                   <output id="sun-shadow-contrast-value">1.40</output>
                 </label>
-                <input id="sun-shadow-contrast" type="range" min="0.5" max="2.5" step="0.05" value="1.4" />
-                <p class="toolbar-hint compact-hint">Wie stark Sonne und Schatten an Fassade und Himmel auseinanderliegen.</p>
+                <input id="sun-shadow-contrast" type="range" min="0.5" max="5" step="0.05" value="1.4" />
+                <p class="toolbar-hint compact-hint">Wie stark Sonne und Schatten an Fassade und Himmel auseinanderliegen (Neutral: höher drehen für kräftigere Schatten).</p>
 
                 <div id="sun-shadow-density-block" hidden>
                 <label class="slider-label">
@@ -2348,14 +2282,20 @@
                     <input id="anim-paused" type="checkbox" />
                     Animationen pausieren
                   </label>
-                  <p class="toolbar-hint compact-hint">Blaulicht, Fenster/Türen und Tageszyklus.</p>
+                  <p class="toolbar-hint compact-hint">
+                    Master-Stop: Blaulicht, Fenster/Türen, Rollläden — und den Tageszyklus, falls er an ist.
+                    Pause aus allein startet die Sonne nicht.
+                  </p>
                 </div>
                 <div class="toolbar-group">
                   <label class="toolbar-check">
                     <input id="anim-day-cycle" type="checkbox" checked />
                     Tageszyklus
                   </label>
-                  <p class="toolbar-hint compact-hint">Uhrzeit und Sonne laufen kontinuierlich.</p>
+                  <p class="toolbar-hint compact-hint">
+                    Muss an sein: Uhrzeit und Sonne laufen dann beschleunigt (siehe Tagesdauer).
+                    Ohne Haken bleibt die Uhrzeit stehen — auch wenn Animationen nicht pausiert sind.
+                  </p>
                 </div>
                 <div class="toolbar-group">
                   <span class="toolbar-label">Tagesdauer (Min.)</span>
@@ -2391,18 +2331,14 @@
               </div>
 
               <div class="settings-section" data-settings-section="colors" data-settings-label="Szene" data-settings-order="40">
-                <div class="toolbar-group">
+                <div class="toolbar-group" hidden>
                   <span class="toolbar-label">Umgebung</span>
                   <div class="preset-group" style="margin: 0; gap: 6px">
                     <button id="stage-env-sky-btn-side" class="preset-btn" type="button">Himmel</button>
                     <button id="stage-env-studio-btn-side" class="preset-btn" type="button">Neutral</button>
                   </div>
-                  <p id="studio-stage-hint" class="toolbar-hint compact-hint" hidden>
-                    Flacher Boden (größer als das Haus) in einer Kugel — von außen hindurchschauen.
-                    Beige tagsüber, nachts nahezu schwarz; Schatten auf dem Boden.
-                  </p>
                 </div>
-                <div class="toolbar-group">
+                <div class="toolbar-group" hidden>
                   <span class="toolbar-label">Laub</span>
                   <div class="preset-group" style="margin: 0; gap: 6px">
                     <button id="leaf-mode-btn-side" class="preset-btn" type="button" title="Laub-Modus">Laub</button>
@@ -2419,28 +2355,32 @@
                     </p>
                   </div>
                 </div>
-                <div class="toolbar-group">
+                <div class="toolbar-group" hidden>
                   <span class="toolbar-label">Alle drei</span>
                   <div id="scene-all-color-host">
-                    <input id="scene-all-color" type="color" value="#555555" title="Hintergrund, Untergrund und Himmel gemeinsam" />
+                    <input id="scene-all-color" type="color" value="#E8E3DD" title="Hintergrund, Untergrund und Himmel gemeinsam" />
                   </div>
                 </div>
-                <div class="toolbar-group">
-                  <span class="toolbar-label">Hintergrund</span>
+                <div class="toolbar-group" hidden>
+                  <span class="toolbar-label">Hintergrund (Neutral)</span>
                   <div id="scene-bg-color-host">
-                    <input id="scene-bg-color" type="color" value="#555555" />
+                    <input id="scene-bg-color" type="color" value="#E8E3DD" />
                   </div>
+                  <p id="studio-stage-hint" class="toolbar-hint compact-hint" hidden>
+                    Neutral-Bühne: Kugel + Boden. Farben steuern Kuppel/Hintergrund und Boden;
+                    nachts dunkeln sie Richtung Schwarz ab. Umschalten: Himmel | Neutral oben links.
+                  </p>
                 </div>
-                <div class="toolbar-group">
-                  <span class="toolbar-label">Bodenfarbe</span>
+                <div class="toolbar-group" hidden>
+                  <span class="toolbar-label">Bodenfarbe (Neutral)</span>
                   <div id="scene-ground-color-host">
-                    <input id="scene-ground-color" type="color" value="#555555" />
+                    <input id="scene-ground-color" type="color" value="#E8E3DD" />
                   </div>
                 </div>
-                <div class="toolbar-group">
+                <div class="toolbar-group" hidden>
                   <span class="toolbar-label">Himmelsfarbe (Fenster)</span>
                   <div id="scene-sky-color-host">
-                    <input id="scene-sky-color" type="color" value="#555555" />
+                    <input id="scene-sky-color" type="color" value="#E8E3DD" />
                   </div>
                 </div>
 
@@ -2639,10 +2579,11 @@
     <dialog id="bay-window-place-dialog">
       <form method="dialog" class="dialog-form">
         <h2>Baugruppe platzieren</h2>
-        <p>Die Wand ersetzen oder die Baugruppe (Erker / Balkon / Loggia) daneben bzw. darüber angliedern?</p>
-        <p class="compact-hint">Ersetzen entfernt die getroffene Wand. Links/Rechts/Darüber belässt die Wand und setzt die Baugruppe davor (Loggia nach innen).</p>
+        <p>Erker in Vorlagenbreite als Segment einsetzen, an die ganze Wandbreite anpassen, oder daneben/darüber angliedern?</p>
+        <p class="compact-hint">„Als Segment“ behält die Vorlagenbreite (verschiebbar). „An Wandbreite“ dehnt den Erker auf die getroffene Wand. Links/Rechts/Darüber belässt die Wand und setzt die Baugruppe davor (Loggia nach innen).</p>
         <div class="dialog-choices">
-          <button class="preset-btn" value="replace" type="submit">Ersetzen</button>
+          <button class="preset-btn" value="segment" type="submit">Als Segment</button>
+          <button class="preset-btn" value="fit" type="submit">An Wandbreite</button>
           <button class="preset-btn" value="left" type="submit">Links</button>
           <button class="preset-btn" value="right" type="submit">Rechts</button>
           <button class="preset-btn" value="above" type="submit">Darüber</button>

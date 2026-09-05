@@ -60,7 +60,7 @@ import {
   normalizeOpeningGuard,
   normalizeOpeningInteriorShade,
 } from './windows/openingExtras'
-import { applyMeshColor, applyOrthographicGlassSeeThrough, applyRenderExteriorSurfaceLook, applyRenderInteriorSurfaceLook, applySurfaceFinish, applyWorkModeSurfaceLook, createTintedMaterial, ensureShadowDepthMaterial, getGlassEnvironment, materialIsGlassLike } from './utils/threeColors'
+import { applyMeshColor, applyOrthographicGlassSeeThrough, applyRenderExteriorSurfaceLook, applyRenderInteriorSurfaceLook, applySurfaceFinish, applyWorkModeSurfaceLook, createTintedMaterial, ensureShadowDepthMaterial, getExteriorEnvFillFactor, getGlassEnvironment, markWindowFrameSurface, materialIsGlassLike } from './utils/threeColors'
 import { applyFacadeShadeShader, facadeOutwardLocalZ } from './utils/facadeShade'
 import { openingGlassConfig } from './utils/glassConfig'
 import { DEFAULT_STUDIO_PANEL } from './studio/constants'
@@ -110,10 +110,11 @@ import { normalizeOpeningPediment } from './studio/pediment'
 import {
   createPedimentConsoleGeometries,
   createPedimentSweepGeometry,
+  createPedimentSealedBackGeometry,
 } from './studio/pedimentGeometry'
 import { planFacesWithHoles } from './studio/floorPlan'
 import { notchSlabRingAtOpenings } from './studio/slabNotches'
-import { storeyFloorSurfaceY, storeyTopY } from './utils/layers'
+import { floorIndex, storeyFloorSurfaceY, storeyTopY } from './utils/layers'
 import { isStudioWall, leafOpenSignForWall, outerSillBoardPose, studioFacadeOutwardLocalZ, studioFacadeSelectionLocalZ, studioPanelFaceLocalZ, studioProfileAnchorLocalZ, studioWallOuterLocalZ, studioWallTransform, studioWindowOriginZ, wallHasPanels, windowDepthForwardSign } from './studio/walls'
 import { buildMansardRoof } from './studio/roof'
 import {
@@ -185,6 +186,8 @@ export class FacadeController {
   private readonly wallInteriorMaterials = new Map<string, THREE.MeshStandardMaterial>()
   private readonly material: THREE.MeshStandardMaterial
   private readonly selectedMaterial: THREE.MeshStandardMaterial
+  /** Unbeleuchtetes Orange für Profile (Tone-Mapping würde Standard-Orange dunkelrot machen). */
+  private readonly selectedUnlitMaterial: THREE.MeshBasicMaterial
   private readonly selectionLineMaterial: THREE.LineBasicMaterial
   private readonly guideEdgeMaterial: THREE.LineBasicMaterial
   private readonly guideMidMaterial: THREE.LineBasicMaterial
@@ -229,6 +232,13 @@ export class FacadeController {
   private readonly openingShadowTunnelMeshes = new Map<string, THREE.Mesh>()
   private readonly guideLines: THREE.Line[] = []
   private readonly guideDistanceLines: THREE.Line[] = []
+  private readonly planWallGuideLines: THREE.Line[] = []
+  /** cm-Labels an Abstandslinien (Canvas-Textur, Sprite). */
+  private readonly guideDistanceLabels: THREE.Sprite[] = []
+  private readonly guideDistanceLabelTextures = new Map<string, THREE.CanvasTexture>()
+  /** Maßlinie beim Wand-Resize (Delta zum Drag-Start). */
+  private readonly wallResizeMeasureLines: THREE.Line[] = []
+  private readonly wallResizeMeasureLabels: THREE.Sprite[] = []
   private casingTemplates = new Map<string, THREE.Object3D>()
   private claddingTemplates = new Map<string, THREE.Object3D>()
   private state: FacadeState
@@ -295,6 +305,14 @@ export class FacadeController {
       polygonOffsetUnits: 1,
       side: THREE.DoubleSide,
       shadowSide: THREE.FrontSide,
+    })
+    this.selectedUnlitMaterial = new THREE.MeshBasicMaterial({
+      color: 0xff6600,
+      toneMapped: false,
+      polygonOffset: true,
+      polygonOffsetFactor: 1,
+      polygonOffsetUnits: 1,
+      side: THREE.DoubleSide,
     })
     this.selectionLineMaterial = new THREE.LineBasicMaterial({
       color: 0xff8800,
@@ -364,7 +382,12 @@ export class FacadeController {
     scene.add(this.roofGroup)
     scene.add(this.lineGroup)
     scene.add(this.guideGroup)
+    // Wie volles setState: ohne Indoor/Dach bleiben Decken & Dach nach Reload unsichtbar
+    // (applyState sieht oft „Geometrie unverändert“ und ruft setState mit [] auf).
     this.rebuild()
+    this.rebuildIndoorFloor()
+    this.rebuildRoof()
+    this.rebuildFarHulls()
     void this.loadMeshes()
   }
 
@@ -814,13 +837,45 @@ export class FacadeController {
     }
     applyRenderExteriorSurfaceLook(material)
     material.roughness = Math.min(material.roughness, 0.42)
-    material.envMapIntensity = Math.max(material.envMapIntensity, 0.72)
+    const base = Math.max(
+      typeof material.userData.baseEnvMapIntensity === 'number'
+        ? material.userData.baseEnvMapIntensity
+        : 0.58,
+      0.72,
+    )
+    material.userData.baseEnvMapIntensity = base
+    material.envMapIntensity = base * getExteriorEnvFillFactor()
     material.needsUpdate = true
   }
 
   private finishInteriorMaterial(material: THREE.MeshStandardMaterial): void {
     if (this.isPerfPresentation()) return
     applyRenderInteriorSurfaceLook(material)
+  }
+
+  /** Rahmen/Sprossen: gleiche Außen-EnvMap wie Wand/Laibung — sonst wirken Weiß-Rahmen dumpfer. */
+  private finishOpeningFrameTree(root: THREE.Object3D): void {
+    root.traverse((child) => {
+      if (!(child instanceof THREE.Mesh)) return
+      // Vorhang/Jalousie nicht wie Außenrahmen behandeln.
+      let ancestor: THREE.Object3D | null = child
+      while (ancestor) {
+        if (ancestor.userData.interiorShade === true) return
+        ancestor = ancestor.parent
+      }
+      const mats = Array.isArray(child.material) ? child.material : [child.material]
+      for (const mat of mats) {
+        if (!(mat instanceof THREE.MeshStandardMaterial)) continue
+        if (materialIsGlassLike(mat)) continue
+        markWindowFrameSurface(mat)
+        // Gegenlicht-Shade macht weiße Rahmen trotz Sonne dunkelgrau — überspringen.
+        mat.userData.skipFacadeShade = true
+        this.finishExteriorMaterial(mat)
+        // Matt-Weiß etwas heller / weniger rau als reine Wand.
+        if (mat.roughness > 0.55) mat.roughness = 0.55
+        mat.envMapIntensity = Math.max(mat.envMapIntensity, 0.7)
+      }
+    })
   }
 
   private syncWallMeshLightLayers(mesh: THREE.Mesh): void {
@@ -875,7 +930,7 @@ export class FacadeController {
     const original = mesh.userData.originalMaterial as THREE.Material | undefined
     if (original) materials.add(original)
     for (const material of materials) {
-      if (material === this.whiteMaterial || material === this.selectedMaterial || material === this.lineMaterial) {
+      if (material === this.whiteMaterial || material === this.selectedMaterial || material === this.selectedUnlitMaterial || material === this.lineMaterial) {
         continue
       }
       material.dispose()
@@ -903,6 +958,12 @@ export class FacadeController {
         // (Gründerzeit-Default). Ohne Sync fehlen Gesims-Schatten auf allen Rahmen.
         this.syncLabelShadowReceivers()
         this.applyRenderStyle()
+        this.applySelection()
+      } else if (this.indoorFloorGroup.children.length === 0) {
+        // Selektion-only nach Kaltstart: Decken/Böden nachziehen, falls Konstruktor-Pfad fehlte.
+        this.rebuildIndoorFloor()
+        this.rebuildRoof()
+        this.rebuildFarHulls()
         this.applySelection()
       }
       return
@@ -1294,6 +1355,194 @@ export class FacadeController {
       line.geometry.dispose()
     }
     this.guideDistanceLines.length = 0
+    for (const sprite of this.guideDistanceLabels) {
+      this.guideGroup.remove(sprite)
+      ;(sprite.material as THREE.SpriteMaterial).dispose()
+    }
+    this.guideDistanceLabels.length = 0
+  }
+
+  /**
+   * Plan-Achsen-Hilfslinien in 3D/Front (X=const / Z=const), z. B. bündige
+   * unverbundene Wandenden beim Strecken oder Abzweigen.
+   */
+  setPlanWallGuides(
+    guides: Array<{ value: number; orientation: 'vertical' | 'horizontal'; source: 'self' | 'align' }>,
+    opts?: { floorY?: number; height?: number },
+  ) {
+    this.clearPlanWallGuides()
+    const floorY = opts?.floorY ?? 0
+    const height = Math.max(opts?.height ?? 480, 120)
+    const y0 = floorY - 40
+    const y1 = floorY + height + 200
+    const span = 4000
+    for (const guide of guides) {
+      if (guide.source !== 'align') continue
+      const material = this.guideMidMaterial
+      const loPts =
+        guide.orientation === 'vertical'
+          ? [new THREE.Vector3(guide.value, y0, -span), new THREE.Vector3(guide.value, y0, span)]
+          : [new THREE.Vector3(-span, y0, guide.value), new THREE.Vector3(span, y0, guide.value)]
+      const hiPts =
+        guide.orientation === 'vertical'
+          ? [new THREE.Vector3(guide.value, y1, -span), new THREE.Vector3(guide.value, y1, span)]
+          : [new THREE.Vector3(-span, y1, guide.value), new THREE.Vector3(span, y1, guide.value)]
+      const lo = new THREE.Line(new THREE.BufferGeometry().setFromPoints(loPts), material)
+      const hi = new THREE.Line(new THREE.BufferGeometry().setFromPoints(hiPts), material)
+      lo.renderOrder = 10
+      hi.renderOrder = 10
+      this.guideGroup.add(lo, hi)
+      this.planWallGuideLines.push(lo, hi)
+    }
+  }
+
+  clearPlanWallGuides() {
+    for (const line of this.planWallGuideLines) {
+      this.guideGroup.remove(line)
+      line.geometry.dispose()
+    }
+    this.planWallGuideLines.length = 0
+  }
+
+  /** Canvas-Textur für Maß-Label (gecacht nach Text). */
+  private distanceLabelTexture(text: string): THREE.CanvasTexture {
+    const cached = this.guideDistanceLabelTextures.get(text)
+    if (cached) return cached
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d')!
+    const fontPx = 48
+    ctx.font = `600 ${fontPx}px system-ui, sans-serif`
+    const padX = fontPx * 0.35
+    const widthPx = Math.max(1, Math.ceil(ctx.measureText(text).width + padX * 2))
+    const heightPx = Math.ceil(fontPx * 1.35)
+    canvas.width = widthPx
+    canvas.height = heightPx
+    ctx.font = `600 ${fontPx}px system-ui, sans-serif`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillStyle = '#ffd966'
+    ctx.fillText(text, widthPx / 2, heightPx / 2)
+    const texture = new THREE.CanvasTexture(canvas)
+    texture.colorSpace = THREE.SRGBColorSpace
+    texture.needsUpdate = true
+    this.guideDistanceLabelTextures.set(text, texture)
+    return texture
+  }
+
+  private createDistanceLabelSprite(text: string, heightCm = 7): THREE.Sprite {
+    const map = this.distanceLabelTexture(text)
+    const material = new THREE.SpriteMaterial({
+      map,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+      toneMapped: false,
+      sizeAttenuation: true,
+    })
+    const sprite = new THREE.Sprite(material)
+    sprite.userData.measureLabel = true
+    const img = map.image as { width: number; height: number }
+    const aspect = img.width / Math.max(1, img.height)
+    sprite.userData.measureAspect = aspect
+    sprite.scale.set(heightCm * aspect, heightCm, 1)
+    sprite.renderOrder = 12
+    return sprite
+  }
+
+  /**
+   * Maß-Labels (Öffnung + Wand-Resize) auf konstante Bildschirmgröße skalieren,
+   * damit sie aus der Ferne lesbar bleiben.
+   */
+  updateMeasureLabelScales(camera: THREE.Camera): void {
+    const camPos = camera.position
+    const world = new THREE.Vector3()
+    const scaleOne = (sprite: THREE.Sprite) => {
+      sprite.getWorldPosition(world)
+      const dist = Math.max(40, camPos.distanceTo(world))
+      // ~konstant am Bildschirm; halb so groß wie v2.0.180 (0,045 / 18–200).
+      const heightCm = THREE.MathUtils.clamp(dist * 0.0225, 9, 100)
+      const aspect = (sprite.userData.measureAspect as number | undefined) ?? 1
+      sprite.scale.set(heightCm * aspect, heightCm, 1)
+    }
+    for (const sprite of this.guideDistanceLabels) scaleOne(sprite)
+    for (const sprite of this.wallResizeMeasureLabels) scaleOne(sprite)
+  }
+
+  clearWallResizeMeasure() {
+    for (const line of this.wallResizeMeasureLines) {
+      this.guideGroup.remove(line)
+      line.geometry.dispose()
+    }
+    this.wallResizeMeasureLines.length = 0
+    for (const sprite of this.wallResizeMeasureLabels) {
+      this.guideGroup.remove(sprite)
+      ;(sprite.material as THREE.SpriteMaterial).dispose()
+    }
+    this.wallResizeMeasureLabels.length = 0
+  }
+
+  /**
+   * Gelbe Maßlinie mit Label zwischen zwei Weltpunkten (Wand-Resize-Delta).
+   * `null` / leeres Label entfernt die Anzeige.
+   */
+  setWallResizeMeasure(
+    spec: { from: THREE.Vector3; to: THREE.Vector3; label: string } | null,
+  ): void {
+    this.clearWallResizeMeasure()
+    if (!spec || !spec.label.trim()) return
+    const a = spec.from.clone()
+    const b = spec.to.clone()
+    const dx = b.x - a.x
+    const dy = b.y - a.y
+    const dz = b.z - a.z
+    const len = Math.hypot(dx, dy, dz)
+    if (len < 0.5) return
+
+    const addSegment = (p: THREE.Vector3, q: THREE.Vector3) => {
+      const geom = new THREE.BufferGeometry().setFromPoints([p, q])
+      const line = new THREE.Line(geom, this.guideDistanceMaterial)
+      line.renderOrder = 11
+      this.guideGroup.add(line)
+      this.wallResizeMeasureLines.push(line)
+    }
+    addSegment(a, b)
+
+    const capHalf = 6
+    const ux = dx / len
+    const uz = dz / len
+    // Endstriche senkrecht zur Maßlinie (bevorzugt in der horizontalen Ebene).
+    let px = -uz
+    let py = 0
+    let pz = ux
+    let pLen = Math.hypot(px, py, pz)
+    if (pLen < 1e-4) {
+      px = 0
+      py = 1
+      pz = 0
+      pLen = 1
+    } else {
+      px /= pLen
+      py /= pLen
+      pz /= pLen
+    }
+    addSegment(
+      new THREE.Vector3(a.x - px * capHalf, a.y - py * capHalf, a.z - pz * capHalf),
+      new THREE.Vector3(a.x + px * capHalf, a.y + py * capHalf, a.z + pz * capHalf),
+    )
+    addSegment(
+      new THREE.Vector3(b.x - px * capHalf, b.y - py * capHalf, b.z - pz * capHalf),
+      new THREE.Vector3(b.x + px * capHalf, b.y + py * capHalf, b.z + pz * capHalf),
+    )
+
+    const mid = new THREE.Vector3(
+      (a.x + b.x) / 2 + px * 10,
+      (a.y + b.y) / 2 + py * 10,
+      (a.z + b.z) / 2 + pz * 10,
+    )
+    const sprite = this.createDistanceLabelSprite(spec.label)
+    sprite.position.copy(mid)
+    this.guideGroup.add(sprite)
+    this.wallResizeMeasureLabels.push(sprite)
   }
 
   /** Zeigt Ausrichtungs-Hilfslinien in Wand-Lokalmaßen (vor der Fassade). */
@@ -1382,6 +1631,17 @@ export class FacadeController {
         addSegment(toWorld(dist.fromX - capHalf, dist.fromY), toWorld(dist.fromX + capHalf, dist.fromY))
         addSegment(toWorld(dist.toX - capHalf, dist.toY), toWorld(dist.toX + capHalf, dist.toY))
       }
+
+      const midX = (dist.fromX + dist.toX) / 2
+      const midY = (dist.fromY + dist.toY) / 2
+      // Wie SVG: Label leicht neben der Linie, nicht exakt auf dem Strich.
+      const labelPos = horizontal
+        ? toWorld(midX, midY + 10)
+        : toWorld(midX + 10, midY)
+      const sprite = this.createDistanceLabelSprite(`${dist.distanceCm} cm`)
+      sprite.position.copy(labelPos)
+      this.guideGroup.add(sprite)
+      this.guideDistanceLabels.push(sprite)
     }
   }
 
@@ -1403,7 +1663,9 @@ export class FacadeController {
     const glassEnv = getGlassEnvironment()
     if (glassEnv) {
       material.envMap = glassEnv
-      material.envMapIntensity = Math.max(material.envMapIntensity, 0.42)
+      const base = 0.42
+      material.userData.baseEnvMapIntensity = base
+      material.envMapIntensity = base * getExteriorEnvFillFactor()
     }
     return material
   }
@@ -1515,6 +1777,11 @@ export class FacadeController {
         const plan = floors[fi]
         if (plan.hidden) continue
         const slabMat = slabMatFor(plan.ceilingColor ?? DEFAULT_CEILING_COLOR)
+        // Pro Etage nur deren Wände — sonst greifen bei abweichendem Fußabdruck
+        // (z. B. Schrägstellen nur EG) falsche Kanten und fehlen Boden/Decke.
+        const floorWalls = buildingWalls.filter(
+          (wall) => floorIndex(wall, building.wallHeight) === fi,
+        )
         const faces = planFacesWithHoles(plan)
         for (const face of faces) {
           // Sichtbar: echte Innenkante der Studio-Wände (panelFlip-sicher) + 1 cm Inset.
@@ -1523,17 +1790,17 @@ export class FacadeController {
           // (Sonne) + Wandkörper. An Öffnungen, die die Platte schneiden, Kerbe weiter
           // nach innen (`slabNotches`) — sonst füllt die Kante Tür/Kellerfenster.
           const visualDepth = wallDepth + INDOOR_SLAB_VISUAL_INSET_CM
-          const innerWorld = innerFaceRingFromWalls(face.outer, buildingWalls, visualDepth)
+          const innerWorld = innerFaceRingFromWalls(face.outer, floorWalls, visualDepth)
           if (innerWorld.length < 3) continue
           const holesWorld = face.holes
-            .map((holeNodes) => innerFaceRingFromWalls(holeNodes, buildingWalls, visualDepth))
+            .map((holeNodes) => innerFaceRingFromWalls(holeNodes, floorWalls, visualDepth))
             .filter((hole) => hole.length >= 3)
           const slabShapeFor = (slabBottomY: number, slabTopY: number) => {
-            const outer = notchSlabRingAtOpenings(innerWorld, buildingWalls, slabBottomY, slabTopY)
+            const outer = notchSlabRingAtOpenings(innerWorld, floorWalls, slabBottomY, slabTopY)
             const shape = ringToShapeXY(outer)
             if (!shape) return null
             for (const holeWorld of holesWorld) {
-              const hole = notchSlabRingAtOpenings(holeWorld, buildingWalls, slabBottomY, slabTopY)
+              const hole = notchSlabRingAtOpenings(holeWorld, floorWalls, slabBottomY, slabTopY)
               const path = new THREE.Path()
               path.moveTo(hole[0]!.x, -hole[0]!.z)
               for (let i = hole.length - 1; i >= 1; i -= 1) {
@@ -1554,11 +1821,11 @@ export class FacadeController {
           }
 
           // Sonne: Innenkante, damit keine horizontalen Streifen auf der Außenfassade.
-          const sunOuter = innerFaceRingFromWalls(face.outer, buildingWalls, wallDepth)
+          const sunOuter = innerFaceRingFromWalls(face.outer, floorWalls, wallDepth)
           const sunShape = ringToShapeXY(sunOuter)
           if (sunShape) {
             for (const holeNodes of face.holes) {
-              const holeInner = innerFaceRingFromWalls(holeNodes, buildingWalls, wallDepth)
+              const holeInner = innerFaceRingFromWalls(holeNodes, floorWalls, wallDepth)
               if (holeInner.length < 3) continue
               const path = new THREE.Path()
               path.moveTo(holeInner[0]!.x, -holeInner[0]!.z)
@@ -1797,6 +2064,7 @@ export class FacadeController {
           const mat = obj.material
           const isTransient =
             mat === this.selectedMaterial ||
+            mat === this.selectedUnlitMaterial ||
             mat === this.whiteMaterial ||
             mat === this.lineMaterial
           obj.userData.lineBackupMaterial = isTransient
@@ -1811,6 +2079,7 @@ export class FacadeController {
         const mat = obj.material
         const isTransient =
           mat === this.selectedMaterial ||
+          mat === this.selectedUnlitMaterial ||
           mat === this.whiteMaterial ||
           mat === this.lineMaterial
         obj.userData.lineBackupMaterial = isTransient
@@ -2167,7 +2436,7 @@ export class FacadeController {
         if (child.userData.role === 'guideRail') return
         const mats = Array.isArray(child.material) ? child.material : [child.material]
         for (const mat of mats) {
-          if (mat === this.whiteMaterial || mat === this.selectedMaterial || mat === this.lineMaterial) {
+          if (mat === this.whiteMaterial || mat === this.selectedMaterial || mat === this.selectedUnlitMaterial || mat === this.lineMaterial) {
             continue
           }
           if (mat.userData.skipFacadeShade === true) continue
@@ -2187,7 +2456,10 @@ export class FacadeController {
     for (const mesh of this.pedimentMeshes) shadeMesh(mesh)
     for (const mesh of this.stairMeshes) shadeMesh(mesh)
     for (const mesh of this.wallLabelMeshes) shadeMesh(mesh)
-    for (const instance of this.windowInstances) shadeMesh(instance)
+    // Fensterrahmen wie Paneele/Laibung (mit Außen-EnvMap, sonst wirken Weiß-Rahmen dumpfer).
+    for (const mesh of this.windowInstances) shadeMesh(mesh)
+    for (const mesh of this.windowLodLowInstances) shadeMesh(mesh)
+    for (const mesh of this.casingInstances) shadeMesh(mesh)
   }
 
   updatePerformanceLod(camera: THREE.Camera, viewportHeight: number) {
@@ -3009,6 +3281,11 @@ export class FacadeController {
           // Lichtdichte über Shadow-Tunnel; sichtbare Nische wirft nicht selbst
           // (vermeidet Selbstabschattung der Rückwand).
           mesh.castShadow = false
+        } else {
+          // Gleiche CubeCamera-EnvMap wie Paneele/Wand — sonst bleibt die Laibung
+          // nachts schwarz, während die Fassade IBL-Grau spiegelt.
+          this.finishExteriorMaterial(exteriorMaterial)
+          this.finishInteriorMaterial(interiorMaterial)
         }
         // Sonne + Punktlicht: Empfang wie Paneele (auch Nische/Konche).
         mesh.receiveShadow = this.revealShouldReceiveShadow(mesh)
@@ -3161,6 +3438,7 @@ export class FacadeController {
               frameColor,
               frameFinish,
             )
+            markWindowFrameSurface(doorMat)
             instance = new THREE.Mesh(
               new THREE.BoxGeometry(opening.width, opening.height, frameDepth),
               doorMat,
@@ -3250,6 +3528,8 @@ export class FacadeController {
           }
         }
 
+        this.finishOpeningFrameTree(instance)
+
         if (tier === 'high' && basementWindowEnabled(opening)) {
           const grilleGeometry = createBasementGrilleGeometry(wall, opening)
           if (grilleGeometry) {
@@ -3312,6 +3592,7 @@ export class FacadeController {
           skipGlass: true,
           finish: opening.frameFinish,
         })
+        this.finishOpeningFrameTree(instance)
         tagPickable(instance, {
           kind: 'opening',
           wallId: wall.id,
@@ -3550,6 +3831,8 @@ export class FacadeController {
                       transform.position.z,
                     )
                     plinthMesh.rotation.y = transform.rotationY
+                    // Vor Paneelen zeichnen — Sockel überlagert die untere Fassade.
+                    plinthMesh.renderOrder = 3
                     this.claddingGroup.add(plinthMesh)
                     this.studioCladdingMeshes.push(plinthMesh)
                   }
@@ -3689,6 +3972,7 @@ export class FacadeController {
               plinthMesh.userData.originalMaterial = plinthMaterial
               plinthMesh.position.set(transform.position.x, transform.position.y, transform.position.z)
               plinthMesh.rotation.y = transform.rotationY
+              plinthMesh.renderOrder = 3
               this.claddingGroup.add(plinthMesh)
               this.studioCladdingMeshes.push(plinthMesh)
             }
@@ -3753,6 +4037,7 @@ export class FacadeController {
         const material = createTintedMaterial(this.material, color, finish)
         material.side = THREE.DoubleSide
         material.shadowSide = THREE.FrontSide
+        this.finishExteriorMaterial(material)
         const mesh = new THREE.Mesh(geometry, material)
         mesh.castShadow = true
         mesh.receiveShadow = true
@@ -3822,6 +4107,7 @@ export class FacadeController {
         material.side = THREE.DoubleSide
         material.transparent = false
         material.opacity = 1
+        this.finishExteriorMaterial(material)
         material.depthWrite = true
         const slatGeo = createRollerSlatGeometry(width, slatHeight, DEFAULT_ROLLER_BULGE_CM)
 
@@ -3991,7 +4277,7 @@ export class FacadeController {
         profileColor,
         path.finish ?? wall?.profileFinish,
       )
-      if (this.isPerfPresentation()) applyWorkModeSurfaceLook(material)
+      this.finishExteriorMaterial(material)
       const mesh = new THREE.Mesh(geometry, material)
       // Sonst flackern Profile/Bänke beim Orbit (falsche Bounding-Sphere vs. Wand-Transform).
       mesh.frustumCulled = false
@@ -4074,6 +4360,7 @@ export class FacadeController {
           color,
           sill.finish ?? wall.profileFinish,
         )
+        this.finishExteriorMaterial(material)
         const mesh = new THREE.Mesh(geometry, material)
         mesh.frustumCulled = false
         mesh.castShadow = true
@@ -4147,6 +4434,7 @@ export class FacadeController {
           color,
           normalized.finish ?? wall.profileFinish,
         )
+        this.finishExteriorMaterial(material)
         const mesh = new THREE.Mesh(geometry, material)
         mesh.frustumCulled = false
         mesh.castShadow = true
@@ -4213,7 +4501,7 @@ export class FacadeController {
           color,
           pediment.finish ?? wall.profileFinish,
         )
-        if (this.isPerfPresentation()) applyWorkModeSurfaceLook(material)
+        this.finishExteriorMaterial(material)
         const transform = wallPlacement(wall)
 
         const sweep = createPedimentSweepGeometry(wall, opening, pediment, {
@@ -4221,6 +4509,28 @@ export class FacadeController {
         })
         if (sweep) {
           const mesh = new THREE.Mesh(sweep, material)
+          mesh.frustumCulled = false
+          mesh.castShadow = true
+          mesh.receiveShadow = !this.isPerfPresentation()
+          mesh.userData.originalMaterial = material
+          tagPickable(mesh, {
+            kind: 'opening',
+            wallId: wall.id,
+            openingId: opening.id,
+            openingPart: 'pediment',
+          })
+          mesh.userData.wallId = wall.id
+          if (isStudioWall(wall)) {
+            mesh.position.set(transform.position.x, transform.position.y, transform.position.z)
+            mesh.rotation.y = transform.rotationY
+          }
+          this.profileGroup.add(mesh)
+          this.pedimentMeshes.push(mesh)
+        }
+
+        const sealed = createPedimentSealedBackGeometry(wall, opening, pediment)
+        if (sealed) {
+          const mesh = new THREE.Mesh(sealed, material)
           mesh.frustumCulled = false
           mesh.castShadow = true
           mesh.receiveShadow = !this.isPerfPresentation()
@@ -4327,21 +4637,57 @@ export class FacadeController {
       if (isLine) continue
       const wallId = mesh.userData.wallId as string | undefined
       const meshPart = mesh.userData.wallPart as string | undefined
+      const openingId = mesh.userData.openingId as string | undefined
+      const openingMeshPart = mesh.userData.openingPart as string | undefined
       const bandId = mesh.userData.bandId as string | undefined
       const base = (mesh.userData.originalMaterial as THREE.Material | undefined) ?? this.profileMaterial
-      if (
-        !this.suppressSelectionHighlight &&
-        wallPart === 'trimBand' &&
-        meshPart === 'trimBand' &&
-        this.editor.selectedWallIds.includes(wallId ?? '') &&
-        this.editor.selectedOpenings.length === 0 &&
-        this.editor.selectedTrimBandId &&
-        bandId === this.editor.selectedTrimBandId
-      ) {
-        mesh.material = this.selectedMaterial
-      } else if (mesh.material === this.selectedMaterial) {
-        mesh.material = base
+      let selected = false
+      if (!this.suppressSelectionHighlight) {
+        const openingHit =
+          Boolean(openingId) &&
+          this.editor.selectedOpenings.some(
+            (ref) => ref.wallId === wallId && ref.openingId === openingId,
+          )
+        if (openingHit) {
+          // Teil-Fokus Profil/Bank: Mesh orange; Ganz-Öffnung nutzt Overlay.
+          selected =
+            openingPart !== 'group' &&
+            openingMeshPart != null &&
+            openingPart === openingMeshPart
+        } else if (
+          this.editor.selectedOpenings.length === 0 &&
+          this.editor.selectedWallIds.includes(wallId ?? '')
+        ) {
+          if (wallPart === 'trimBand' && meshPart === 'trimBand') {
+            selected = Boolean(
+              this.editor.selectedTrimBandId && bandId === this.editor.selectedTrimBandId,
+            )
+          } else if (
+            (wallPart === 'cornice' || wallPart === 'plinth') &&
+            meshPart === wallPart
+          ) {
+            selected = true
+          }
+        }
       }
+      mesh.material = selected ? this.selectedUnlitMaterial : base
+    }
+
+    for (const mesh of [...this.innerSillMeshes, ...this.outerSillMeshes, ...this.pedimentMeshes]) {
+      if (isLine) continue
+      const wallId = mesh.userData.wallId as string | undefined
+      const openingId = mesh.userData.openingId as string | undefined
+      const openingMeshPart = mesh.userData.openingPart as string | undefined
+      const base = (mesh.userData.originalMaterial as THREE.Material | undefined) ?? this.profileMaterial
+      const selected =
+        !this.suppressSelectionHighlight &&
+        openingPart !== 'group' &&
+        openingMeshPart != null &&
+        openingPart === openingMeshPart &&
+        this.editor.selectedOpenings.some(
+          (ref) => ref.wallId === wallId && ref.openingId === openingId,
+        )
+      mesh.material = selected ? this.selectedUnlitMaterial : base
     }
 
     while (this.selectionGroup.children.length > 0) {

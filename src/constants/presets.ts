@@ -29,12 +29,8 @@ export interface WallEndPiecePreset extends WallLengthPreset {
   hand: EndPieceHand
 }
 
-/** Endstück 48: L-Form, Außenseite vorne + links bzw. vorne + rechts. */
-export const WALL_END_PIECE_PRESETS: WallEndPiecePreset[] = [
-  { id: 'wall-end-48-left', label: 'Endstück 48 links', lengthCm: 48, hand: 'left' },
-  { id: 'wall-end-48-right', label: 'Endstück 48 rechts', lengthCm: 48, hand: 'right' },
-]
-
+/** Endstück 48: L-Form — nicht mehr in der Bibliothek (v2.0.223), Code für Alt-Projekte bleibt. */
+export const WALL_END_PIECE_PRESETS: WallEndPiecePreset[] = []
 
 export interface WallWithOpeningPreset {
   id: string
@@ -47,33 +43,8 @@ export interface WallWithOpeningPreset {
   }
 }
 
-/** Wände mit mittiger Standardöffnung (Bibliothek Tab Wände). */
-export const WALL_WITH_OPENING_PRESETS: WallWithOpeningPreset[] = [
-  {
-    id: 'wall-192-window-96',
-    label: 'Wand 192 + Fenster',
-    lengthCm: 192,
-    opening: { type: 'window', width: 96, height: 192 },
-  },
-  {
-    id: 'wall-192-door-96',
-    label: 'Wand 192 + Tür',
-    lengthCm: 192,
-    opening: { type: 'door', width: 96, height: 320 },
-  },
-  {
-    id: 'wall-384-window-144',
-    label: 'Wand 384 + Fenster',
-    lengthCm: 384,
-    opening: { type: 'window', width: 144, height: 192 },
-  },
-  {
-    id: 'wall-384-door-96',
-    label: 'Wand 384 + Tür',
-    lengthCm: 384,
-    opening: { type: 'door', width: 96, height: 320 },
-  },
-]
+/** Wände mit mittiger Standardöffnung — nicht mehr in der Bibliothek (v2.0.223). */
+export const WALL_WITH_OPENING_PRESETS: WallWithOpeningPreset[] = []
 
 export function endPieceHandFromPresetId(id: string): EndPieceHand | null {
   if (id === 'wall-end-48-left' || id === 'wall-end-48') return 'left'
@@ -92,8 +63,9 @@ export const WINDOW_RECESS = 24
 export const OPENING_DRAG_FLOAT_CM = 4
 /** Standard-Vorstand aller Fensterprofile (cm, − = nach innen). */
 export const WINDOW_TRIM_DEFAULT_OFFSET_FORWARD = -4
-/** Zusatz-Versatz zur 24-cm-Laibung (cm, + = nach außen, 0 = Front in der Laibung). */
-export const DEFAULT_WINDOW_DEPTH_OFFSET = 0
+/** Zusatz-Versatz zur 24-cm-Laibung (cm, + = nach außen, 0 = Front in der Laibung).
+ * Default +8 → Frontlage 32 cm von der Außenkante. */
+export const DEFAULT_WINDOW_DEPTH_OFFSET = 8
 export const CLADDING_OFFSET_V1 = 4
 export const CLADDING_OFFSET_V2 = 9.5
 /** Paneele v2 um 8 cm nach hinten (Z) gegenüber dem bisherigen Stand. */
@@ -296,6 +268,6 @@ export const WALL_OPENING_PRESETS: WallOpeningPreset[] = [
 
 export const ALL_EDGES = ['top', 'right', 'bottom', 'left'] as const
 export const JOIN_OVERLAP = 0.2
-/** SVG-Wandverschieben: gleiches Raster wie Plan/3D (`PLAN_GRID` = 48 cm). */
-export const WALL_MOVE_SNAP = 48
+/** SVG-Wandverschieben: gleiches Raster wie Plan/3D (`PLAN_GRID` = 8 cm). */
+export const WALL_MOVE_SNAP = 8
 export const FLUSH_TOLERANCE = 48

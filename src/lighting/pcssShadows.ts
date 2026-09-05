@@ -133,17 +133,8 @@ const PCSS_BASIC_GET_SHADOW = `#else
 			bool inFrustum = shadowCoord.x >= 0.0 && shadowCoord.x <= 1.0 && shadowCoord.y >= 0.0 && shadowCoord.y <= 1.0;
 			bool frustumTest = inFrustum && shadowCoord.z <= 1.0;
 			if ( frustumTest ) {
-				if ( pcssLite > 0.5 ) {
-					// Navigation (Orbit-Lite): 1 Tap statt PCSS — Uniform-Branch, kein Shader-Rebuild.
-					float depth = texture2D( shadowMap, shadowCoord.xy ).r;
-					#ifdef USE_REVERSED_DEPTH_BUFFER
-						shadow = step( depth, shadowCoord.z );
-					#else
-						shadow = step( shadowCoord.z, depth );
-					#endif
-				} else {
-					shadow = pcssGetShadow( shadowMap, shadowCoord );
-				}
+				// Immer volles PCSS — kein Orbit-1-Tap (wirkte als harter Schatten / Wandfarben-Flash).
+				shadow = pcssGetShadow( shadowMap, shadowCoord );
 			}
 			return mix( 1.0, shadow, shadowIntensity );
 		}
@@ -176,21 +167,6 @@ let originalShadowmapParsFragment: string | undefined
 let pcssEnabled = false
 let pcssChunkApplied = false
 const pcssLightSizeUvUniform = { value: 0.002 }
-/**
- * 1 = Lite (1 Tap, harter Schatten) während Orbit/Zoom/Pan; 0 = volles PCSS.
- * Geteilte Uniform über alle Materialien — Umschalten kostet keinen Shader-Rebuild.
- * Grund: PCSS (96 Taps/Fragment) kostete beim Navigieren ~200 ms/Frame (v2.0.120).
- */
-const pcssLiteUniform = { value: 0 }
-
-/** Orbit-Lite: harter 1-Tap-Schatten statt PCSS (nur Uniform, kein Rebuild). */
-export function setPcssLiteMode(on: boolean): void {
-  pcssLiteUniform.value = on ? 1 : 0
-}
-
-export function isPcssLiteMode(): boolean {
-  return pcssLiteUniform.value > 0.5
-}
 
 /** Nutzer-Slider 0,5…8 → Lichtfläche in cm (Penumbra-Breite). */
 export function pcssLightWorldSizeFromSoftness(softness: number): number {
@@ -221,7 +197,6 @@ function buildPcssShadowmapParsFragment(): string {
   const base = originalShadowmapParsFragment ?? THREE.ShaderChunk.shadowmap_pars_fragment
   const defines = `
 uniform float pcssLightSizeUv;
-uniform float pcssLite;
 #define PCSS_NEAR_PLANE ${PCSS_NEAR_PLANE.toFixed(8)}
 #define PCSS_PENUMBRA_SCALE ${PCSS_PENUMBRA_SCALE.toFixed(4)}
 `
@@ -247,7 +222,6 @@ function bindPcssLightSizeUniform(material: THREE.Material): boolean {
   material.onBeforeCompile = (shader, renderer) => {
     prev(shader, renderer)
     shader.uniforms.pcssLightSizeUv = pcssLightSizeUvUniform
-    shader.uniforms.pcssLite = pcssLiteUniform
   }
   material.needsUpdate = true
   return true

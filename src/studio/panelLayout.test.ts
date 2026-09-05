@@ -532,6 +532,45 @@ describe('45° Verband-Ecke 0,5 / 1', () => {
     expect(Math.abs(endA.width - startB.width)).toBeGreaterThan(8)
   })
 
+  it('Kopfverband an 45°-Ecke: Endsteine nur Binder / ½-Binder', () => {
+    const panel = {
+      ...DEFAULT_STUDIO_PANEL,
+      pattern: 'headerBond' as const,
+      panelWidth: 32,
+      panelHeight: 16,
+      cornerJoin: 'bond' as const,
+      plinthEnabled: false,
+      plinthHeight: 0,
+    }
+    const header = 16
+    const a = studioWall({
+      id: 'a',
+      width: 192,
+      originX: 0,
+      originZ: 0,
+      yawDeg: 0,
+      panel,
+    })
+    const b = studioWall({
+      id: 'b',
+      width: 192,
+      originX: 192,
+      originZ: 0,
+      yawDeg: 45,
+      panel,
+    })
+    const walls = [a, b]
+    for (const row of [0, 1]) {
+      const endA = courseTiles(layoutPanelTiles(a, panel, walls), row).at(-1)!
+      const startB = courseTiles(layoutPanelTiles(b, panel, walls), row)[0]!
+      const ok = (w: number) => Math.abs(w - header) < 2 || Math.abs(w - header / 2) < 2
+      expect(ok(endA.width)).toBe(true)
+      expect(ok(startB.width)).toBe(true)
+      expect(Math.abs(endA.width - 32)).toBeGreaterThan(4)
+      expect(Math.abs(startB.width - 32)).toBeGreaterThan(4)
+    }
+  })
+
   it('gilt auch bei Gehrung (nicht nur Ecke Verband) und lässt keine 1,5er/2er-Stummel', () => {
     const { panel, a, b, walls } = masonryPair('miter', 384, 384)
     const rowA = courseTiles(layoutPanelTiles(a, panel, walls), 0)
@@ -550,7 +589,7 @@ describe('45° Verband-Ecke 0,5 / 1', () => {
   })
 
   it('hält 0,5/1 wenn die 45°-Länge nicht durch 32 teilbar ist', () => {
-    const { panel, a, b, walls } = masonryPair('miter', 384, PLAN_DIAGONAL_STEP * 4)
+    const { panel, a, b, walls } = masonryPair('miter', 384, PLAN_DIAGONAL_STEP * 12)
     const endA = courseTiles(layoutPanelTiles(a, panel, walls), 0).at(-1)!
     const startB = courseTiles(layoutPanelTiles(b, panel, walls), 0)[0]!
     expect(halfOrFull(endA.width)).toBe(true)
@@ -683,7 +722,7 @@ describe('45° Verband-Ecke 0,5 / 1', () => {
     })
     const b = studioWall({
       id: 'b',
-      width: PLAN_DIAGONAL_STEP * 4,
+      width: PLAN_DIAGONAL_STEP * 12,
       depth: 40,
       originX: 1056,
       originZ: 0,
@@ -748,7 +787,7 @@ describe('45° Verband-Ecke 0,5 / 1', () => {
     })
     const b = studioWall({
       id: 'b',
-      width: PLAN_DIAGONAL_STEP * 4,
+      width: PLAN_DIAGONAL_STEP * 12,
       height: 512,
       depth: 40,
       originX: 1056,
@@ -902,7 +941,7 @@ describe('45° Verband-Ecke 0,5 / 1', () => {
     })
     const b = studioWall({
       id: 'b',
-      width: PLAN_DIAGONAL_STEP * 4,
+      width: PLAN_DIAGONAL_STEP * 12,
       depth: 40,
       originX: 1056,
       originZ: 0,
@@ -938,7 +977,7 @@ describe('45° Verband-Ecke 0,5 / 1', () => {
     expect(Math.abs(even[2]!.x - odd[2]!.x)).toBeGreaterThan(8)
   })
 
-  it('hält Paneel-Y-Raster am Wandfuß; Sockel clippt nur (keine Verschiebung)', () => {
+  it('hält Paneel-Y-Raster am Wandfuß; überlappende Reihe wird auf Sockel gekürzt (v2.0.200)', () => {
     const base = {
       ...DEFAULT_STUDIO_PANEL,
       pattern: 'runningBond' as const,
@@ -968,6 +1007,42 @@ describe('45° Verband-Ecke 0,5 / 1', () => {
     for (const y of shared) {
       expect(y64).toContain(y)
     }
+  })
+
+  it('kürzt unterste Paneelreihe auf Sockeloberkante bei hoher Paneelhöhe (v2.0.200)', () => {
+    const panel = {
+      ...DEFAULT_STUDIO_PANEL,
+      pattern: 'runningBond' as const,
+      panelWidth: 32,
+      panelHeight: 88,
+      plinthEnabled: true,
+      plinthHeight: 32,
+    }
+    const wall = studioWall({
+      id: 'tall-panel-plinth',
+      width: 320,
+      height: 448,
+      depth: 32,
+      originX: 0,
+      originZ: 0,
+      yawDeg: 0,
+      panelFlip: false,
+      panel,
+    })
+    const withPlinth = layoutPanelTiles(wall, panel, [wall])
+    const without = layoutPanelTiles(
+      wall,
+      { ...panel, plinthEnabled: false, plinthHeight: 0 },
+      [wall],
+    )
+    const minWith = Math.min(...withPlinth.map((t) => t.y))
+    const minWithout = Math.min(...without.map((t) => t.y))
+    // Ohne Sockel startet die Reihe am Fuß; mit Sockel an der Oberkante — keine Lücke bis 88.
+    expect(minWithout).toBeLessThan(8)
+    expect(minWith).toBeGreaterThanOrEqual(32 - 1)
+    expect(minWith).toBeLessThan(40)
+    const bottom = withPlinth.filter((t) => Math.abs(t.y - minWith) < 1)
+    expect(bottom.every((t) => t.height > 40)).toBe(true)
   })
 })
 

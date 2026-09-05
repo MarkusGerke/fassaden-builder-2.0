@@ -18,8 +18,8 @@ Toolbar **Maße** (Auszug):
 
 | Steuerung | Verhalten |
 |---|---|
-| Breite / Höhe / Position | Modulverband: **Ziehen** rastet an Fuge (+ Wandmitte-Magnet ±8 cm), Magnet-Radius 7 cm — sonst frei; **Pfeile** Fuge / Steinmitte / Wandmitte. Bei Zwei-Bändern Modul der Zone an Öffnungsmitte-Y. Sonst 8-cm-Raster. Abstand zwischen Öffnungen 32 cm; kein Pflicht-Randabstand zur Wandkante. **v2.0.156:** Ghost, orangefarbene Auswahl und Hilfslinien teilen dieselbe Maske (`openingForShellCut` + `openingWallFaceMaskPolyline`) und dieselbe Fassadentiefe (`OPENING_DRAG_FLOAT_CM` = 4 cm); Pick-Ebene = Overlay-Z. Dateien: `liveDrag.ts`, `openingGuides.ts`, `panelGeometry.ts`, `FacadeController.ts`, `main.ts` |
-| Fenstertiefe | UI **Frontlage (cm von Außenkante)** unter Maße; speichert `Opening.depthOffset` pro Öffnung (Gültigkeitsbereich). Fehlt → `Building.windowDepthOffset`. Standard 24 cm Laibung + Offset |
+| Breite / Höhe / Position | Modulverband: **Ziehen** rastet an Fuge (+ Wandmitte-Magnet ±8 cm), Magnet-Radius 7 cm — sonst frei; **Pfeile** Fuge / Steinmitte / Wandmitte. Bei Zwei-Bändern Modul der Zone an Öffnungsmitte-Y. Sonst 8-cm-Raster. Abstand zwischen Öffnungen 32 cm; kein Pflicht-Randabstand zur Wandkante. **v2.0.156:** Ghost, orangefarbene Auswahl und Hilfslinien teilen dieselbe Maske (`openingForShellCut` + `openingWallFaceMaskPolyline`) und dieselbe Fassadentiefe (`OPENING_DRAG_FLOAT_CM` = 4 cm); Pick-Ebene = Overlay-Z. **v2.0.211–213:** Einfügen/Verschieben hält Bibliotheksbreite; explizite Breiten-Eingabe hält die Sollbreite (kein Aufblasen auf Fugen-Spannweite). UI `#opening-width-dir-*` **nach links** / **nach rechts** (rechte bzw. linke Kante fest). Abstandslabels nur zu Nachbarn mit Y-/X-Überlappung. Dateien: `openingPanelSnap.ts`, `openingGuides.ts`, `openings.ts`, `main.ts` |
+| Fenstertiefe | UI **Frontlage (cm von Außenkante)** unter Maße; speichert `Opening.depthOffset` pro Öffnung (Gültigkeitsbereich). Fehlt → `Building.windowDepthOffset`. Standard **32 cm** (Laibung 24 cm + Offset 8, v2.0.188) |
 | Öffnungsart | Fenster/Tür: durchgehend · Wandfläche (bündig) · Nische. Cutout: Durchbruch oder Nische (+ Tiefe). Konche: immer Kalotte, Tiefe steuerbar. **v2.0.123:** Nische lichtdicht — Shadow-Tunnel-Kappen. **v2.0.127 / v2.0.130:** Nischenwände EnvMap wie Innenwand, kein Selbstwurf. **v2.0.133:** Bei Nischentiefe **größer als Wanddicke** Tunnel bis hinter die Rückwand (keine Mittelkappe an der Innenkante); Nischen empfangen wieder Sonne-/Punktlicht-Schatten |
 | In Wand eingebettet | `revealFrame.enabled` → kein Wandloch, kein Rahmen/Glas; Bänke/Profile/Bogen/Verdachung bleiben. Nicht bei Cutouts |
 | Freiraum | `panelClearance`: Abstand in ganzen cm, Tiefe +/−/0; optional `finish: 'taper'` nur mit Paneelen |
@@ -49,10 +49,15 @@ Fenster und Türen, **nicht** Kellerfenster. Unabhängig von `wall.profiles`.
 | `profileId` | `fensterprofil40x140` | `PEDIMENT_PROFILE_IDS` |
 | `overhang` | 8 cm | symmetrisch |
 | `gableHeight` | 24 cm | First (bei Gerade ausgeblendet) |
+| `gableWidth` | 0 (= auto) | Giebelbreite; 0 → Öffnung + 2× Überstand |
+| `sideArmWidth` | 0 | Horizontale links/rechts (nur offene Formen) |
+| `sealedBack` | aus | Geschlossene Formen: Tympanon rückseitig verschließen |
 | `extentOutCm` / `extentForwardCm` | auto | Querschnitt cm |
 | `offsetUp` | 0 | −96…96, 8er; + über Sturz, − nach unten; plus Auto-Anhebung über Sturzprofil |
 | `offsetForward` | 0 | Tiefe |
 | `consoles` | aus | unter den Enden; Default 16×8×64 cm |
+
+**Formen in den Einstellungen** (`#pediment-form-cards`, v2.0.207): unten offen (`triangle`/`segment` + Bogenpalette), unten geschlossen (`triangleClosed`/`segmentClosed`). Horizontalen-UI (`#pediment-gable-size-row`, `#pediment-side-arms-row`) nur bei offenen Giebelformen; `#pediment-sealed-back` nur bei geschlossenen. Layout: `pedimentGableLayout` in `pediment.ts`.
 
 UI: `#opening-pediment-section`, `#opening-consoles-section`. Normalize: `src/studio/pediment.ts`.
 

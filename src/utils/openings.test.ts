@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { FacadeState, Opening, Wall } from '../types/facade'
 import { emptyNeighbors } from '../types/facade'
-import { centeredOpeningX, resetOpenings, resolveOuterSillLayout, updateOpening, createOpening, defaultOuterSillDepth } from './openings'
+import { centeredOpeningX, anchoredOpeningX, resetOpenings, resolveOuterSillLayout, updateOpening, createOpening, defaultOuterSillDepth } from './openings'
 import { STUDIO_MASONRY, DEFAULT_STUDIO_PANEL } from '../studio/constants'
 import { WALL_DEPTH } from '../constants/presets'
 
@@ -65,6 +65,18 @@ describe('centeredOpeningX', () => {
   })
 })
 
+describe('anchoredOpeningX', () => {
+  it('nach rechts: linke Kante bleibt', () => {
+    const opening = { x: 96, width: 96 }
+    expect(anchoredOpeningX(opening, 112, 'right', STUDIO_MASONRY)).toBe(96)
+  })
+
+  it('nach links: rechte Kante bleibt', () => {
+    const opening = { x: 96, width: 96 }
+    expect(anchoredOpeningX(opening, 112, 'left', STUDIO_MASONRY)).toBe(80)
+  })
+})
+
 describe('updateOpening width centering via commit path', () => {
   it('verschiebt x mit, wenn Breite über Patch geändert wird', () => {
     const opening: Opening = {
@@ -95,8 +107,10 @@ describe('updateOpening width centering via commit path', () => {
     }
     const next = updateOpening(facadeWithOpening(opening), 'wall-1', 'win-1', { width: 104 })
     const updated = next.buildings[0]!.walls[0]!.openings[0]!
-    expect(updated.x).toBe(124)
-    expect(updated.x + updated.width / 2).toBe(opening.x + opening.width / 2)
+    expect(updated.width).toBe(104)
+    // Idealmitte 124; Clamp ohne Modulverband snapt auf 8er-Raster → 120 oder 128
+    expect([120, 128]).toContain(updated.x)
+    expect(Math.abs(updated.x + updated.width / 2 - (opening.x + opening.width / 2))).toBeLessThanOrEqual(4)
   })
 })
 

@@ -13,23 +13,31 @@ export const STUDIO_TILE = 32
 export const STUDIO_HALF = 16
 /** Feineres Mauerwerks-Raster (1 = 16, 0,5 = 8). */
 export const STUDIO_MASONRY = 8
-/** Grundriss-Knotenabstand. */
-export const PLAN_GRID = 48
+/**
+ * Welt-/Grundriss-Raster für Wände (Ablegen, Verschieben, Strecken).
+ * v2.0.221: 8 cm (vorher 48) — Endpunkte immer bündig; 45° = Diagonale eines 8×8-Feldes.
+ */
+export const PLAN_GRID = STUDIO_MASONRY
+/** Früheres Plan-Raster (cm) — Migration Schema 14→15 skaliert Knoten ×6. */
+export const PLAN_GRID_LEGACY_CM = 48
+export const PLAN_GRID_LEGACY_SCALE = PLAN_GRID_LEGACY_CM / PLAN_GRID
 
 export const STUDIO_DEFAULT_WIDTH = 192
 export const STUDIO_DEFAULT_HEIGHT = 448
 /** Breiten-Schritt für Wand strecken/verkleinern (Greifer, Toolbar) — achsparallel. */
-export const STUDIO_WALL_WIDTH_STEP = PLAN_GRID
-/** Ein 45°-Schritt: Diagonale eines Rasterfeldes, damit Endpunkte auf dem 48-cm-Gitter bleiben. */
-export const PLAN_DIAGONAL_STEP = PLAN_GRID * Math.SQRT2
+export const STUDIO_WALL_WIDTH_STEP = STUDIO_MASONRY
+/** Ein 45°-Schritt: Diagonale eines 8-cm-Feldes (zwei 8er-Schenkel), Endpunkte auf dem 8er-Raster. */
+export const PLAN_DIAGONAL_STEP = STUDIO_WALL_WIDTH_STEP * Math.SQRT2
 /** Höhen-Schritt für Etagen-Höhe (Greifer, Toolbar). */
 export const STUDIO_WALL_HEIGHT_STEP = 16
-/** Boden-Raster beim Wand-Greifer = Breiten-Schritt (48 cm). */
-export const WALL_RESIZE_FLOOR_STEP = PLAN_GRID
-/** Mindest-Breite/Höhe einer Studio-Wand (cm). */
-export const STUDIO_MIN_SIZE = PLAN_GRID
-/** Abstand Kante-zu-Kante beim Duplizieren von Wänden/Öffnungen. */
-export const DUPLICATE_GAP_CM = PLAN_GRID
+/** Boden-Raster beim Wand-Greifer = Breiten-Schritt. */
+export const WALL_RESIZE_FLOOR_STEP = STUDIO_WALL_WIDTH_STEP
+/** Mindest-Breite/Höhe einer Studio-Wand (cm) = ein Greifer-Schritt. */
+export const STUDIO_MIN_SIZE = STUDIO_WALL_WIDTH_STEP
+/** Abstand Kante-zu-Kante beim Duplizieren von Wänden/Öffnungen (absolut, nicht Plan-Zelle). */
+export const DUPLICATE_GAP_CM = PLAN_GRID_LEGACY_CM
+/** Andocken / Lücken schließen: Abstand in cm (≈ früheres 48-cm-Feld). */
+export const PLAN_CLOSE_GAP_CM = PLAN_GRID_LEGACY_CM
 
 /** 45°/135°/225°/315° — schräge Plan-Richtung. */
 export function isDiagonalPlanYaw(yawDeg: number): boolean {
@@ -38,9 +46,9 @@ export function isDiagonalPlanYaw(yawDeg: number): boolean {
   return Math.abs(snapped % 90) === 45
 }
 
-/** Ein Rasterschritt entlang der Wand: 48 cm achsparallel, \(48\sqrt{2}\) cm bei 45°. */
+/** Ein Rasterschritt entlang der Wand: 8 cm achsparallel, \(8\sqrt{2}\) cm bei 45°. */
 export function wallWidthStepCm(yawDeg: number): number {
-  return isDiagonalPlanYaw(yawDeg) ? PLAN_DIAGONAL_STEP : PLAN_GRID
+  return isDiagonalPlanYaw(yawDeg) ? PLAN_DIAGONAL_STEP : STUDIO_WALL_WIDTH_STEP
 }
 
 /** Wandlänge auf ganze Rasterschritte der Richtung (0 wenn kürzer als ein Schritt). */

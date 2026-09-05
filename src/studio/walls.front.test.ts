@@ -59,6 +59,29 @@ describe('unifyGroupFrontOrientation', () => {
     const walls = next.buildings[0]!.walls
     expect(walls.find((w) => w.id === 'b')?.panelFlip).toBe(true)
   })
+
+  it('lässt Erker-Schenkel unangetastet (Außenseite ist geometrisch festgelegt)', () => {
+    // Regression v2.0.224: Beim 90°-Erker kippte die Vereinheitlichung einen Schenkel
+    // nach innen (schwarze Wand, Sockel/Paneele im Erker-Inneren).
+    const base = createDefaultFacadeState()
+    const state: FacadeState = updateActiveBuilding(base, {
+      walls: [
+        studioWall({
+          id: 'front',
+          groupId: 'g1',
+          panelFlip: true,
+          bayRole: 'front',
+          bayWindow: { frontWidthCm: 288, depthCm: 192, shape: 'rect' },
+        }),
+        studioWall({ id: 'left', groupId: 'g1', panelFlip: true, yawDeg: 90, bayRole: 'side', bayParentId: 'front' }),
+        studioWall({ id: 'right', groupId: 'g1', panelFlip: false, yawDeg: 90, originX: 288, x: 288, bayRole: 'side', bayParentId: 'front' }),
+      ],
+    })
+    const next = unifyGroupFrontOrientation(state, 'left')
+    const walls = next.buildings[0]!.walls
+    expect(walls.find((w) => w.id === 'right')?.panelFlip).toBe(false)
+    expect(walls.find((w) => w.id === 'left')?.panelFlip).toBe(true)
+  })
 })
 
 describe('leafOpenSignForWall', () => {

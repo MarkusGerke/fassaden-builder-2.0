@@ -445,10 +445,15 @@ export interface OpeningPediment {
   overhangRight?: number
   /** Firsthöhe bei Dreieck/Segment (cm, 8er-Raster). */
   gableHeight?: number
-  /** @deprecated Breite folgt der Öffnung plus Überstand. */
+  /** Giebelbreite (cm); 0 = Öffnung + 2× Überstand (geschlossen) bzw. Spannweite minus Horizontalen. */
   gableWidth?: number
-  /** @deprecated Keine extra Seitenlinien; Überstand setzt die Spannweite. */
+  /** Horizontale Seitenlinien links/rechts (cm), nur offene Formen. */
   sideArmWidth?: number
+  /**
+   * Geschlossene Formen: Tympanon rückseitig verschließen (Mauerwerk scheint nicht durch).
+   * Default aus.
+   */
+  sealedBack?: boolean
   scale?: number
   /** Höhe/Länge des Querschnitts in cm (Outward). Überschreibt `scale` wenn gesetzt. */
   extentOutCm?: number

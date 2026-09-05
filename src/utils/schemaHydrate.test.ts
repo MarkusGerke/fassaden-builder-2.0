@@ -160,7 +160,7 @@ describe('migrateFacadeSchema', () => {
 
   it('Läuferverband: Öffnung auf Halbstein-Fugen (13→14)', () => {
     const state = facadeWithOpenings([
-      { id: 'off', type: 'window', x: 50, y: 32, width: 80, height: 100 },
+      { id: 'off', type: 'window', x: 50, y: 32, width: 84, height: 100 },
     ])
     state.buildings[0]!.walls[0]!.panel = {
       enabled: true,

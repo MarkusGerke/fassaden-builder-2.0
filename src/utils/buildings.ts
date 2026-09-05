@@ -1,4 +1,4 @@
-import { WALL_DEPTH, WALL_HEIGHT } from '../constants/presets'
+import { DEFAULT_WINDOW_DEPTH_OFFSET, WALL_DEPTH, WALL_HEIGHT } from '../constants/presets'
 import { PLAN_GRID } from '../studio/constants'
 import { createEmptyFloorPlan, type FloorPlan } from '../studio/floorPlan'
 import { isStudioWall } from '../studio/walls'
@@ -90,7 +90,10 @@ export function createBuilding(partial?: Partial<Building>): Building {
     roof: cloneRoof(partial?.roof),
     wallHeight: partial?.wallHeight ?? WALL_HEIGHT,
     wallDepth: partial?.wallDepth ?? WALL_DEPTH,
-    windowDepthOffset: partial?.windowDepthOffset,
+    windowDepthOffset:
+      partial?.windowDepthOffset !== undefined
+        ? partial.windowDepthOffset
+        : DEFAULT_WINDOW_DEPTH_OFFSET,
   })
 }
 

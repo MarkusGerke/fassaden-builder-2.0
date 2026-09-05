@@ -9,6 +9,7 @@ Jedes Feature, jeder Fix und jede Konvention wird in `docs/` als Markdown festge
 
 - Nach einer Änderung die passende Datei unter `docs/` aktualisieren (oder neu anlegen) und in `docs/README.md` verlinken.
 - Im Dokument stehen: Verhalten für den Nutzer, betroffene Dateien, Datenfluss, Defaults/Konstanten, bekannte Fallstricke.
+- **Fehlersuche:** Bei Bugs und Lösungsversuchen festhalten, **was ging und was nicht ging** (siehe `fehler-versuche-dokumentieren.mdc`) — nicht nur den finalen Fix.
 - Architektur-relevante Änderungen zusätzlich kurz ins Änderungsprotokoll in `docs/changelog.md` (Verweis bleibt in `docs/architecture.md`).
 - **Versionierung:** Bei nutzerrelevanten Änderungen `src/version.ts` aktualisieren (`APP_VERSION` anheben, neuen Eintrag oben in `RELEASES`, `package.json`-Version synchron halten). Siehe `docs/versioning.md`.
 - **Persistenz-Felder:** Bei neuem Feld an Wall/Opening zusätzlich Hydrate-Default (`src/utils/hydrate.ts`), ggf. Schema-Migration (`FACADE_SCHEMA_VERSION`, `docs/migration.md`). Alt-Elemente müssen nach Load denselben Feldkatalog haben wie Bibliothek-Elemente.

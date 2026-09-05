@@ -6,34 +6,35 @@ Zwei Bühnenmodi für die 3D-/Oben-Ansicht. Der Landschaftsmodus bleibt unverän
 
 | Modus | UI | Verhalten |
 |---|---|---|
-| **Himmel** | Viewport-Chrome + Szene → Umgebung | Flache Bodenplatte, Takram-Himmel, Sonne/Horizont, manuelle Szenenfarben |
-| **Neutral** | dieselbe Umschaltung | Flacher Boden (**immer größer als das Haus**) in einer **Kugel**; von außen durch die Kugel hindurchschauen; beige tagsüber, nachts nahezu schwarz; Werfschatten auf dem Boden |
+| **Himmel** | Viewport-Chrome **Himmel \| Neutral** | Flache Bodenplatte, Takram-Himmel, Sonne/Horizont |
+| **Neutral** | dieselbe Umschaltung | Flacher Boden (**immer größer als das Haus**) in einer **Kugel**; von außen durch die Kugel hindurchschauen; Werfschatten auf dem Boden; Farben über Szene → **Hintergrund** / **Bodenfarbe** |
 
-- Umschalten: `#stage-env-sky-btn` / `#stage-env-studio-btn` (Chrome) und Side-Buttons unter Szene.
+- Umschalten: `#stage-env-sky-btn` / `#stage-env-studio-btn` (Chrome). Side-Buttons unter Szene (`#stage-env-*-btn-side`) sind ab **v2.0.209** ausgeblendet (IDs/Wiring bleiben).
 - Persistenz: `localStorage` `fassaden-builder-stage-environment` (`sky` \| `studio`).
-- Im Neutralmodus sind die manuellen Szenenfarben ausgeblendet — Farbe folgt der Tageszeit.
+- **Neutral-Farben (v2.0.209):** `#scene-bg-color` → Kuppel/Hintergrund, `#scene-ground-color` → Boden. Default `#E8E3DD` (Studio-Beige). Nachts Abdunkelung Richtung `#0C0B0A` über `studioTintHex` / Tageszeit. Picker nur im Neutral-Modus sichtbar.
 - Haus-**Fußboden** bleibt sichtbar, auch wenn die **Decke** ausgeblendet wird (Ebenen → Decke).
 
 ## Technik
 
 | Datei | Rolle |
 |---|---|
-| `src/lighting/studioStage.ts` | Modus, Beige↔Nacht, Boden-/Kugelgröße |
-| `src/main.ts` | `studioSphere` (BackSide), flacher `ground` bleibt Empfänger, `syncStageMeshVisibility` |
+| `src/lighting/studioStage.ts` | Modus, `studioTintHex` / `studioEnvironmentHex`, Boden-/Kugelgröße |
+| `src/main.ts` | `studioSphere` (BackSide), flacher `ground`, `sceneColorsForLighting`, `syncStudioSceneColorVisibility` |
 | `src/FacadeController.ts` | Fußboden unabhängig von `showCeiling` |
+| `src/utils/persistence.ts` | `DEFAULT_SCENE_APPEARANCE` = Beige; Migration alter `#555555`/Weiß-Defaults |
 
 ### Geometrie
 
 - **Flacher Boden:** bestehende `studioGround`-Plane, Größe `studioFlatFloorSize(landscape, buildingSpan)` ≥ Haus + `STUDIO_FLOOR_MARGIN_CM` (480 cm je Seite). `receiveShadow` an → Werfschatten.
-- **Kugel:** `SphereGeometry`, Material `side: BackSide` — von außen gecullt (hindurchschauen), von innen beige Kuppel. Zentrum auf Bodenebene; untere Hälfte unter dem Boden.
+- **Kugel:** `SphereGeometry`, Material `side: BackSide` — von außen gecullt (hindurchschauen), von innen getönte Innenfläche. Zentrum auf Bodenebene; untere Hälfte unter dem Boden.
 
 ### Datenfluss
 
 ```
 stageEnvironment
-  → Himmel: ground + AtmosphereSky
-  → Neutral: ground (beige/nacht) + studioSphere, Sky aus
-       → studioEnvironmentHex(twilight) → Farbe
+  → Himmel: ground + AtmosphereSky; manuellen Neutral-Farben ausgeblendet
+  → Neutral: ground + studioSphere, Sky aus
+       → sceneAppearance.background/ground → studioTintHex(twilight) → Farbe
        → applySunLighting: Softness/Ambient/Key; Shadow-Map auf Boden
 ```
 
@@ -41,7 +42,7 @@ stageEnvironment
 
 | Konstante | Wert |
 |---|---|
-| `STUDIO_DAY_BEIGE` | `#E8E3DD` |
+| `STUDIO_DAY_BEIGE` / Scene-Default | `#E8E3DD` |
 | `STUDIO_NIGHT_NEAR_BLACK` | `#0C0B0A` |
 | `STUDIO_FLOOR_MARGIN_CM` | 480 |
 | `STUDIO_SPHERE_RADIUS_FACTOR` | 0,72 |

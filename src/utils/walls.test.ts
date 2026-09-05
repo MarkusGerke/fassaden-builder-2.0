@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { FacadeState, Wall } from '../types/facade'
 import { emptyNeighbors } from '../types/facade'
 import { WALL_DEPTH } from '../constants/presets'
-import { DEFAULT_STUDIO_PANEL } from '../studio/constants'
+import { DEFAULT_STUDIO_PANEL, PLAN_GRID_LEGACY_SCALE } from '../studio/constants'
 import { floorIndex, effectiveStoreyFloorCapY, storeyFloorSurfaceY, storeyTopY } from './layers'
 import {
   insertStoreyAbove,
@@ -625,10 +625,11 @@ describe('updateGlobalDepth', () => {
       inner('w', 0, 0, 270, 384),
     ]
     let plan = createEmptyFloorPlan()
-    plan = drawPlanLine(plan, 0, 0, 10, 0)
-    plan = drawPlanLine(plan, 10, 0, 10, 8)
-    plan = drawPlanLine(plan, 10, 8, 0, 8)
-    plan = drawPlanLine(plan, 0, 8, 0, 0)
+    const s = PLAN_GRID_LEGACY_SCALE
+    plan = drawPlanLine(plan, 0, 0, 10 * s, 0)
+    plan = drawPlanLine(plan, 10 * s, 0, 10 * s, 8 * s)
+    plan = drawPlanLine(plan, 10 * s, 8 * s, 0, 8 * s)
+    plan = drawPlanLine(plan, 0, 8 * s, 0, 0)
     const base: FacadeState = {
       buildings: [
         {
@@ -702,10 +703,11 @@ describe('updateGlobalDepth', () => {
       inner('w', -8, 0, 270, 384),
     ]
     let plan = createEmptyFloorPlan()
-    plan = drawPlanLine(plan, 0, 0, 10, 0)
-    plan = drawPlanLine(plan, 10, 0, 10, 8)
-    plan = drawPlanLine(plan, 10, 8, 0, 8)
-    plan = drawPlanLine(plan, 0, 8, 0, 0)
+    const s = PLAN_GRID_LEGACY_SCALE
+    plan = drawPlanLine(plan, 0, 0, 10 * s, 0)
+    plan = drawPlanLine(plan, 10 * s, 0, 10 * s, 8 * s)
+    plan = drawPlanLine(plan, 10 * s, 8 * s, 0, 8 * s)
+    plan = drawPlanLine(plan, 0, 8 * s, 0, 0)
     const base: FacadeState = {
       buildings: [
         {

@@ -10,7 +10,11 @@ Dieses Dokument hält Interaktion und die zugehörigen Defaults fest. Code ohne 
 
 Schlanker Produkt-Fokus auf **2D-Front im Render-Modus**; **3D** ist wieder per Button wählbar (OrbitControls, freie Navigation, Scene-Lights verschieben). Aus der Toolbar ausgeblendet (`hidden`, IDs bleiben): **Oben**, **Entwurf**, **Einfach/Komplex**, **Galerie**. **Ebenen**-Panel (linksb) mit **Lichter**-Sektion ist sichtbar (v2.0.58). Vorschau, Render, Export und Zeichnung bleiben.
 
-**Auswahl-Performance (2D):** `selectWall` / `selectOpening` rufen `applyEditorSelection` statt `applyState` — nur `facade.setEditor` + debounced `persistApp` (350 ms), kein `svgView.setState`, kein Geometrie-Rebuild. Voller `applyState` nur bei Geometrie-/Datenänderungen.
+**Auswahl-Performance (2D):** `selectWall` / `selectOpening` rufen `applyEditorSelection` statt `applyState` — nur `facade.setEditor` + debounced `persistApp` (350 ms), kein `svgView.setState`, kein Geometrie-Rebuild. Voller `applyState` nur bei Geometrie-/Datenänderungen. **v2.0.192:** Bei geänderter Auswahl wird der Ebenenbaum mitgezeichnet (Markierung + Aufklappen), ohne Geometrie-Rebuild.
+
+**Rechteckauswahl (v2.0.193):** Ohne aktuelle Auswahl **Shift+Ziehen** auf der Bühne (2D/3D/Oben) → orangefarbenes Auswahlrechteck. Gewählt werden nur **vollständig** eingerahmte Wände, Öffnungen oder Lichter (`src/utils/marqueeSelect.ts`). Angeschnittene Objekte zählen nicht. Mit Auswahl bleibt Shift+Klick Mehrfachwahl bzw. Shift+Leer Pan.
+
+**Alles auswählen (v2.0.195 / v2.0.198):** `Cmd/Ctrl+A` wählt alle sichtbaren Studio-Wände des aktiven Hauses (ausgeblendete Etagen/Wände ausgenommen). Im Lichtmodus: alle eingeschalteten Lichter. **Kein** Markieren von Panel-/UI-Text (`preventDefault`, Selection leeren, `user-select: none` auf `#app`). In Eingabefeldern und Release-/Credits-Dialogen bleibt Textauswahl.
 
 ---
 
@@ -48,12 +52,12 @@ OS-artiges Textmenü (`position: fixed`), Untermenü nach rechts per Hover, Esc 
 | Ziel | Einträge |
 |---|---|
 | Wand | **Kopieren** (Untermenü: **Objekt** = Geometrie, **Alles** = Geometrie + Stile, **Stile**, oder Paneele / Farben / Gesims / Sockel / …), **Einfügen** (Untermenü: Nach links / Nach rechts / Darüber; Geometrie-Zwischenablage), **Duplizieren** (Untermenü: Nach links / Nach rechts / Darüber / Separiert bei Studio), Löschen, **Stile kopieren**, **Stil als Vorlage speichern…**, **Stil-Vorlage anwenden** (Untermenü gespeicherter Vorlagen), **Stile einfügen…** (wenn Zwischenablage gefüllt; Dialog `#style-paste-dialog`); bei Studio-Wänden **Wand lösen** (wenn verknüpft) und **Wand verknüpfen** (wenn freie Enden anstoßen); bei Blender-Wänden **Ersetzen durch** (Module) |
-| Fenster/Tür | **Kopieren** (Untermenü: **Objekt** (Fenster/Tür/Ausschnitt) oder **Stile**), **Öffnung einfügen**, Duplizieren nach links / rechts, **Ersetzen durch** (`WALL_OPENING_PRESETS`, alle ausgewählten, mittelaxial), **Stile einfügen…** (Öffnungsstile aus der Zwischenablage), Löschen |
+| Fenster/Tür | **Fenster/Tür/Ausschnitt kopieren**, **Stil kopieren** (v2.0.223, flach ohne Untermenü), **Öffnung einfügen**, Duplizieren nach links / rechts, **Ersetzen durch** (`WALL_OPENING_PRESETS`, alle ausgewählten, mittelaxial), **Stile einfügen…** (Öffnungsstile aus der Zwischenablage), Löschen |
 | Haus | **Kopieren** / **Haus einfügen**, Duplizieren (Himmelsrichtung), Löschen, … |
 | Etage | Duplizieren, Löschen (letzte Etage gesperrt) |
 | Leere Bühne (3D/Front) | **Einfügen**, wenn Geometrie-Zwischenablage gefüllt (Fassade/Haus; Öffnung nur mit Wandauswahl) |
 
-**Geometrie kopieren (v0.7.188, Einfügerichtung v0.7.205, Untermenü v0.7.241 / v0.7.266):** Rechtsklick **Kopieren → Objekt** legt nur die Geometrie in die Zwischenablage. **Kopieren → Stile** füllt die Stil-Zwischenablage. **Kopieren → Alles** (Wände) macht beides. **Kopieren → Paneele** (usw.) füllt nur die gewählte Stileigenschaft. **Einfügen** auf einer anderen Wand per Untermenü **Nach links / Nach rechts / Darüber** (`pasteWallsRelativeToTarget` in `src/utils/walls.ts`); auf der leeren Bühne **Fassade einfügen** (versetzt wie bisher). Öffnungen werden in die Zielwand(n) eingefügt; Wände behalten Öffnungen und Profile (`planLinked: false`). Häuser über `insertBuildingClone` nach Osten.
+**Geometrie kopieren (v0.7.188, Einfügerichtung v0.7.205, Untermenü v0.7.241 / v0.7.266, Öffnung flach v2.0.223):** Rechtsklick **Kopieren → Objekt** (Wand) legt nur die Geometrie in die Zwischenablage. **Kopieren → Stile** füllt die Stil-Zwischenablage. **Kopieren → Alles** (Wände) macht beides. **Kopieren → Paneele** (usw.) füllt nur die gewählte Stileigenschaft. Bei **Fenster/Tür**: **„Fenster kopieren“** / **„Tür kopieren“** und **„Stil kopieren“** direkt im Menü. **Einfügen** auf einer anderen Wand per Untermenü **Nach links / Nach rechts / Darüber** (`pasteWallsRelativeToTarget` in `src/utils/walls.ts`); auf der leeren Bühne **Fassade einfügen** (versetzt wie bisher). Öffnungen werden in die Zielwand(n) eingefügt; Wände behalten Öffnungen und Profile (`planLinked: false`). Häuser über `insertBuildingClone` nach Osten.
 
 **Wand duplizieren (v0.7.113 / v0.7.115, Ketteneinfügung v0.7.212):** Nach links/rechts = gleiche Etage (`duplicateWalls`). Liegt die Quellwand in einer kollinearen Kette und duplizierst du **in Richtung eines Nachbarn**, wird die Kopie **zwischen** Quellwand und diesem Nachbarn eingefügt; weiter außen liegende Wände rutschen um die Klonbreite (`collinearChainFromEnd`). Am freien Wandende bleibt das Verhalten wie bisher (Kopie außerhalb). **Darüber** = `insertStoreyAbove` — neues Geschoss direkt über der Quell-Etage, höhere Etagen rutschen nach oben; Mehrfachauswahl wird mitkopiert, Treppen an Türen bleiben aus, `groupId` wird gelöscht. Bei mehreren Klonen bleibt `planLinked` untereinander erhalten (v0.7.115); Einzelwand darüber ist unverbunden. **Separiert** (Studio) = senkrechte Parallelkopie im Grundriss (`planLinked: false`).
 
@@ -104,23 +108,22 @@ Sonne (`DEFAULT_SUN_SETTINGS`): **heutiges Datum**, **13:15** (13,25 h), Sonnenw
 
 ### Szene-Farben (`SceneAppearance`, `src/utils/persistence.ts`)
 
-Im Akkordeon **Szene** (rechte Leiste) zuerst **Umgebung** (**Himmel** | **Neutral**, v2.0.164), dann **Laub** (Modus + Streuen/Entfernen, v2.0.168 — [ground-leaves.md](ground-leaves.md)), dann Farb-Inputs, gespeichert unter `PersistedAppState.scene`. Details Neutral-Modus: [stage-environment.md](stage-environment.md).
+Im Akkordeon **Szene** (rechte Leiste) bei **Neutral** (Viewport-Wechsler Himmel | Neutral): **Hintergrund** und **Bodenfarbe** (v2.0.209). Ausgeblendet (IDs bleiben): Umgebung-Duplikat, Laub, „Alle drei“, Himmelsfarbe. Persistenz unter `PersistedAppState.scene`. Details: [stage-environment.md](stage-environment.md).
 
 | Input | Feld | Default | Wirkung |
 |---|---|---|---|
-| `#scene-all-color` | alle drei | `#555555` | Setzt Hintergrund, Untergrund und Himmelsfarbe gemeinsam. |
-| `#scene-bg-color` | `background` | `#555555` | Viewport-Hintergrund (Aufriss, Entwurf/Vorschau). In **Render**/3D liegt der physikalische Himmel davor — dort wirkt die Farbe nur am Rand außerhalb der Zeichenfläche. |
-| `#scene-ground-color` | `ground` | `#555555` | Bodenplatte (Albedo) und atmosphärischer Horizont unter dem Himmel. |
-| `#scene-sky-color` | `skyReflection` | `#555555` | Hemisphere-Himmel, Glas-EnvMap und Lichtstimmung. Alte Defaults (`#ffffff`, `#3A6084`) werden beim Laden ersetzt, sofern nicht bewusst eine andere Farbe gesetzt wurde. |
-| `#scene-line-stroke` / `#view-line-stroke-row` | `lineStrokeScale` | `1` | Multiplikator für Linienstärke im Stil **Zeichnung** (2D-SVG, 3D-Kanten via `LineSegments2`, Grundriss-Kanten). Steuerung oben links in der Zeichenfläche (`#view-line-stroke-row`), sichtbar nur bei aktivem Stil Zeichnung. |
+| `#scene-bg-color` | `background` | `#E8E3DD` | Neutral: Viewport-Hintergrund + Kugel-Kuppel (nachts Richtung Schwarz getönt). Im Himmel-Modus ausgeblendet. |
+| `#scene-ground-color` | `ground` | `#E8E3DD` | Neutral: Bodenplatte (nachts getönt). |
+| `#scene-all-color` / `#scene-sky-color` | — | — | UI ausgeblendet (v2.0.209); Wiring/IDs bleiben. |
+| `#scene-line-stroke` / `#view-line-stroke-row` | `lineStrokeScale` | `1` | Multiplikator für Linienstärke im Stil **Zeichnung**. |
 
-Im Modus **Neutral** sind die manuellen Farb-Inputs ausgeblendet (Farbe folgt Tageszeit: Beige → nahezu Schwarz).
+Im Modus **Himmel** sind die Neutral-Farb-Inputs ausgeblendet (physikalischer Himmel). Im Modus **Neutral** steuern die Picker Kuppel/Boden; nachts Abdunkelung über `studioTintHex`.
 
-Anwendung über `applySceneAppearance()` — setzt Hintergrund, Boden, Glas-EnvMap und aktualisiert die Hemisphere-Lichter. Farb-Picker (auch vorgefertigte `<input type="color">` in `index.html`) haben Live-Vorschau während des Ziehens (v2.0.11).
+Anwendung über `applySceneAppearance()` / `sceneColorsForLighting()`. Farb-Picker haben Live-Vorschau während des Ziehens (v2.0.11).
 
-Rahmen-/Glas-Farben in der **Öffnungs-Toolbar** (`#frame-color-swatches`) über `<input type="color">` plus **RGB-, HSL- und HEX-Felder untereinander** (kein Format-Dropdown). Gleiches gilt für **Szene** (Alle drei / Hintergrund / Untergrund / Himmel) und **Nebel**. Bei Glas zusätzlich Button **Transparent**. Wand-, Fugen-, Profil-, Gesims- und Dachziegel-Farben ebenfalls. Die Inputs werden bei UI-Sync **wiederverwendet**; während eines aktiven Pickers (`activeColorPickerCount`) wird `renderUi` nicht für Farb-Hosts aufgerufen. Hover-Livevorschau (`previewSelectionColor`) aktualisiert nur 3D/2D, kein vollständiges `renderUi`.
+Rahmen-/Glas-Farben in der **Öffnungs-Toolbar** (`#frame-color-swatches`) über `<input type="color">`; **RGB-/HSL-/HEX-Felder** erscheinen erst nach Klick auf den Swatch (Klasse `color-picker-expanded`, Klick außerhalb klappt zu). Gleiches Muster für **Szene**, **Nebel**, Wand-, Fugen-, Profil-, Gesims- und Dachziegel-Farben (`renderColorControl`). Bei Glas zusätzlich Button **Transparent**. Die Inputs werden bei UI-Sync **wiederverwendet**; während eines aktiven Pickers (`activeColorPickerCount`) wird `renderUi` nicht für Farb-Hosts aufgerufen. Hover-Livevorschau (`previewSelectionColor`) aktualisiert nur 3D/2D, kein vollständiges `renderUi`.
 
-**Studio:** **Wandfarbe** färbt die Außenfläche (`wallColor`). **Laibung außen/innen** (`revealExteriorColor` / `revealInteriorColor` am Öffnung, Farben-Tab) sind unabhängig — fehlen sie, Fallback Wand-/Innenwandfarbe. **Verkleidung** (`claddingColor`) steuert Steine/Paneele. **Fugenfarbe** (`panel.jointColor`, unter Tab Paneele) unabhängig davon. **Innenwandfarbe** (`interiorColor`, Default Weiß) nur die Raumseite.
+**Studio:** **Wandfarbe** färbt die Außenfläche (`wallColor`). **Laibung außen/innen** (`revealExteriorColor` / `revealInteriorColor` am Öffnung, Farben-Tab) sind unabhängig — fehlen sie, Fallback Wand-/Innenwandfarbe. **Paneele / Ziegel** (`claddingColor`, Label `#cladding-color-section-studio`) steuert Steine/Paneele; darunter **Stein-Kontrast** / **Stein-Häufigkeit** (`#studio-tile-color-section`). **Fugenfarbe** (`panel.jointColor`, unter Tab Fassade) unabhängig davon. **Innenwandfarbe** (`interiorColor`, Default Weiß) nur die Raumseite.
 
 Wand-Batch färbt Fenster **und** Türen.
 
@@ -130,7 +133,7 @@ Wand-Batch färbt Fenster **und** Türen.
 
 ## Öffnungs-Vorlagen
 
-Unter **Bibliothek** (sticky unten, Tabs Wände/Fenster/Türen): bei Fenster/Türen Presets links, danach ein **vertikaler Trennstrich**, gespeicherte Vorlagen, rechts **Neue Vorlage**. Dialog mit Karten-Vorschaubildern (Typ, Größe, Fenstertyp, Profil, Banken) und großer Live-Vorschau. Speichern schließt den Dialog (`dialog.close`, nicht Form-`close`). Persistenz: localStorage `fassaden-builder-opening-templates-v1` (`src/utils/openingTemplates.ts`). Wand-Tab: Längen-Presets ohne Vorlagen-Dialog (siehe Abschnitt Bibliothek unten).
+Unter **Bibliothek** (sticky unten, Tabs Wände/Fenster/Türen): bei Fenster/Türen Presets links, danach ein **vertikaler Trennstrich**, gespeicherte Vorlagen, rechts **Neue Vorlage**. Dialog mit Karten-Vorschaubildern (Typ, Größe, Fenstertyp, Profil, Banken) und großer Live-Vorschau. Speichern schließt den Dialog (`dialog.close`, nicht Form-`close`). Persistenz: localStorage `fassaden-builder-opening-templates-v1` (`src/utils/openingTemplates.ts`). Wand-Tab: Längen-Presets ohne Vorlagen-Dialog (siehe Abschnitt Bibliothek unten). **v2.0.214:** Bei Öffnungsauswahl wechselt der Tab zu Fenster/Tür/Nische und markiert die passende Karte (±16 cm Maß-Toleranz). Klick auf ein anderes Preset/eine Vorlage **ersetzt** die markierten Öffnungen (`replaceOpeningsWithPreset` / Template-Draft); ohne Öffnungsauswahl weiterhin neu platzieren auf markierter Wand.
 
 ## Öffnungs-Mindestabstand
 
@@ -138,7 +141,7 @@ Unter **Bibliothek** (sticky unten, Tabs Wände/Fenster/Türen): bei Fenster/Tü
 
 ## Paneel-Zufallsfarben
 
-Unter **Paneele** (wenn Paneele/Mauerwerk aktiv): **Stein-Kontrast** und **Stein-Häufigkeit** (0–100 %) — für **alle** Muster (Streifen, Ziegel, Klinker …), nicht nur Mauerwerk. Kontrast steuert Hell/Dunkel um die Paneelfarbe (`claddingColor`, HSL). Häufigkeit mappt auf 1…8 Farbstufen, zufällig auf die Steine verteilt. Bei Kontrast 0 ist Häufigkeit ausgeblendet; der erste Kontrast > 0 setzt Häufigkeit auf 40, falls sie noch 0 war. Beim Laden setzt `normalizeStudioPanel` Häufigkeit ebenfalls auf 40, wenn Kontrast > 0 aber Häufigkeit 0 ist. Seed pro Wand-ID + Config + **Rasterposition (x/y)** → stabile Zuordnung auch nach Jamb-Siegel; eine Mesh-Gruppe pro Stufe (`tileColors.ts`, `createStudioPanelGeometriesByColorIndex`). **v0.7.248:** Kontrast wirkt auch in der Gesamtansicht (Medium-LOD baut mehrfarbige Low-Meshes). Felder gehören zum Edit-Scope „Typ“ (`panelConfigKey`).
+Unter **Farben → Paneele / Ziegel** (wenn Paneele/Mauerwerk aktiv): **Stein-Kontrast** und **Stein-Häufigkeit** (0–100 %) — für **alle** Muster (Streifen, Ziegel, Klinker …), nicht nur Mauerwerk. Kontrast steuert Hell/Dunkel um die Paneelfarbe (`claddingColor`, HSL). Häufigkeit mappt auf 1…8 Farbstufen, zufällig auf die Steine verteilt. Bei Kontrast 0 ist Häufigkeit ausgeblendet; der erste Kontrast > 0 setzt Häufigkeit auf 40, falls sie noch 0 war. Beim Laden setzt `normalizeStudioPanel` Häufigkeit ebenfalls auf 40, wenn Kontrast > 0 aber Häufigkeit 0 ist. Seed pro Wand-ID + Config + **Rasterposition (x/y)** → stabile Zuordnung auch nach Jamb-Siegel; eine Mesh-Gruppe pro Stufe (`tileColors.ts`, `createStudioPanelGeometriesByColorIndex`). **v0.7.248:** Kontrast wirkt auch in der Gesamtansicht (Medium-LOD baut mehrfarbige Low-Meshes). Felder gehören zum Edit-Scope „Typ“ (`panelConfigKey`).
 
 **3D-Steine (v2.0.25):** Reststeine an Öffnungen (Outline nach Clip) nutzen Ear-Clipping-Triangulation — keine Fächer-Diagonalen in der Fensterecke.
 
@@ -154,7 +157,7 @@ Unter **Paneele** (wenn Paneele/Mauerwerk aktiv): **Stein-Kontrast** und **Stein
 
 - Anker = Wandkörper-Außenkante (`z = 0` bei `panelFlip`, sonst `z = depth`), nicht Paneel-Front
 - Front der Verglasung = Außenkante + 24 cm nach innen
-- `windowDepthOffset` ist **Zusatz** dazu (`+` = außen). Default `0`
+- `windowDepthOffset` ist **Zusatz** dazu (`+` = außen). Default `8` → Frontlage **32 cm** (v2.0.188)
 - Alter gespeicherter Wert `-24` wird in `normalizeWindowDepthOffset` auf `0` gemappt (sonst 48 cm)
 
 Vorzeichen wie Profile: `panelFlip ? -1 : 1`. Mesh-Rotation bleibt `yaw + π`; Pivot so, dass die Front auf der Laibungsebene liegt.
@@ -191,7 +194,7 @@ Meshes sind per `userData.indoorRole` (`ceiling` \| `floor`) und `userData.kind`
 
 **Auswahl:** Linksklick auf die Decke in 3D setzt `selectedCeiling` (orange Highlight); Toolbar `#toolbar-ceiling` mit Farbe (`FloorPlan.ceilingColor`, Default Weiß). Dieselbe Farbe steht im Wand-Reiter **Farben**. Ebenenliste wie bisher.
 
-**Sichtbarkeit (3D):** `floors[fi].showCeiling !== false && !floors[fi].hidden` — die Platte trennt die Etage darüber von der darunter. **v2.0.145:** Ohne geschlossenen Grundrissring gibt es keine Meshes — nach Extrusion konnten Wandenden 1 Rasterzelle auseinander landen (`floorPlanFromWalls` → `sealNearClosedPlanGaps` schließt das). Ebenen „Einblenden“ ruft zusätzlich `rebuildIndoorFloor` auf.
+**Sichtbarkeit (3D):** `floors[fi].showCeiling !== false && !floors[fi].hidden` — die Platte trennt die Etage darüber von der darunter. **v2.0.145:** Ohne geschlossenen Grundrissring gibt es keine Meshes — nach Extrusion konnten Wandenden 1 Rasterzelle auseinander landen (`floorPlanFromWalls` → `sealNearClosedPlanGaps` schließt das). Ebenen „Einblenden“ ruft zusätzlich `rebuildIndoorFloor` auf. **v2.0.199:** Nach Reload fehlten Decken/Böden/Dach trotz korrekter Flags — Konstruktor baute nur Wände; Fix: Indoor+Dach beim Start mitbauen (siehe [floor-plan.md](floor-plan.md#fallstricke)).
 
 Versteckte Gebäude (`building.hidden`), Wände (`wall.hidden`) und Öffnungen (`opening.hidden`) werden nicht gerendert.
 
@@ -221,13 +224,14 @@ Yaw-Konvention überall gleich: **0=N, 90=W, 180=S, 270=O** (gegen Uhrzeigersinn
 **Schwebend unten mittig** im Viewport (`#edit-scope-bar`, sichtbar bei Wand- oder Öffnungsauswahl, nicht im Grundriss). Gilt für **alle Edits am gewählten Typ**, solange die Auswahl aktiv ist:
 
 - Wand-Edits (Paneele, Sockel, Gesims, Zierbänder, Farben, Wandmaße mitziehen): `editWallTargets` in `src/studio/editScope.ts`
+- **v2.0.207:** Bibliothek-Paneele und Stil einfügen / Stil-Vorlage nutzen `scopedWallIds()` / `scopedOpeningRefs()` — Scope **Etage** gilt auch dafür
 - Öffnungs-Edits (Profil, Fensterbank, Treppe, Rahmen/Glas, Gründerzeit, **Position/Nudge/Drag**): `editOpeningTargets` / `scopedOpeningRefs()`
 - Beim Verschieben: Delta gilt für alle Scoped-Refs. Türen mit aktiver Treppe behalten Auto-Y aus Stufen.
 
 | Scope | Wände | Öffnungen |
 |---|---|---|
 | Auswahl | nur markierte Studio-Wände | nur markierte |
-| Typ | Studio: alle Wände im **aktiven Gebäude** mit gleicher Paneel-Konfiguration (`panelConfigKey`); Modul-Wände: gleiches `claddingId` + `moduleName` | alle Öffnungen desselben **Typs** im Gebäude (Fenster bzw. Tür — ohne Maße/Keller-Filter) |
+| Typ | Studio: alle Wände im **aktiven Gebäude** mit gleicher Paneel-Konfiguration (`panelConfigKey`); Modul-Wände: gleiches `claddingId` + `moduleName` | gleicher **Typ** und gleiche **Maße** (Breite×Höhe) wie die Auswahl — z. B. nur 96×192-Fenster, oder bei Mehrfachauswahl 96er und 192er jeweils ihre Gruppe (**v2.0.194**) |
 | Etage | alle Studio-Wände aller `floorIndex`-Werte der Auswahl (Multi-Etagen) | alle Öffnungen dieser Etagen |
 | Fassade | alle Studio-Wände **desselben Hauses** (0°/45°/90°, jede Etage); optional gefiltert auf gewählte Himmelsrichtungen (`#edit-scope-facade-yaws`) | **alle** Öffnungen auf diesen Wänden (gleicher Yaw-Filter) |
 
@@ -334,9 +338,9 @@ Tab **Schrift** (`data-settings-section="label"`): Checkbox, Textfeld mit **Spei
 
 - 3D: Raycast inkl. `claddingGroup` (Treppe) und `profileGroup`; Gesims-Meshes mit `wallPart: 'cornice'`, Sockel mit `plinth`, Paneele mit `cladding` (orange inkl. LOD-Kacheln).
 - Bei Teil-Fokus (`part !== 'group'`): rechte Toolbar zeigt **nur** den passenden Reiter (andere `.settings-section` per `hidden`; verschachtelte Sektionen zählen nur wenn kein Vorfahre ausgeblendet ist). Maße/Aktionen und irrelevante Farben ausgeblendet. **Ausnahme Paneele (`cladding`):** **v2.0.156** / v0.7.227 — **wie Wand ganz** (alle Bibliothek-Tabs und Studio-Reiter); nur 3D-Highlight bleibt auf dem Paneel.
-- **v0.7.176:** Anklicken in 3D behält Teil-Fokus für Profil, Bänke, Verdachung, Konsolen, Treppe, Gesims, Sockel, Paneele, Schrift. Rahmen/Glas → Ganz-Öffnung (`group`) mit Tab Farben. Rahmen-/Glasfarbe nur bei Öffnungsauswahl.
-- 3D-Highlight: Treppe = Stufen-Meshes orange (kein flaches Overlay in der Sockelzone); Wand-Teil = markierte Meshes + Overlay. Öffnungs-Overlay folgt der Maske (`openingForShellCut` + `openingWallFaceMaskPolyline`).
-- **Verschieben (v2.0.156 / v2.0.171 / v2.0.173):** Ghost, Hilfslinien und Pick-Ebene auf derselben Fassadentiefe (`OPENING_DRAG_FLOAT_CM` = 4 cm) und derselben Maskenkontur — Orange = Linien = Loch nach Drop. **v2.0.171:** kein Shadow-Bake beim Zug-Start (Sockel/Gesims). **v2.0.173:** auch beim Loslassen kein sofortiges Bake — sonst Profile ~0,5–1 s dunkelgrau.
+- **v0.7.176:** Anklicken in 3D behält Teil-Fokus für Profil, Bänke, Verdachung, Konsolen, Treppe, Gesims, Sockel, Paneele, Schrift. Rahmen/Glas → Ganz-Öffnung (`group`). **v2.0.208:** Markierung springt nicht mehr auf Farben — erster Tab (Maße) bzw. zuletzt vom Nutzer geöffneter Tab (`lastStickySelectionToolbarTab`), wenn der für das neue Objekt existiert. Teil-Klicks (Gesims, Verdachung, …) öffnen weiter den passenden Reiter. Rahmen-/Glasfarbe nur bei Öffnungsauswahl.
+- 3D-Highlight: Treppe = Stufen-Meshes orange (kein flaches Overlay in der Sockelzone); Wand-Teil = markierte Meshes + Overlay. **v2.0.205 / v2.0.206:** Gesims/Sockel/Zierband und Öffnungs-Teil Profile/Bänke/Verdachung orange per unbeleuchtetem `#ff6600` (`selectedUnlitMaterial`, `toneMapped: false`) — Standard-Material wirkte unter Tone-Mapping dunkelrot. Öffnungs-Overlay folgt der Maske (`openingForShellCut` + `openingWallFaceMaskPolyline`).
+- **Verschieben (v2.0.156 / v2.0.171 / v2.0.173 / v2.0.174 / v2.0.175 / v2.0.177 / v2.0.187):** Ghost, Hilfslinien und Pick-Ebene auf derselben Fassadentiefe (`OPENING_DRAG_FLOAT_CM` = 4 cm) und derselben Maskenkontur — Orange = Linien = Loch nach Drop. **v2.0.171:** kein Shadow-Bake beim Zug-Start (Sockel/Gesims). **v2.0.173:** Shadow-Bake beim Loslassen verzögert. **v2.0.174:** Profile/Bänke sofort mit Außen-EnvMap. **v2.0.175 / v2.0.177:** matte Rahmen kurz ohne Env (gegen Grau). **v2.0.187:** Rahmen wieder mit Außen-EnvMap + Facade-Shade wie Wand/Laibung (sonst dumpferes Weiß).
 
 - 3D: `tagPickable(..., { openingPart })` an Rahmen, Profil-Sweeps, Leibung (`trim`), Bänke, Verdachung, Treppe, Gitter, Freiraum-Kappe; Raycast inkl. `profileGroup`. Pick-Priorität: **Treppe vor Öffnung vor Verkleidung**; Treffer im Öffnungsloch auf Paneel/Wand zählen als Fenster.
 - 2D: Bank/Treppe/Verdachung mit `data-opening-part` pickbar; Öffnungspfade `pointer-events: all`.
@@ -348,7 +352,7 @@ Tab **Schrift** (`data-settings-section="label"`): Checkbox, Textfeld mit **Spei
 
 UI: `#opening-pediment-section`, `#opening-consoles-section` (nicht unter Fensterbänken). Feldkatalog und Maße: [opening-features.md](opening-features.md#verdachung-openingpediment).
 
-### Oberflächen-Reflexion (v0.7.134 / v0.7.135 / v0.7.176)
+### Oberflächen-Reflexion (v0.7.134 / v0.7.135 / v0.7.176 / v2.0.186)
 
 **Stumpf** / **Glänzend** / **Metallisch** (`SurfaceFinish`) pro Element:
 
@@ -365,7 +369,7 @@ UI: `#opening-pediment-section`, `#opening-consoles-section` (nicht unter Fenste
 | Verdachung | `pediment.color` | `pediment.finish` / `#pediment-finish` |
 | Treppe | `stairs.color` | `stairs.finish` / `#stairs-finish` |
 
-Fehlendes Element-Finish fällt auf die passende Wand-Oberfläche zurück (`wallFinish` / `profileFinish`). Glänzend/metallisch nutzen die Studio-EnvMap (`RoomEnvironment`) am Material. Glas bleibt eigenes System (Tint / physisch).
+Fehlendes Element-Finish fällt auf die passende Wand-Oberfläche zurück (`wallFinish` / `profileFinish`). Im Render-Modus teilen sich **Paneele, Wandaußenfläche, Laibung (v2.0.186), Fensterrahmen (v2.0.187), Profile und Glas** dieselbe CubeCamera-EnvMap (`finishExteriorMaterial` / Glas-Look) — Licht und Farben der Umgebung einheitlich. Glas bleibt eigenes System (Tint / physisch, höhere Intensity).
 
 ### Rahmenprofil-Maße
 
@@ -395,7 +399,7 @@ UI-Felder und Konstanten: [profiles.md](profiles.md) / [opening-features.md](ope
 | Auswahl | Tabs | Preset-Sammlung (Muster) |
 |---|---|---|
 | Nichts | Wände · Erker · Balkone&Loggia · Licht | Platzieren |
-| Wand ganz | + Fassade · Gesims · Zierbänder · Sockel · Schrift · Fenster · Türen · Nischen · Licht | je Katalog **Keine/Keines** zuerst |
+| Wand ganz | Fassade · Gesims · Zierbänder · Sockel · Schrift · Fenster · Türen · Nischen · Erker · Balkone (**ohne** Wände / Licht) | je Katalog **Keine/Keines** zuerst |
 | Wand-Teil Fassade (`cladding`) | **wie Wand ganz** (Highlight bleibt auf Paneel) | Verbände + **Keine** |
 | Wand-Teil Gesims / Sockel / Zierband / Schrift | nur dieser Katalog | Profile/Fonts; Gesims/Sockel/Zierband **Keines** |
 | Fenster ganz | Fenster · Fensterform · Profile · Verdachung | Typen; Bogenformen; Rahmen+Bank; Verdachung |
@@ -422,7 +426,7 @@ Vorspringende Teile (Treppe, Bank, Verdachung, Gesims, Sockel, Zierband, Schrift
 
 ##### Kamera / Viewport (v2.0.155–156)
 
-Auswahl darf die Aufriss-Skala nicht springen lassen: bei gleichem `contentKey` friert `computeFrontViewBase` **px/cm** ein (`frontViewScaleFreeze` / `viewportW` / `viewW`), ohne Re-Fit an `minH`. Fehlendes `wall.kind` → Hydrate setzt `studio` (v2.0.157). Rechte Spalte fest `340px`; Bibliothek `min-height` + `scrollbar-gutter: stable`.
+Auswahl darf die Aufriss-Skala nicht springen lassen: bei gleichem `contentKey` friert `computeFrontViewBase` **px/cm** ein (`frontViewScaleFreeze` / `viewportW` / `viewW`), ohne Re-Fit an `minH`. Fehlendes `wall.kind` → Hydrate setzt `studio` (v2.0.157). Rechte Spalte fest `340px`. **Bibliothek (v2.0.204):** feste Höhe für Tab-Zeile (`#library-dock > .library-chrome` 2,6 rem) und Kartenzeile (`.opening-library-items` 6,5 rem) plus `scrollbar-gutter: stable` — sonst ändert Profil-Auswahl die Viewport-Höhe und der 3D-Kamera-Aspekt lässt das Haus horizontal „springen“.
 
 ##### Rechte Leiste
 
@@ -450,9 +454,9 @@ Auswahl darf die Aufriss-Skala nicht springen lassen: bei gleichem `contentKey` 
 - **Rendering im Modus (v2.0.163):** Pixel-Ratio 1 (wie Orbit-Lite), Glas-Transmission halbe Auflösung, kein Sonnen-/Mondschatten, kein EnvMap-Bake. Hinzufügen, Duplizieren, Löschen, Blinken und Abstrahlrichtung lösen keine Shader-Neukompilierung aus (Reserve-Lichter halten die Lichtanzahl konstant); nur alle 4 neuen Lichter ein kurzer Hänger.
 - Außerhalb des Modus: keine Kreismarken.
 
-#### Laub-Modus (v2.0.168)
+#### Laub-Modus (v2.0.168 / UI ausgeblendet v2.0.209)
 
-- Chrome `#leaf-mode-btn` und Szene `#leaf-mode-btn-side`: Session-Toggle (nicht im Save).
+- Chrome `#leaf-mode-btn` und Szene `#leaf-mode-btn-side`: Session-Toggle (nicht im Save). **v2.0.209:** gesamte Laub-UI per `hidden` ausgeblendet (IDs/Wiring bleiben).
 - Im Modus: Klick/Ziehen streut Häufchen; **Boden streuen** / **Laub entfernen** nur sichtbar wenn Modus an (`#leaf-mode-tools`).
 - Nach Verlassen: Cursor bewegt Blätter (Wind); Persistenz `groundLeaves`. Details: [ground-leaves.md](ground-leaves.md).
 - Schließt sich mit dem Licht-Modus aus.
@@ -466,39 +470,42 @@ Bei Wand-, Öffnungs-, Studio-, Dach- oder Decken-Auswahl:
 - Ohne Auswahl: rechts **immer** die Szeneneinstellungen (`#lighting-accordion`, Geschwister von `#selection-toolbar` unter `#ui-right` — nicht darin verschachtelt, sonst verschwindet die Szene mit `[hidden]` der Auswahl-Toolbar).
 - **`data-settings-inline-all`**: kein eigener Reiter, im aktiven rechten Panel mit sichtbar (Modell/Aktionen).
 - Tab-Wechsel filtert per CSS-Klasse `selection-tab-filtered-out` — bestehende `hidden`-Logik bleibt maßgeblich.
-- Wechsel der Auswahl setzt den Tab auf **Übersicht** (bzw. die erste verfügbare Sektion, falls Übersicht fehlt).
+- Wechsel der Auswahl setzt den Tab auf den **ersten** verfügbaren Reiter (Maße) bzw. den zuletzt genutzten Sticky-Tab (v2.0.208).
 - **Einfach/Komplex:** Sektionen mit `data-ui-level="advanced"` erscheinen nur im Modus Komplex auch als Reiter. **Bossensteine** stehen im Tab Paneele (unter Mauerwerk), auch im Modus Einfach.
 - **Keine Akkordeons** in den Auswahl-Panels; Navigation über rechte Register + Überschriften.
 
 ### Tab-Reihenfolge rechts (für alle Objekte)
 
-Gilt für die **rechten Einstellungs-Register** bei jeder Objektauswahl (Wand, Öffnung, Dach, Decke, Licht, …) und analog für die **Szene** ohne Auswahl. Nur Tabs, die für das aktuelle Objekt **sichtbar** sind (`hidden` / UI-Level / fehlende Features), erscheinen.
+**Konvention (verbindlich):** **Maße → Farbe → übliche Einstellungen.** Cursor-Rule: `.cursor/rules/ui-reihenfolge-masse-farbe.mdc`.
+
+Gilt für die **rechten Einstellungs-Register** bei jeder Objektauswahl (Wand, Öffnung, Dach, Decke, Licht, …) und analog für die **Szene** ohne Auswahl. Nur Tabs, die für das aktuelle Objekt **sichtbar** sind (`hidden` / UI-Level / fehlende Features), erscheinen. Innerhalb einer Sektion: Maß-Felder vor Farb-Feldern, dann der Rest.
 
 | Position | Tab | Inhalt / Beispiele |
 |---|---|---|
-| **1. immer** | **Übersicht** | Alle sichtbaren Einstellungsblöcke untereinander (wie Szene-Tab `all`) |
-| **2.** | **Maße** / Größenangaben | Breite, Höhe, Tiefe, Position, Geschosshöhe, Wandstärke, … (`dimensions`, `measures`) |
-| **3.** | **Farben** | Flächen-, Rahmen-, Glas-, Fugenfarben, … (`colors`) |
-| **4.** | **Formen** / Profile | Querschnitte, Profilwahl, Teilung/Stil wenn formgebend (`profile`, ggf. Dachform) |
+| **1.** | **Maße** / Größenangaben | Breite, Höhe, Tiefe, Position, Geschosshöhe, Wandstärke, … (`dimensions`, `measures`) — erster Auswahl-Tab (v2.0.208+) |
+| **2.** | **Farben** | Flächen-, Rahmen-, Glas-, Paneele/Ziegel-Farben, … (`colors`) |
+| **3.** | **Formen** / Profile | Querschnitte, Profilwahl, Teilung/Stil wenn formgebend (`profile`, ggf. Dachform) |
 | **danach** | Dekor & Anbauteile **von oben nach unten** am Objekt | Reihenfolge wie an der Fassade gelesen |
 
 **Von oben nach unten** (nur wenn vorhanden; `data-settings-order` bzw. DOM-Reihenfolge danach ausrichten):
 
-1. Gesims (`cornice`)
-2. Zierband / Zierbänder (`trimBands`)
-3. Schrift (`label`) — oben an der Wand
-4. Paneele / Verkleidung inkl. Fugen (`panels`) — Fugen kein eigener Tab
+1. Gesims (`cornice`, order 30)
+2. Zierband / Zierbänder (`trimBands`, 35)
+3. Fassade / Paneele inkl. Fugen (`panels`, 40) — Verbände-Karten rechts `hidden`; Fugen mit `1.5rem`-Gruppenabstand
+4. Schrift (`label`) — oben an der Wand
 5. Öffnungs-Anbauten von Sturz zu Sohlbank: Verdachung → Verdachungsfeld → Konsolen → Rollläden → Fensterbank außen → Fensterbrett innen → Treppe (`pediment`, `taperedField`, `consoles`, `roller-shutter`, `sill-outer`, `sill-inner`, `stairs`)
-6. Sockel (`plinth`) — unten
+6. Sockel (`plinth`) — unten; Profilvorschau und Drehung in den Einstellungen `hidden` (Bibliothek-Tab Sockel)
 7. Sonstiges (Animation, Modul, Debug, …) ans Ende
 
-**Technik:** Sichtbare Tabs aus `.settings-section[data-settings-section]` sortiert nach `data-settings-order` (aufsteigend). Neue Sektionen müssen Order und Label so setzen, dass die Tabelle oben gilt. Übersicht = synthetischer Tab (Szene: `sceneToolbarTab === 'all'`; Auswahl: gleiches Muster).
+**Technik:** Sichtbare Tabs aus `.settings-section[data-settings-section]` sortiert nach `data-settings-order` (aufsteigend). Neue Sektionen müssen Order und Label so setzen, dass die Tabelle oben gilt. Szene: synthetischer Tab **Übersicht** (`sceneToolbarTab === 'all'`). Auswahl: kein erzwungenes Übersicht — erster Tab = Maße.
+
+**Tab nach Markierung (v2.0.208):** Standard = erster sichtbarer Tab (Maße). Wenn der Nutzer einen Reiter geklickt oder darin editiert hat, bleibt dieser Sticky bei neuer Auswahl (falls vorhanden). Klick auf Rahmen/Glas erzwingt nicht mehr „Farben“.
 
 **Nicht:** alphabetisch; nicht „was zufällig im HTML zuerst steht“, wenn Order fehlt — dann Order nachtragen.
 
 ### Keine Auswahl
 
-- **Unten:** Bibliothek mit Tabs Wände / Erker / Balkone & Loggia / Licht (Fenster/Türen/Nischen erst mit Wand-Auswahl, v2.0.153).
+- **Unten:** Bibliothek mit Tabs Wände / Erker / Balkone & Loggia / Licht. Bei **Wandauswahl** entfallen Wände und Licht; dafür Fassade/Gesims/… (v2.0.210). Fenster/Türen/Nischen erst mit Wand-Auswahl (v2.0.153).
 - **Rechts:** Szeneneinstellungen (`#lighting-accordion`) immer sichtbar (Geschwister von `#selection-toolbar`), inkl. vertikaler Szene-Register (volle Höhe). Licht-Modus-Toggle außerhalb Vorschau/Render.
 
 ### Linke Spalte einklappbar (v0.7.54 / v0.7.133)
@@ -516,14 +523,15 @@ Checkbox oder Aktion aus → zugehörige Felder, Hinweise und Vorschauen `hidden
 - Überlappung: Kreuzung und kollineare Überdeckung bleiben verboten; **T-Stöße** erlaubt. Zusätzlich `studioWallsCollideIdentical` blockiert 1:1-Überlagerung bei Ablegen, Verschieben, Drehen, Duplizieren.
 - Nach Dock/Move/Rotate: `finalizeStudioGeometry` → `recomputeStudioWallMiters` aus **Nachbar-Endpunkten** (`miterAtWallEnd`), nicht aus dem Grundriss-Walk (der die Wand entgegen `yawDeg` durchlaufen kann). **45°- und 90°-Ecken:** Paneele, Sockel und Gesims als Bilderrahmen an der Front (`cornerJoin`). v0.7.220: vorzeichenbehaftetes `z × tan(Knick/2)` — auch stumpfe 45°-Außenecken.
 - Andocken: Front-Flush (`yawDeg`/`panelFlip`); Dialog **Wände verbinden** mit drei Optionen — **Auswahl auf Nachbarn**, **Nachbarn auf Auswahl**, **Nur verbinden** (Paneel, Farben, Gesims, Sockel, `panelFlip`; keine Öffnungen). **Ablegen am Nachbar:** Verbindung entsteht sofort (auch die bisher freie Nachbarwand wird verknüpft); Abbrechen oder Esc überspringt nur die Stilübernahme. **Freie Wand anschieben:** Dialog vor der Verknüpfung; Abbrechen lässt sie frei.
-- **Verknüpfung / Loslösen:** `Wall.planLinked` (`false` = frei). **Wand lösen** (Toolbar `#studio-wall-unlink` oder Rechtsklick) setzt `planLinked: false`, entfernt `groupId` und Gehrung — die Wand ist danach **unabhängig** verschieb- und streckbar (nur sie selbst, Nachbarn bleiben). Verknüpfte Wände mit nicht mitselektierten Nachbarn lassen sich erst nach Loslösen bewegen. Beim erneuten Anstoßen Dialog wie beim Andocken, oder Rechtsklick **Wand verknüpfen**.
-- **Verschieben:** Plan-Navigieren sowie Drag auf Wand/Paneel in 3D/2D (`offsetStudioWallsByGrid`); Öffnungen/Gesims/Sockel/Treppen bleiben an der Wand. Wände mit gleichem Fußabdriff auf **allen Etagen** ziehen mit (**Shift** = nur die aktuelle Etage). Grundrisse/Decke folgen über `syncFloorPlansFromWalls`. Verknüpfte Einzelwände rasten nicht aus dem Grundriss — Statuszeile **Zuerst Wand lösen (Rechtsklick)**. **v2.0.140 — Front-Pfeil:** verschiebt nur die Auswahl (+ kollinear verknüpfte Flucht, Etagen), **nicht** den ganzen Grundriss-Ring (`expandWallMoveIds(..., { planLinked: false })` + `offsetStudioWallsAlongFront`). Während des Ziehens: **orange Andockkappen** an Nachbar-Wandseiten (`updateWallMoveDockHighlight`, auch im Grundriss) — auf der **Etage der gezogenen Wand**, pro Ende nur die **nächste** Fläche (keine höheren Etagen). Raster **48 cm** (`PLAN_GRID` / `WALL_MOVE_SNAP`); Endpunkte in ±48 cm springen magnetisch an Nachbarenden. Kollision belässt die letzte gültige Position (kein Rücksprung zum Start). **v0.7.159:** Ohne Paneele/Mauerwerk keine sichtbaren Seitenfugen an kollinear angedockten Wänden (`createStudioWallGeometry`).
+- **Verknüpfung / Loslösen:** `Wall.planLinked` (`false` = frei). **Wand lösen** (Toolbar `#studio-wall-unlink` oder Rechtsklick) setzt `planLinked: false`, entfernt `groupId` und Gehrung — die Wand ist danach **unabhängig** verschiebbar (nur sie selbst, Nachbarn bleiben). Verknüpfte Wände mit nicht mitselektierten Nachbarn lassen sich erst nach Loslösen **bewegen/drehen**; **Strecken** (Maße-Breite, Links/Rechts ±, 3D-Greifer) bleibt erlaubt und passt Nachbarn an der Stoßecke an (`stretchStudioFacade`). Beim erneuten Anstoßen Dialog wie beim Andocken, oder Rechtsklick **Wand verknüpfen**.
+- **Verschieben:** Plan-Navigieren sowie Drag auf Wand/Paneel in 3D/2D (`offsetStudioWallsByGrid`); Öffnungen/Gesims/Sockel/Treppen bleiben an der Wand. Wände mit gleichem Fußabdriff auf **allen Etagen** ziehen mit (**Shift** = nur die aktuelle Etage). Grundrisse/Decke folgen über `syncFloorPlansFromWalls`. Verknüpfte Einzelwände rasten nicht aus dem Grundriss — Statuszeile **Zuerst Wand lösen (Rechtsklick)**. **v2.0.140 — Front-Pfeil:** verschiebt nur die Auswahl (+ kollinear verknüpfte Flucht, Etagen), **nicht** den ganzen Grundriss-Ring (`expandWallMoveIds(..., { planLinked: false })` + `offsetStudioWallsAlongFront`). **90°-Nachbarn** am Stoß werden länger/kürzer; die **Gegenseite** der Nachbarwand bleibt (v2.0.191). Während des Ziehens: **orange Andockkappen** an Nachbar-Wandseiten (`updateWallMoveDockHighlight`, auch im Grundriss) — auf der **Etage der gezogenen Wand**, pro Ende nur die **nächste** Fläche (keine höheren Etagen). Raster **8 cm** (`PLAN_GRID` / `WALL_MOVE_SNAP`, v2.0.221; vorher 48); Endpunkte und Längen immer auf diesem Raster — auch nach Magnet-Andocken. Endpunkte in ±48 cm springen magnetisch an Nachbarenden. Kollision belässt die letzte gültige Position (kein Rücksprung zum Start). **v0.7.159:** Ohne Paneele/Mauerwerk keine sichtbaren Seitenfugen an kollinear angedockten Wänden (`createStudioWallGeometry`).
 - **Drehen:** **90°** nur per Rechtsklick auf die Wand → **Drehen** → im/gegen Uhrzeigersinn. **Feindrehung** in den Wand-Einstellungen (`#studio-wall-yaw`, 1°-Schritte, nur Eingabefeld). Mehrfachauswahl bzw. Gruppen drehen gemeinsam um einen Schwerpunkt.
-- **Maße (Gebäude):** Tab **Maße** — **Breite** `#studio-wall-width` (live beim Ziehen), Geschosshöhe `#studio-wall-height` (Standard **448 cm**, Schritt 16) und Wandstärke `#studio-wall-depth` (8–80 cm, Schritt 8). Die **Außenkante** bleibt stehen; Innenseite, Gehrung und Decke folgen der neuen Stärke. Decke: 0 cm Abstand zur Innenwand, Abstand zur Außenwand = Wandstärke.
+- **Maße (Gebäude):** Tab **Maße** — **Breite** `#studio-wall-width` (live beim Ziehen), darüber Segment `#studio-wall-width-dir-left|right` (**nach links** / **nach rechts**, Default rechts) für die Maß-Eingabe; Geschosshöhe `#studio-wall-height` (Standard **448 cm**, Schritt 16) und Wandstärke `#studio-wall-depth` (8–80 cm, Schritt 8). Die **Außenkante** bleibt stehen; Innenseite, Gehrung und Decke folgen der neuen Stärke. Decke: 0 cm Abstand zur Innenwand, Abstand zur Außenwand = Wandstärke. **v2.0.212:** Breite und Links/Rechts ± strecken auch bei `planLinked` (wie 3D-Greifer über `stretchStudioFacade`); „Zuerst Wand lösen“ gilt nur noch für Verschieben/Drehen.
 - **Duplizieren:** Wände und Öffnungen mit **48 cm** Kante-zu-Kante-Abstand (`DUPLICATE_GAP_CM`).
 - **Leere Öffnung:** Bibliothek Fenster → **Keines (leer)** (`opening-empty-96`) bzw. Typ **Keines (leer)** — Loch ohne Fenster/Tür-Chrome (`type: 'cutout'`, `fill.mode: 'opening'`).
-- **Endstück 48** (Bibliothek Tab Wände, v0.7.63): zwei Karten **links** / **rechts**. Drag in die Fläche setzt ein sichtbares L (Front 48 cm + Rücksprung 48 cm nach hinten). Links: Außenseite vorne+links; rechts: vorne+rechts. Drop auf eine Wand hängt nur den Rücksprung am freien Ende an. Winkel `#studio-end-piece-angle` (40–140°, Schritt 10°).
-- **Erker / Balkon / Loggia** (Bibliothek): Tab **Erker** mit zwei Karten — **384 cm Front**, 90° (`bay-384-rect`) bzw. **45°** (`bay-384-45`), Tiefe 144 cm. Beim 45°-Erker ist die Front 384 cm, der Ansatz am Parent `384 + 2×144`. Tabs **Balkon** / **Loggia** weiter 192/384. Drag zeigt Ghost wie eine Wand; Drop in die Fläche setzt die Baugruppe eigenständig. Drop auf eine (markierte) Wand öffnet Dialog `#bay-window-place-dialog`: **Ersetzen** oder **Links / Rechts / Darüber** angliedern. Gruppe in den Ebenen; Ausrichtung folgt der Fassadenaußenseite.
+- **Endstück 48** (v0.7.63–v2.0.222): war in der Bibliothek als L-Karten links/rechts; **v2.0.223 entfernt**. Bestehende Endstücke in Projekten bleiben editierbar (`Wall.endPiece`).
+- Tab **Wände** (v2.0.223): nur noch `WALL_LENGTH_PRESETS` (48…576 cm) plus „Keines“ — keine Endstücke und keine „Wand + Fenster/Tür“-Karten.
+- **Erker / Balkon / Loggia** (Bibliothek): Tab **Erker** mit Gruppen **90°/45° · Tiefe 96/144** und Frontbreiten 192/288/384/576 (IDs `bay-f…-d…-{rect|45}`). Fenster 96×192 auf der Front (Anzahl nach Außenrand ≥ 24 / Abstand ≥ 48), Schenkel 48×192 (Tiefe 96) bzw. 96×192 (Tiefe 144) — nach dem Einfügen normal editierbar. Vorschau von **draußen schräg oben** (v2.0.228). Drop auf Wand: Dialog **Als Segment** (Vorlagenbreite, verschiebbar) oder **An Wandbreite** (skaliert); Links/Rechts/Darüber angeln. **v2.0.227:** Klick markiert alle drei Flächen; Ziehen gleitet den Erker (Reststücke schrumpfen/wachsen); keine Breiten-Greifer; Löschen → flache Wand; Bibliothek-Karte umrandet / tauscht Preset. Tabs **Balkon** / **Loggia** weiter 192/384. Drag zeigt Ghost wie eine Wand; Drop in die Fläche setzt die Baugruppe eigenständig.
 
 ### Wand-Gruppen (v0.7.60)
 
@@ -576,7 +584,7 @@ Tabs in `#opening-library`: **Wände** | **Fenster** | **Fensterform** | **Türe
 
 | Tab | Inhalt | Ablegen |
 |---|---|---|
-| Wände | `WALL_LENGTH_PRESETS` (**v2.0.142:** 48 / 96 / 144 / 192 / 288 / 384 / 576 cm), Endstücke, Wände mit Öffnung; erste Kachel **Keines** | Drag (`application/x-wall-preset`) in die Bühne. **Mit Wandauswahl:** +/− links/rechts/oben an der Wand (folgen der Wand beim Orbit). + links/rechts/oben: bei gefüllter Wand-Zwischenablage **Einfügen** in diese Richtung, sonst **Duplizieren** (bzw. Etage darüber). **Ohne Auswahl (v2.0.142):** Breite anklicken → über eine bestehende Wand fahren zeigt ein **oranges Segment** (alle Etagen), Klick löst es als eigene Wand heraus — siehe [Wandsegment herauslösen](#wandsegment-herauslösen-srcstudiowallsplitts-v20142). |
+| Wände | `WALL_LENGTH_PRESETS` (**v2.0.142:** 48 / 96 / 144 / 192 / 288 / 384 / 576 cm); erste Kachel **Keines** (**v2.0.223:** Endstücke und Wand+Öffnung entfernt) | Drag (`application/x-wall-preset`) in die Bühne. **Mit Wandauswahl:** +/− links/rechts/oben an der Wand (folgen der Wand beim Orbit). + links/rechts/oben: bei gefüllter Wand-Zwischenablage **Einfügen** in diese Richtung, sonst **Duplizieren** (bzw. Etage darüber). **Ohne Auswahl (v2.0.142):** Breite anklicken → über eine bestehende Wand fahren zeigt ein **oranges Segment** (alle Etagen), Klick löst es als eigene Wand heraus — siehe [Wandsegment herauslösen](#wandsegment-herauslösen-srcstudiowallsplitts-v20142). |
 | Fenster | Fenster-Presets (`WALL_OPENING_PRESETS`: u. a. 48×96, 48×192, 96×128/192/264, 144×192, 192×192, 396×196, Keller 48×64) + Vorlagen + „Neue Vorlage“ | auf Wand droppen / bei Wandauswahl klicken |
 | Türen | Tür-Presets (96/144/288/480×320) + Vorlagen + „Neue Vorlage“ | wie Fenster |
 | Nischen | Cutout-Presets (eckig/rund, Regenrohr, Durchbruch) plus **Konche** (Kalotte, Presets 96×128 / 64×96) | auf Wand droppen / bei Wandauswahl klicken; kein Glas, kein Blendrahmen; Konche: Rundbogen-Loch + Halbzylinder/Viertelkugel |
@@ -596,13 +604,13 @@ Navigation: Button **?** unten rechts in der Bühne öffnet ein Dialog mit der T
 
 ### Ansicht & Darstellung
 
-Oben links in der Zeichenfläche: Segmented Controls — **Oben | 2D | 3D** (Ansicht), **Farbe | Zeichnung** (Darstellung), **Entwurf | Vorschau | Render** (Darstellungsmodus, v0.7.316), **Himmel | Neutral** (Umgebung, v2.0.164), **Licht** (Licht-Modus), **Laub** (Laub-Modus, v2.0.168), **Einfach | Komplex** (UI-Dichte, v0.7.51) und **Galerie** (QA-Übersicht aller Standards, v0.7.141, siehe [gallery.md](gallery.md)). Unabhängig voneinander. Bei **Zeichnung** erscheint daneben **Strichstärke** (Slider + Zahl).
+Oben links in der Zeichenfläche: Segmented Controls — **Oben | 2D | 3D** (Ansicht), **Farbe | Zeichnung** (Darstellung), **Entwurf | Vorschau | Render** (Darstellungsmodus, v0.7.316), **Himmel | Neutral** (Umgebung, v2.0.164), **Licht** (Licht-Modus), **Einfach | Komplex** (UI-Dichte, v0.7.51) und **Galerie** (QA-Übersicht aller Standards, v0.7.141, siehe [gallery.md](gallery.md)). **Laub** (v2.0.168) ist ab v2.0.209 in der UI ausgeblendet. Unabhängig voneinander. Bei **Zeichnung** erscheint daneben **Strichstärke** (Slider + Zahl).
 
-**Himmel / Neutral (v2.0.164 / v2.0.165):** `#stage-env-sky-btn` / `#stage-env-studio-btn` — **Himmel** = flache Bodenplatte + Takram-Himmel; **Neutral** = flacher Boden (größer als Haus) in durchsichtiger Kugel (nur Innenfläche), beige/nacht, Werfschatten auf dem Boden. Persistenz `fassaden-builder-stage-environment`. Siehe [stage-environment.md](stage-environment.md).
+**Himmel / Neutral (v2.0.164 / v2.0.165 / v2.0.209):** `#stage-env-sky-btn` / `#stage-env-studio-btn` (Viewport) — Side-Duplikat ausgeblendet. **Himmel** = flache Bodenplatte + Takram-Himmel; **Neutral** = flacher Boden in durchsichtiger Kugel, Farben über Szene → Hintergrund/Bodenfarbe (Default Beige). Persistenz `fassaden-builder-stage-environment`. Siehe [stage-environment.md](stage-environment.md).
 
 **Entwurf / Vorschau / Render (v0.7.316):** `#light-presentation-btn` / `#edit-presentation-btn` / `#render-presentation-btn` — immer genau einer aktiv. **Entwurf (v0.7.325):** Preset **anklicken** → Wand **anklicken** wählt aus (Farben/Mauerwerk); **nochmal klicken** auf die markierte Wand tauscht das Segment; **Greifer** verlängert; **Ziehen** platziert neue Wand. **Vorschau:** Flat-Meshes, detaillierte Fenster. **Render:** volle Geometrie, Himmel, Bloom. Details: [performance.md](performance.md).
 
-**Oben (v0.7.231 / v0.7.249):** Draufsicht auf die 3D-Szene von **über** dem Gebäude — Decken und Dächer sichtbar. Navigation wie 3D: **⌘/Ctrl+LMB** dreht die Himmelsrichtung (`topViewYawDeg`, Kompass), **⌘/Ctrl+⇧+LMB** schwenkt, **Shift+LMB auf leerem Bereich** / Mittelmaus = Pan, **Shift/Ctrl/Cmd+Klick auf Objekt** = Mehrfachauswahl (v2.0.16), Mausrad/`+`/`-` = Zoom, Pfeiltasten = Schwenk/Drehung. Wände, Öffnungen und Greifer wie in 3D.
+**Oben (v0.7.231 / v0.7.249):** Draufsicht auf die 3D-Szene von **über** dem Gebäude — Decken und Dächer sichtbar. Navigation wie 3D: **⌘/Ctrl+LMB** dreht die Himmelsrichtung (`topViewYawDeg`, Kompass), **⌘/Ctrl+⇧+LMB** schwenkt, **Shift+LMB auf leerem Bereich** / Mittelmaus = Pan (nur wenn schon etwas ausgewählt; sonst Rechteckauswahl v2.0.193), **Shift/Ctrl/Cmd+Klick auf Objekt** = Mehrfachauswahl (v2.0.16), Mausrad/`+`/`-` = Zoom, Pfeiltasten = Schwenk/Drehung. Wände, Öffnungen und Greifer wie in 3D.
 
 **2D und 3D:** dieselbe Bearbeitung wie Oben (Wand ziehen, Öffnungen verschieben, Kontextmenü, Greifer). **2D (v0.7.336 / v0.7.340):** Mausrad/`+`/`-` = Zoom (zum Cursor); Pan wie 3D (**Rechtsklick**, Mittelmaus, **⇧**+Ziehen, Pfeiltasten), **0** = Einpassen. SVG-Aufriss bleibt für interne Logik; die Zeichenfläche nutzt die Ortho-Front-Kamera.
 
@@ -618,12 +626,14 @@ Checkbox **Abwechselnde Ebenen** (`panel.alternateFloors`): nur bei Muster **Str
 
 ### Animation / Tageszyklus
 
-Unter **Szene → Animation** (v2.0.130):
+Unter **Szene → Animation** (v2.0.130 / Hinweise v2.0.209):
 
-- **Animationen pausieren** — Master-Stop für Blaulicht-Blinken, Fenster-/Tür-Abspielen, Rollläden-Lauf und Tageszyklus.
-- **Tageszyklus** — Uhrzeit und Sonne laufen kontinuierlich (Default an).
-- **Tagesdauer (Min.)** — Echtzeit-Minuten für einen Szene-Tag (`dayCycleRealMinutes`, Default **60** = 1 Stunde). Bereich 1…1440.
-- **Lichter mit Sonne** — bei Sonnenuntergang Bibliotheks-Lichter an, bei Sonnenaufgang aus (Default an; kein Undo-Eintrag; soft mit Fade, v2.0.150). **Uhrzeiten** pro Licht parallel (`desiredOn = Sonne-Nacht || Schedule`). Öffnungen/Rollläden nur Schedule.
+- **Animationen pausieren** — Master-Stop für Blaulicht-Blinken, Fenster-/Tür-Abspielen, Rollläden-Lauf und (falls aktiv) den Tageszyklus. **Pause aus allein startet die Sonne nicht.**
+- **Tageszyklus** — muss **explizit an** sein: Uhrzeit und Sonne laufen dann kontinuierlich beschleunigt (`dayCycleEnabled`, Default an). Ist der Haken aus (z. B. nach Persistenz oder Licht-Modus), bleibt die Uhrzeit stehen — auch wenn Animationen nicht pausiert sind.
+- **Tagesdauer (Min.)** — Echtzeit-Minuten für einen Szene-Tag (`dayCycleRealMinutes`, Default **60** = 1 Stunde). Bereich 1…1440. Beispiel: 60 Min. Echtzeit ≈ 24 h Szenezeit.
+- **Lichter mit Sonne** — bei Sonnenuntergang Bibliotheks-Lichter an, bei Sonnenaufgang aus (Default an; kein Undo-Eintrag; soft mit Fade, v2.0.150). **Uhrzeiten** pro Licht parallel (`desiredOn = Sonne-Nacht || Schedule`). Öffnungen/Rollläden nur Schedule. **v2.0.183:** Manuelles „Alle ausblenden“ / „Alle Lichter an“ setzt einen Hold gegen Auto/Schedule; „Lichter mit Sonne“ wieder anhaken hebt den Hold auf.
+
+Voraussetzungen für laufende Sonne: **Tageszyklus an** + **Animationen pausieren aus** + nicht im Licht-Modus.
 
 Der frühere einmalige **Tagesverlauf abspielen** (Himmelsrichtung/Uhrzeit-Kanäle) ist entfernt.
 
@@ -655,18 +665,18 @@ Während Drag von Öffnungen:
 - **Wand-Referenzen** bei Annäherung: **1/4, 1/3, 1/2, 2/3, 3/4** der Wandbreite bzw. -höhe (orange).
 - Linien spannen weit über die Fassade (Boden–Himmel / volle Aufrissbreite).
 - Mehrfachauswahl: Hilfslinien aller verschobenen Öffnungen (je Wand).
-- **Abstandslinien** (v2.0.20): gelbe Maßlinien mit Endstrichen und cm-Label zum nächsten Objekt in vier Richtungen (links, rechts, oben, unten) — Wandkante oder Nachbar-Öffnung; horizontal ggf. über Wandgrenzen im Aufriss (`elevationX`, nur SVG).
+- **Abstandslinien** (v2.0.20 / v2.0.176 / v2.0.180 / v2.0.182 / **v2.0.207** / **v2.0.211**): gelbe Maßlinien mit Endstrichen und cm-Label zum nächsten Objekt in vier Richtungen (links, rechts, oben, unten) — Wandkante oder Nachbar-Öffnung. **v2.0.176:** cm-Labels auch in 3D (Sprites auf der Drag-Ebene). **v2.0.180:** Label-Größe folgt der Kameradistanz (aus der Ferne lesbar). **v2.0.182:** Labels halb so groß (`dist × 0,0225`, Clamp 9–100 cm). **v2.0.207:** Abstand aus dem Nenn-Rechteck der Öffnung (`opening.x`/`width`). **v2.0.211:** nur Nachbarn mit Y-/X-Überlappung (gleiche Reihe); Linien immer wand-lokal (auch über Etagen-Grenzen in 3D sichtbar).
 - 3D: `depthTest: false`; SVG: gestrichelte Linien im Aufriss. Nach Drop entfernt.
 
-### Wände (`src/studio/wallGuides.ts`, v0.7.156 / v2.0.140)
+### Wände (`src/studio/wallGuides.ts`, v0.7.156 / v2.0.140 / v2.0.188)
 
-Beim **Verschieben** und **Zeichnen/Abzweigen** von Studio-Wänden: Hilfslinien für **Start-, End- und Mittelpunkt** (Plan X/Z), Ausrichtung an anderen Wänden derselben Etage (Toleranz `WALL_GUIDE_SNAP_CM` = 4 cm). Abzweig (Shift) und Bibliothek-Ghost: freies Ende snappt bündig (`snapPointToWallEdges` / `computeSegmentAlignGuides`). Grundriss: `floorPlanView.showWallMoveGuides`.
+Beim **Verschieben** und **Zeichnen/Abzweigen** von Studio-Wänden: Hilfslinien für **Start-, End- und Mittelpunkt** (Plan X/Z), Ausrichtung an anderen Wänden derselben Etage (Toleranz `WALL_GUIDE_SNAP_CM` = 4 cm). Abzweig (Shift) und Bibliothek-Ghost: freies Ende snappt bündig (`snapPointToWallEdges` / `snapBranchLengthToWallEdges` / `computeSegmentAlignGuides`), Länge danach auf `wallWidthStepCm` (8 cm). **Strecken** (Links/Rechts-Greifer): nur 8-cm-Raster (`clampWallResizeDelta`) — kein cm-Freilauf durch Querachsen-Snap. **v2.0.188:** Align-Hilfslinien auch in **3D/Front** (`FacadeController.setPlanWallGuides`), nicht nur im Grundriss. Grundriss: `floorPlanView.showWallMoveGuides`.
 
 ### Wandsegment herauslösen (`src/studio/wallSplit.ts`, v2.0.142)
 
 **Nutzer:** Tab **Wände**, **nichts markiert**, eine Breite-Karte anklicken (48 … 576). In **3D** und **2D-Front** zeigt Hover über einer Studio-Wand ein **oranges Segment** dieser Breite (volle Höhe, mit Schnittkanten in `0xff5500`) — auf **allen Etagen** mit gleichem Fußabdruck (gleicher Ursprung + Richtung, `wallSplitStack` = `findVerticalAlignedWalls` ohne 180°-Gegenrichtung). Statuszeile: „Klick: Segment 96 cm herauslösen (2 Etagen)“. Klick teilt jede Etage in `links | Segment | rechts` (bis zu drei kollineare, `planLinked` Wände); das Mittelstück der getroffenen Etage ist danach **ausgewählt** → **Links/Rechts ±** verlängert es (Stapel folgt über `stretchStudioFacade`), Paneele/Farben/Gesims gelten nur für dieses Stück (andere Etagen per Shift dazu wählen oder Gültig-für „Etage/Fassade“).
 
-**Raster:** Segment liegt mittig unter dem Cursor, gerastet auf `wallWidthStepCm(yaw)` (48 cm, 45°: Diagonale) und in die Wand geklemmt (`wallSplitRangeAt`). Segment = ganze Wand → „nichts zu teilen“. Reststücke unter 48 cm, Erker- und Endstück-Wände (`isProtectedFromPoseReverse`) → kein Split, Hinweis in der Statuszeile. Schmalere Etagen, in die das Segment nicht passt, bleiben unverändert.
+**Raster:** Segment liegt mittig unter dem Cursor, gerastet auf `wallWidthStepCm(yaw)` (24 cm, 45°: Diagonale \(24\sqrt{2}\)) und in die Wand geklemmt (`wallSplitRangeAt`). Segment = ganze Wand → „nichts zu teilen“. Reststücke unter 48 cm, Erker- und Endstück-Wände (`isProtectedFromPoseReverse`) → kein Split, Hinweis in der Statuszeile. Schmalere Etagen, in die das Segment nicht passt, bleiben unverändert.
 
 **Öffnungen** bleiben in Weltlage: `splitStudioWallAt` partitioniert nach Mittelpunkt und rechnet `opening.x` auf das jeweilige Stück um; Profile folgen über `openingId`. Stil (`panel`, Farben, Gesims, `panelFlip`) wird per `cloneWall` geerbt; das linke Stück behält die alte Wand-ID (Mittelstück bei Segment am Wandanfang ebenfalls).
 
@@ -722,7 +732,7 @@ Struktur bei Wandauswahl: Wand → Sockel → Gesims → Fenstertiefe → Paneel
 
 ### Toolbar-Layout (v0.7.14)
 
-- **Abstände:** Label→Feld `4px` (`.toolbar-group` gap; `.toolbar-label` ohne Extra-Margin); Abstand oberhalb einer Gruppe/Sektion `1.5rem` (erstes Kind ausgenommen).
+- **Abstände:** Label→Feld `4px` (`.toolbar-group` gap; `.toolbar-label` ohne Extra-Margin); Abstand oberhalb einer Gruppe/Sektion `1.5rem` (erstes Kind der Sektion ausgenommen). Verschachtelte Wrapper (`#studio-joints-section`, `#studio-joint-options`, …) setzen beim ersten Kind ebenfalls `1.5rem`, damit Fugen/Fugentiefe nicht an der vorherigen Gruppe kleben.
 - **Register (Auswahl):** unten horizontale Tabs (`#selection-bottom-tabs`); rechts nur die aktive Sektion — **Ausnahme Fenster/Tür:** `#toolbar-opening` zeigt alle Sektionen ohne Tabs.
 - **Labels:** Jedes Eingabefeld und jede Farbgruppe hat eine eigene `.toolbar-label`-Zeile (z. B. „Horizontal (cm)“, „Verdachungsfarbe“).
 - **Hinweise:** Erklärungstexte an Slider, Feldern und Dropdowns als rundes **i**-Icon hinter dem Label; Text nur bei Hover/Fokus auf dem Icon (`.field-info`, Tipp `.field-info-tip`). Abschnitts-Hinweise ohne zugehöriges Feld (z. B. Zierbänder-Intro) bleiben grauer Text. Status-/Fehlerzeilen (Validierung, Dach-Hinweis, Animation-Status) bleiben sichtbarer Text. `.toolbar-hint` im Markup bleibt im DOM (`hidden`), damit IDs weiter funktionieren.
@@ -732,7 +742,7 @@ Struktur bei Wandauswahl: Wand → Sockel → Gesims → Fenstertiefe → Paneel
 
 ### Paneele vs. Mauerwerk
 
-UI: `#studio-pattern-panel-cards` (Streifen, Läuferverband) und `#studio-pattern-masonry-cards` (Blockverband, Kopfverband, Kreuzverband, Wilde/Gotische/Märkische/Holländische/Schlesische/Flämische Verbände, Läufer-Varianten). Jede Kachel zeigt eine SVG-Kontur-Vorschau (`drawPatternPreviewSvg`), gebaut erst wenn die Studio- bzw. Dach-Toolbar sichtbar ist (nicht beim App-Start). Layout: `src/studio/panelLayout.ts`, Typen in `StudioPanelPattern`. **v0.7.280:** wie 73dbdc9 an der Außenkante (Fit folgt der Planrichtung). **v0.7.279:** Verknüpfte Wände mit Innen-Origin werden beim Laden auf die Außenkante gelegt — sonst fehlen an 90°-Ecken 32–40 cm Vertikalfugen (Gehrung). **v0.7.278:** Raster auf der Außenfront inkl. Keilzone (`wallX` darf < 0); 0,5/1 von der Außenecke. **v0.7.270:** Paneele gehren an andockenden Wänden. **v0.7.269:** 45°-Endsteine 0,5/1 auf der Front, dazwischen Läuferverband. **v0.7.296:** 0,5/1 an 45°-Ecken bleibt nach Etage duplizieren / Stile kopieren gleich (nicht mehr per neuer Wand-ID gekippt).
+UI: `#studio-pattern-panel-cards` (Streifen, Läuferverband) und `#studio-pattern-masonry-cards` (Blockverband, Kopfverband, Kreuzverband, Wilde/Gotische/Märkische/Holländische/Schlesische/Flämische Verbände, Läufer-Varianten). Jede Kachel zeigt eine SVG-Kontur-Vorschau (`drawPatternPreviewSvg`), gebaut erst wenn die Studio- bzw. Dach-Toolbar sichtbar ist (nicht beim App-Start). Layout: `src/studio/panelLayout.ts`, Typen in `StudioPanelPattern`. **v0.7.280:** wie 73dbdc9 an der Außenkante (Fit folgt der Planrichtung). **v0.7.279:** Verknüpfte Wände mit Innen-Origin werden beim Laden auf die Außenkante gelegt — sonst fehlen an 90°-Ecken 32–40 cm Vertikalfugen (Gehrung). **v0.7.278:** Raster auf der Außenfront inkl. Keilzone (`wallX` darf < 0); 0,5/1 von der Außenecke. **v0.7.270:** Paneele gehren an andockenden Wänden. **v0.7.269:** 45°-Endsteine 0,5/1 auf der Front, dazwischen Läuferverband. **v0.7.296:** 0,5/1 an 45°-Ecken bleibt nach Etage duplizieren / Stile kopieren gleich (nicht mehr per neuer Wand-ID gekippt). **v2.0.217:** Kopfverband an 45°-Ecken erzwingt Binder/½-Binder (nicht Läuferbreite).
 
 **v2.0.72 — Zwei Bänder:** Checkbox `#studio-cladding-two-bands` teilt die Verkleidung horizontal (`claddingZones` `band-lower`/`band-upper`). Felder Höhe/Modulbreiten in `#studio-cladding-two-bands-options` nur sichtbar wenn an; einfache `#studio-panel-width-row` dann ausgeblendet. Details: [facade-layers.md](facade-layers.md).
 
@@ -770,11 +780,15 @@ Nur bei einer Tür (`#door-stairs-section`); Optionen nur wenn an. Maße und Soc
 
 ## Wand verbreitern (links/rechts)
 
-**Greifer (v0.7.213–0.7.226):** An der **äußeren Fassadenkante** erscheinen bei markierten Studio-Wänden Drag-Greifer (`#wall-resize-gizmos`). Klick neben die Wand blendet sie aus. **Links/rechts/oben** nur bei genau einer Wand. **Mitte:** runder Pfeil-Greifer in Front-Richtung (Außennormale). Ist eine **verknüpfte 45°-Wand** nicht mitmarkiert, ist der Greifer grau mit Info-Zeichen; Hover: „Zuerst die verknüpften 45°-Wände markieren“. Nach Mehrfachauswahl der Schrägen: Verschieben nur entlang der Front (48 cm bzw. Diagonale), 90°-Nachbarn strecken am Stoß mit. Die Bibliotheks-+/− (`#wall-library-gizmos`) bleiben im DOM, sind aber ausgeblendet.
+**Greifer (v0.7.213–0.7.226):** An der **äußeren Fassadenkante** erscheinen bei markierten Studio-Wänden Drag-Greifer (`#wall-resize-gizmos`). Klick neben die Wand blendet sie aus. **Links/rechts/oben** nur bei genau einer Wand. **Mitte:** runder Pfeil-Greifer in Front-Richtung (Außennormale). Ist eine **verknüpfte 45°-Wand** nicht mitmarkiert, ist der Greifer grau mit Info-Zeichen; Hover: „Zuerst die verknüpften 45°-Wände markieren“. Nach Mehrfachauswahl der Schrägen: Verschieben nur entlang der Front (24 cm bzw. Diagonale), 90°-Nachbarn strecken am Stoß mit. Die Bibliotheks-+/− (`#wall-library-gizmos`) bleiben im DOM, sind aber ausgeblendet.
 
-**Ziehen:** Ohne Taste: **ein Rasterfeld** entlang der Wandachse (**48 cm** achsparallel, bei **45°** die Diagonale eines 48×48-Feldes ≈ 67,9 cm), damit die Endpunkte auf dem Grundrissgitter bleiben. Mindestlänge/-höhe **48 cm** (`STUDIO_MIN_SIZE`). Beim Verkleinern werden Öffnungen entfernt, die nicht mehr vollständig auf der Wand liegen. Die Wand ändert sich erst, wenn der Greifer wirklich gezogen wird (nicht schon beim Anfassen). **Shift halten:** am Greifer = neue Abzweig-Wand (45°/90°, **v0.7.319** auf allen Etagen mit gleichem Fußabdriff); beim **Verschieben** der Wand = nur die aktuelle Etage (ohne Shift ziehen gleiche Wände auf allen Etagen mit, auch bei unterschiedlicher Breite; Grundriss/Decke folgen). Kommt das freie Ende wieder am **Ausgangspunkt** oder an einer **anderen Wand** an (Magnet ein Rasterschritt entlang des Strahls), schließt sich der Grundrisspfad: Endpunkte fallen zusammen, **Gehrung** wie an den anderen Ecken. **v2.0.137:** Bei 45°-Abzweigen gilt eine größere Quer-Toleranz (~24 cm) am Strahl; der Endpunkt wird auf die Ziel-Ecke gezogen (leichter Yaw-Ausgleich), damit kein sichtbarer Versatz bleibt. Achsparallele Stoßpunkte bleiben bei 2 cm. Trifft der Strahl die **Mitte** einer anderen Wand, wird diese geteilt (T-Stoß, beide Stücke mindestens 48 cm). Paneele/Sockel bleiben auf derselben **Außenseite** wie die Kette (`along × outward`); am freien Start endet die neue Wand an der Fuge (v0.7.221). **Bestehende** falsch gedrehte Abzweig-Wände (zwei Starts an einer Ecke) werden beim nächsten Öffnen des Projekts nachgezogen (v0.7.222, Schema 11). **Gehrung** an der Ecke wie ein Bilderrahmen (45° und 90°). Höhe: **24 cm** pro Etage. Bodenraster 48 cm beim Ziehen.
+**Ziehen:** Ohne Taste: **8 cm** entlang der Wandachse (`STUDIO_WALL_WIDTH_STEP`, v2.0.221; bei **45°** die Diagonale eines 8×8-Feldes ≈ 11,3 cm — zwei 8er-Schenkel), Greifer und Toolbar-±. Mindestlänge/-höhe **8 cm** (`STUDIO_MIN_SIZE`). Beim Verkleinern bleiben bestehende Öffnungen erhalten (v2.0.215; zuvor konnten sie bei zu kurzer Wand entfernt werden). Die Wand ändert sich erst, wenn der Greifer wirklich gezogen wird (nicht schon beim Anfassen). **v2.0.179 / v2.0.180 / v2.0.182:** gelbe Maßlinie mit Vorzeichen-cm (`+96 cm` / `−48 cm`) für Breite, Höhe und Front-Extrusion — Delta zum Drag-Start; Labels skalieren mit Kameradistanz (v2.0.182 halb so groß). **v2.0.180:** Site-Ursprung bleibt während des Greifer-Zugs fix (kein Δ-Drift). **Shift halten (v2.0.216 / v2.0.217 / v2.0.218):** Zwei Fälle klar getrennt — **verknüpfte Ecke** (Marker 90° oder 135°, zwei Wände am Greifer): Winkel der **markierten** Wand umschalten (**90° ↔ 135°**); Stoßecke = Schnitt mit der Nachbarachse; Nachbar nur **Breite** entlang der Achse (fernes Ende und Fenster bleiben in Weltlage); **keine** neue Wand und keine Querverschiebung. **Nur ausgewählte Etagen** (v2.0.218): vertikal gleiche Wände auf anderen Geschossen nur mit, wenn sie mitmarkiert sind; Boden/Decke folgen pro Etage. Achsen-Zug an derselben Ecke = Segment strecken + Folgewände (`shiftWallsBeyondEnd`). **Freies Ende** (kein verknüpfter Knick): neue Abzweig-Wand 45°/90° (**v0.7.319** auf allen Etagen mit gleichem Fußabdruck); beim **Verschieben** der Wand = nur die aktuelle Etage (ohne Shift ziehen gleiche Wände auf allen Etagen mit, auch bei unterschiedlicher Breite; Grundriss/Decke folgen). Kommt das freie Ende wieder am **Ausgangspunkt** oder an einer **anderen Wand** an (Magnet ein Rasterschritt entlang des Strahls), schließt sich der Grundrisspfad: Endpunkte fallen zusammen, **Gehrung** wie an den anderen Ecken. **v2.0.137:** Bei 45°-Abzweigen gilt eine größere Quer-Toleranz (~24 cm) am Strahl; der Endpunkt wird auf die Ziel-Ecke gezogen (leichter Yaw-Ausgleich), damit kein sichtbarer Versatz bleibt. Achsparallele Stoßpunkte bleiben bei 2 cm. Trifft der Strahl die **Mitte** einer anderen Wand, wird diese geteilt (T-Stoß, beide Stücke mindestens 48 cm). Paneele/Sockel bleiben auf derselben **Außenseite** wie die Kette (`along × outward`); am freien Start endet die neue Wand an der Fuge (v0.7.221). **Bestehende** falsch gedrehte Abzweig-Wände (zwei Starts an einer Ecke) werden beim nächsten Öffnen des Projekts nachgezogen (v0.7.222, Schema 11). **Gehrung** an der Ecke wie ein Bilderrahmen (45° und 90°). Höhe: **24 cm** pro Etage. Bodenraster beim Ziehen = Breiten-Schritt (24 cm).
 
-`stretchStudioFacade` + `translateStudioCorner` in `src/studio/walls.ts` verlängert die gewählte Wand; **alle Wand-Endpunkte an der bewegten Ecke** (alle Etagen) werden mitverschoben, Gehrungen via `finalizeStudioGeometry` neu berechnet. Keine Lücken an verbundenen Wänden.
+`stretchStudioFacade` + `translateStudioCorner` in `src/studio/walls.ts` verlängert die gewählte Wand; **Nachbarwände an der Stoßecke** werden dort gestreckt/gekürzt (`poseWallEndAt` mit `preserveLocalOpenings`) — die **gegenüberliegende** Seite der Nachbarwand bleibt stehen (v2.0.191; vorher starr mitverschoben). Öffnungen auf Nachbarn behalten lokales x (v2.0.215). Senkrecht zur Nachbarachse gleicht die ganze Wand mit. Alle Etagen am selben Fußabdruck; Gehrungen via `finalizeStudioGeometry`.
+
+**v2.0.220 — Lücken unter 48 cm schließen:** Stoßen zwei freie Wandenden kollinear oder im Winkel fast zusammen (Abstand über ~2 cm und höchstens 48 cm), docken sie in `finalizeStudioGeometry` automatisch an (`sealNearWallEndGaps`): Enden werden auf denselben Punkt gezogen, `planLinked` gesetzt. Größere Lücken bleiben offen.
+
+**v2.0.221 — 8-cm-Welt-Raster:** Ablegen, Verschieben und Strecken immer auf `PLAN_GRID` = 8 cm; 45° = Diagonale eines n×n-8er-Feldes; Mindestlänge 8 cm.
 
 ---
 
@@ -801,7 +815,9 @@ Swatch `transparent` (`TRANSPARENT_GLASS`) macht Klarverglasung. 3D-Glas (`apply
 
 - `FacadeState.buildings[]` + `activeBuildingId`; Legacy-Saves werden beim Laden in ein Gebäude „Haus 1“ migriert (`migrateToBuildings`).
 - Ebenen-Liste: **Lichter** (Szene, aufklappbar) → **Haus** → **Dach** (Sektion, aufklappbar) → **Geschosse** → **Decke / Boden** / Wände / Öffnungen / **Treppe** (Unterzeile unter Tür).
-- **Lichter:** Alle platzierten Punktlichter (`FacadeState.sceneLights`) als eigene Sektion oben im Ebenenbaum. Namen nach Art + Nummer (`Blaulicht 2`, `Laterne`, …). **Shift/Ctrl+Klick** Mehrfachauswahl → Mehr-Menü **Gruppieren** (persistente `sceneLightGroups`). Gruppenzeile wählt alle Mitglieder; Mehr-Menü: ein-/ausblenden, umbenennen, auflösen. Pro Licht: Klick wählt (`selectedSceneLightId` / `selectedSceneLightIds`); ⋯ oder **Rechtsklick** (Mehrfachauswahl bleibt) → **Ein-/Ausblenden**, **Duplizieren**, **Entfernen** für alle Gewählten. Sektions-Mehr-Menü: **Punktlicht einfügen**, **Alle ein-/ausblenden**, **Alle löschen**. Globaler Toggle auch unter Bibliothek → Licht und Szene → Licht. Ausgeschaltete Lichter gedimmt (`.layer-dimmed`).
+- **Auswahl Sync (v2.0.192):** Klick in der Bühne (3D/2D) auf Wand, Öffnung, Treppe, Decke, Licht oder Haus markiert dieselbe Zeile links; Haus/Etage/Wand/Dach/Lichter-Gruppe werden bei Bedarf aufgeklappt, die Zeile gescrollt. Profile/Gesims/Sockel ohne eigene Zeile markieren die Parent-Wand bzw. -Öffnung. (Lichter schon seit v2.0.178.)
+- **Lichter:** Alle platzierten Punktlichter (`FacadeState.sceneLights`) als eigene Sektion oben im Ebenenbaum. Namen nach Art + Nummer (`Blaulicht 2`, `Laterne`, …). **Shift+Klick** Bereichsauswahl (v2.0.183); **Ctrl/Cmd+Klick** Mehrfachauswahl → Mehr-Menü **Gruppieren** (persistente `sceneLightGroups`). Gruppenzeile wählt alle Mitglieder; Mehr-Menü: ein-/ausblenden, umbenennen, auflösen. Pro Licht: Klick wählt (`selectedSceneLightId` / `selectedSceneLightIds`); ⋯ oder **Rechtsklick** (Mehrfachauswahl bleibt) → **Ein-/Ausblenden**, **Duplizieren**, **Entfernen** für alle Gewählten. Sektions-Mehr-Menü: **Punktlicht einfügen**, **Alle ein-/ausblenden**, **Alle löschen** — manuelles Alle ausblenden wird nicht sofort von „Lichter mit Sonne“ überschrieben (v2.0.183). Globaler Toggle auch unter Bibliothek → Licht und Szene → Licht. Ausgeschaltete Lichter gedimmt (`.layer-dimmed`). **v2.0.178 / v2.0.192:** Auswahl auf der Bühne markiert die passende Ebenen-Zeile und klappt die Lichter-Sektion auf.
+- **Shift-Bereichsauswahl (v2.0.183):** Im Ebenenbaum wählt Shift+Klick alle sichtbaren Zeilen zwischen dem letzten Anker und der geklickten Zeile (Lichter, Wände, aufgeklappte Öffnungen). Ctrl/Cmd+Klick bleibt einzelnes Hinzufügen/Entfernen.
 - Zeilen-Labels: nur **Typ** (`Wand`, `Fenster`, `Tür`, `Treppe`, `Decke / Boden`, `Dach`, `Ziegel`, `Rinne`) + **Meta** (Breite in cm oder Stufenanzahl). Keine Himmelsrichtung, kein Fenstermodell-String, keine x/y-Position. **v2.0.140:** Wand-/Öffnungs-Maße in den Ebenen aktualisieren **live** beim Ziehen (`syncLiveLayerListMetrics`).
 - Haus-Zeile: Klick **aktiviert** das Haus und setzt `selectedBuildingId` (Grundriss-Umriss orange). Mehr-Menü: **Neues Haus**, **Nur weiße Wände** / **Fassade einblenden** (`Building.bareWalls`), Umbenennen, Ausblenden, **Duplizieren** (Ost/West/Nord/Süd), Löschen (mind. ein Haus). Bei `bareWalls` zeigt die Hauszeile „· nur Wände“; 3D/2D nur weiße Vollwände (keine Öffnungen/Mauerwerk/Profile/Dach/Decken), Projektdaten unverändert.
 - **Decke / Boden** pro Geschoss: Zeile wie Wand (`selectedCeiling`, Toolbar `#toolbar-ceiling`, Farbe `FloorPlan.ceilingColor`, Default **Weiß** `#ffffff`). Farbe auch im Wand-Reiter **Farben**. **v0.7.227:** per Klick auf die Decke in 3D auswählbar. Mehr-Menü: Ein-/Ausblenden (`FloorPlan.showCeiling`). Alte braune Defaults (`#9a8a7a` / `#8a7a6a`) werden beim Laden weiß (Schema 13), eigene Farben bleiben.

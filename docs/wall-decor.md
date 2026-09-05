@@ -43,7 +43,7 @@ UI: `#studio-cornice-scale` / `#wall-cornice-scale`, `#studio-cornice-offset-for
 | `plinthProfileId` | `sockelprofil` | Legacy `sockelStandard` → gemappt |
 | `plinthProfileScale` / Rotation / Flip | — | Querschnitt |
 
-**Geometrie:** SVG-Sweep vom Boden; Aussparung = Öffnungsvolumen (Bogen inkl.) aus dem vollen Sweep (`createPlinthProfileSweepGeometry`, v0.7.297) — nicht Y-Schnitt im Querschnitt und nicht X-Schacht plus Sturz-Treppe. Paneele/Ziegel im Sockelstreifen entfallen (`clipTilesAbovePlinth`); Raster startet am Wandfuß (`masonryOriginY = 0`), Sockel **überlagert**.
+**Geometrie:** SVG-Sweep vom Boden; Aussparung = Öffnungsvolumen (Bogen inkl.) aus dem vollen Sweep (`createPlinthProfileSweepGeometry`, v0.7.297) — nicht Y-Schnitt im Querschnitt und nicht X-Schacht plus Sturz-Treppe. Paneele/Ziegel: Raster am Wandfuß (`masonryOriginY = 0`); Sockel **überlagert** in der Tiefe. **v2.0.200:** Steine ganz unter dem Sockel entfallen weiterhin; überlappende Steine (Paneelhöhe > Sockel) werden auf die Sockeloberkante **gekürzt** — nicht die ganze unterste Reihe verworfen.
 
 UI: `#studio-plinth-depth`, `#studio-plinth-offset`, `#studio-plinth-color-swatches`, Profilkarten (erste Kachel **Keiner**). Vorschau: Links = Wand, unten = Boden.
 

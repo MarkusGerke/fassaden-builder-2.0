@@ -4,7 +4,9 @@ Flache Herbstblätter auf dem Grundstück, die auf den Mauszeiger als Windzug re
 
 ## Nutzer
 
-1. Viewport-Chrome **Laub** oder unter **Szene → Laub** den Modus aktivieren.
+**v2.0.209:** Laub-UI überall ausgeblendet (`#leaf-mode-btn`, Side-Gruppe, Tools) — IDs und Runtime bleiben.
+
+1. (Versteckt) Viewport-Chrome **Laub** oder unter **Szene → Laub** den Modus aktivieren.
 2. Im Modus:
    - **Klick** auf den Boden streut ein Häufchen (~12 Blätter).
    - **Ziehen** streut weiter (Abstand ≥ 36 cm).
@@ -41,7 +43,7 @@ Wind: Radius `LEAF_WIND_RADIUS_CM = 100`, Dämpfung, max. Speed; Positionen soft
 
 ## UI-IDs
 
-- `#leaf-mode-btn` (Chrome), `#leaf-mode-btn-side` (Szene)
+- `#leaf-mode-btn` (Chrome), `#leaf-mode-btn-side` (Szene) — ab v2.0.209 per `hidden` ausgeblendet
 - `#leaf-mode-tools` (nur bei aktivem Modus sichtbar)
 - `#leaf-scatter-btn`, `#leaf-clear-btn`
 

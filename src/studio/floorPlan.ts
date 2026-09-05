@@ -3,7 +3,7 @@ import { WALL_DEPTH } from '../constants/presets'
 import { updateActiveBuilding } from '../utils/buildings'
 import { floorIndex } from '../utils/layers'
 import { createId } from '../utils/id'
-import { PLAN_GRID, normalizeStudioPanel } from './constants'
+import { PLAN_CLOSE_GAP_CM, PLAN_GRID, normalizeStudioPanel } from './constants'
 import { createStudioWall, isStudioWall, wallEndPoint, wallStartPoint } from './walls'
 
 export interface PlanNode {
@@ -103,8 +103,16 @@ export function formatPlanLengthCm(lengthCm: number): string {
   return `${Math.round(lengthCm)} cm`
 }
 
+/** Rasterindex ohne −0 (sonst `getPlanNodeAt(0,0)` ≠ Knoten mit gx:−0 → offener Ring). */
+export function normalizePlanCell(n: number): number {
+  const v = n === 0 ? 0 : n
+  return v
+}
+
 export function getPlanNodeAt(plan: FloorPlan, gx: number, gz: number): PlanNode | undefined {
-  return plan.nodes.find((node) => node.gx === gx && node.gz === gz)
+  const x = normalizePlanCell(gx)
+  const z = normalizePlanCell(gz)
+  return plan.nodes.find((node) => node.gx === x && node.gz === z)
 }
 
 /** Linie zeichnen: Start- und Endknoten verbinden (keine Zwischenschritte im 48-cm-Raster). */
@@ -115,13 +123,17 @@ export function drawPlanLine(
   toGx: number,
   toGz: number,
 ): FloorPlan {
-  if (!isValidPlanLine(fromGx, fromGz, toGx, toGz)) return plan
+  const aGx = normalizePlanCell(fromGx)
+  const aGz = normalizePlanCell(fromGz)
+  const bGx = normalizePlanCell(toGx)
+  const bGz = normalizePlanCell(toGz)
+  if (!isValidPlanLine(aGx, aGz, bGx, bGz)) return plan
 
   let next = plan
-  next = addPlanNode(next, fromGx, fromGz)
-  next = addPlanNode(next, toGx, toGz)
-  const from = getPlanNodeAt(next, fromGx, fromGz)
-  const to = getPlanNodeAt(next, toGx, toGz)
+  next = addPlanNode(next, aGx, aGz)
+  next = addPlanNode(next, bGx, bGz)
+  const from = getPlanNodeAt(next, aGx, aGz)
+  const to = getPlanNodeAt(next, bGx, bGz)
   if (from && to) next = connectPlanNodes(next, from.id, to.id)
   return next
 }
@@ -246,17 +258,21 @@ export function snapPlanGridToNearestNode(
 }
 
 export function addPlanNode(plan: FloorPlan, gx: number, gz: number): FloorPlan {
-  const exists = plan.nodes.some((node) => node.gx === gx && node.gz === gz)
+  const x = normalizePlanCell(gx)
+  const z = normalizePlanCell(gz)
+  const exists = plan.nodes.some((node) => node.gx === x && node.gz === z)
   if (exists) return plan
   return {
     ...plan,
-    nodes: [...plan.nodes, { id: createId(), gx, gz }],
+    nodes: [...plan.nodes, { id: createId(), gx: x, gz: z }],
   }
 }
 
 export function togglePlanNode(plan: FloorPlan, gx: number, gz: number): FloorPlan {
-  const existing = plan.nodes.find((node) => node.gx === gx && node.gz === gz)
-  if (!existing) return addPlanNode(plan, gx, gz)
+  const x = normalizePlanCell(gx)
+  const z = normalizePlanCell(gz)
+  const existing = plan.nodes.find((node) => node.gx === x && node.gz === z)
+  if (!existing) return addPlanNode(plan, x, z)
   const nodeIds = new Set([existing.id])
   return {
     nodes: plan.nodes.filter((node) => node.id !== existing.id),
@@ -913,34 +929,180 @@ export function applyFloorPlanToState(
   })
 }
 
-/** Leitet den Grundriss aus verknüpften Studio-Wänden ab (Start-/Endpunkt im 48-cm-Raster). */
+/** Leitet den Grundriss aus verknüpften Studio-Wänden ab (Start-/Endpunkt im 8-cm-Raster). */
 export function floorPlanFromWalls(walls: Wall[]): FloorPlan {
-  let plan = createEmptyFloorPlan()
-  for (const wall of walls) {
-    if (!isStudioWall(wall)) continue
-    if (wall.planLinked === false) continue
+  const linked = walls.filter((wall) => isStudioWall(wall) && wall.planLinked !== false)
+  if (linked.length === 0) return createEmptyFloorPlan()
+
+  // Welt-Endpunkte clustern, bevor gerundet wird — sonst landen Stoßecken (z. B. nach
+  // 45°-Schrägstellen) auf unterschiedlichen Rasterzellen → offener Ring → keine Decke/Boden.
+  const mergeCm = PLAN_CLOSE_GAP_CM / 2
+  type Ref = { x: number; z: number }
+  const refs: Ref[] = []
+  const segments: Array<{ a: number; b: number }> = []
+  for (const wall of linked) {
     const start = wallStartPoint(wall)
     const end = wallEndPoint(wall)
-    const fromGx = Math.round(start.x / PLAN_GRID)
-    const fromGz = Math.round(start.z / PLAN_GRID)
-    const toGx = Math.round(end.x / PLAN_GRID)
-    const toGz = Math.round(end.z / PLAN_GRID)
-    if (fromGx === toGx && fromGz === toGz) continue
-    plan = drawPlanLine(plan, fromGx, fromGz, toGx, toGz)
+    const ai = refs.length
+    refs.push({ x: start.x, z: start.z })
+    const bi = refs.length
+    refs.push({ x: end.x, z: end.z })
+    if (Math.hypot(end.x - start.x, end.z - start.z) >= 0.5) {
+      segments.push({ a: ai, b: bi })
+    }
+  }
+
+  const parent = refs.map((_, i) => i)
+  const find = (i: number): number => {
+    let r = i
+    while (parent[r] !== r) r = parent[r]!
+    let c = i
+    while (c !== r) {
+      const next = parent[c]!
+      parent[c] = r
+      c = next
+    }
+    return r
+  }
+  const unite = (i: number, j: number) => {
+    const ri = find(i)
+    const rj = find(j)
+    if (ri !== rj) parent[rj] = ri
+  }
+  for (let i = 0; i < refs.length; i += 1) {
+    for (let j = i + 1; j < refs.length; j += 1) {
+      if (Math.hypot(refs[i]!.x - refs[j]!.x, refs[i]!.z - refs[j]!.z) <= mergeCm) {
+        unite(i, j)
+      }
+    }
+  }
+
+  const sums = new Map<number, { x: number; z: number; n: number }>()
+  for (let i = 0; i < refs.length; i += 1) {
+    const root = find(i)
+    const acc = sums.get(root) ?? { x: 0, z: 0, n: 0 }
+    acc.x += refs[i]!.x
+    acc.z += refs[i]!.z
+    acc.n += 1
+    sums.set(root, acc)
+  }
+  const gridOf = new Map<number, { gx: number; gz: number }>()
+  for (const [root, acc] of sums) {
+    gridOf.set(root, {
+      gx: normalizePlanCell(Math.round(acc.x / acc.n / PLAN_GRID)),
+      gz: normalizePlanCell(Math.round(acc.z / acc.n / PLAN_GRID)),
+    })
+  }
+
+  let plan = createEmptyFloorPlan()
+  for (const seg of segments) {
+    const from = gridOf.get(find(seg.a))
+    const to = gridOf.get(find(seg.b))
+    if (!from || !to) continue
+    for (const part of planSegmentsForWall(from.gx, from.gz, to.gx, to.gz)) {
+      plan = drawPlanLine(plan, part.fromGx, part.fromGz, part.toGx, part.toGz)
+    }
   }
   return removePlanChords(splitEdgesAtTJoints(sealNearClosedPlanGaps(plan)))
 }
 
 /**
- * Nach Raster-Snap können angedockte Wandenden 1 Zelle auseinander landen
+ * Eine oder zwei gültige Plan-Kanten (ortho/45°) zwischen zwei Rasterpunkten.
+ * Zuerst Einzelkante (ggf. Ziel anpassen), L-Pfad nur als Fallback — L-Pfade
+ * erzeugen T-Stöße auf bestehenden Wänden und lassen `extractPlanRings` offen.
+ */
+export function planSegmentsForWall(
+  fromGx: number,
+  fromGz: number,
+  toGx: number,
+  toGz: number,
+): Array<{ fromGx: number; fromGz: number; toGx: number; toGz: number }> {
+  const aGx = normalizePlanCell(fromGx)
+  const aGz = normalizePlanCell(fromGz)
+  const bGx = normalizePlanCell(toGx)
+  const bGz = normalizePlanCell(toGz)
+  if (aGx === bGx && aGz === bGz) return []
+  if (isValidPlanLine(aGx, aGz, bGx, bGz)) {
+    return [{ fromGx: aGx, fromGz: aGz, toGx: bGx, toGz: bGz }]
+  }
+  const nudged = nearestValidPlanEnd(aGx, aGz, bGx, bGz)
+  if (nudged) {
+    return [{ fromGx: aGx, fromGz: aGz, toGx: nudged.gx, toGz: nudged.gz }]
+  }
+  const elbows = [
+    { gx: aGx, gz: bGz },
+    { gx: bGx, gz: aGz },
+  ]
+  for (const elbow of elbows) {
+    if ((elbow.gx === aGx && elbow.gz === aGz) || (elbow.gx === bGx && elbow.gz === bGz)) {
+      continue
+    }
+    if (
+      isValidPlanLine(aGx, aGz, elbow.gx, elbow.gz) &&
+      isValidPlanLine(elbow.gx, elbow.gz, bGx, bGz)
+    ) {
+      return [
+        { fromGx: aGx, fromGz: aGz, toGx: elbow.gx, toGz: elbow.gz },
+        { fromGx: elbow.gx, fromGz: elbow.gz, toGx: bGx, toGz: bGz },
+      ]
+    }
+  }
+  return []
+}
+
+function nearestValidPlanEnd(
+  fromGx: number,
+  fromGz: number,
+  preferGx: number,
+  preferGz: number,
+): { gx: number; gz: number } | null {
+  let best: { gx: number; gz: number } | null = null
+  let bestDist = Infinity
+  const consider = (gx: number, gz: number) => {
+    if (gx === fromGx && gz === fromGz) return
+    if (!isValidPlanLine(fromGx, fromGz, gx, gz)) return
+    const dist = Math.hypot(gx - preferGx, gz - preferGz)
+    if (dist < bestDist) {
+      bestDist = dist
+      best = { gx, gz }
+    }
+  }
+  const span = Math.max(Math.abs(preferGx - fromGx), Math.abs(preferGz - fromGz), 1)
+  const dirs: Array<[number, number]> = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+    [1, 1],
+    [1, -1],
+    [-1, 1],
+    [-1, -1],
+  ]
+  for (const [dx, dz] of dirs) {
+    for (const steps of [span - 1, span, span + 1]) {
+      if (steps < 1) continue
+      consider(fromGx + dx * steps, fromGz + dz * steps)
+    }
+  }
+  for (let dgx = -6; dgx <= 6; dgx += 1) {
+    for (let dgz = -6; dgz <= 6; dgz += 1) {
+      consider(preferGx + dgx, preferGz + dgz)
+    }
+  }
+  return best
+}
+
+/**
+ * Nach Raster-Snap können angedockte Wandenden wenige Zellen auseinander landen
  * (Weltstoß rundet auf zwei Nachbarzellen). Offene Ringe → keine Decke/Boden.
- * Zwei Grad-1-Enden mit Chebyshev-Abstand 1 werden verbunden bzw. verschmolzen.
+ * Grad-1-Enden mit Chebyshev-Abstand bis ~48 cm (`PLAN_CLOSE_GAP_CM`) werden verbunden.
  */
 export function sealNearClosedPlanGaps(plan: FloorPlan): FloorPlan {
   const adj = buildAdjacency(plan)
   const degree1 = plan.nodes.filter((node) => (adj.get(node.id) ?? []).length === 1)
   if (degree1.length < 2) return plan
 
+  const maxCells = Math.max(1, Math.round(PLAN_CLOSE_GAP_CM / PLAN_GRID))
   let next = plan
   const used = new Set<string>()
   for (let i = 0; i < degree1.length; i += 1) {
@@ -952,7 +1114,7 @@ export function sealNearClosedPlanGaps(plan: FloorPlan): FloorPlan {
       const b = degree1[j]!
       if (used.has(b.id)) continue
       const dist = Math.max(Math.abs(a.gx - b.gx), Math.abs(a.gz - b.gz))
-      if (dist === 1 && dist < bestDist) {
+      if (dist >= 1 && dist <= maxCells && dist < bestDist) {
         best = b
         bestDist = dist
       }
@@ -960,12 +1122,11 @@ export function sealNearClosedPlanGaps(plan: FloorPlan): FloorPlan {
     if (!best) continue
     used.add(a.id)
     used.add(best.id)
-    // Gleiche Kante-Richtung: Enden verschmelzen (eine Zelle wählen), sonst kurze Kante ziehen.
     const sameAxis = a.gx === best.gx || a.gz === best.gz
-    if (sameAxis) {
+    if (bestDist === 1 && sameAxis) {
       // Endpunkt der längeren angebundenen Kante behalten → weniger Verzerrung.
       next = mergePlanNodes(next, a.id, best.id)
-    } else {
+    } else if (isValidPlanLine(a.gx, a.gz, best.gx, best.gz)) {
       next = drawPlanLine(next, a.gx, a.gz, best.gx, best.gz)
     }
   }

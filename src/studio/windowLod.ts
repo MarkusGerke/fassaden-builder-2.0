@@ -7,7 +7,7 @@ import {
   glazingArchGeom,
   insetArchGeom,
 } from '../utils/openingGeometry'
-import { createGlassMaterial, createTintedMaterial } from '../utils/threeColors'
+import { createGlassMaterial, createTintedMaterial, markWindowFrameSurface } from '../utils/threeColors'
 import type { OpeningGlassConfig } from '../utils/glassConfig'
 import type { SurfaceFinish } from '../types/facade'
 
@@ -122,6 +122,8 @@ export function createSimpleWindowMesh(
     frameColor,
     frameFinish,
   )
+  markWindowFrameSurface(frameMat)
+  frameMat.userData.skipFacadeShade = true
   const t = Math.min(FRAME_THICK, width * 0.12, height * 0.12)
   const depth = 3
   const form = resolveGlazingForm(glazingArch)

@@ -43,8 +43,11 @@
 | `STUDIO_TILE` | 32 cm | Grundraster für Studio-Wände |
 | `STUDIO_MASONRY` | 8 cm | Feines Raster (Streifen, Zierbänder). Läuferverband-Öffnungen: ½ Steinlänge |
 | `STUDIO_PANEL_SOFT_MAX` | 10000 cm | Soft-Obergrenze für Paneel-/Maß-Clamps (kein hartes UI-Max) |
-| `PLAN_GRID` | 48 cm | Grundriss-Gitterabstand / Wand-Verschieben (`WALL_MOVE_SNAP`) |
-| `DUPLICATE_GAP_CM` | 48 cm | Abstand Kante-zu-Kante beim Duplizieren von Wänden/Öffnungen |
+| `PLAN_GRID` | 8 cm | Welt-/Grundriss-Raster (Ablegen, Verschieben, Strecken); Schema 15 |
+| `PLAN_CLOSE_GAP_CM` | 48 cm | Andock-Magnet / Lücken schließen |
+| `DUPLICATE_GAP_CM` | 48 cm | Abstand Kante-zu-Kante beim Duplizieren |
+| `WALL_MOVE_SNAP` | 8 cm | SVG-Wandverschieben (= `PLAN_GRID`) |
+| `STUDIO_WALL_WIDTH_STEP` | 8 cm | Greifer/Toolbar-Breite; 45°: \(8\sqrt{2}\) |
 | `PLAN_DIAGONAL_STEP` | \(48\sqrt{2}\) cm | 45°-Wandschritt (Diagonale eines Rasterfeldes) |
 | `PLAN_DRAW_CELLS` | 32 | Zeichenfläche in Gitterzellen |
 | `WALL_DEPTH` | 32 cm | Standard-Wandstärke |

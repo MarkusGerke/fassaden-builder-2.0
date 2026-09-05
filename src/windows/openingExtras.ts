@@ -92,6 +92,7 @@ export function createInteriorShadeMesh(
   shade: OpeningInteriorShade,
 ): THREE.Group {
   const group = new THREE.Group()
+  group.userData.interiorShade = true
   const drop = shade.drop
   if (drop < 0.02) return group
   const color = shade.color ?? '#d8cfc4'

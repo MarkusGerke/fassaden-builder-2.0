@@ -97,7 +97,7 @@ Checkliste für den nächsten Fix:
 
 ## Aktuelle Schema-Version
 
-Siehe `FACADE_SCHEMA_VERSION` in `schemaMigrations.ts` (aktuell **14**).
+Siehe `FACADE_SCHEMA_VERSION` in `schemaMigrations.ts` (aktuell **15**).
 
 | Step | id | Wirkung |
 |---|---|---|
@@ -107,6 +107,7 @@ Siehe `FACADE_SCHEMA_VERSION` in `schemaMigrations.ts` (aktuell **14**).
 | 11 → 12 | `unchanged-defaults-sill-glass` | Außenbank-Tiefe: alte Code-Defaults (20/32/36/40/48) und Werte über 16 cm → 16 cm Maximum; Nutzerwerte darunter bleiben. Klarglas: `tint`+transparent → `physical`; Transmission 0,9/0,96/0,42 → **0** (echte Durchsicht + Spiegelung). **Regel:** geänderte Code-Defaults gelten für Bestands-Elemente, solange der gespeicherte Wert noch dem alten Default entspricht. |
 | 12 → 13 | `indoor-white-defaults` | Innenwand `interiorColor` Default Weiß. Decke/Boden: fehlende Farbe und alte Fallbacks `#9a8a7a` / `#8a7a6a` → Weiß; abweichende Nutzerfarben bleiben. |
 | 13 → 14 | `align-masonry-openings` | Bei Läufer-/Mauerwerksverband: Öffnungs-`x`/`y`/`width`/`height` auf Fugen und Schichten (`alignOpeningToMasonry`). Idempotent. Bei Überlappung nach Snap bleibt die Öffnung. Rundbogen: Stichmaß folgt der neuen Breite, wenn es zuvor ein Halbkreis war. |
+| 14 → 15 | `plan-grid-48-to-8` | Grundriss-Knoten: `gx`/`gz` ×6 (Zelle 48→8 cm), Weltpositionen unverändert. Wand-`originX`/`originZ` bleiben cm. |
 
 **Hydrate ohne Schema-Step (v0.7.247):**
 

@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type { FacadeState, Wall } from '../types/facade'
 import { emptyNeighbors } from '../types/facade'
 import { WALL_DEPTH } from '../constants/presets'
-import { applyWallGripCornerTarget, alongWidthDeltaFromMove, snapBranchYawDeg, attachAngledWallFromEnd, poseAngledWallFromEnd, wallEndPoint, wallStartPoint, miterAtWallEnd, repairBuildingPlanLinkedWalls, repairPlanLinkedWallFronts, snapBranchClose, splitStudioWallAt, branchClosesAgainstWalls, findAdjacentWalls, unselectedLinkedDiagonalWalls, offsetStudioWallsAlongFront, frontMoveStepCm, wallAlongDelta } from './walls'
-import { PLAN_DIAGONAL_STEP, PLAN_GRID, snapWallWidthCm, snapWallWidthDelta, wallWidthStepCm } from './constants'
+import { applyWallGripCornerTarget, alongWidthDeltaFromMove, snapBranchYawDeg, attachAngledWallFromEnd, poseAngledWallFromEnd, wallEndPoint, wallStartPoint, miterAtWallEnd, repairBuildingPlanLinkedWalls, repairPlanLinkedWallFronts, snapBranchClose, splitStudioWallAt, branchClosesAgainstWalls, findAdjacentWalls, unselectedLinkedDiagonalWalls, offsetStudioWallsAlongFront, frontMoveStepCm, wallAlongDelta, stretchStudioFacade, translateStudioCorner, skewStudioWallToDiagonal, linkedCornerNeighbor, pointsMeet } from './walls'
+import { PLAN_DIAGONAL_STEP, PLAN_GRID, snapWallWidthCm, snapWallWidthDelta, wallWidthStepCm, isDiagonalPlanYaw } from './constants'
 import { facadeOutward } from './elevation'
 import { finalizeStudioGeometry } from './planGeometry'
 
@@ -122,26 +122,26 @@ describe('snapBranchYawDeg', () => {
 })
 
 describe('wallWidthStepCm', () => {
-  it('48 cm achsparallel, Diagonale eines 48er-Feldes bei 45°', () => {
-    expect(wallWidthStepCm(0)).toBe(PLAN_GRID)
-    expect(wallWidthStepCm(90)).toBe(PLAN_GRID)
-    expect(wallWidthStepCm(180)).toBe(PLAN_GRID)
+  it('8 cm achsparallel, Diagonale eines 8er-Feldes bei 45°', () => {
+    expect(wallWidthStepCm(0)).toBe(8)
+    expect(wallWidthStepCm(90)).toBe(8)
+    expect(wallWidthStepCm(180)).toBe(8)
     expect(wallWidthStepCm(45)).toBeCloseTo(PLAN_DIAGONAL_STEP)
     expect(wallWidthStepCm(135)).toBeCloseTo(PLAN_DIAGONAL_STEP)
     expect(wallWidthStepCm(225)).toBeCloseTo(PLAN_DIAGONAL_STEP)
   })
 
   it('rastet 45°-Länge auf ganze Rasterdiagonalen', () => {
-    expect(snapWallWidthCm(20, 45)).toBe(0)
-    expect(snapWallWidthCm(40, 45)).toBeCloseTo(PLAN_DIAGONAL_STEP)
+    expect(snapWallWidthCm(5, 45)).toBe(0)
+    expect(snapWallWidthCm(20, 45)).toBeCloseTo(PLAN_DIAGONAL_STEP * 2)
     expect(snapWallWidthCm(PLAN_DIAGONAL_STEP * 1.6, 45)).toBeCloseTo(PLAN_DIAGONAL_STEP * 2)
   })
 
-  it('hält achsparallele Länge in 48 cm', () => {
-    expect(snapWallWidthCm(70, 0)).toBe(48)
-    expect(snapWallWidthDelta(192, 20, 0)).toBe(0)
-    expect(snapWallWidthDelta(192, 30, 0)).toBe(48)
-    expect(snapWallWidthDelta(PLAN_DIAGONAL_STEP, 40, 45)).toBeCloseTo(PLAN_DIAGONAL_STEP)
+  it('hält achsparallele Länge in 8 cm', () => {
+    expect(snapWallWidthCm(70, 0)).toBe(72)
+    expect(snapWallWidthDelta(192, 3, 0)).toBe(0)
+    expect(snapWallWidthDelta(192, 5, 0)).toBe(8)
+    expect(snapWallWidthDelta(PLAN_DIAGONAL_STEP, 40, 45)).toBeCloseTo(PLAN_DIAGONAL_STEP * 4)
   })
 })
 
@@ -168,7 +168,7 @@ describe('attachAngledWallFromEnd', () => {
     expect(out.x).toBeLessThan(0)
   })
 
-  it('setzt 45°-Wand auf die Diagonale eines 48-cm-Feldes (Endpunkt auf dem Raster)', () => {
+  it('setzt 45°-Wand auf die Diagonale eines 8-cm-Feldes (Endpunkt auf dem Raster)', () => {
     const next = attachAngledWallFromEnd(
       stateWith([studio('w', 0, 192)]),
       'w',
@@ -181,8 +181,8 @@ describe('attachAngledWallFromEnd', () => {
     expect(branch.width).toBeCloseTo(PLAN_DIAGONAL_STEP)
     expect(wallStartPoint(branch).x).toBeCloseTo(192)
     expect(wallStartPoint(branch).z).toBeCloseTo(0)
-    expect(wallEndPoint(branch).x).toBeCloseTo(240)
-    expect(wallEndPoint(branch).z).toBeCloseTo(-48)
+    expect(wallEndPoint(branch).x).toBeCloseTo(200)
+    expect(wallEndPoint(branch).z).toBeCloseTo(-8)
   })
 
   it('dreht die linke Abzweig-Wand so, dass Paneele zur Quelle (außen) zeigen', () => {
@@ -572,6 +572,61 @@ describe('snapBranchClose / Pfad schließen', () => {
   })
 })
 
+describe('translateStudioCorner / angrenzende Wand', () => {
+  function wallAt(
+    id: string,
+    originX: number,
+    originZ: number,
+    yawDeg: number,
+    width: number,
+  ): Wall {
+    return { ...studio(id, originX, width), originX, originZ, x: originX, yawDeg, panelFlip: true }
+  }
+
+  it('streckt die Stoßecke der Nachbarwand, Gegenseite bleibt', () => {
+    const a = wallAt('a', 0, 0, 0, 192)
+    const b = wallAt('b', 192, 0, 90, 192)
+    const next = offsetStudioWallsAlongFront(stateWith([a, b]), 'a', ['a'], 48, {
+      collinear: false,
+      returnWalls: false,
+    })
+    const walls = next.buildings[0]!.walls
+    const a2 = walls.find((w) => w.id === 'a')!
+    const b2 = walls.find((w) => w.id === 'b')!
+    expect(a2.originZ).toBeCloseTo(-48)
+    expect(wallStartPoint(b2).x).toBeCloseTo(192)
+    expect(wallStartPoint(b2).z).toBeCloseTo(-48)
+    expect(wallEndPoint(b2).x).toBeCloseTo(192)
+    expect(wallEndPoint(b2).z).toBeCloseTo(-192)
+    expect(b2.width).toBeCloseTo(144)
+  })
+
+  it('beim Verlängern: Nachbar folgt senkrecht, Länge entlang der Achse bleibt', () => {
+    const a = wallAt('a', 0, 0, 0, 192)
+    const b = wallAt('b', 192, 0, 90, 192)
+    const next = stretchStudioFacade(stateWith([a, b]), 'a', 'end', 48)
+    const walls = next.buildings[0]!.walls
+    const a2 = walls.find((w) => w.id === 'a')!
+    const b2 = walls.find((w) => w.id === 'b')!
+    expect(a2.width).toBe(240)
+    expect(wallEndPoint(a2).x).toBeCloseTo(240)
+    expect(wallEndPoint(b2).z).toBeCloseTo(-192)
+    expect(wallStartPoint(b2).z).toBeCloseTo(0)
+    expect(wallStartPoint(b2).x).toBeCloseTo(240)
+    expect(wallEndPoint(b2).x).toBeCloseTo(240)
+    expect(b2.width).toBeCloseTo(192)
+  })
+
+  it('translateStudioCorner: Front-Versatz streckt nur die Stoßseite', () => {
+    const b = wallAt('b', 192, 0, 90, 192)
+    const next = translateStudioCorner(stateWith([b]), { x: 192, z: 0 }, { x: 192, z: -48 })
+    const b2 = next.buildings[0]!.walls[0]!
+    expect(wallStartPoint(b2).z).toBeCloseTo(-48)
+    expect(wallEndPoint(b2).z).toBeCloseTo(-192)
+    expect(b2.width).toBeCloseTo(144)
+  })
+})
+
 describe('Front-Verschieben', () => {
   function wallAt(
     id: string,
@@ -592,7 +647,7 @@ describe('Front-Verschieben', () => {
 
   it('verschiebt die Wand nur entlang der Front', () => {
     const wall = wallAt('a', 0, 0, 0, 192)
-    expect(frontMoveStepCm(wall)).toBe(PLAN_GRID)
+    expect(frontMoveStepCm(wall)).toBe(8)
     const next = offsetStudioWallsAlongFront(stateWith([wall]), 'a', ['a'], 48)
     const moved = next.buildings[0]!.walls[0]!
     expect(moved.originX).toBeCloseTo(0)
@@ -702,5 +757,170 @@ describe('Front-Verschieben', () => {
     const b = wallAt('b', 192, 0, 0, 192)
     const next = offsetStudioWallsAlongFront(stateWith([a, b]), 'b', ['b'], 48)
     expect(next.buildings[0]!.walls.find((w) => w.id === 'a')!.originZ).toBeCloseTo(-48)
+  })
+})
+
+describe('skewStudioWallToDiagonal (Shift an verknüpfter Ecke)', () => {
+  function wallAt(
+    id: string,
+    originX: number,
+    originZ: number,
+    yawDeg: number,
+    width: number,
+    openings: Wall['openings'] = [],
+  ): Wall {
+    return {
+      ...studio(id, originX, width),
+      originX,
+      originZ,
+      x: originX,
+      yawDeg,
+      openings,
+      planLinked: true,
+    }
+  }
+
+  it('erkennt verknüpfte Ecken (90° und 135°), nicht freies Ende', () => {
+    const a = wallAt('a', 0, 0, 0, 192)
+    const b = wallAt('b', 192, 0, 90, 192)
+    const walls = [a, b]
+    expect(linkedCornerNeighbor(a, 'end', walls)?.id).toBe('b')
+    expect(linkedCornerNeighbor(a, 'start', walls)).toBeNull()
+
+    const diagLen = 96 * Math.SQRT2
+    const a45 = wallAt('a45', 0, 0, 45, diagLen)
+    const end45 = wallEndPoint(a45)
+    const b90 = wallAt('b90', end45.x, end45.z, 90, 192)
+    expect(linkedCornerNeighbor(a45, 'end', [a45, b90])?.id).toBe('b90')
+  })
+
+  it('stellt 90°→135°: Nachbar nur kürzer, Position/Fenster bleiben', () => {
+    // A kürzer als B, sonst liegt der 45°-Schnitt am fernen B-Ende.
+    const a = wallAt('a', 0, 0, 0, 96)
+    const b = wallAt('b', 96, 0, 90, 192, [
+      {
+        id: 'win',
+        type: 'window',
+        x: 48,
+        y: 96,
+        width: 96,
+        height: 192,
+      },
+    ])
+    const state = stateWith([a, b])
+    const bFarBefore = wallEndPoint(b)
+    const winWorldBefore = {
+      x: wallStartPoint(b).x + wallAlongDelta(90, 48 + 48).x,
+      z: wallStartPoint(b).z + wallAlongDelta(90, 48 + 48).z,
+    }
+
+    const next = skewStudioWallToDiagonal(state, 'a', 'end', -40, -80)
+    const walls = next.buildings[0]!.walls
+    const a2 = walls.find((w) => w.id === 'a')!
+    const b2 = walls.find((w) => w.id === 'b')!
+    expect(isDiagonalPlanYaw(a2.yawDeg ?? 0)).toBe(true)
+    expect(Math.abs((a2.yawDeg ?? 0) - 45) < 8 || Math.abs((a2.yawDeg ?? 0) - 315) < 8).toBe(true)
+    expect(pointsMeet(wallEndPoint(a2), wallStartPoint(b2)) || pointsMeet(wallEndPoint(a2), wallEndPoint(b2))).toBe(
+      true,
+    )
+    // Nachbar: ferne Ecke unverändert, nur Breite kleiner
+    expect(pointsMeet(wallEndPoint(b2), bFarBefore) || pointsMeet(wallStartPoint(b2), bFarBefore)).toBe(true)
+    expect(b2.width).toBeLessThan(192)
+    expect(b2.width).toBeGreaterThan(24)
+    // Fenster: Weltlage (Mitte) unverändert, lokales x angepasst
+    const along = wallAlongDelta(b2.yawDeg ?? 0, 1)
+    const ulen = Math.hypot(along.x, along.z) || 1
+    const winMidLocal = b2.openings[0]!.x + b2.openings[0]!.width / 2
+    const winWorldAfter = {
+      x: wallStartPoint(b2).x + (along.x / ulen) * winMidLocal,
+      z: wallStartPoint(b2).z + (along.z / ulen) * winMidLocal,
+    }
+    expect(winWorldAfter.x).toBeCloseTo(winWorldBefore.x, 0)
+    expect(winWorldAfter.z).toBeCloseTo(winWorldBefore.z, 0)
+    expect(walls).toHaveLength(2)
+  })
+
+  it('stellt die markierte Wand von 135° zurück auf 90°', () => {
+    const diagLen = 96 * Math.SQRT2
+    const a = wallAt('a', 0, 0, 45, diagLen)
+    const joint = wallEndPoint(a)
+    const b = wallAt('b', joint.x, joint.z, 90, 96)
+    // B geht weiter in −Z; ferne Ecke bei z = joint.z - 96
+    const state = stateWith([a, b])
+    expect(linkedCornerNeighbor(a, 'end', state.buildings[0]!.walls)?.id).toBe('b')
+
+    const next = skewStudioWallToDiagonal(state, 'a', 'end', 120, -20)
+    const a2 = next.buildings[0]!.walls.find((w) => w.id === 'a')!
+    const b2 = next.buildings[0]!.walls.find((w) => w.id === 'b')!
+    const yaw = a2.yawDeg ?? 0
+    expect(isDiagonalPlanYaw(yaw)).toBe(false)
+    expect(Math.abs(yaw) < 8 || Math.abs(yaw - 180) < 8 || Math.abs(yaw - 360) < 8).toBe(true)
+    expect(pointsMeet(wallEndPoint(a2), wallStartPoint(b2)) || pointsMeet(wallEndPoint(a2), wallEndPoint(b2))).toBe(
+      true,
+    )
+  })
+
+  it('ändert nichts am freien Ende (Abzweig macht der Aufrufer)', () => {
+    const a = wallAt('a', 0, 0, 0, 192)
+    const state = stateWith([a])
+    expect(linkedCornerNeighbor(a, 'end', state.buildings[0]!.walls)).toBeNull()
+    const next = skewStudioWallToDiagonal(state, 'a', 'end', -80, -120)
+    expect(next.buildings[0]!.walls).toHaveLength(1)
+    expect(next.buildings[0]!.walls[0]!.yawDeg ?? 0).toBe(0)
+  })
+
+  it('lehnt 45° ab, wenn der Nachbar darunter die Mindestbreite verliert', () => {
+    const a = wallAt('a', 0, 0, 0, 192)
+    const b = wallAt('b', 192, 0, 90, 192)
+    const next = skewStudioWallToDiagonal(stateWith([a, b]), 'a', 'end', -80, -120)
+    expect(next.buildings[0]!.walls.find((w) => w.id === 'a')!.yawDeg ?? 0).toBe(0)
+  })
+
+  it('ändert nur ausgewählte Etagen, nicht den vertikalen Stapel ohne Auswahl', () => {
+    const a0 = wallAt('a0', 0, 0, 0, 96)
+    const b0 = wallAt('b0', 96, 0, 90, 192)
+    const a1 = { ...wallAt('a1', 0, 0, 0, 96), y: 456, height: 456 }
+    const b1 = { ...wallAt('b1', 96, 0, 90, 192), y: 456, height: 456 }
+    const state = stateWith([a0, b0, a1, b1])
+    state.buildings[0]!.floors = [
+      { nodes: [], edges: [], showCeiling: true },
+      { nodes: [], edges: [], showCeiling: true },
+    ]
+
+    const next = skewStudioWallToDiagonal(state, 'a0', 'end', -40, -80, {
+      selectedWallIds: ['a0'],
+    })
+    const walls = next.buildings[0]!.walls
+    expect(isDiagonalPlanYaw(walls.find((w) => w.id === 'a0')!.yawDeg ?? 0)).toBe(true)
+    expect(walls.find((w) => w.id === 'a1')!.yawDeg ?? 0).toBe(0)
+    expect(walls.find((w) => w.id === 'a1')!.width).toBe(96)
+    expect(walls.find((w) => w.id === 'b1')!.width).toBe(192)
+    expect(next.buildings[0]!.floors[0]!.showCeiling).toBe(true)
+  })
+
+  it('zieht markierte OG-Wände mit, wenn sie ausgewählt sind', () => {
+    const a0 = wallAt('a0', 0, 0, 0, 96)
+    const b0 = wallAt('b0', 96, 0, 90, 192)
+    const a1 = { ...wallAt('a1', 0, 0, 0, 96), y: 456, height: 456 }
+    const b1 = { ...wallAt('b1', 96, 0, 90, 192), y: 456, height: 456 }
+    const next = skewStudioWallToDiagonal(stateWith([a0, b0, a1, b1]), 'a0', 'end', -40, -80, {
+      selectedWallIds: ['a0', 'a1'],
+    })
+    const walls = next.buildings[0]!.walls
+    expect(isDiagonalPlanYaw(walls.find((w) => w.id === 'a0')!.yawDeg ?? 0)).toBe(true)
+    expect(isDiagonalPlanYaw(walls.find((w) => w.id === 'a1')!.yawDeg ?? 0)).toBe(true)
+  })
+
+  it('stretchStudioFacade hält Öffnungen auf der gestreckten Wand', () => {
+    const a = wallAt('a', 0, 0, 0, 192, [
+      { id: 'win', type: 'window', x: 40, y: 96, width: 96, height: 192 },
+    ])
+    const b = wallAt('b', 192, 0, 90, 192)
+    const next = stretchStudioFacade(stateWith([a, b]), 'a', 'end', 48)
+    const a2 = next.buildings[0]!.walls.find((w) => w.id === 'a')!
+    expect(a2.width).toBe(240)
+    expect(a2.openings).toHaveLength(1)
+    expect(a2.openings[0]!.x).toBe(40)
+    expect(a2.openings[0]!.width).toBe(96)
   })
 })

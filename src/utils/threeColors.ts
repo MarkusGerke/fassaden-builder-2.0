@@ -7,7 +7,7 @@ import {
   resolveGlassConfig,
   type OpeningGlassConfig,
 } from './glassConfig'
-import { surfaceFinishParams } from './surfaceFinish'
+import { surfaceFinishParams, normalizeSurfaceFinish } from './surfaceFinish'
 
 function isGlassLike(material: THREE.Material): boolean {
   const name = material.name.toLowerCase()
@@ -18,6 +18,11 @@ function isGlassLike(material: THREE.Material): boolean {
 }
 
 let glassEnvMap: THREE.Texture | null = null
+/**
+ * 0…1+ Skala für Außen-/Glas-EnvMap — nachts ≈0, damit Paneele nicht
+ * tagshelle CubeCamera-Reflexion als Mittelgrau behalten.
+ */
+let exteriorEnvFillFactor = 1
 
 export function setGlassEnvironment(map: THREE.Texture | null) {
   glassEnvMap = map
@@ -25,6 +30,60 @@ export function setGlassEnvironment(map: THREE.Texture | null) {
 
 export function getGlassEnvironment(): THREE.Texture | null {
   return glassEnvMap
+}
+
+export function getExteriorEnvFillFactor(): number {
+  return exteriorEnvFillFactor
+}
+
+/** Celestial-abhängige Env-Stärke (Tag 1, Mond ~0,35, Sternennacht ~0,05). */
+export function setExteriorEnvFillFactor(factor: number): void {
+  exteriorEnvFillFactor = THREE.MathUtils.clamp(factor, 0, 1.5)
+}
+
+function scaledEnvIntensity(base: number): number {
+  return base * exteriorEnvFillFactor
+}
+
+function rememberBaseEnvIntensity(material: THREE.MeshStandardMaterial, base: number): number {
+  material.userData.baseEnvMapIntensity = base
+  return scaledEnvIntensity(base)
+}
+
+/** EnvMap-Intensitäten an aktuellem Fill-Faktor ausrichten (nach Tageszeit-Wechsel). */
+export function syncEnvMapFillIntensities(root: THREE.Object3D): void {
+  root.traverse((child) => {
+    if (!(child instanceof THREE.Mesh) || child.name === 'studioGround') return
+    const materials = Array.isArray(child.material) ? child.material : [child.material]
+    for (const material of materials) {
+      if (!(material instanceof THREE.MeshStandardMaterial)) continue
+      if (material.name === 'studioGround') continue
+      if (!material.envMap && !isGlassLike(material)) continue
+
+      const stored = material.userData.baseEnvMapIntensity as number | undefined
+      if (typeof stored === 'number' && Number.isFinite(stored)) {
+        material.envMapIntensity = scaledEnvIntensity(stored)
+        continue
+      }
+      if (isGlassLike(material)) {
+        const base =
+          material instanceof THREE.MeshPhysicalMaterial && material.transmission > 0.5
+            ? 2.6
+            : material.transparent
+              ? 2.4
+              : 1.8
+        material.userData.baseEnvMapIntensity = base
+        material.envMapIntensity = scaledEnvIntensity(base)
+      } else if (material.userData.forceExteriorEnv === true) {
+        const base = material.metalness > 0.08 ? 0.75 : 0.58
+        material.userData.baseEnvMapIntensity = base
+        material.envMapIntensity = scaledEnvIntensity(base)
+      } else if (material.userData.interiorWallSurface === true) {
+        material.userData.baseEnvMapIntensity = 0.55
+        material.envMapIntensity = scaledEnvIntensity(0.55)
+      }
+    }
+  })
 }
 
 /** EnvMap an Glas- und Glanz-Materialien hängen (nach CubeCamera-Bake). */
@@ -36,20 +95,57 @@ export function bindMaterialsToGlassEnv(root: THREE.Object3D) {
     for (const material of materials) {
       if (!(material instanceof THREE.MeshStandardMaterial)) continue
       if (material.name === 'studioGround') continue
-      if (isGlassLike(material) || material.envMap || material.envMapIntensity > 0.2) {
-        material.envMap = glassEnvMap
-        material.needsUpdate = true
+
+      // Ohne forceExteriorEnv: matte Rahmen ohne Env (Legacy). Mit Außen-Finish
+      // (finishOpeningFrameTree) teilen Rahmen die CubeCamera mit Wand/Laibung.
+      const finish = material.userData.surfaceFinish as string | undefined
+      const matteWithoutExteriorEnv =
+        material.userData.forceExteriorEnv !== true &&
+        !isGlassLike(material) &&
+        (finish === 'matte' ||
+          (material.userData.windowFrameSurface === true &&
+            finish !== 'glossy' &&
+            finish !== 'metal'))
+      if (matteWithoutExteriorEnv) {
+        if (material.envMap) {
+          material.envMap = null
+          material.needsUpdate = true
+        }
+        continue
+      }
+
+      const assignEnv = (base: number, opts?: { minIntensity?: boolean }) => {
+        const next = scaledEnvIntensity(base)
+        const intensity =
+          opts?.minIntensity === true ? Math.max(material.envMapIntensity, next) : next
+        material.userData.baseEnvMapIntensity = base
+        if (material.envMap !== glassEnvMap || Math.abs(material.envMapIntensity - intensity) > 1e-5) {
+          material.envMap = glassEnvMap
+          material.envMapIntensity = intensity
+          material.needsUpdate = true
+        }
+      }
+
+      if (isGlassLike(material)) {
+        const base =
+          typeof material.userData.baseEnvMapIntensity === 'number'
+            ? material.userData.baseEnvMapIntensity
+            : material instanceof THREE.MeshPhysicalMaterial && material.transmission > 0.5
+              ? 2.6
+              : material.transparent
+                ? 2.4
+                : 1.8
+        assignEnv(base)
       } else if (material.userData.interiorWallSurface === true) {
-        material.envMap = glassEnvMap
-        material.envMapIntensity = Math.max(material.envMapIntensity, 0.55)
-        material.needsUpdate = true
-      } else if (material.userData.exteriorSurface === true) {
-        material.envMap = glassEnvMap
-        material.envMapIntensity = Math.max(
-          material.envMapIntensity,
-          material.metalness > 0.08 ? 0.75 : 0.58,
-        )
-        material.needsUpdate = true
+        assignEnv(0.55, { minIntensity: true })
+      } else if (material.userData.forceExteriorEnv === true) {
+        assignEnv(material.metalness > 0.08 ? 0.75 : 0.58)
+      } else if (material.envMap || material.envMapIntensity > 0.2) {
+        // Glänzend / Metall ohne forceExteriorEnv
+        if (material.envMap !== glassEnvMap) {
+          material.envMap = glassEnvMap
+          material.needsUpdate = true
+        }
       }
     }
   })
@@ -127,7 +223,7 @@ export function applyGlassLook(material: THREE.MeshPhysicalMaterial, config: Ope
     material.roughness = Math.min(config.roughness, 0.02)
     material.attenuationColor.set('#ffffff')
     material.attenuationDistance = Infinity
-    material.envMapIntensity = glassEnvMap ? 2.6 : 0
+    material.envMapIntensity = glassEnvMap ? rememberBaseEnvIntensity(material, 2.6) : 0
   } else if (seeThrough) {
     material.color.set(tint)
     material.transparent = true
@@ -135,7 +231,7 @@ export function applyGlassLook(material: THREE.MeshPhysicalMaterial, config: Ope
     material.transmission = 0
     material.thickness = config.thickness
     material.attenuationDistance = Infinity
-    material.envMapIntensity = glassEnvMap ? 2.4 : 0
+    material.envMapIntensity = glassEnvMap ? rememberBaseEnvIntensity(material, 2.4) : 0
   } else {
     material.color.set(tint)
     material.transparent = false
@@ -144,7 +240,7 @@ export function applyGlassLook(material: THREE.MeshPhysicalMaterial, config: Ope
     material.thickness = config.thickness
     material.attenuationColor.set('#ffffff')
     material.attenuationDistance = Math.max(24, config.thickness * 12)
-    material.envMapIntensity = glassEnvMap ? 1.8 : 0
+    material.envMapIntensity = glassEnvMap ? rememberBaseEnvIntensity(material, 1.8) : 0
   }
   material.needsUpdate = true
 }
@@ -263,10 +359,12 @@ export function applySurfaceFinish(
   material: THREE.MeshStandardMaterial,
   finish?: SurfaceFinish | null,
 ): void {
-  const params = surfaceFinishParams(finish)
+  const normalized = normalizeSurfaceFinish(finish)
+  const params = surfaceFinishParams(normalized)
+  material.userData.surfaceFinish = normalized
   material.roughness = params.roughness
   material.metalness = params.metalness
-  material.envMapIntensity = params.envMapIntensity
+  material.envMapIntensity = rememberBaseEnvIntensity(material, params.envMapIntensity)
   // Ohne scene.environment: Studio-EnvMap nur am Material (Glas / Glanz).
   if (params.useEnvMap && glassEnvMap) {
     material.envMap = glassEnvMap
@@ -276,16 +374,24 @@ export function applySurfaceFinish(
   material.needsUpdate = true
 }
 
+/** Markiert Holz/Rahmen eines Fensters/Tür — bindMaterialsToGlassEnv lässt Env weg. */
+export function markWindowFrameSurface(material: THREE.MeshStandardMaterial): void {
+  material.userData.windowFrameSurface = true
+}
+
 /** Render-Modus: Außenflächen reflektieren Himmel/Szene (CubeCamera-EnvMap). */
 export function applyRenderExteriorSurfaceLook(material: THREE.MeshStandardMaterial): void {
   material.userData.exteriorSurface = true
+  // Explizit gewünscht (Paneel/Profil) — nicht nur Facade-Shade-Flag.
+  material.userData.forceExteriorEnv = true
   const env = getGlassEnvironment()
+  const base = material.metalness > 0.08 ? 0.75 : 0.58
   if (env) {
     material.envMap = env
-    material.envMapIntensity = Math.max(
-      material.envMapIntensity,
-      material.metalness > 0.08 ? 0.75 : 0.58,
-    )
+    material.envMapIntensity = rememberBaseEnvIntensity(material, base)
+  } else {
+    material.userData.baseEnvMapIntensity = base
+    material.envMapIntensity = scaledEnvIntensity(base)
   }
   material.roughness = Math.min(material.roughness, 0.78)
   material.metalness = Math.min(material.metalness, 0.06)
@@ -296,9 +402,13 @@ export function applyRenderExteriorSurfaceLook(material: THREE.MeshStandardMater
 export function applyRenderInteriorSurfaceLook(material: THREE.MeshStandardMaterial): void {
   material.userData.interiorWallSurface = true
   const env = getGlassEnvironment()
+  const base = 0.55
   if (env) {
     material.envMap = env
-    material.envMapIntensity = Math.max(material.envMapIntensity, 0.55)
+    material.envMapIntensity = rememberBaseEnvIntensity(material, base)
+  } else {
+    material.userData.baseEnvMapIntensity = base
+    material.envMapIntensity = scaledEnvIntensity(base)
   }
   material.roughness = Math.min(material.roughness, 0.86)
   material.needsUpdate = true

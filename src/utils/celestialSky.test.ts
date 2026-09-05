@@ -63,6 +63,34 @@ describe('celestialSky', () => {
     expect(pal.horizon.b).toBeGreaterThan(0.4)
   })
 
+  it('Sternennacht hat kein Key-Licht', () => {
+    const state = resolveCelestialState({
+      ...DEFAULT_SUN_SETTINGS,
+      month: 9,
+      day: 20,
+      timeOfDay: 0,
+      elevationRad: -0.5,
+      azimuth: 180,
+    })
+    expect(state.activeLight).toBe('night')
+    expect(state.lightIntensity).toBe(0)
+    expect(state.skyAmbientFactor).toBeLessThan(0.03)
+  })
+
+  it('Mondlicht ist kühl (hohe Kelvin)', () => {
+    const solar = solarPosition(dayOfYearFromMonthDay(9, 5), 0)
+    const state = resolveCelestialState({
+      ...DEFAULT_SUN_SETTINGS,
+      month: 9,
+      day: 5,
+      timeOfDay: 0,
+      azimuth: solar.azimuthDeg,
+      elevationRad: solar.elevationRad,
+    })
+    expect(state.activeLight).toBe('moon')
+    expect(state.lightColorTemp).toBeGreaterThanOrEqual(7800)
+  })
+
   it('directionFromSolar zeigt nach oben bei Elevation 90°', () => {
     const dir = directionFromSolar(0, Math.PI / 2)
     expect(dir.y).toBeCloseTo(1, 3)

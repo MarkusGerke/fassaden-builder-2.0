@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.173'
+export const APP_VERSION = '2.0.228'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,487 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.228',
+    date: '2026-09-06',
+    title: 'Erker-Vorschau von außen',
+    changes: [
+      'Bibliothek Erker: Vorschau geometrisch korrigiert — Ansicht von draußen schräg oben, Front dem Betrachter zugewandt',
+    ],
+  },
+  {
+    version: '2.0.227',
+    date: '2026-09-06',
+    title: 'Erker: Außenseiten und Verschieben',
+    changes: [
+      '90°- und 45°-Erker: Paneele/Sockel auf den Schenkeln wieder außen (auch bei gedrehter Wand)',
+      'Klick markiert alle drei Erker-Flächen; Ziehen verschiebt sie auf der Wand (Reststücke schrumpfen/wachsen)',
+      'Erker-Breite nicht per Greifer änderbar — Löschen macht flache Wand, Bibliothek tauscht das Preset (Karte umrandet)',
+    ],
+  },
+  {
+    version: '2.0.226',
+    date: '2026-09-05',
+    title: 'Erker als Segment verschieben',
+    changes: [
+      'Erker auf Wand: behält Vorlagenbreite als Segment (nicht mehr automatisch volle Wandbreite)',
+      'Dialog: „Als Segment“ oder „An Wandbreite“; eingebetteten Erker in 3D entlang der Fassade ziehen',
+    ],
+  },
+  {
+    version: '2.0.225',
+    date: '2026-09-05',
+    title: 'Erker-Vorlagen mit Fenstern',
+    changes: [
+      'Bibliothek Erker: 16 Varianten (90°/45°, Front 192–576, Tiefe 96/144) mit echten Fenstern',
+      'Front: 96×192-Fenster (Abstand ≥ 48, Rand ≥ 24); Schenkel: 48×192 bei Tiefe 96, 96×192 bei Tiefe 144',
+      'Vorschau schräg von oben; Fenster nach dem Einfügen verschieben und löschen wie gewöhnlich',
+    ],
+  },
+  {
+    version: '2.0.224',
+    date: '2026-09-05',
+    title: 'Erker-Schenkel wie Vorlage',
+    changes: [
+      'Erker 90°/45°: alle drei Wände zeigen Paneele und Sockel nach außen — kein schwarzer Schenkel mehr',
+      'Erker-Wände werden beim Ablegen nicht mehr von der Gruppen-Frontangleichung umgedreht',
+    ],
+  },
+  {
+    version: '2.0.223',
+    date: '2026-09-05',
+    title: 'Wand-Bibliothek und Rechtsklick Kopieren',
+    changes: [
+      'Bibliothek Wände: Endstücke und Wände mit Fenster/Tür entfernt — nur noch reine Längen',
+      'Rechtsklick auf Fenster/Tür: „Fenster/Tür kopieren“ und „Stil kopieren“ direkt im Menü',
+    ],
+  },
+  {
+    version: '2.0.222',
+    date: '2026-09-05',
+    title: 'Erker 90°/45° nach Vorlage, Segment tauschen',
+    changes: [
+      'Bibliothek-Erker: Front 288 cm, Tiefe 192 cm (90° und 45°)',
+      '90°: Front = Segmentbreite; 45°: Schenkel fest, Front passt sich an',
+      'Nach Herauslösen einer Wandbreite: Erker-Karte ersetzt das markierte Segment',
+    ],
+  },
+  {
+    version: '2.0.221',
+    date: '2026-09-05',
+    title: 'Wände immer auf dem 8-cm-Raster',
+    changes: [
+      'Ablegen, Verschieben und Strecken rastet auf 8 cm — freie Wände schließen wieder bündig',
+      '45°-Wände: Länge = Diagonale eines n×n-8er-Feldes (zwei 8-cm-Schenkel)',
+      'Mindestlänge beim Verlängern 8 cm (vorher 24)',
+    ],
+  },
+  {
+    version: '2.0.220',
+    date: '2026-09-05',
+    title: 'Wandlücken unter 48 cm schließen automatisch',
+    changes: [
+      'Wandenden mit Abstand unter 48 cm (kollinear oder im Winkel) andocken automatisch',
+      'Die Lücke wird geschlossen und die Wände verknüpft — Boden/Decke können wieder schließen',
+    ],
+  },
+  {
+    version: '2.0.219',
+    date: '2026-09-05',
+    title: 'Boden/Decke nach Schrägstellen geschlossen',
+    changes: [
+      'Nach 45°-Ecken bleibt der Grundrissring geschlossen — Boden und Decke fehlen nicht mehr',
+      'Stoßecken werden vor dem 48-cm-Raster zusammengeführt; −0-Rasterzellen korrigiert',
+    ],
+  },
+  {
+    version: '2.0.218',
+    date: '2026-09-05',
+    title: 'Schrägstellen nur ausgewählte Etagen',
+    changes: [
+      'Shift 90°↔135° gilt nur für markierte Wände — andere Geschosse ohne Auswahl bleiben unverändert',
+      'Boden/Decke pro Etage aus deren Wänden; Decke nach Schrägstellen bleibt sichtbar',
+    ],
+  },
+  {
+    version: '2.0.217',
+    date: '2026-09-05',
+    title: 'Ecken-Skew ohne Nachbar-Versatz',
+    changes: [
+      'Shift 90°↔135°: Nachbarwand nur in der Breite kürzen/verlängern — Position und Fenster bleiben',
+      'Kopfverband an 45°-Ecken: Endsteine als Binder/½-Binder (nicht mehr als Läuferbreite)',
+    ],
+  },
+  {
+    version: '2.0.216',
+    date: '2026-09-05',
+    title: 'Shift: Ecke umschalten vs. freies Ende',
+    changes: [
+      'Shift am Greifer einer verknüpften Ecke (90° oder 135°) schaltet den Winkel um — keine neue Wand',
+      'Nur am freien Ende erzeugt Shift weiterhin eine Abzweig-Wand (45°/90°)',
+    ],
+  },
+  {
+    version: '2.0.215',
+    date: '2026-09-05',
+    title: '45°-Schrägstellen an Ecken',
+    changes: [
+      'Shift + Greifer an einer 90°-Ecke stellt die markierte Wand auf 45° (Nachbar bleibt verbunden)',
+      'Maßänderungen halten verknüpfte Stoß-Nachbarn mit; Öffnungen werden nicht gelöscht oder verschoben',
+    ],
+  },
+  {
+    version: '2.0.214',
+    date: '2026-09-05',
+    title: 'Bibliothek spiegelt und ersetzt Öffnungen',
+    changes: [
+      'Fenster/Tür wählen → passender Bibliothek-Tab und aktive Karte (auch bei leicht abweichendem Fugenmaß)',
+      'Anderes Preset/Vorlage anklicken ersetzt die Auswahl — legt keine zweite Öffnung mehr daneben',
+    ],
+  },
+  {
+    version: '2.0.213',
+    date: '2026-09-05',
+    title: 'Breitenrichtung und Fenstermaß',
+    changes: [
+      'Wand- und Fensterbreite: Umschalter „nach links“ / „nach rechts“ über dem Maßfeld',
+      'Fensterbreite bleibt bei Eingabe (z. B. 96 cm) — wird nicht mehr auf die nächste Fugen-Spannweite aufgeblasen',
+    ],
+  },
+  {
+    version: '2.0.212',
+    date: '2026-09-05',
+    title: 'Wandbreite bei verknüpften Wänden',
+    changes: [
+      'Maße → Breite und Links/Rechts ± strecken verknüpfte Wände wie die 3D-Greifer — kein „Zuerst Wand lösen“ mehr nur fürs Strecken',
+    ],
+  },
+  {
+    version: '2.0.211',
+    date: '2026-09-05',
+    title: 'Fenstermaß und Abstandsmaße',
+    changes: [
+      'Bibliothek Fenster 96×192 bleibt 96 cm breit — Verschieben/Einfügen bläht die Breite nicht mehr auf Fugen zu 104 cm auf',
+      'Abstandslabels: nur Nachbarn in derselben Reihe (Y-Überlappung); Maßlinien in 3D zuverlässiger',
+    ],
+  },
+  {
+    version: '2.0.210',
+    date: '2026-09-05',
+    title: 'Auswahl-Toolbar Farben und Bibliothek',
+    changes: [
+      'Farben: RGB/HSL/HEX erscheinen erst nach Klick auf den Farbswatch — überall gleich',
+      'Wandfarben: „Paneele / Ziegel“ statt Verkleidungsfarbe; Stein-Kontrast/-Häufigkeit darunter',
+      'Fassade: überflüssige Paneele-/Mauerwerk-Überschriften ausgeblendet; Fugen-Abstände wie üblich',
+      'Sockel: Profilvorschau und Drehung in den Einstellungen ausgeblendet (Bibliothek bleibt)',
+      'Bibliothek bei Wandauswahl: Tabs „Wände“ und „Licht“ ausgeblendet',
+    ],
+  },
+  {
+    version: '2.0.209',
+    date: '2026-09-05',
+    title: 'Szene-Farben Neutral, UI aufgeräumt',
+    changes: [
+      'Szene: Umgebung-Duplikat, Laub, „Alle drei“ und Himmelsfarbe ausgeblendet (IDs bleiben)',
+      'Neutral: Hintergrund und Bodenfarbe steuern Kuppel/Boden (Default Beige #E8E3DD, nachts abdunkeln)',
+      'Hinweise zu Tageszyklus vs. Animationen pausieren klarer',
+    ],
+  },
+  {
+    version: '2.0.208',
+    date: '2026-09-05',
+    title: 'Auswahl bleibt auf Maße oder letztem Tab',
+    changes: [
+      'Objekt markieren springt nicht mehr automatisch auf Farben — erster Tab (Maße) oder der zuletzt geöffnete Reiter, an dem gearbeitet wurde',
+    ],
+  },
+  {
+    version: '2.0.207',
+    date: '2026-09-05',
+    title: 'Frontlage, Schatten, Undo, Verdachung, Etage',
+    changes: [
+      'Standard-Frontlage Fenster/Türen: 32 cm auch wenn der Gebäude-Offset fehlt',
+      'Schatten-Kontrast bis 5 (Neutral): mehr Spielraum für kräftigere Schatten',
+      'Undo: erster Klick nach Verschieben wirkt wieder sofort',
+      'Abstandsmaße zwischen Öffnungen stimmen zum sichtbaren Elementabstand; Positionen im 8-cm-Raster',
+      'Verdachung: offene/geschlossene Formen und Horizontalen in den Einstellungen; geschlossene optional rückseitig verschlossen',
+      'Fensterrahmen bleiben bei Sonne hell (nicht mehr dunkelgrau)',
+      'Gültig für „Etage“: Paneele und Stil einfügen gelten für die ganze Etage',
+    ],
+  },
+  {
+    version: '2.0.206',
+    date: '2026-09-05',
+    title: 'Profil-Auswahl wieder hellorange',
+    changes: [
+      'Gesims/Sockel/Profile: Auswahlmarkierung ist wieder hellorange wie bei Wänden — nicht mehr dunkelrot durch Beleuchtung und Tone-Mapping',
+    ],
+  },
+  {
+    version: '2.0.205',
+    date: '2026-09-05',
+    title: 'Gesims und Sockel wieder orange',
+    changes: [
+      'Auswahl von Gesims, Sockel und Fensterprofilen färbt die Teile wieder orange — nicht nur Zierbänder',
+    ],
+  },
+  {
+    version: '2.0.204',
+    date: '2026-09-05',
+    title: 'Profil-Auswahl ohne Haus-Sprung',
+    changes: [
+      'Gesims/Sockel/Profile auswählen: das Haus springt nicht mehr horizontal in der Breite — feste Höhe der unteren Bibliothek hält den Kamera-Aspekt stabil',
+    ],
+  },
+  {
+    version: '2.0.203',
+    date: '2026-09-05',
+    title: 'Nach Reload ganzes Haus sichtbar',
+    changes: [
+      '3D nach Neuladen: Kamera rahmt wieder das gesamte Gebäude ein — nicht mehr eine einzelne Wand aus der Nähe',
+    ],
+  },
+  {
+    version: '2.0.202',
+    date: '2026-09-05',
+    title: 'Sonnen-Schatten ohne Sprünge',
+    changes: [
+      'Tageszeit- und Sonnenwinkel-Slider: Schatten folgen flüssig mit (jedes Frame), statt in Debounce-Schritten zu springen',
+    ],
+  },
+  {
+    version: '2.0.201',
+    date: '2026-09-05',
+    title: 'Schatten folgen Sonnenwinkel wieder live',
+    changes: [
+      'Tageszeit- und Sonnenwinkel-Slider: Schatten wandern wieder mit (gedrosselt), nicht erst beim Loslassen',
+    ],
+  },
+  {
+    version: '2.0.200',
+    date: '2026-09-05',
+    title: 'Sockel überlagert Paneele ohne Lücke',
+    changes: [
+      'Bei größerer Paneelhöhe bleibt die Reihe über dem Sockel sichtbar — überlappende Steine werden gekürzt statt ausgeblendet; der Sockel liegt davor',
+    ],
+  },
+  {
+    version: '2.0.199',
+    date: '2026-09-05',
+    title: 'Decken und Dach nach Reload wieder da',
+    changes: [
+      'Nach dem Neuladen fehlen Decken, Fußböden und Dach nicht mehr — sie werden beim Start wieder mitgebaut',
+    ],
+  },
+  {
+    version: '2.0.198',
+    date: '2026-09-05',
+    title: 'Cmd+A nur Bühne, kein UI-Text',
+    changes: [
+      'Cmd/Ctrl+A markiert keine Interface-Texte mehr — nur Bühnen-Inhalte (Wände bzw. Lichter); in Eingabefeldern bleibt Textauswahl',
+    ],
+  },
+  {
+    version: '2.0.197',
+    date: '2026-09-05',
+    title: 'Weiche Schatten auch beim Orbit',
+    changes: [
+      'Beim Orbitieren bleiben weiche Schatten weich — kein 1-Tap-PCSS mehr und volle Auflösung im Render-Modus; als Regel festgehalten',
+    ],
+  },
+  {
+    version: '2.0.196',
+    date: '2026-09-05',
+    title: 'Keine Wandfarben-Flashes beim Orbit',
+    changes: [
+      'Beim Orbitieren bleibt die Wandfarbe stabil — kein PCSS-Lite-Umschalten und kein EnvMap-Flackern mehr',
+    ],
+  },
+  {
+    version: '2.0.195',
+    date: '2026-09-05',
+    title: 'Cmd+A wählt alle Wände',
+    changes: [
+      'Cmd/Ctrl+A wählt alle sichtbaren Wände des aktiven Hauses (im Lichtmodus alle Lichter) — nicht mehr den Interface-Text',
+    ],
+  },
+  {
+    version: '2.0.194',
+    date: '2026-09-05',
+    title: 'Typ-Scope nur gleiche Maße',
+    changes: [
+      'Gültig für „Typ“ ändert nur Öffnungen mit gleichem Typ und gleichen Maßen — Auswahl mehrerer Größen trifft jeweils ihre Maß-Gruppe',
+    ],
+  },
+  {
+    version: '2.0.193',
+    date: '2026-09-05',
+    title: 'Shift-Rechteckauswahl',
+    changes: [
+      'Ohne Auswahl: Shift+Ziehen rahmt ein Rechteck — nur vollständig eingerahmte Wände, Öffnungen oder Lichter werden gewählt',
+    ],
+  },
+  {
+    version: '2.0.192',
+    date: '2026-09-05',
+    title: 'Bühnenwahl markiert die Ebenen-Zeile',
+    changes: [
+      'Auswahl in der Bühne (Wand, Fenster, Decke, Licht, …) markiert dieselbe Zeile im Ebenenbaum — Vorfahren werden aufgeklappt',
+    ],
+  },
+  {
+    version: '2.0.191',
+    date: '2026-09-05',
+    title: 'Nachbarwand streckt an der Stoßecke',
+    changes: [
+      'Beim Verschieben oder Verlängern einer Wand wird die angrenzende Ecke der Nachbarwand länger/kürzer — die gegenüberliegende Seite bleibt stehen',
+    ],
+  },
+  {
+    version: '2.0.190',
+    date: '2026-09-05',
+    title: 'Wand-Greifer wirklich in 24-cm-Schritten',
+    changes: [
+      'Links/Rechts-Greifer ändern die Länge nur noch in 24-cm-Sprüngen — kein cm-Freilauf mehr durch Kanten-Snap',
+    ],
+  },
+  {
+    version: '2.0.189',
+    date: '2026-09-05',
+    title: 'Wände nur in 24-cm-Schritten',
+    changes: [
+      'Greifer, Toolbar ± und Shift-Abzweig ändern die Wandlänge nur noch in 24-cm-Schritten (45°: Diagonale 24×24)',
+      'Mindestlänge einer Wand ist 24 cm; Pfad schließen rastet weiter mit 48-cm-Magnet',
+    ],
+  },
+  {
+    version: '2.0.188',
+    date: '2026-09-05',
+    title: 'Frontlage 32 cm, Hilfslinien für bündige Wände',
+    changes: [
+      'Neue Fenster sitzen standardmäßig 32 cm hinter der Außenkante (vorher 24 cm)',
+      'Beim Strecken und Abzweigen: orangene Hilfslinien auch in 3D, und exakter Snap an bündige, unverbundene Wandenden',
+    ],
+  },
+  {
+    version: '2.0.187',
+    date: '2026-09-05',
+    title: 'Fensterrahmen so hell wie Wand und Laibung',
+    changes: [
+      'Weiße Rahmen nutzen dieselbe Außen-EnvMap und Gegenlicht-Behandlung wie Paneele und Laibung',
+      'Keine dumpfere Weiß-Optik mehr durch fehlenden Umgebungs-Fill am Rahmen',
+    ],
+  },
+  {
+    version: '2.0.186',
+    date: '2026-09-05',
+    title: 'Einheitliche Reflexionen an Fassade und Laibung',
+    changes: [
+      'Laibungen spiegeln dieselbe Umgebung wie Paneele, Profile und Glas — kein selektives Schwarz an der Öffnungskante',
+      'Außenflächen teilen sich die CubeCamera-EnvMap',
+    ],
+  },
+  {
+    version: '2.0.185',
+    date: '2026-09-05',
+    title: 'Paneele und Fenster folgen der Nacht',
+    changes: [
+      'Paneele und Glas spiegeln nachts die dunkle Umgebung statt eines festen Mittelgrau',
+      'EnvMap-Himmelskugel und Reflexionsstärke folgen Tag/Mond/Sternennacht; kein Selbstspiegel-Grau mehr beim Bake',
+    ],
+  },
+  {
+    version: '2.0.184',
+    date: '2026-09-05',
+    title: 'Echte Nacht und bläuliches Mondlicht',
+    changes: [
+      'Ohne Mond oder Lampen bleiben Fassaden nachts fast schwarz — kein Mittelgrau mehr durch Ambient',
+      'Mondlicht ist kühl-bläulich, kommt aus Mondrichtung und wirft leichte Schatten',
+    ],
+  },
+  {
+    version: '2.0.183',
+    date: '2026-09-05',
+    title: 'Lichter ausblenden, Ebenen-Bereichsauswahl',
+    changes: [
+      '„Alle ausblenden“ im Lichter-Mehr-Menü bleibt wirksam — Auto-Sonne schaltet sie nicht sofort wieder ein',
+      'Shift+Klick im Ebenenbaum wählt alle Zeilen zwischen Anker und Klick (Lichter, Wände, Öffnungen)',
+    ],
+  },
+  {
+    version: '2.0.182',
+    date: '2026-09-05',
+    title: 'Kleinere Maße, flüssige Tageszeit',
+    changes: [
+      'cm-Maßangaben an Öffnungen und Wand-Greifern sind halb so groß',
+      'Tageszeit-Slider reagiert sofort beim Ziehen und Klicken — kein Stocken mehr durch Schatten-Bake oder Fenster-Zeitpläne',
+    ],
+  },
+  {
+    version: '2.0.181',
+    date: '2026-09-05',
+    title: 'Ladeanimation läuft flüssig',
+    changes: [
+      'Das Haus-vom-Nikolaus beim Start stockt nicht mehr während des Ladens — reine CSS-Animation mit eigener Priorität',
+    ],
+  },
+  {
+    version: '2.0.180',
+    date: '2026-09-05',
+    title: 'Stabiler Wand-Greifer, lesbare Maß-Labels',
+    changes: [
+      'Wand verbreitern reagiert wieder auf den Cursor — kein unkontrolliertes Wachstum mehr beim Ziehen',
+      'cm-Maßangaben an Öffnungen und Wand-Greifern bleiben auch aus der Ferne lesbar',
+    ],
+  },
+  {
+    version: '2.0.179',
+    date: '2026-09-05',
+    title: 'cm-Maßlinie beim Wand-Greifer',
+    changes: [
+      'Beim Vergrößern oder Verkleinern einer Wand zeigt eine gelbe Maßlinie, um wie viele cm die Breite, Höhe oder Frontlage sich ändert',
+    ],
+  },
+  {
+    version: '2.0.178',
+    date: '2026-09-05',
+    title: 'Lichtwahl markiert die Ebenen-Zeile',
+    changes: [
+      'Im Lichtmodus erscheint das auf der Bühne gewählte Licht auch im Ebenenbaum als markierte Zeile',
+    ],
+  },
+  {
+    version: '2.0.177',
+    date: '2026-09-05',
+    title: 'Weiße Fensterrahmen bleiben weiß',
+    changes: [
+      'Matte Fensterrahmen spiegeln den Nachthimmel nicht mehr grau und werden nicht mehr durch Gegenlicht-Shade abgedunkelt',
+    ],
+  },
+  {
+    version: '2.0.176',
+    date: '2026-09-05',
+    title: 'cm-Abstände beim Öffnungs-Verschieben in 3D',
+    changes: [
+      'Beim Verschieben von Fenstern und Türen zeigen die gelben Maßlinien in der 3D-Ansicht jetzt die cm-Abstände zum nächsten Nachbarn',
+    ],
+  },
+  {
+    version: '2.0.175',
+    date: '2026-09-05',
+    title: 'Weiße Fensterrahmen bleiben weiß',
+    changes: [
+      'Matte Fensterrahmen bekommen keine erzwungene EnvMap mehr — bleiben weiß statt dunkelgrau am Nachthimmel',
+    ],
+  },
+  {
+    version: '2.0.174',
+    date: '2026-09-05',
+    title: 'Profile behalten EnvMap nach Öffnungs-Zug',
+    changes: [
+      'Nach dem Loslassen einer Öffnung bleiben Rahmen, Gesims, Sockel und Bänke in der richtigen Farbe — EnvMap wird sofort gesetzt, nicht erst nach dem Reflection-Bake',
+    ],
+  },
   {
     version: '2.0.173',
     date: '2026-09-05',

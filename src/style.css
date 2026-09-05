@@ -32,6 +32,19 @@ body {
   grid-template-rows: minmax(0, 1fr);
   height: 100vh;
   overflow: hidden;
+  /* Cmd+A / Ziehen: keine Textmarkierung in Panels — nur Eingabefelder bleiben selektierbar */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#app input,
+#app textarea,
+#app select,
+#app [contenteditable='true'],
+#app .release-notes-body,
+#app .credits-body {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 #ui {
@@ -143,6 +156,15 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+#marquee-select-overlay {
+  position: absolute;
+  z-index: 35;
+  pointer-events: none;
+  border: 1.5px solid #e8a317;
+  background: rgba(232, 163, 23, 0.14);
+  box-sizing: border-box;
 }
 
 .viewport-chrome {
@@ -1341,6 +1363,19 @@ body {
 
 .toolbar-group:first-child {
   margin-top: 0;
+}
+
+/* Verschachtelte Blöcke (Fugen, Paneele, Sockel …): erstes Kind ist nicht Sektionsstart —
+   Abstand 1.5rem wie bei normalen toolbar-groups (docs/ux.md). */
+#studio-joints-section > .toolbar-group:first-child,
+#studio-joints-options > .toolbar-group:first-child,
+#studio-joint-options > .toolbar-group:first-child,
+#studio-panel-options > .toolbar-group:first-child,
+#studio-taper-options > .toolbar-group:first-child,
+#studio-plinth-options > .toolbar-group:first-child,
+#studio-plinth-profile-options > .toolbar-group:first-child,
+#studio-cornice-options > .toolbar-group:first-child {
+  margin-top: 1.5rem;
 }
 
 #lighting-accordion .toolbar-group:first-of-type {
@@ -3087,9 +3122,13 @@ input:disabled {
   padding: 0.45rem 0.9rem 0;
   background: rgba(255, 255, 255, 0.96);
   border-top: 1px solid #ddd;
-  /* Feste Tab-Zeilenhöhe: Auswahl darf Viewport-/Kamera-Aspekt nicht springen lassen */
+  /* Feste Tab-Zeilenhöhe (nicht nur min): bei Gesims/Sockel weniger Tabs → sonst
+     schrumpft das Dock, Viewport wird höher, Kamera-Aspekt springt (Haus „breiter“). */
+  height: 2.6rem;
   min-height: 2.6rem;
+  max-height: 2.6rem;
   box-sizing: border-box;
+  overflow: hidden;
 }
 
 #opening-library {
@@ -3459,6 +3498,15 @@ input:disabled {
   cursor: pointer;
 }
 
+/* RGB/HSL/HEX nur nach Klick auf den Farbswatch (color-picker-expanded). */
+.color-picker-row .color-channel-row {
+  display: none;
+}
+
+.color-picker-row.color-picker-expanded .color-channel-row {
+  display: grid;
+}
+
 .color-channel-row {
   display: grid;
   grid-template-columns: 2.6rem minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
@@ -3505,8 +3553,12 @@ input:disabled {
   gap: 0.55rem;
   overflow-x: auto;
   padding-bottom: 2px;
-  /* Eine Kartenzeile reservieren — weniger Höhen-Sprung bei Tab-Wechsel */
-  min-height: 5.75rem;
+  /* Feste Kartenzeile (nicht nur min): kürzere Profil-Labels/weniger Karten dürfen
+     die Dock-Höhe nicht ändern — sonst springt der 3D-Kamera-Aspekt. */
+  height: 6.5rem;
+  min-height: 6.5rem;
+  max-height: 6.5rem;
+  box-sizing: border-box;
   scrollbar-gutter: stable;
 }
 

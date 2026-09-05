@@ -80,9 +80,13 @@ function sunLightIntensity(elevationRad: number, userIntensity: number): number 
 function moonLightIntensity(elevationRad: number, illumination: number, userIntensity: number): number {
   if (elevationRad <= 0) return 0
   const t = Math.min(1, elevationRad / (Math.PI / 4))
-  const base = 0.08 + 0.35 * t * illumination
+  // Sichtbar, aber deutlich unter Tageslicht — Key für blaue Mondschatten.
+  const base = 0.07 + 0.26 * t * illumination
   return base * THREE.MathUtils.clamp(userIntensity / 2.4, 0.2, 2)
 }
+
+/** Kelvin für kühles Mondlicht (klar, bläulich). */
+export const MOONLIGHT_COLOR_TEMP = 8200
 
 export function resolveCelestialState(settings: SunSettings): CelestialState {
   const doy = dayOfYearFromMonthDay(settings.month, settings.day)
@@ -102,8 +106,8 @@ export function resolveCelestialState(settings: SunSettings): CelestialState {
   let activeLight: CelestialState['activeLight'] = 'night'
   let lightAzimuthDeg = sun.azimuthDeg
   let lightElevationRad = Math.max(0, sun.elevationRad)
-  let lightIntensity = 0.04
-  let lightColorTemp = 4200
+  let lightIntensity = 0
+  let lightColorTemp = MOONLIGHT_COLOR_TEMP
 
   if (sun.elevationRad > 0) {
     activeLight = 'sun'
@@ -116,21 +120,31 @@ export function resolveCelestialState(settings: SunSettings): CelestialState {
     lightAzimuthDeg = moon.azimuthDeg
     lightElevationRad = moon.elevationRad
     lightIntensity = moonLightIntensity(moon.elevationRad, moonIllumination, settings.intensity)
-    lightColorTemp = 4600
+    lightColorTemp = MOONLIGHT_COLOR_TEMP
   } else {
-    lightIntensity = 0.03 * settings.ambient
-    lightColorTemp = 4000
+    // Sternennacht: kein Key-Licht — nur minimales Ambient (in lightingMood).
+    lightIntensity = 0
+    lightColorTemp = MOONLIGHT_COLOR_TEMP
     if (moon.elevationRad > -0.15) {
       lightAzimuthDeg = moon.azimuthDeg
-      lightElevationRad = Math.max(0.05, moon.elevationRad + 0.12)
+      lightElevationRad = Math.max(0.02, moon.elevationRad + 0.08)
     }
   }
 
-  const skyAmbientFactor = THREE.MathUtils.lerp(
-    THREE.MathUtils.clamp(settings.ambient / 0.32, 0.2, 2),
-    0.12 + 0.25 * moonIllumination,
-    twilightFactor,
-  )
+  let skyAmbientFactor: number
+  if (sun.elevationRad > 0) {
+    skyAmbientFactor = THREE.MathUtils.lerp(
+      THREE.MathUtils.clamp(settings.ambient / 0.32, 0.2, 2),
+      0.12 + 0.25 * moonIllumination,
+      twilightFactor,
+    )
+  } else if (activeLight === 'moon') {
+    // Schwaches kühles Himmelsfill — Mond-Key und Schatten bleiben lesbar.
+    skyAmbientFactor = 0.028 + 0.035 * moonIllumination
+  } else {
+    // Fast schwarz ohne Lichtquelle (kein Mittelgrau durch Ambient).
+    skyAmbientFactor = 0.01
+  }
 
   return {
     sun,
@@ -146,6 +160,13 @@ export function resolveCelestialState(settings: SunSettings): CelestialState {
     skyAmbientFactor,
     twilightFactor,
   }
+}
+
+/** EnvMap-Stärke für Paneel/Glas: Tag voll, Mond gedämpft, Sternennacht fast aus. */
+export function exteriorEnvFillFromCelestial(celestial: CelestialState): number {
+  if (celestial.activeLight === 'night') return 0.05
+  if (celestial.activeLight === 'moon') return 0.22 + 0.18 * celestial.moonIllumination
+  return THREE.MathUtils.lerp(1, 0.42, celestial.twilightFactor)
 }
 
 /** Himmelsfarben: Nutzer-Szenenfarben bleiben die Basis, Nacht dunkelt sie nur ab. */
@@ -323,7 +344,9 @@ export function applyCelestialDirectionalLight(
   dirLight.visible = true
   const castShadow =
     (celestial.activeLight === 'sun' && celestial.sun.elevationRad > 0.04) ||
-    (celestial.activeLight === 'moon' && celestial.moon.elevationRad > 0.12 && celestial.moonIllumination > 0.25)
+    (celestial.activeLight === 'moon' &&
+      celestial.moon.elevationRad > 0.06 &&
+      celestial.moonIllumination > 0.12)
   dirLight.castShadow = castShadow
 }
 

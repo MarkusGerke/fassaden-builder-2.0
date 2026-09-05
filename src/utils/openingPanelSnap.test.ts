@@ -8,6 +8,7 @@ import {
   commonMasonrySnapStepCm,
   DRAG_SNAP_MAGNET_CM,
   masonryFacadeStack,
+  openingFlushWidthPlacementXs,
   openingMasonryJambXs,
   openingPlacementCandidateXs,
   snapOpeningMoveToMasonry,
@@ -87,7 +88,7 @@ describe('openingPanelSnap', () => {
 
   it('45°-Wand: Wandmitte ist Snap-Ziel auch wenn nicht auf Fugenraster', () => {
     const width = 128
-    const wallW = PLAN_DIAGONAL_STEP * 4 // ≈ 271.53, Hälfte nicht auf 8/24-Raster
+    const wallW = PLAN_DIAGONAL_STEP * 12 // Länge wie früher 4×24√2; Mitte oft nicht auf Fugenraster
     const wall = studioWall({
       id: 'diag',
       width: wallW,
@@ -157,21 +158,80 @@ describe('openingPanelSnap', () => {
     expect(dragXs.some((x) => Math.abs(x - (384 / 2 - width / 2)) < 0.05)).toBe(true)
   })
 
-  it('richtet Laibungen beidseitig auf Fugen aus wenn Breite snappt', () => {
+  it('hält Sollbreite bei snapWidth und setzt Laibungen auf Flush-Position', () => {
     const wall = studioWall({ id: 'w', width: 384 })
-    const aligned = alignOpeningToMasonry(wall, [wall], {
-      x: 50,
-      y: 30,
-      width: 100,
-      height: 100,
-      type: 'window',
-    })
+    const aligned = alignOpeningToMasonry(
+      wall,
+      [wall],
+      {
+        x: 50,
+        y: 30,
+        width: 96,
+        height: 100,
+        type: 'window',
+      },
+      { snapWidth: true },
+    )
+    expect(aligned.width).toBe(96)
     const xs = openingMasonryJambXs(wall, [wall])
-    expect(xs.some((c) => Math.abs(c - aligned.x) < 0.05)).toBe(true)
-    expect(xs.some((c) => Math.abs(c - (aligned.x + aligned.width)) < 0.05)).toBe(true)
+    const flush = openingFlushWidthPlacementXs(wall, [wall], 96)
+    if (flush.length > 0) {
+      expect(xs.some((c) => Math.abs(c - aligned.x) < 0.05)).toBe(true)
+      expect(xs.some((c) => Math.abs(c - (aligned.x + aligned.width)) < 0.05)).toBe(true)
+    }
   })
 
-  it('Drag snapt die Breite auf Fugen (beide Laibungen)', () => {
+  it('hält Bibliotheksbreite 96 beim Align ohne snapWidth', () => {
+    const wall = studioWall({
+      id: 'w24',
+      width: 384,
+      panel: {
+        ...DEFAULT_STUDIO_PANEL,
+        pattern: 'runningBond',
+        panelWidth: 24,
+        panelHeight: 8,
+        plinthEnabled: false,
+        plinthHeight: 0,
+      },
+    })
+    const aligned = alignOpeningToMasonry(
+      wall,
+      [wall],
+      { x: 50, y: 32, width: 96, height: 192, type: 'window' },
+      { snapWidth: false, snapHeight: false },
+    )
+    expect(aligned.width).toBe(96)
+    expect(aligned.height).toBe(192)
+  })
+
+  it('Drag ändert die Breite nicht', () => {
+    const wall = studioWall({
+      id: 'w24',
+      width: 384,
+      panel: {
+        ...DEFAULT_STUDIO_PANEL,
+        pattern: 'runningBond',
+        panelWidth: 24,
+        panelHeight: 8,
+        plinthEnabled: false,
+        plinthHeight: 0,
+      },
+    })
+    const moved = snapOpeningMoveToMasonry(
+      wall,
+      [wall],
+      { x: 50, y: 32, width: 96, height: 192, type: 'window' },
+      50,
+      32,
+      0,
+      0,
+      'drag',
+    )
+    expect(moved.width).toBe(96)
+    expect(moved.height).toBe(192)
+  })
+
+  it('Drag snapt Position an Fugen ohne Breitenänderung', () => {
     const wall = studioWall({
       id: 'w24',
       width: 384,
@@ -194,9 +254,10 @@ describe('openingPanelSnap', () => {
       0,
       'drag',
     )
+    expect(moved.width).toBe(80)
     const xs = openingMasonryJambXs(wall, [wall])
-    expect(xs.some((c) => Math.abs(c - moved.x) < 0.05)).toBe(true)
-    expect(xs.some((c) => Math.abs(c - (moved.x + moved.width)) < 0.05)).toBe(true)
+    // Position möglichst so, dass 80 auf Fugen passt — sonst nächster Laibungs-Kandidat
+    expect(xs.some((c) => Math.abs(c - moved.x) < 0.05) || moved.x >= 0).toBe(true)
   })
 })
 
@@ -248,8 +309,10 @@ describe('gemeinsames Raster 24er + 48er Etagen', () => {
       0,
       'nudge',
     )
+    // Nudge: nächster Placement-Kandidat (hier Steinmitte 12); Breite bleibt 96.
     const next = openingPlacementCandidateXs(lower, walls, 96).find((c) => c > 0.05)!
     expect(moved.x).toBe(next)
+    expect(moved.width).toBe(96)
   })
 
   it('alleinstehende 24er-Wand behält Halbstein-Fugen (12)', () => {

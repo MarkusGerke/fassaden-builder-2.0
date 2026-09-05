@@ -16,11 +16,11 @@ type AppView = 'front' | '3d' | 'top' | 'export'
 
 Legacy `'plan'` → `'top'`, `'edit'` / `'2d'` → `'front'`.
 
-Wechsel via `setView(mode)` in `src/main.ts`. **Fassaden-Builder 2.0:** App-Start standardmäßig **2D-Front** + **Render**-Modus; **3D** wieder per `#view-btn-3d` wählbar. Gespeicherte `view: '3d'` aus `localStorage` wird beim Reload wiederhergestellt (Hash-Load bleibt `'front'`). Buttons Oben/Entwurf/Galerie/Einfach-Komplex und Ebenen-Panel sind weiter per `hidden` ausgeblendet (Code/Wiring bleibt). **v2.0.38 / v2.0.149:** Ladeoverlay `#app-loading` bleibt bis `bootstrapSceneLighting()` fertig ist (Atmosphäre/Horizont, Fenster-Meshes, erstes Shadow-Map-Bake) plus zwei Animationsframes — nicht mehr sofort in `finally`. Loader: SVG **Haus vom Nikolaus** — **v2.0.170** immer derselbe klassische Eulerweg (8 Kanten), Strich per `stroke-dashoffset` in 720 ms, Loop mit Pause, Text „Studio wird geladen …“.
+Wechsel via `setView(mode)` in `src/main.ts`. **Fassaden-Builder 2.0:** App-Start standardmäßig **2D-Front** + **Render**-Modus; **3D** wieder per `#view-btn-3d` wählbar. Gespeicherte `view: '3d'` aus `localStorage` wird beim Reload wiederhergestellt (Hash-Load bleibt `'front'`). Buttons Oben/Entwurf/Galerie/Einfach-Komplex und Ebenen-Panel sind weiter per `hidden` ausgeblendet (Code/Wiring bleibt). **v2.0.38 / v2.0.149:** Ladeoverlay `#app-loading` bleibt bis `bootstrapSceneLighting()` fertig ist (Atmosphäre/Horizont, Fenster-Meshes, erstes Shadow-Map-Bake) plus zwei Animationsframes — nicht mehr sofort in `finally`. Loader: SVG **Haus vom Nikolaus** — **v2.0.170** immer derselbe klassische Eulerweg (8 Kanten); **v2.0.181:** Strich rein per CSS (`stroke-dashoffset`, 720 ms Zeichnen + 280 ms Pause), unabhängig vom Main-Thread-Laden; Text „Studio wird geladen …“.
 
 Beim Wechsel zur `'top'`-Ansicht wird die Kamera zentriert (`framePlanCameraToContent`, `planZoom = 1`).
 
-**Bearbeitung:** `isSceneEditView()` (`3d` \| `front` \| `top`) nutzt dieselben Pointer-Handler — Pick auf Meshes, Wand-Greifer, Öffnungs-Drag, Kontextmenü. Oben: wie 3D (⌘/Ctrl-Ziehen dreht Himmelsrichtung, ⌘/Ctrl+⇧ schwenkt), zusätzlich **Shift+LMB auf leerem Bereich** / Mittelmaus Pan; **Shift/Ctrl/Cmd+Klick auf Wand/Öffnung/Decke** = Mehrfachauswahl (v2.0.16). Mausrad/`+`/`-` Zoom.
+**Bearbeitung:** `isSceneEditView()` (`3d` \| `front` \| `top`) nutzt dieselben Pointer-Handler — Pick auf Meshes, Wand-Greifer, Öffnungs-Drag, Kontextmenü. Oben: wie 3D (⌘/Ctrl-Ziehen dreht Himmelsrichtung, ⌘/Ctrl+⇧ schwenkt), zusätzlich **Shift+LMB auf leerem Bereich** / Mittelmaus Pan; **Shift/Ctrl/Cmd+Klick auf Wand/Öffnung/Decke** = Mehrfachauswahl (v2.0.16). **v2.0.193:** Bei leerer Auswahl ersetzt **Shift+Ziehen** das Pan durch eine Rechteckauswahl (nur vollständig eingerahmte Objekte). Mausrad/`+`/`-` Zoom.
 
 3D- und Oben-Orbit: Cmd/Ctrl+LMB drehen, Cmd/Ctrl+Shift+LMB schwenken, RMB ohne Modifier = Kontextmenü. **`siteYawDeg`** gilt in 3D und Oben (`siteYawForView()`). Kamera ohne Dämpfung, Dirty-Rendering (v0.7.74), Orbit-Lite auch für Mausrad (v0.7.77). Siehe [ux.md](ux.md).
 
@@ -51,7 +51,7 @@ Toolbar-Buttons (dynamisch aus den vorhandenen `yawDeg`-Werten):
 
 **2D (SVG):** `FacadeSvgView.setElevation(filter)` filtert die dargestellten Wände. Das SVG-Layout nutzt weiterhin `wall.x`/`wall.y` — bei gefilterten Ansichten werden nur die Wände der Sicht gerendert.
 
-**2D (Ortho):** `applyFrontCameraView(bounds)` nutzt `getWallBounds(wallsForElevation())` statt aller Wände. **Zoom/Pan:** Mausrad zoomt zum Cursor (Wheel-Delta pro Frame gebündelt, exponentiell; Orbit-Lite während Navigation), **Doppelklick** zoomt 2× zum Klickpunkt mit weicher Animation (~280 ms, v2.0.21), **Rechtsklick** / Mittelmaus / **⇧**+Ziehen auf **leerem Bereich** verschiebt (Pan in Bildschirmachsen wie OrbitControls, v0.7.340); **⇧/Ctrl/Cmd+Klick auf Objekt** = Mehrfachauswahl (v2.0.16). Front-Kamera-Layout wird gecacht — Zoom/Pan ohne Wand-Neuberechnung pro Frame (v2.0.21). **+** / **−** / **0** (Einpassen). State: `frontZoom`, `frontPanScreenX`, `frontPanScreenY`. Export-Capture nutzt `fitOnly: true` (immer Einpassen). Gesims- und Fenster-Werfschatten auf Paneeeln/Rahmen in 2D-Front (v0.7.344).
+**2D (Ortho):** `applyFrontCameraView(bounds)` nutzt `getWallBounds(wallsForElevation())` statt aller Wände. **Zoom/Pan:** Mausrad zoomt zum Cursor (Wheel-Delta pro Frame gebündelt, exponentiell; Orbit-Lite während Navigation), **Doppelklick** zoomt 2× zum Klickpunkt mit weicher Animation (~280 ms, v2.0.21), **Rechtsklick** / Mittelmaus / **⇧**+Ziehen auf **leerem Bereich** verschiebt (Pan; bei leerer Auswahl ist ⇧+Ziehen Rechteckauswahl v2.0.193); **⇧/Ctrl/Cmd+Klick auf Objekt** = Mehrfachauswahl (v2.0.16). Front-Kamera-Layout wird gecacht — Zoom/Pan ohne Wand-Neuberechnung pro Frame (v2.0.21). **+** / **−** / **0** (Einpassen). State: `frontZoom`, `frontPanScreenX`, `frontPanScreenY`. Export-Capture nutzt `fitOnly: true` (immer Einpassen). Gesims- und Fenster-Werfschatten auf Paneeeln/Rahmen in 2D-Front (v0.7.344).
 
 ---
 
@@ -79,7 +79,7 @@ Laden: `applyFacadeLoadPipeline` (`migrateFacadeSchema` → `clampFacadeState` i
 
 **Teilen-Link (`#f=`):** Zusätzlich zu `facade` optional `scene` (Szene-Farben) und `viewYaw` (Kompass). Siehe [ux.md](ux.md#url-hash-live-srcutilssharets).
 
-`scene` steuert die Szene-Farben (3D-Hintergrund, Untergrund, Glas-Himmelsreflexion). Defaults in `DEFAULT_SCENE_APPEARANCE` (alle drei `#555555`), normalisiert über `normalizeSceneAppearance`. UI: einzeln oder `#scene-all-color` für alle drei zugleich.
+`scene` steuert die Neutral-Szenenfarben (Hintergrund/Kuppel, Boden). Defaults in `DEFAULT_SCENE_APPEARANCE` (beide `#E8E3DD`), normalisiert über `normalizeSceneAppearance` (migriert alte `#555555`/Weiß-Defaults). UI: `#scene-bg-color` / `#scene-ground-color` nur bei Neutral sichtbar (v2.0.209).
 
 Ansicht (`#view-mode-select`) und Darstellung (`#render-style-select`) sind Dropdowns; der Gründerzeit-Typ wird über `#window-preset-select` gewählt.
 
@@ -140,10 +140,12 @@ Renderer und State-Utils nutzen `src/utils/buildings.ts`:
 - `record(snapshot)` — speichert aktuellen Zustand
 - `undo(current)` / `redo(current)` — gibt vorherigen/nächsten Zustand zurück
 - `beginDragUndo()` / `finishDragUndo()` — verhindert Undo-Einträge bei jedem Drag-Tick; ein Eintrag für die gesamte Drag-Bewegung
+- **v2.0.207:** 3D-/SVG-Öffnungs- und Objekt-Drags: `commitDragFromBase(*DragBase)` speichert den Vorher-Klon — sonst wirkte der erste Undo-Klick wie ein No-Op (`commitState` nach Live-Preview speicherte den Nachher-Stand)
 
 Tastatur:
 - `Cmd/Ctrl + Z` → Undo
 - `Cmd/Ctrl + Shift + Z` → Redo
+- `Cmd/Ctrl + A` → alle sichtbaren Wände des aktiven Hauses (Lichtmodus: alle Lichter); UI-Text wird nicht markiert; in Textfeldern weiter native Textauswahl (**v2.0.195** / **v2.0.198**)
 
 ---
 
@@ -187,7 +189,7 @@ Gilt analog für Gesims, Wandfarben, Öffnungs-Profil, Fensterbank, Treppe, Rahm
 
 Bei Scope **Etage** werden alle `floorIndex`-Werte aus der aktuellen Auswahl gesammelt (nicht nur der erste Anker), sodass Multi-Etagen-Auswahl alle betroffenen Geschosse trifft.
 
-Bei Scope **Typ** werden alle Öffnungen mit gleichem `type` (Fenster bzw. Tür) im ganzen Gebäude getroffen — nicht mehr nach Breite/Höhe/Keller gefiltert. Wand-Edits unter Typ folgen weiter der Paneel-Konfiguration.
+Bei Scope **Typ** werden Öffnungen mit gleichem `type` **und** gleichen Maßen (Breite×Höhe, cm gerundet) getroffen — Auswahl mehrerer Größen erweitert die Menge um jede gewählte Maß-Gruppe (**v2.0.194**). Wand-Edits unter Typ folgen weiter der Paneel-Konfiguration.
 
 **v0.7.293:** Scope **Fassade** optional auf gewählte Yaws gefiltert (`editFacadeYawFilter`).
 

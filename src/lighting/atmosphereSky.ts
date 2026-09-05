@@ -152,7 +152,15 @@ export function applyDisplaySunColor(
   intensityScale: number,
 ): void {
   light.color.copy(kelvinToColor(celestial.lightColorTemp))
+  if (celestial.activeLight === 'moon') {
+    // Leicht bläulicher als reines Kelvin — typisches Klarwetter-Mondlicht.
+    light.color.lerp(new THREE.Color('#9eb6ff'), 0.22)
+  }
   light.intensity = celestial.lightIntensity * intensityScale
+  if (celestial.activeLight === 'night') {
+    light.intensity = 0
+    light.castShadow = false
+  }
 }
 
 export class AtmosphereSky {
@@ -318,7 +326,12 @@ export class AtmosphereSky {
     this.starsMaterial.worldToECEFMatrix.copy(this.worldToECEFMatrix)
     this.stars.setRotationFromMatrix(this.inertialToECEFMatrix)
 
-    this.sunLight.sunDirection.copy(this.sunDirection)
+    // Key-Licht: Mondrichtung nachts (sonst bleibt die Sonne unter dem Horizont → flaches Grau).
+    if (celestial.activeLight === 'moon') {
+      this.sunLight.sunDirection.copy(this.moonDirection)
+    } else {
+      this.sunLight.sunDirection.copy(this.sunDirection)
+    }
     this.sunLight.worldToECEFMatrix.copy(this.worldToECEFMatrix)
     if (opts?.lightDistance != null) {
       this.sunLight.distance = opts.lightDistance
@@ -330,7 +343,22 @@ export class AtmosphereSky {
     this.sunLight.update()
     applyDisplaySunColor(this.sunLight, celestial, opts?.intensityScale ?? 1)
 
-    this.skyLightProbe.sunDirection.copy(this.sunDirection)
+    // Welt-Position des DirectionalLight an aktiven Himmelskörper koppeln (Takram nutzt ECEF).
+    if (opts?.lightTarget && celestial.activeLight !== 'sun') {
+      const dist = opts.lightDistance ?? this.sunLight.distance
+      const dir = directionFromSolar(celestial.lightAzimuthDeg, celestial.lightElevationRad)
+      this.sunLight.position.set(
+        opts.lightTarget.x + dir.x * dist,
+        opts.lightTarget.y + dir.y * dist,
+        opts.lightTarget.z + dir.z * dist,
+      )
+      this.sunLight.target.position.copy(opts.lightTarget)
+      this.sunLight.target.updateMatrixWorld()
+    }
+
+    this.skyLightProbe.sunDirection.copy(
+      celestial.activeLight === 'moon' ? this.moonDirection : this.sunDirection,
+    )
     this.skyLightProbe.worldToECEFMatrix.copy(this.worldToECEFMatrix)
     if (opts?.lightTarget) {
       this.skyLightProbe.position.copy(opts.lightTarget)
@@ -338,7 +366,7 @@ export class AtmosphereSky {
     this.skyLightProbe.update()
 
     if (opts?.castShadow != null) {
-      this.sunLight.castShadow = opts.castShadow
+      this.sunLight.castShadow = opts.castShadow && celestial.activeLight !== 'night'
     }
 
     return celestial

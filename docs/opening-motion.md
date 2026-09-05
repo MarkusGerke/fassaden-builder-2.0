@@ -10,7 +10,7 @@ Jedes **Fenster** und jede **Tür** hat den Reiter **Animation** (nicht bei Nisc
 - **Punkte:** Ziehen verschiebt; Klick in die Fläche setzt einen Zwischenpunkt; Start- und Endpunkt nur senkrecht (Zeit fest). Gewählter Punkt: **Kurve** (Catmull-Rom) oder **Linie** bis zum nächsten Punkt. Zwischenpunkte löschen.
 - **Dauer / Pause / Zielwinkel:** Pause gilt nach dem Öffnen (für „Öffnen → Pause → Schließen“), nur in der Phase Öffnen sichtbar.
 - **Abspielen:** Öffnen, Schließen, oder Zyklus. Stopp setzt auf den Ruhewinkel zurück (Slider „Einzeln öffnen“). Nach Ende von Öffnen bleiben die Flügel auf dem Zielwinkel; nach Schließen/Zyklus auf 0°. Während des Abspielens ist die **orange Auswahlmarkierung** ausgeblendet (`setSelectionHighlightSuppressed`).
-- **Uhrzeiten (v2.0.150):** unter den Play-Buttons Listen **Öffnen** / **Schließen** (`Opening.schedule`, Dezimalstunden). Crossing der Tageszeit (Slider oder Tagzyklus) startet dieselbe Playback-Kurve. Pausierte Animationen (`animationsPaused`) stoppen auch Schedule-Trigger.
+- **Uhrzeiten (v2.0.150 / v2.0.182):** unter den Play-Buttons Listen **Öffnen** / **Schließen** (`Opening.schedule`, Dezimalstunden). Crossing der Tageszeit (Slider oder Tagzyklus) startet dieselbe Playback-Kurve — beim manuellen Slider erst beim Loslassen (`change`), nicht während jedes `input` (sonst stockt der Scrub). Pausierte Animationen (`animationsPaused`) stoppen auch Schedule-Trigger.
 - **Datensatz:** JSON zum Kopieren und späteren Einfügen (oder zum Übergeben an den Assistenten).
 
 Die Slider **Einzeln öffnen** bleiben der Ruhezustand. Die Animation überschreibt die Flügel nur während des Abspielens bzw. schreibt den Ruhewinkel am Ende.

@@ -1,0 +1,17 @@
+---
+description: Bei Fehlersuche dokumentieren was ging und was nicht ging
+alwaysApply: true
+---
+
+# Fehlersuche: Versuch und Irrtum festhalten
+
+Wenn der Nutzer einen **Fehler** meldet und wir **Lösungen** suchen oder ausprobieren:
+
+- In der passenden Datei unter `docs/` (Fallstricke / Changelog / Feature-Doc) und bei wiederkehrenden Regressionen ggf. als Cursor-Rule notieren:
+  - **Symptom** (was der Nutzer sieht)
+  - **Hypothesen / Versuche**, die **nicht** geholfen haben (kurz, mit warum verworfen)
+  - **Lösung**, die **funktioniert** hat (Dateien, Defaults, was man nicht rückgängig machen darf)
+- Nicht nur den finalen Fix beschreiben — sonst werden gescheiterte Ansätze (z. B. PCSS-Lite beim Orbit, Bloom aus beim Orbit) später wieder eingebaut.
+- Bei bekannten Wiederholungsfehlern: Rule unter `.cursor/rules/` (wie `orbit-visual-stability.mdc`, `bloom-canvas-kasten.mdc`).
+
+Gilt immer bei Debug-/Fix-Arbeit — nicht erst auf explizite Nachfrage.

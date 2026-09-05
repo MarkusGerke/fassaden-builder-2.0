@@ -2,6 +2,345 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Erker-Bibliothek-Vorschau von außen (2026-09-06) — v2.0.228
+
+**Nutzer:** Erker-Karten zeigen eine lesbare Außenansicht schräg von oben (Front dem Betrachter, Schenkel zur Fassade), statt einer verzerrten Innen-/Draufsicht.
+
+**Umsetzung:** `bayWindowPreviewSvg` — Axonometrie (`X = 0.92x − 0.55z`, Dachfläche, Fassadenstreifen). Docs: [bay-windows.md](bay-windows.md).
+
+### Erker: Außenseiten, Auswahl, Löschen/Tausch (2026-09-06) — v2.0.227
+
+**Nutzer:** 90°/45°-Erker zeigen Paneele auf den Schenkeln auch bei `panelFlip: false` nach außen. Klick markiert alle drei Flächen; Verschieben passt Reststücke an; Löschen → flache Wand; Bibliothek markiert/tauscht das Preset; keine Breiten-Greifer am Erker.
+
+**Umsetzung:** `exteriorNormalAwayFromCentroid` in `bayWindow.ts`; `flattenBayToFlatWall` / `swapBayPreset`; Bibliothek-Match inkl. `depthCm` und Schenkel-Auswahl; Seiten-Greifer ausgeblendet. Docs: [bay-windows.md](bay-windows.md).
+
+### Erker als Segment, verschiebbar (2026-09-05) — v2.0.226
+
+**Nutzer:** Erker behält beim Ablegen auf eine Wand seine Vorlagenbreite (Segment mit Reststücken) und lässt sich entlang der Fassade verschieben. Optional weiter „An Wandbreite“ für volle Anpassung.
+
+**Umsetzung:** `baySegment.ts` (`insertBayAsWallSegment`, `bayPresetFittedToWallWidth`, `slideBaySegmentAlong`); Dialog-Buttons Segment/An Wandbreite; 3D-Drag gleitet eingebettete Erker. Docs: [bay-windows.md](bay-windows.md), [ux.md](ux.md).
+
+### Erker-Bibliothek mit Fenster-Varianten (2026-09-05) — v2.0.225
+
+**Nutzer:** Tab Erker bietet 16 Vorlagen (90°/45° × Front 192–576 × Tiefe 96/144) mit echten Fenstern; Vorschau schräg von oben. Fenster nach dem Ablegen verschieb-/löschbar.
+
+**Umsetzung:** Preset-Matrix + `layoutBayOpeningsOnWall` / `applyBayPresetOpenings` in `bayWindow.ts`; isometrische `bayWindowPreviewSvg`; Bibliothek mit Gruppenzeilen. Docs: [bay-windows.md](bay-windows.md), [ux.md](ux.md).
+
+### Erker-Schenkel wie Vorlage, keine Innen-Kippung (2026-09-05) — v2.0.224
+
+**Nutzer:** Frei abgelegter Erker 90°/45° zeigt auf allen drei Wänden Paneele und Sockel nach außen; zuvor war ein Schenkel schwarz/glatt (Innenseite außen).
+
+**Umsetzung:** `buildUShapeWalls` läuft Ansatz → Front → Ansatz (rechter Schenkel von der Front aus, alle `panelFlip` gleich — wie die manuelle Vorlage). `unifyGroupFrontOrientation` und `inheritFrontsFromNeighbors` überspringen `bayParentId`/`bayWindow`-Wände. 45°-Ghost respektiert `panelFlip`. Docs: [bay-windows.md](bay-windows.md) (Fallstricke mit Versuch/Irrtum).
+
+### Wand-Bibliothek und Rechtsklick Kopieren (2026-09-05) — v2.0.223
+
+**Nutzer:** Tab Wände nur noch reine Längen (keine Endstücke / Wand+Fenster/Tür). Rechtsklick auf Öffnung: „Fenster kopieren“ / „Tür kopieren“ und „Stil kopieren“ ohne Untermenü.
+
+**Umsetzung:** `WALL_END_PIECE_PRESETS` / `WALL_WITH_OPENING_PRESETS` geleert; `openingContextItems` flach. Docs: [ux.md](ux.md).
+
+### Erker 90°/45° nach Vorlage, Segment tauschen (2026-09-05) — v2.0.222
+
+**Nutzer:** Bibliothek-Erker folgen manueller Vorlage (Front 288, Tiefe 192). Nach Herauslösen einer Wandbreite ersetzt ein Klick auf Erker 90°/45° das Segment. 90°: Front = Segment. 45°: Schenkel fest, Front schrumpft/wächst.
+
+**Umsetzung:** Presets in `bayWindow.ts`; `bayMouthWidthCm` / `scaleBayPresetToMouthWidth` / `bayMinMouthWidthCm`; Replace-Pfad skaliert; Bibliothek-Klick mit Auswahl ersetzt (auch Etagen-Stapel); Split wählt alle `middleIds`. Docs: [bay-windows.md](bay-windows.md), [ux.md](ux.md).
+
+### Wände immer auf dem 8-cm-Raster (2026-09-05) — v2.0.221
+
+**Nutzer:** Freie Wände und Verschieben in 8-cm-Schritten schließen bündig; Greifer/Toolbar verlängern ab 8 cm; 45° = Diagonale eines 8×8-Feldes.
+
+**Umsetzung:** `PLAN_GRID` 48→8; `STUDIO_WALL_WIDTH_STEP`/`STUDIO_MIN_SIZE` = 8; `PLAN_DIAGONAL_STEP` = \(8\sqrt{2}\); `snapStudioWallToWorldGrid` in `normalizeStudioWall`; Magnet nach Verschieben wieder aufs Raster; Schema 14→15 skaliert Plan-Knoten ×6. Andock-Magnet/Lücken-Schluss bleiben 48 cm (`PLAN_CLOSE_GAP_CM`). Docs: [ux.md](ux.md), [floor-plan.md](floor-plan.md), [migration.md](migration.md).
+
+### Wandlücken unter 48 cm schließen (2026-09-05) — v2.0.220
+
+**Nutzer:** Stoßen zwei Wände kollinear oder im Winkel fast zusammen (Lücke unter 48 cm), docken die Enden automatisch an und schließen die Öffnung.
+
+**Umsetzung:** `sealNearWallEndGaps` in `walls.ts` — freie Enden mit Abstand `(2 cm … 48 cm]` werden per `poseWallEndAt` zusammengeschoben (`planLinked`); Aufruf in `finalizeStudioGeometry`. Tests: `wallEndSeal.test.ts`. Docs: [ux.md](ux.md), [floor-plan.md](floor-plan.md).
+
+### Boden/Decke nach Schrägstellen geschlossen (2026-09-05) — v2.0.219
+
+**Symptom:** Nach Shift 90°↔135° fehlten Boden- und Deckenplatten (Ring „offen“).
+
+**Ursache:** Stoßecken (z. B. bei 120 cm) rundeten auf unterschiedliche 48-cm-Zellen; ungültige Diagonalen entfielen; `−0` vs `0` erzeugte Doppelknoten. L-Pfad-Reparatur erzeugte T-Stöße und offene Walks.
+
+**Lösung:** `floorPlanFromWalls` clustert Welt-Stoßecken vor dem Rasten; `normalizePlanCell`; ungültige Kanten → nächstes gültiges Rasterziel (nicht L-Pfad zuerst); Seal bis Chebyshev 2. Tests: `skew-floor-open.test.ts`. Docs: [floor-plan.md](floor-plan.md).
+
+### Schrägstellen nur ausgewählte Etagen (2026-09-05) — v2.0.218
+
+**Nutzer:** Shift 90°↔135° soll nur markierte Wände ändern; andere Geschosse ohne Auswahl bleiben. Unter-/Oberseiten brauchen weiterhin Boden bzw. Decke/Dach.
+
+**Umsetzung:** `skewStudioWallToDiagonal(..., { selectedWallIds })` — kein automatischer Etagen-Stapel; vertikal ausgerichtete Wände nur wenn ausgewählt. `showCeiling: true` auf betroffenen Etagen. Indoor-Platten: Wandfilter pro `floorIndex` (`FacadeController`), damit abweichende Fußabdrücke korrekte Boden/Decke bekommen. Docs: [ux.md](ux.md), [floor-plan.md](floor-plan.md).
+
+### Ecken-Skew: Nachbar nur Breite (2026-09-05) — v2.0.217
+
+**Symptom:** Nach Shift 90°→135° verschoben sich Fenster auf der nicht markierten Wand; die Nachbarwand sprang seitlich mit. Kopfverband an der neuen 45°-Ecke wirkte zerstört (Läufer-/Blockverband ok).
+
+**Fehlversuche:** `translateStudioCorner` nach dem Schwenk (Quer-Korrektur + `preserveLocalOpenings`) verschob die ganze Nachbarwand; 45°-Forced-Ends nutzten Läuferbreite auch bei Kopfverband.
+
+**Lösung:** Stoßecke = Schnitt Strahl (fixes Ende, Ziel-Yaw) × Nachbarachse; Nachbar nur `poseWallEndAt` entlang der Achse, Öffnungen weltfest; kein `translateStudioCorner`. `diagonalBondEndWidth` für `headerBond`: ½-Binder / Binder. Dateien: `walls.ts`, `panelLayout.ts`, Tests, [ux.md](ux.md).
+
+### Shift: verknüpfte Ecke vs. freies Ende (2026-09-05) — v2.0.216
+
+**Symptom:** An einer bereits verknüpften Ecke (zwei Wände) erzeugte Shift+Greifer trotzdem eine neue Abzweig-Wand.
+
+**Fehlversuch (v2.0.215):** Skew nur wenn Nachbar ~90° **und** Mausrichtung ~45°; sonst Fallthrough auf `attachAngledWall…` — deshalb blieb Abzweig an 135°-Ecken und bei „falschem“ Zug.
+
+**Lösung:** Klar getrennt: `linkedCornerNeighbor` (verknüpft, nicht kollinear, 90°/45°/135°) → Shift schaltet markierte Wand **90° ↔ 135°** (`skewStudioWallToDiagonal`), nie Abzweig. Achsen-Zug → `shiftWallsBeyondEnd`. Nur **freies** Ende → Abzweig 45°/90°. Dateien: `walls.ts`, `main.ts`, `wallResize.test.ts`, [ux.md](ux.md).
+
+### 45°-Schrägstellen + Öffnungen halten (2026-09-05) — v2.0.215
+
+**Nutzer:** Shift + Greifer an einer 90°-Ecke stellt die markierte Wand auf 45° (freies Ende fix); der Nachbar bleibt am Stoß und wird länger/kürzer. Keine neue Abzweig-Wand. Maß-Strecken lässt Öffnungen unverändert (kein Löschen, lokales x auf Nachbarn bleibt).
+
+**Umsetzung:** `linkedRightAngleNeighbor`, `skewStudioWallToDiagonal`, `isSkewDiagonalBranchYaw` in `walls.ts`; Shift-Zweig in `main.ts`. `normalizeStudioWall({ keepOpenings })`, `poseWallEndAt({ preserveLocalOpenings })` für Mitwachsen. Tests: `wallResize.test.ts`. Docs: [ux.md](ux.md).
+
+### Bibliothek: Öffnung highlight + ersetzen (2026-09-05) — v2.0.214
+
+**Nutzer:** Markiertes Fenster/Tür → Tab Fenster/Türen und passende Karte aktiv; anderer Klick ersetzt die Auswahl (kein zweites Fenster).
+
+**Umsetzung:** `syncLibraryTabForOpeningSelection`, `matchingOpeningLibraryIds` mit ±16 cm Toleranz, `replaceSelectedOpeningsWithLibraryPreset` / `replaceSelectedOpeningsWithTemplate` vor dem Add-Pfad. Dateien: `main.ts`. Docs: [ux.md](ux.md).
+
+### Breitenrichtung + Fenstermaß halten (2026-09-05) — v2.0.213
+
+**Symptom:** Fensterbreite 96 sprang auf ~100/104; breiter ging. Wandmaß änderte immer nur nach rechts.
+
+**Ursache (Logs):** `alignOpeningToMasonry({ snapWidth: true })` rief `snapOpeningWidthToMasonryJambs` — bei linker Laibung ohne exakte Soll-Spannweite nächste Fuge (96→100).
+
+**Fehlversuch:** Breite an Fugen erzwingen (v2.0.211) — Bibliotheksmaße gehen verloren, wenn das Verbandmuster keine Flush-Spannweite 96 hat.
+
+**Fix:** Bei Breiten-Edit Sollbreite halten, nur X an Flush-/Kandidaten; UI `#studio-wall-width-dir-*` / `#opening-width-dir-*` (nach links/rechts). Dateien: `openingPanelSnap.ts`, `openings.ts`, `main.ts`, `index.html`. Docs: [ux.md](ux.md), [opening-features.md](opening-features.md).
+
+### Wandbreite Toolbar bei planLinked (2026-09-05) — v2.0.212
+
+**Symptom:** Markierte verknüpfte Wand — `#studio-wall-width` und Links/Rechts ± änderten nichts (Wert sprang zurück); Status „Zuerst Wand lösen“.
+
+**Ursache:** `selectionLockedToUnselected` blockierte die Toolbar-Strecken-Handler. Die **3D-Greifer** riefen dieselbe `stretchStudioFacade` ohne diese Sperre auf.
+
+**Fehlversuch:** Sperre als Produktregel belassen und Nutzer zum Lösen auffordern — widerspricht den Greifern und Segment-Docs (Links/Rechts ± soll den Stapel strecken).
+
+**Fix:** Sperre nur für Verschieben/Drehen; Breite-Input und ± nutzen `stretchStudioFacade` auch bei `planLinked`. Dateien: `main.ts`. Docs: [ux.md](ux.md).
+
+### Fensterbreite und Abstandslabels (2026-09-05) — v2.0.211
+
+**Symptom:** „Fenster 96×192“ wurde im OG zu 104 cm; Abstandslabels zeigten 96 cm, obwohl der sichtbare Zwischenraum größer wirkte.
+
+**Ursache / Fehlversuche:**
+1. Abstand nur auf Nenn-Rechteck umgestellt (v2.0.207) — half nicht, wenn die Breite selbst falsch war bzw. Nachbarn ohne Y-Überlappung mitgemessen wurden.
+2. `snapOpeningWidthToMasonryJambs` + Drag/`updateOpening` snappte die Breite bei jedem Verschieben mit (`nearestValue` → oft 96→104).
+
+**Fix:** Einfügen/Verschieben hält Sollbreite/-höhe; Breite nur bei explizitem Breiten-Edit an Fugen. Position bevorzugt Laibungen mit `x` und `x+width` auf Fugen. Abstand nur zu Öffnungen mit Y-/X-Überlappung; Distanzlinien immer `wallLocal` (sichtbar in 3D). Dateien: `openingPanelSnap.ts`, `openings.ts`, `openingGuides.ts`, Tests. Docs: [opening-features.md](opening-features.md), [ux.md](ux.md).
+
+### Auswahl-Toolbar: Farben, Sockel, Bibliothek (2026-09-05) — v2.0.210
+
+- **Farbwähler:** Nur Swatch sichtbar; RGB/HSL/HEX nach Klick (`color-picker-expanded`), Klick außerhalb klappt zu — alle `renderColorControl`-Hosts.
+- **Paneele / Ziegel:** Label statt „Verkleidungsfarbe“; Stein-Kontrast/-Häufigkeit direkt darunter (`#studio-tile-color-section`).
+- **Fassade:** Überschriften Paneele/Mauerwerk `hidden` (Karten bleiben in der Bibliothek); Fugen-Gruppen wieder `1.5rem`-Abstand.
+- **Sockel:** Querschnitt-Vorschau und Dreh-/Spiegel-Block `hidden` (IDs bleiben).
+- **Bibliothek:** Bei Wandauswahl keine Tabs „Wände“ / „Licht“.
+
+Dateien: `index.html`, `main.ts`, `style.css`. Docs: [ux.md](ux.md).
+
+### Szene-Farben Neutral + UI-Ausblendungen (2026-09-05) — v2.0.209
+
+**UI (IDs behalten, `hidden`):** In der Scene-Toolbar ausgeblendet: Umgebung-Duplikat (Himmel/Neutral — Wechsler bleibt oben links), Laub (auch Viewport-Chrome), „Alle drei“, Himmelsfarbe (Fenster). Sichtbar bei **Neutral**: Hintergrund + Bodenfarbe.
+
+**Farben:** Neutral nutzt die Picker (`sceneAppearance`); Default `#E8E3DD` (Studio-Beige), alte `#555555`/Weiß-Defaults migrieren. Nachts weiter Abdunkelung Richtung `#0C0B0A` (`studioTintHex`). Kuppel = Hintergrund, Boden = Bodenfarbe.
+
+**Tageszyklus (kein Bug):** Sonne läuft nur wenn **Tageszyklus an** und **Animationen pausieren aus**. Pause aus allein reicht nicht.
+
+Dateien: `index.html`, `main.ts`, `studioStage.ts`, `persistence.ts`. Docs: [ux.md](ux.md), [stage-environment.md](stage-environment.md), [ground-leaves.md](ground-leaves.md).
+
+### Auswahl-Tab: Maße bzw. zuletzt genutzt (2026-09-05) — v2.0.208
+
+**Symptom:** Objekt markieren sprang oft auf Register **Farben** (besonders Fensterrahmen-Treffer).
+
+**Ursache:** `openingPartToSettingsTab('frame'|'grille')` setzte `pendingSelectionToolbarTab = 'colors'`. Zusätzlich fehlte bei Studio-Wand `data-settings-order` an Maße/Farben — Dekor-Tabs mit Order 30 wirkten „früher“.
+
+**Fix:** Rahmen/Glas erzwingen keinen Farben-Tab. Sticky `lastStickySelectionToolbarTab` (Klick auf Reiter oder Edit in der Toolbar). Sonst erster Tab. Maße `order=10`, Farben `order=20`. Dateien: `main.ts`, `index.html`. Docs: [ux.md](ux.md).
+
+### Acht Fixes: Frontlage, Schatten, Undo, Maße, Verdachung, Rahmen, Etage (2026-09-05) — v2.0.207
+
+1. **Frontlage:** Gebäude-Default ohne Offset zeigt 32 cm (`buildingFacadeDepthCm` / `createBuilding`).
+2. **Schatten-Kontrast Neutral:** Slider max 5; Contrast dimmt auch Hemi und Boden-Umbra (`facadeShade.ts`, `lightingMood.ts`).
+3. **Undo:** Erster Klick nach Drag wirkte nicht — `commitState(state)` speicherte den Nachher-Stand; jetzt `commitDragFromBase`.
+4. **Abstandslabels:** Nenn-Rechteck statt Reveal-Maske; Studio-Positionsclamp 8 cm.
+5. **Verdachung:** Formkarten + Horizontalen/Giebelbreite in den Einstellungen; Layout nutzt `sideArmWidth`/`gableWidth` wieder.
+6. **Geschlossene Verdachung:** optional `sealedBack` (Tympanon-Platte).
+7. **Fensterrahmen:** kein Facade-Shade; hellere Roughness/Env.
+8. **Gültig für Etage:** Paneel-Bibliothek und Stil einfügen über `scopedWallIds`/`scopedOpeningRefs`.
+
+Docs: [opening-features.md](opening-features.md), [ux.md](ux.md), [views-and-state.md](views-and-state.md), [shadows.md](shadows.md).
+
+### Profil-Auswahl wieder hellorange (2026-09-05) — v2.0.206
+
+**Symptom:** Gesims/Sockel-Markierung war dunkelrot statt hellorange wie bei Wänden.
+
+**Ursache:** Profile nutzten `MeshStandardMaterial` (#ff6600) unter Sonne + Tone-Mapping → bräunlich/dunkelrot. Wand-Auswahl wirkt heller durch zusätzliches unbeleuchtetes Overlay (`MeshBasicMaterial`).
+
+**Fix:** `selectedUnlitMaterial` (`MeshBasicMaterial`, `toneMapped: false`, #ff6600) für Profil-/Bank-/Verdachungs-Meshes. Datei: `FacadeController.ts`. Docs: [ux.md](ux.md).
+
+### Gesims und Sockel wieder orange (2026-09-05) — v2.0.205
+
+**Symptom:** Nach stabilem Viewport (v2.0.204) fehlte die orange Einfärbung bei Gesims/Sockel/Fensterprofil-Auswahl.
+
+**Ursache:** `applySelection` färbte in `profileMeshes` nur `trimBand` orange; Gesims (`cornice`) und Sockelprofil (`plinth`) sowie Öffnungs-Teil Profile/Bänke/Verdachung blieben auf dem Basis-Material.
+
+**Fix:** Orange für `cornice`/`plinth`/`trimBand` und für Öffnungs-Teile (`trim`, Bänke, Verdachung). Datei: `FacadeController.ts`. Docs: [ux.md](ux.md).
+
+### Profil-Auswahl ohne Haus-Sprung (2026-09-05) — v2.0.204
+
+**Symptom:** Gesims/Sockel/Fensterprofil auswählen → Haus wirkt horizontal breiter; Auswahl aufheben → wieder normal. Bei Wand-Auswahl nicht.
+
+**Runtime:** Wandbreiten, Site-Pivot und Kameradistanz unverändert. Nur Viewport-Höhe sprang (~1164→1176 px) → `camera.aspect` → horizontaler FOV enger → Haus „größer“.
+
+**Ursache:** Untere Bibliothek (`#library-dock`) schrumpfte bei wenigen Tabs/kürzeren Profil-Karten; ResizeObserver passte die 3D-Kamera an.
+
+**Fix:** Feste Höhen für `.library-chrome` (2,6 rem) und `.opening-library-items` (6,5 rem). Datei: `style.css`. Docs: [ux.md](ux.md).
+
+### Nach Reload ganzes Haus sichtbar (2026-09-05) — v2.0.203
+
+**Symptom:** Nach Neuladen in 3D nur eine Wand aus der Nähe statt Überblick übers Haus.
+
+**Ursache:** `galleryFocusBounds` deckelte `span` auf 900 cm — Kamera-Distanz zu klein für größere Grundrisse. Zusätzlich konnte OrbitControls bei Default-`maxDistance` 4000 die Position vor dem Site-Limit-Sync klemmen.
+
+**Fix:** Cap entfernt; Einrahmen mit Distanz ≈ `span × 1,15`; vor dem Frame `syncCameraDistanceLimits`. Dateien: `galleryCamera.ts`, `main.ts`, Tests. Docs: [camera.md](camera.md).
+
+### Sonnen-Schatten ohne Sprünge (2026-09-05) — v2.0.202
+
+**Symptom:** Nach v2.0.201 folgten Schatten dem Slider wieder, aber in sichtbaren Sprüngen.
+
+**Ursache:** Debounce (~120–280 ms) ließ Licht/Himmel jedes Frame laufen, Shadow-Map nur stückweise.
+
+**Verworfen:** Debounce beibehalten / nur Intervalle verkürzen — bleibt sprunghaft wahrnehmbar.
+
+**Fix:** Während manuellem Slider-Scrub Sonnen-Shadow sofort 1×/Lighting-Frame (bereits rAF-gedrosselt); Tagzyklus weiter Debounce. Keine EnvMap/Punktlicht-Cubes beim Scrub. Datei: `main.ts`. Docs: [shadows.md](shadows.md), [performance.md](performance.md).
+
+### Schatten folgen Sonnenwinkel wieder live (2026-09-05) — v2.0.201
+
+**Symptom:** Sonnenwinkel/Tageszeit-Slider bewegen Himmel und Licht, Schatten bleiben stehen bis zum Loslassen.
+
+**Verworfen (v2.0.182):** während Scrub kein Frustum-Fit und kein Shadow-Bake — flüssiger Scrub, aber Schatten „kleben“.
+
+**Fix:** Scrub weiter 1× Lighting/Frame, Gebäudebox gecacht, keine Schedule-Actors/EnvMap/Punktlicht-Cubes; Frustum wieder fitten; Sonnen-Shadow gedrosselt (~120–280 ms) wie Tagzyklus; Map-Größe erst beim `change`. Datei: `main.ts`. Docs: [shadows.md](shadows.md), [performance.md](performance.md).
+
+### Sockel überlagert Paneele ohne Lücke (2026-09-05) — v2.0.200
+
+**Symptom:** Paneelhöhe vergrößern bei sichtbarem Sockel → unterste Paneelreihe weg; ohne Sockel ok.
+
+**Nicht die Ursache:** `hideRowsBottom`; Y-Raster-Verschiebung durch Sockelhöhe. **Verworfen:** alle Steine unter dem Sockel stehen lassen — Kellerfenster im Sockelstreifen bekamen wieder Paneel-Dreiecke im Loch.
+
+**Ursache:** `clipTilesAbovePlinth` verwarf jede Kachel mit `y < plinthH` ganz. Bei Paneelhöhe > Sockelhöhe lag die unterste Reihe von y≈0 bis über den Sockel → gesamte Reihe weg → Lücke bis zur nächsten Reihe.
+
+**Fix:** Überlappende Kacheln auf die Sockeloberkante **kürzen** (sichtbarer Rest bleibt); nur ganz unter dem Sockel entfernen. Sockel weiterhin davor (`plinthDepth` / `renderOrder`). Dateien: `panelLayout.ts`, `FacadeController.ts`, Tests. Docs: [wall-decor.md](wall-decor.md), [panel-geometry.md](panel-geometry.md).
+
+### Decken und Dach nach Reload wieder da (2026-09-05) — v2.0.199
+
+**Symptom:** Nach Hard-Reload wirkten Decken/Fußböden (und oft das Dach) ausgeblendet, obwohl Ebenen `showCeiling`/`hidden` korrekt und Menü „Ausblenden“ anbot.
+
+**Nicht die Ursache:** Persistenz-Flags (`wall.hidden`, `floor.hidden`, `showCeiling`), Live-Hash vs. localStorage, Galerie-`viewOptions.showCeiling: false`, PCSS/Orbit.
+
+**Ursache:** `FacadeController`-Konstruktor rief nur `rebuild()` (Wände/Paneele) auf, nicht `rebuildIndoorFloor` / `rebuildRoof`. Der erste `applyState` sah „Geometrie unverändert“ → `setState({ rebuildBuildingIds: [] })` → früher Return ohne Indoor/Dach.
+
+**Fix:** Konstruktor baut Indoor + Dach + FarHulls wie volles `setState`; leeres `rebuildBuildingIds: []` holt Indoor nach, wenn die Gruppe noch leer ist. Datei: `FacadeController.ts`. Docs: [floor-plan.md](floor-plan.md), [ux.md](ux.md).
+
+### Cmd+A nur Bühne, kein UI-Text (2026-09-05) — v2.0.198
+
+`Cmd/Ctrl+A` außerhalb von Eingabefeldern: immer `preventDefault` + Selection leeren; Auswahl nur Bühnen-Inhalte. `#app` mit `user-select: none`, Ausnahmen für Inputs und Release-/Credits-Dialoge. Dateien: `main.ts`, `style.css`. Docs: [ux.md](ux.md), [views-and-state.md](views-and-state.md).
+
+### Weiche Schatten auch beim Orbit (2026-09-05) — v2.0.197
+
+Orbit ließ Schatten kurz hart wirken: (1) PCSS-Lite war schon abgeschaltet, der Shader-Pfad blieb aber regressierbar; (2) Pixelratio 1 im Render-Modus ließ weiches PCSS wie Basic wirken. Fix: `pcssLite` vollständig entfernt; im Render (und bei Bloom) volle Pixelratio während Orbit. **Dauerhaft:** Cursor-Rule `.cursor/rules/orbit-visual-stability.mdc` — Orbit darf sichtbare Schatten-/Wandqualität nicht umschalten (Regressionen v2.0.151→170→196). Dateien: `pcssShadows.ts`, `main.ts`. Docs: [shadows.md](shadows.md), [performance.md](performance.md), [camera.md](camera.md).
+
+### Keine Wandfarben-Flashes beim Orbit (2026-09-05) — v2.0.196
+
+Beim Orbit wirkte die Wand kurz umgefärbt: PCSS-Lite (1-Tap) am Gestenanfang und EnvMap-Bind/`needsUpdate` jedes Idle-Frame nach dem Bake. Fix: Orbit ohne PCSS-Lite; `bindMaterialsToGlassEnv` nur nach erfolgreichem Bake; Cube-Bake stellt Render-Target und Intensitäten zuverlässig wieder her. Dateien: `main.ts`, `roomEnvironment.ts`, `threeColors.ts`. Docs: [performance.md](performance.md), [shadows.md](shadows.md).
+
+### Cmd+A wählt alle Wände (2026-09-05) — v2.0.195
+
+`Cmd/Ctrl+A` (außer in Input-Feldern) wählt alle sichtbaren Studio-Wände des aktiven Hauses; im Lichtmodus alle eingeschalteten Lichter. Browser-Textauswahl wird unterdrückt (`preventDefault`). Datei: `main.ts`. Docs: [ux.md](ux.md), [views-and-state.md](views-and-state.md).
+
+### Typ-Scope nur gleiche Maße (2026-09-05) — v2.0.194
+
+`openingsMatchByType` verlangt wieder Typ **und** Breite×Höhe (cm gerundet). Scope „Typ“ trifft damit z. B. nur alle 96×192-Fenster; Mehrfachauswahl 96er+192er erweitert um beide Maß-Gruppen. Bogen-Targets unter Typ folgen derselben Regel. Datei: `editScope.ts`, Tests. Docs: [ux.md](ux.md), [views-and-state.md](views-and-state.md).
+
+### Shift-Rechteckauswahl (2026-09-05) — v2.0.193
+
+Bei **leerer** Auswahl: **Shift+LMB ziehen** zeichnet ein orangefarbenes Rechteck (`#marquee-select-overlay`). Nur Objekte, deren Bildschirm-Ecken **vollständig** im Rechteck liegen, werden gewählt (Wände-OBB, Öffnungs-Mauerwerk, Licht-Marker). Teilweise angeschnittene Objekte bleiben ungewählt. Klick ohne Zug behält Shift-Mehrfachwahl. Mit bestehender Auswahl bleibt Shift+Leer = Pan (2D/Oben). Dateien: `marqueeSelect.ts`, `main.ts`, `index.html`, `style.css`. Docs: [ux.md](ux.md), [views-and-state.md](views-and-state.md).
+
+### Bühnenwahl markiert die Ebenen-Zeile (2026-09-05) — v2.0.192
+
+`applyEditorSelection` / `applyState` übersprangen die Ebenenliste bei reiner Auswahländerung — außer bei Lichtern (v2.0.178). Jetzt: jede geänderte Auswahl (Wand, Öffnung/Treppe, Decke, Dach, Haus, Licht) zeichnet den Baum neu, klappt Vorfahren auf (`revealSelectionInLayerTree`) und scrollt zur markierten Zeile. Datei: `main.ts`. Docs: [ux.md](ux.md), [scene-lights.md](scene-lights.md).
+
+### Nachbarwand streckt an der Stoßecke (2026-09-05) — v2.0.191
+
+`translateStudioCorner` verschob verknüpfte Nachbarn starr (beide Enden mit). Jetzt: Stoßende per `poseWallEndAt` strecken/kürzen, Gegenseite fix; nur senkrecht zur Achse gleicht die ganze Wand mit. Greifer-Strecken, Plan-Ecken und Front-Extrusion nutzen dasselbe Verhalten. Datei: `walls.ts`, Tests: `wallResize.test.ts`. Docs: [ux.md](ux.md).
+
+### Wand-Greifer wirklich in 24-cm-Schritten (2026-09-05) — v2.0.190
+
+Der Flush-/Kanten-Snap beim Strecken lieferte oft nur eine Querachsen-Korrektur und ließ die Länge ungerastert (cm-Freilauf). Fix: Links/Rechts-Greifer nur noch `clampWallResizeDelta` / `snapWallWidthDelta` (24 cm); Abzweig-Kanten-Snap wird auf den Längen-Schritt gerundet. Datei: `main.ts`. Docs: [ux.md](ux.md).
+
+### Wände nur in 24-cm-Schritten (2026-09-05) — v2.0.189
+
+`STUDIO_WALL_WIDTH_STEP` 48→24; `PLAN_DIAGONAL_STEP` = \(24\sqrt{2}\); `STUDIO_MIN_SIZE` 24; Greifer/Toolbar/Abzweig über `wallWidthStepCm`. Pfad-Schließ-Magnet bleibt 48 cm (`BRANCH_CLOSE_MAGNET_CM`). Grundriss-Zeichnen bleibt `PLAN_GRID` 48. Dateien: `constants.ts`, `walls.ts`, `main.ts`, Tests, Docs: [ux.md](ux.md), [floor-plan.md](floor-plan.md).
+
+### Frontlage 32 cm, Hilfslinien für bündige Wände (2026-09-05) — v2.0.188
+
+`DEFAULT_WINDOW_DEPTH_OFFSET` 0→8 (Frontlage 32 cm). Wand-Hilfslinien in 3D/Front (`setPlanWallGuides`); Strecken/Abzweig snappen exakt auf Kanten unverbundener, bündiger Wände (`snapBranchLengthToWallEdges`). Dateien: `presets.ts`, `wallGuides.ts`, `FacadeController.ts`, `main.ts`, `index.html`. Docs: [ux.md](ux.md), [opening-features.md](opening-features.md).
+
+### Fensterrahmen so hell wie Wand und Laibung (2026-09-05) — v2.0.187
+
+Nach v2.0.177 hatten matte Rahmen absichtlich keine EnvMap (gegen Grau am dunklen Himmel). Wand/Laibung bekamen IBL-Fill — weiße Rahmen wirkten dumpfer. Fix: `finishOpeningFrameTree` setzt `finishExteriorMaterial` auf Rahmen/Casing; Facade-Shade wieder auf Fenster-Meshes; Env nur noch ohne `forceExteriorEnv` abgezogen. Dateien: `FacadeController.ts`, `threeColors.ts`, `openingExtras.ts`. Docs: [ux.md](ux.md), [shadows.md](shadows.md).
+
+### Einheitliche Reflexionen an Fassade und Laibung (2026-09-05) — v2.0.186
+
+Offene Laibungen bekamen nur `createTintedMaterial` (oft matt, `envMap = null`) — Paneele/Profile/`forceExteriorEnv` und Glas dagegen die CubeCamera-IBL. Nachts wirkte die Öffnungskante schwarz, die Fassade hellgrau. Fix: `rebuildReveals` ruft `finishExteriorMaterial` / `finishInteriorMaterial` auch für normale Öffnungen (Nische/Konche unverändert beidseitig Interior). Datei: `FacadeController.ts`. Docs: [shadows.md](shadows.md), [ux.md](ux.md).
+
+### Paneele und Fenster folgen der Nacht (2026-09-05) — v2.0.185
+
+Paneele/`forceExteriorEnv` und Glas behielten tagshelle CubeCamera-IBL (`envMapIntensity` ≥ 0,58 bzw. 2,6) und eine Tages-Himmelskugel in `bakeSceneReflectionsIfNeeded` — Laibungen wurden schwarz, Flächen blieben Mittelgrau. Fix: `exteriorEnvFillFromCelestial` skaliert Env-Stärke; Reflexions-Sky/Ground aus Celestial-Palette; beim Bake Env-Intensität temporär 0 (kein Selbstspiegel-Grau). Dateien: `threeColors.ts`, `celestialSky.ts`, `roomEnvironment.ts`, `main.ts`, `FacadeController.ts`. Docs: [celestial-sky.md](celestial-sky.md), [shadows.md](shadows.md).
+
+### Echte Nacht und bläuliches Mondlicht (2026-09-05) — v2.0.184
+
+Sternennacht (`activeLight: night`): Key-Intensität 0, Ambient/Hemi auf ~0,01 dunkelblau — Fassaden nicht mehr Mittelgrau. Mond: ~8200 K + Blaustich, Richtung aus Mondstand, schwaches Fill, Schatten ab niedrigerer Elevations-/Phasen-Schwelle; `AtmosphereSky` richtet Key-Licht auf den Mond statt auf die untergegangene Sonne. Dateien: `celestialSky.ts`, `lightingMood.ts`, `atmosphereSky.ts`, `main.ts`. Docs: [celestial-sky.md](celestial-sky.md), [lighting-mood.md](lighting-mood.md).
+
+### Lichter ausblenden, Ebenen-Bereichsauswahl (2026-09-05) — v2.0.183
+
+„Alle ausblenden“ wurde vom Animationsloop (`syncAutoSceneLightsWithSun`) in der Nacht sofort wieder rückgängig gemacht. Fix: `sceneLightsManualHold` blockiert Auto/Schedule nach manuellem Master-Toggle (Aufhebung über „Lichter mit Sonne“ oder Licht-Modus). Shift+Klick im Ebenenbaum: Bereichsauswahl über sichtbare Zeilen (Lichter/Wände/Öffnungen); Ctrl/Cmd bleibt additive Mehrfachauswahl. Datei: `main.ts`. Docs: [scene-lights.md](scene-lights.md), [ux.md](ux.md).
+
+### Kleinere Maße, flüssige Tageszeit (2026-09-05) — v2.0.182
+
+Maß-Sprites halb so groß (`dist * 0,0225`, Clamp 9–100). Sonnen-Slider: max. 1× `applySunLighting` pro Frame (rAF), während Scrub kein Shadow-Frustum/Bake und keine Schedule-Actors (Fenster/Rollladen erst bei `change`); Gebäudebox gecacht. Dateien: `FacadeController.ts`, `main.ts`. Docs: [ux.md](ux.md), [performance.md](performance.md), [shadows.md](shadows.md).
+
+### Ladeanimation läuft flüssig (2026-09-05) — v2.0.181
+
+Haus-vom-Nikolaus-Loader nutzte `requestAnimationFrame` auf dem Main-Thread und stockte bei Mesh-/Shader-Load. Fix: fester SVG-Pfad + CSS-`@keyframes` auf `stroke-dashoffset` (`pathLength="1"`), Compositor-Layer (`translateZ(0)` / `contain`). Kein Inline-JS mehr für die Strichanimation. Datei: `index.html`. Docs: [views-and-state.md](views-and-state.md).
+
+### Stabiler Wand-Greifer, lesbare Maß-Labels (2026-09-05) — v2.0.180
+
+Live-Vorschau rief `syncSiteTransform` auf — bei wachsender Wand verschob sich der Site-Ursprung, `grabFloor` (site-lokal) driftete, Δ-Breite explodierte. Fix: während `wallResizeDrag` kein Site-Transform. Maß-Sprites skalieren mit Kameradistanz (`updateMeasureLabelScales`). Dateien: `main.ts`, `FacadeController.ts`. Docs: [ux.md](ux.md).
+
+### cm-Maßlinie beim Wand-Greifer (2026-09-05) — v2.0.179
+
+Beim Ziehen von Links-/Rechts-/Oben-/Front-Greifer erscheint eine gelbe Maßlinie mit Vorzeichen-cm (Delta zum Drag-Start), analog zu Öffnungs-Abstandslinien. API: `FacadeController.setWallResizeMeasure`; Wiring in `beginWallResizeDrag` / `finishWallResizeDrag`. Dateien: `FacadeController.ts`, `main.ts`. Docs: [ux.md](ux.md).
+
+### Lichtwahl markiert die Ebenen-Zeile (2026-09-05) — v2.0.178
+
+`applyEditorSelection` hat die Ebenenliste übersprungen — Auswahl eines Lichts auf der Bühne aktualisierte Toolbar/Runtime, nicht die Markierung links. Fix: bei geänderter Lichtauswahl Ebenen neu zeichnen, Lichter-Sektion aufklappen, Zeile in den Sichtbereich scrollen (`data-layer-light-id`). Datei: `main.ts`. Docs: [scene-lights.md](scene-lights.md), [ux.md](ux.md).
+
+### Weiße Fensterrahmen bleiben weiß (2026-09-05) — v2.0.177
+
+Matte Rahmen bekamen EnvMap (dunkler Himmel → grau) und Facade-Gegenlicht-Shade (zusätzliche Abdunkelung gegenüber Paneelen mit Env-Fill). Fix: `bindMaterialsToGlassEnv` löst Env an `windowFrameSurface` / matte ohne `forceExteriorEnv`; Fenster-Meshes ohne Facade-Shade; `markWindowFrameSurface` an Gründerzeit/LOD/Casing. Dateien: `threeColors.ts`, `FacadeController.ts`, `gruenderzeit.ts`, `windowLod.ts`. Docs: [ux.md](ux.md).
+
+### cm-Abstände beim Öffnungs-Verschieben in 3D (2026-09-05) — v2.0.176
+
+Gelbe Maßlinien (Wandkante / Nachbar-Öffnung) hatten in 3D nur Striche, cm-Text nur in SVG. Fix: Sprites mit `"N cm"` in Segmentmitte (`appendWallOpeningDistanceLines`). Datei: `FacadeController.ts`. Docs: [ux.md](ux.md).
+
+### Weiße Fensterrahmen bleiben weiß (2026-09-05) — v2.0.175
+
+`bindMaterialsToGlassEnv` hat matte Rahmen nur wegen `exteriorSurface` (Facade-Shade) mit starker CubeCamera-EnvMap versehen — weiße Rahmen wirkten am dunklen Himmel grau. Fix: Env nur bei explizitem Außen-Look (`forceExteriorEnv` von `applyRenderExteriorSurfaceLook`); Fensterrahmen ohne diesen Finish. Dateien: `threeColors.ts`, `FacadeController.ts`. Docs: [ux.md](ux.md).
+
+### Profile behalten EnvMap nach Öffnungs-Zug (2026-09-05) — v2.0.174
+
+Nach Rebuild hatten neue Profil-/Rahmen-Materialien `envMap = null` und `envMapIntensity ≈ 0,05`; Paneele behielten die CubeCamera-EnvMap — Profile wirkten ~0,5–1 s dunkelgrau. Fix: `finishExteriorMaterial` beim Erzeugen von Profil, Bank, Verdachung, Rollladen, Treppe und Fensterrahmen; `bindMaterialsToGlassEnv` direkt nach Öffnungs-Commit. Dateien: `FacadeController.ts`, `main.ts`. Docs: [ux.md](ux.md).
+
 ### Kein Profil-Dunkelgrau nach Öffnungs-Zug (2026-09-05) — v2.0.173
 
 Beim Commit nach Öffnungs-Verschieben hat `applySunLighting({ updateShadowMap: true })` Schatten-Maps sofort neu gebacken und Materialien invalidiert — Profile wirkten ~0,5–1 s dunkelgrau. Fix: wie beim Zug-Start Shadow-Bake verzögern (`live` + `scheduleShadowMapUpdate`). Datei: `main.ts`. Docs: [ux.md](ux.md), [shadows.md](shadows.md).

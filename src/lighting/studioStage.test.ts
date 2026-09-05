@@ -3,6 +3,7 @@ import * as THREE from 'three'
 import {
   createStudioSphereGeometry,
   studioEnvironmentHex,
+  studioTintHex,
   studioFlatFloorSize,
   studioSphereRadius,
   STUDIO_DAY_BEIGE,
@@ -21,6 +22,11 @@ describe('studioStage', () => {
     expect(mid.getHex()).not.toBe(night.getHex())
     expect(mid.r).toBeLessThan(day.r)
     expect(mid.r).toBeGreaterThan(night.r)
+  })
+
+  it('tönt nutzerdefinierte Neutral-Farben nach Tageszeit', () => {
+    expect(studioTintHex('#ff0000', 0).toLowerCase()).toBe('#ff0000')
+    expect(studioTintHex('#ff0000', 1).toLowerCase()).toBe(STUDIO_NIGHT_NEAR_BLACK.toLowerCase())
   })
 
   it('macht den flachen Boden immer größer als das Haus inkl. Rand', () => {

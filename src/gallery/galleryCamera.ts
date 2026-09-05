@@ -51,7 +51,8 @@ export function galleryFocusBounds(walls: Wall[]): GalleryFocusBounds | null {
     cx: (minX + maxX) / 2,
     cy: maxY / 2,
     cz: (minZ + maxZ) / 2,
-    span: Math.min(span, 900),
+    // Kein Cap: sonst steht die 3D-Startkamera bei großen Häusern in einer Wand.
+    span,
   }
 }
 

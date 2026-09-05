@@ -58,11 +58,15 @@ export function resolveLightingMood(
   const ambientNorm = THREE.MathUtils.clamp(settings.ambient / 0.65, 0.25, 1.4)
   const twilight = celestial.twilightFactor
   const isDay = celestial.activeLight === 'sun'
+  const isMoon = celestial.activeLight === 'moon'
+  const isDeepNight = celestial.activeLight === 'night'
 
-  const skyIntensity = Math.max(
-    0.02,
+  let skyIntensity = Math.max(
+    0.008,
     (settings.ambient / contrast) * celestial.skyAmbientFactor,
   )
+  if (isDeepNight) skyIntensity = Math.min(skyIntensity, 0.014)
+  else if (isMoon) skyIntensity = Math.min(skyIntensity, 0.042)
 
   const groundUser = new THREE.Color(sceneGroundHex)
   const sunTint = kelvinToColor(celestial.lightColorTemp)
@@ -80,22 +84,42 @@ export function resolveLightingMood(
     0.72,
   )
 
-  const hemiSky = palette.horizon.clone()
-  hemiSky.lerp(sunTint, sunWarmMix)
-  hemiSky.lerp(groundUser, THREE.MathUtils.lerp(0.28, 0.42, 1 - twilight * 0.65))
+  let hemiSky: THREE.Color
+  let groundHemi: THREE.Color
+  if (isDeepNight) {
+    hemiSky = new THREE.Color('#04060e')
+    groundHemi = new THREE.Color('#020308')
+  } else if (isMoon) {
+    hemiSky = new THREE.Color('#071018')
+    hemiSky.lerp(sunTint, 0.22)
+    hemiSky.lerp(new THREE.Color('#6a8cff'), 0.18)
+    groundHemi = groundUser.clone().multiplyScalar(0.06)
+    groundHemi.lerp(new THREE.Color('#0a1020'), 0.55)
+  } else {
+    hemiSky = palette.horizon.clone()
+    hemiSky.lerp(sunTint, sunWarmMix)
+    hemiSky.lerp(groundUser, THREE.MathUtils.lerp(0.28, 0.42, 1 - twilight * 0.65))
+    groundHemi = groundUser.clone()
+    groundHemi.multiplyScalar(THREE.MathUtils.lerp(0.92, 0.38, density))
+  }
 
   const groundAmbient = sunTint.clone()
-  groundAmbient.multiplyScalar(
-    THREE.MathUtils.lerp(0.16, 0.42, ambientNorm) * (1 - twilight * 0.62) + (isDay ? 0 : 0.04),
-  )
-  groundAmbient.lerp(sunTint, lowSunWarm * 0.35)
-
-  const groundHemi = groundUser.clone()
-  groundHemi.multiplyScalar(THREE.MathUtils.lerp(0.92, 0.38, density))
+  if (isDeepNight) {
+    groundAmbient.set('#000000')
+  } else if (isMoon) {
+    groundAmbient.multiplyScalar(0.04 + 0.06 * celestial.moonIllumination)
+    groundAmbient.lerp(new THREE.Color('#88a0ff'), 0.35)
+  } else {
+    groundAmbient.multiplyScalar(
+      THREE.MathUtils.lerp(0.16, 0.42, ambientNorm) * (1 - twilight * 0.62) + (isDay ? 0 : 0.04),
+    )
+    groundAmbient.lerp(sunTint, lowSunWarm * 0.35)
+  }
 
   const bounceDir = bounceDirectionFromKey(celestial.lightAzimuthDeg, celestial.lightElevationRad)
   const bounceColor = new THREE.Color(sceneGroundHex)
-  bounceColor.lerp(kelvinToColor(settings.colorTemperature), 0.35)
+  if (isMoon) bounceColor.lerp(new THREE.Color('#a8c0ff'), 0.4)
+  else bounceColor.lerp(kelvinToColor(settings.colorTemperature), 0.35)
 
   let bounceIntensity = 0
   if (isDay) {
@@ -103,6 +127,8 @@ export function resolveLightingMood(
       celestial.lightIntensity *
       THREE.MathUtils.lerp(0.08, 0.18, ambientNorm) *
       (1 - twilight * 0.85)
+  } else if (isMoon) {
+    bounceIntensity = celestial.lightIntensity * 0.04
   }
 
   const groundShadowSoftness = THREE.MathUtils.clamp(
@@ -114,8 +140,8 @@ export function resolveLightingMood(
   const keyCastShadow =
     (celestial.activeLight === 'sun' && celestial.sun.elevationRad > 0.04) ||
     (celestial.activeLight === 'moon' &&
-      celestial.moon.elevationRad > 0.12 &&
-      celestial.moonIllumination > 0.25)
+      celestial.moon.elevationRad > 0.06 &&
+      celestial.moonIllumination > 0.12)
 
   return {
     keyShadowSoftness: shadowRadiusFromSoftness(settings.shadowSoftness),
@@ -125,7 +151,13 @@ export function resolveLightingMood(
     skyColor: palette.horizon.clone(),
     groundHemiColor: groundHemi,
     groundAmbientColor: groundAmbient,
-    shadowUmbraStrength: THREE.MathUtils.lerp(0.45, 0.92, density),
+    // Schatten-Kontrast wirkt auch auf Boden-Umbra (Neutral sonst zu blass bei Max).
+    shadowUmbraStrength: THREE.MathUtils.clamp(
+      THREE.MathUtils.lerp(0.45, 0.92, density) *
+        THREE.MathUtils.clamp(0.75 + 0.2 * settings.shadowContrast, 0.85, 1.75),
+      0.35,
+      0.99,
+    ),
     bounceDirection: bounceDir.clone(),
     bounceIntensity,
     bounceColor,

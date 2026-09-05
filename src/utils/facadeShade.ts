@@ -69,8 +69,9 @@ export function facadeShadeParamsFromSun(settings: SunSettings): FacadeShadePara
   const invContrast = 1 / Math.max(0.5, settings.shadowContrast)
   const densityBoost = 1 + settings.shadowDensity * 0.35
   return {
-    directDim: THREE.MathUtils.clamp((0.05 + 0.08 * ambientNorm) * invContrast * densityBoost, 0.04, 0.25),
-    hemiDim: THREE.MathUtils.clamp(0.32 + 0.28 * ambientNorm, 0.28, 0.68),
+    // Contrast bis 5: Direct und Hemi dimmen mit — sonst bleibt Neutral trotz Max blass.
+    directDim: THREE.MathUtils.clamp((0.05 + 0.08 * ambientNorm) * invContrast * densityBoost, 0.02, 0.35),
+    hemiDim: THREE.MathUtils.clamp((0.32 + 0.28 * ambientNorm) * invContrast, 0.1, 0.68),
     interiorDirectDim: THREE.MathUtils.clamp((0.14 + 0.12 * ambientNorm) * densityBoost, 0.1, 0.38),
     interiorHemiDim: THREE.MathUtils.clamp(0.3 + 0.22 * ambientNorm, 0.25, 0.58),
     labelDirectDim: THREE.MathUtils.clamp(

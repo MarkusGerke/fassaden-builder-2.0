@@ -53,10 +53,10 @@ function stateWith(walls: Wall[]): FacadeState {
 }
 
 describe('wallSplitRangeAt', () => {
-  it('rastet das Segment um die Hover-Position auf 48 cm', () => {
+  it('rastet das Segment um die Hover-Position auf 8 cm', () => {
     const wall = studio('w', 0, 576)
-    expect(wallSplitRangeAt(wall, 300, 96)).toEqual({ startCm: 240, endCm: 336 })
-    expect(wallSplitRangeAt(wall, 250, 192)).toEqual({ startCm: 144, endCm: 336 })
+    expect(wallSplitRangeAt(wall, 300, 96)).toEqual({ startCm: 256, endCm: 352 })
+    expect(wallSplitRangeAt(wall, 250, 192)).toEqual({ startCm: 152, endCm: 344 })
   })
 
   it('klemmt an Wandanfang und -ende', () => {

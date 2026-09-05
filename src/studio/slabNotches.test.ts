@@ -1,15 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import type { Opening, Wall } from '../types/facade'
 import { WALL_DEPTH } from '../constants/presets'
+import { PLAN_GRID_LEGACY_SCALE } from './constants'
 import { createEmptyFloorPlan, drawPlanLine, extractPlanRings, planNodeWorld, wallsFromFloorPlan } from './floorPlan'
 import { notchSlabRingAtOpenings, slabOpeningNotchIntervals } from './slabNotches'
 
+/** Rechteck wie früher 10×8 bei 48-cm-Zellen → skaliert auf 8-cm-Zellen. */
 function rectanglePlan() {
+  const s = PLAN_GRID_LEGACY_SCALE
   let plan = createEmptyFloorPlan()
-  plan = drawPlanLine(plan, 0, 0, 10, 0)
-  plan = drawPlanLine(plan, 10, 0, 10, 8)
-  plan = drawPlanLine(plan, 10, 8, 0, 8)
-  plan = drawPlanLine(plan, 0, 8, 0, 0)
+  plan = drawPlanLine(plan, 0, 0, 10 * s, 0)
+  plan = drawPlanLine(plan, 10 * s, 0, 10 * s, 8 * s)
+  plan = drawPlanLine(plan, 10 * s, 8 * s, 0, 8 * s)
+  plan = drawPlanLine(plan, 0, 8 * s, 0, 0)
   return plan
 }
 

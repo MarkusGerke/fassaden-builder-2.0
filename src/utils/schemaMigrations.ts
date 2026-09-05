@@ -24,9 +24,10 @@ import {
   clampOuterSillDepth,
   replaceUnchangedDefault,
 } from './hydrate'
+import { PLAN_GRID_LEGACY_SCALE } from '../studio/constants'
 
 /** Aktuelle Persistenz-Schema-Version (steigt nur bei Datenmodell-Änderungen). */
-export const FACADE_SCHEMA_VERSION = 14
+export const FACADE_SCHEMA_VERSION = 15
 
 /** Unterste Version, die Hash-/Datei-Imports ohne gespeicherte schemaVersion annehmen. */
 export const FACADE_SCHEMA_IMPORT_BASE = 7
@@ -212,6 +213,28 @@ export function migrateAlignMasonryOpenings(state: FacadeState): FacadeState {
 }
 
 /**
+ * Plan-Knoten waren in 48-cm-Zellen (gx·48). Ab Schema 15: 8-cm-Zellen → gx·6,
+ * damit Weltpositionen unverändert bleiben. Wand-`originX/Z` sind schon cm und bleiben.
+ */
+export function migratePlanGrid48to8(state: FacadeState): FacadeState {
+  const scale = PLAN_GRID_LEGACY_SCALE
+  return {
+    ...state,
+    buildings: state.buildings.map((building) => ({
+      ...building,
+      floors: (building.floors ?? []).map((plan) => ({
+        ...plan,
+        nodes: plan.nodes.map((node) => ({
+          ...node,
+          gx: node.gx * scale,
+          gz: node.gz * scale,
+        })),
+      })),
+    })),
+  }
+}
+
+/**
  * Schema-Migrationen in Reihenfolge.
  * Fehlende Stufen (from → from+1 ohne Eintrag) werden als No-Op hochgezählt.
  */
@@ -251,6 +274,12 @@ export const SCHEMA_MIGRATIONS: SchemaMigration[] = [
     to: 14,
     id: 'align-masonry-openings',
     apply: migrateAlignMasonryOpenings,
+  },
+  {
+    from: 14,
+    to: 15,
+    id: 'plan-grid-48-to-8',
+    apply: migratePlanGrid48to8,
   },
 ]
 

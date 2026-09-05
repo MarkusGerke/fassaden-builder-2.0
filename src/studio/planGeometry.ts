@@ -26,6 +26,7 @@ import {
   miterAtWallEnd,
   normalizeStudioWall,
   panelFlipForExteriorNormal,
+  sealNearWallEndGaps,
   studioWallOuterSpine,
   translateStudioCorner,
   wallAlongDelta,
@@ -419,7 +420,8 @@ export function alignStudioOpeningsToWallFronts(state: FacadeState): FacadeState
 }
 
 export function finalizeStudioGeometry(state: FacadeState): FacadeState {
-  const synced = syncFloorPlansFromWalls(state)
+  const sealed = sealNearWallEndGaps(state)
+  const synced = syncFloorPlansFromWalls(sealed)
   const aligned = alignStudioOpeningsToWallFronts(synced)
   const miters = recomputeStudioWallMiters(aligned)
   return finalizeWallLayout(miters)

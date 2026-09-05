@@ -430,7 +430,7 @@ export function normalizeSunSettings(
         : base.ambient,
     shadowContrast:
       typeof value.shadowContrast === 'number'
-        ? THREE.MathUtils.clamp(value.shadowContrast, 0.5, 2.5)
+        ? THREE.MathUtils.clamp(value.shadowContrast, 0.5, 5)
         : base.shadowContrast,
     shadowDensity:
       typeof value.shadowDensity === 'number'

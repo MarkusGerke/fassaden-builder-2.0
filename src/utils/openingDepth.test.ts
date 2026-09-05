@@ -21,12 +21,16 @@ function opening(partial: Partial<Opening> = {}): Opening {
 }
 
 describe('openingFacadeDepthCm', () => {
-  it('Standard ohne Override: 24 cm', () => {
-    expect(openingFacadeDepthCm(opening())).toBe(24)
+  it('Standard ohne Override: 32 cm (Laibung 24 + Default-Offset 8)', () => {
+    expect(openingFacadeDepthCm(opening())).toBe(32)
+  })
+
+  it('mit Gebäude-Offset 0: 24 cm', () => {
+    expect(openingFacadeDepthCm(opening(), 0)).toBe(24)
   })
 
   it('mit depthOffset +4: 28 cm', () => {
-    expect(openingFacadeDepthCm(opening({ depthOffset: 4 }))).toBe(28)
+    expect(openingFacadeDepthCm(opening({ depthOffset: 4 }), 0)).toBe(28)
   })
 
   it('mit Gebäude-Default +6', () => {
@@ -46,6 +50,10 @@ describe('buildingFacadeDepthCm', () => {
   it('mappt Offset auf Frontlage', () => {
     expect(buildingFacadeDepthCm(8)).toBe(32)
     expect(buildingDepthOffsetFromFacadeDepthCm(32)).toBe(8)
+  })
+
+  it('ohne Offset: Default 32 cm', () => {
+    expect(buildingFacadeDepthCm(undefined)).toBe(32)
   })
 })
 

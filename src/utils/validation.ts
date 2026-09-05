@@ -42,7 +42,8 @@ export function clampOpeningToWall(
 ): Opening {
   const doSnap = opts?.snapToGrid !== false
   const gridSize = grid ?? GRID_SIZE
-  const posGrid = grid === STUDIO_MASONRY ? STUDIO_MASONRY / 2 : gridSize
+  // Studio-Mauerwerk: Positionen im 8-cm-Raster (nicht 4), damit Abstände konsistent 8er-Schritte zeigen.
+  const posGrid = grid === STUDIO_MASONRY ? STUDIO_MASONRY : gridSize
   const snapped = {
     ...opening,
     x: doSnap ? snapToGrid(opening.x, posGrid) : opening.x,

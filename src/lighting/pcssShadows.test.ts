@@ -4,14 +4,12 @@ import {
   disablePcssShadows,
   enablePcssShadows,
   getPcssLightSizeUv,
-  isPcssLiteMode,
   isPcssShadowsEnabled,
   PCSS_NUM_SAMPLES,
   PCSS_PENUMBRA_SCALE,
   pcssLightSizeUvFromSoftness,
   pcssLightWorldSizeFromSoftness,
   pointShadowRadiusFromSoftness,
-  setPcssLiteMode,
   updatePcssShadowParameters,
 } from './pcssShadows'
 
@@ -109,27 +107,11 @@ describe('pcssShadows', () => {
     disablePcssShadows()
   })
 
-  it('Orbit-Lite: 1-Tap-Schatten per Uniform, ohne Chunk-Rebuild', () => {
+  it('hat keinen Orbit-1-Tap-Pfad mehr (weiche Schatten bleiben beim Navigieren)', () => {
     enablePcssShadows()
     const chunk = THREE.ShaderChunk.shadowmap_pars_fragment
-    expect(chunk).toContain('uniform float pcssLite')
-    expect(chunk).toContain('if ( pcssLite > 0.5 )')
-    expect(isPcssLiteMode()).toBe(false)
-    setPcssLiteMode(true)
-    expect(isPcssLiteMode()).toBe(true)
-    expect(THREE.ShaderChunk.shadowmap_pars_fragment).toBe(chunk)
-    const mat = new THREE.MeshStandardMaterial()
-    const scene = new THREE.Scene()
-    scene.add(new THREE.Mesh(new THREE.BoxGeometry(), mat))
-    updatePcssShadowParameters(4, 2000, scene)
-    const uniforms: Record<string, { value: unknown }> = {}
-    mat.onBeforeCompile(
-      { uniforms, vertexShader: '', fragmentShader: '' } as THREE.WebGLProgramParametersWithUniforms,
-      {} as THREE.WebGLRenderer,
-    )
-    expect(uniforms.pcssLite?.value).toBe(1)
-    setPcssLiteMode(false)
-    expect(uniforms.pcssLite?.value).toBe(0)
+    expect(chunk).not.toContain('pcssLite')
+    expect(chunk).toContain('shadow = pcssGetShadow( shadowMap, shadowCoord );')
     disablePcssShadows()
   })
 

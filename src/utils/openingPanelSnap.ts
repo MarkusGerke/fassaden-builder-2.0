@@ -379,7 +379,9 @@ function nearestPlacementX(
   return nearestValue(candidates, proposedX)
 }
 
-/** Breite so snappen, dass rechte Laibung auf einer Fuge liegt (linke bleibt). */
+/** Breite so snappen, dass rechte Laibung auf einer Fuge liegt (linke bleibt).
+ * Wählt die Fuge mit kleinstem |Breite − Soll| — nicht „nächster Cut“, der 96 oft zu 104 aufbläht.
+ */
 export function snapOpeningWidthToMasonryJambs(
   wall: Wall,
   allWalls: Wall[],
@@ -389,10 +391,48 @@ export function snapOpeningWidthToMasonryJambs(
 ): number {
   if (!wallUsesOpeningMasonrySnap(wall)) return width
   const cuts = openingMasonryJambXs(wall, allWalls, atY)
+  if (cuts.length < 2) return width
   const left = nearestValue(cuts, x)
-  const right = nearestValue(cuts, left + width)
-  const next = Math.max(STUDIO_MASONRY, right - left)
-  return next <= wall.width + EPS ? next : width
+  let bestW = width
+  let bestErr = Infinity
+  for (const right of cuts) {
+    if (right <= left + EPS) continue
+    const w = right - left
+    if (w > wall.width + EPS) continue
+    const err = Math.abs(w - width)
+    // Bei Gleichstand: exakte Sollbreite, sonst kleinere Abweichung nach innen (nicht aufblasen).
+    if (
+      err < bestErr - EPS ||
+      (Math.abs(err - bestErr) <= EPS && (Math.abs(w - width) < Math.abs(bestW - width) || w < bestW))
+    ) {
+      bestErr = err
+      bestW = w
+    }
+  }
+  const out = Math.max(STUDIO_MASONRY, bestW)
+  // #region agent log
+  fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c6b426'},body:JSON.stringify({sessionId:'c6b426',runId:'pre-fix',hypothesisId:'A',location:'openingPanelSnap.ts:snapOpeningWidthToMasonryJambs',message:'width snap result',data:{xIn:x,left,targetWidth:width,bestW:out,bestErr,cutCount:cuts.length,sampleCuts:cuts.filter((c)=>c>=left-0.1&&c<=left+200).slice(0,16),hasExactTarget:cuts.some((r)=>Math.abs(r-left-width)<=EPS),flushForTarget:openingFlushWidthPlacementXs(wall,allWalls,width,atY).length},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
+  return out
+}
+
+/** Linke Laibungen, bei denen `x` und `x+width` auf Fugen liegen (Sollbreite bleibt). */
+export function openingFlushWidthPlacementXs(
+  wall: Wall,
+  allWalls: Wall[],
+  width: number,
+  atY?: number,
+): number[] {
+  if (!wallUsesOpeningMasonrySnap(wall) || width <= EPS) return []
+  const cuts = openingMasonryJambXs(wall, allWalls, atY)
+  const maxX = Math.max(0, wall.width - width)
+  const xs: number[] = []
+  for (const left of cuts) {
+    if (left < -EPS || left > maxX + EPS) continue
+    const right = left + width
+    if (cuts.some((c) => Math.abs(c - right) <= EPS)) xs.push(left)
+  }
+  return uniqueSorted(xs)
 }
 
 export interface OpeningMasonrySnapResult {
@@ -432,8 +472,15 @@ export function snapOpeningMoveToMasonry(
 
   const atY = openingCenterY(opening, proposedY)
   const kind: OpeningPlacementCandidateKind = mode === 'drag' ? 'drag' : 'full'
-  const xs = openingPlacementCandidateXs(wall, allWalls, width, atY, kind)
+  // Beim Verschieben Breite/Höhe nicht anfassen — sonst wird Bibliothek 96×192 zu 104.
+  // Drag: wenn möglich nur Positionen mit beiden Laibungen auf Fugen (Sollbreite).
+  const flushXs = openingFlushWidthPlacementXs(wall, allWalls, width, atY)
+  const xs =
+    mode === 'drag' && flushXs.length > 0
+      ? flushXs
+      : openingPlacementCandidateXs(wall, allWalls, width, atY, kind)
   if (xs.length > 0) {
+    const xBefore = x
     if (mode === 'nudge' && Math.abs(dx) > EPS) {
       x = adjacentValueByTravel(xs, opening.x, dx > 0 ? 1 : -1, dx)
     } else if (Math.abs(dx) > EPS || Math.abs(proposedX - opening.x) > EPS) {
@@ -441,13 +488,19 @@ export function snapOpeningMoveToMasonry(
     } else {
       x = nearestPlacementX(xs, opening.x, width, wall.width)
     }
-  }
-
-  const centered = Math.abs(x + width / 2 - wall.width / 2) <= EPS
-  width = snapOpeningWidthToMasonryJambs(wall, allWalls, x, width, atY)
-  if (centered) {
-    const maxX = Math.max(0, wall.width - width)
-    x = Math.max(0, Math.min(maxX, wall.width / 2 - width / 2))
+    // #region agent log
+    {
+      const wallCenterX = wall.width / 2 - width / 2
+      const proposedCenter = proposedX + width / 2
+      const magnetHit =
+        Math.abs(proposedCenter - wall.width / 2) <= WALL_CENTER_MAGNET_CM &&
+        Math.abs(x - wallCenterX) <= EPS
+      const jump = Math.abs(x - opening.x)
+      if (magnetHit || jump > 24 || mode === 'nudge') {
+        fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c6b426'},body:JSON.stringify({sessionId:'c6b426',runId:'pre-fix',hypothesisId:magnetHit?'M':'J',location:'openingPanelSnap.ts:snapOpeningMoveToMasonry',message:'move snap x',data:{mode,dx,dy,openingX:opening.x,proposedX,xBefore,xOut:x,width,wallW:wall.width,wallCenterX,flushCount:flushXs.length,candCount:xs.length,usedFlush:mode==='drag'&&flushXs.length>0,magnetHit,jump,distToCenter:Math.abs(proposedCenter-wall.width/2),sampleXs:xs.filter((v)=>Math.abs(v-proposedX)<80).slice(0,12)},timestamp:Date.now()})}).catch(()=>{});
+      }
+    }
+    // #endregion
   }
 
   const lockY = opening.type === 'door' && Boolean(opening.stairs?.enabled)
@@ -480,21 +533,25 @@ export function alignOpeningToMasonry(
   }
 
   const atY = openingCenterY(opening)
-  if (opts?.snapWidth !== false) {
-    // Breite zuerst an Fugen, dann Position an Kandidaten
-    const xsFlush = openingMasonryJambXs(wall, allWalls, atY)
-    if (xsFlush.length >= 2) {
-      const left = nearestValue(xsFlush, x)
-      width = snapOpeningWidthToMasonryJambs(wall, allWalls, left, width, atY)
-    }
-  }
+  const snapWidth = opts?.snapWidth === true
+  const snapHeight = opts?.snapHeight === true
 
-  const xs = openingPlacementCandidateXs(wall, allWalls, width, atY, 'full')
+  const widthIn = width
+  const xIn = x
+  // Explizite Breitenänderung (snapWidth): Sollbreite halten — nicht auf nächste Fugen-Spannweite
+  // aufblasen (96→100/104). Nur Position so wählen, dass möglichst beide Laibungen auf Fugen liegen.
+
+  // Sollbreite halten: Positionen bevorzugen, bei denen beide Laibungen auf Fugen liegen.
+  const flushXs = openingFlushWidthPlacementXs(wall, allWalls, width, atY)
+  const xs =
+    flushXs.length > 0
+      ? flushXs
+      : openingPlacementCandidateXs(wall, allWalls, width, atY, 'full')
   if (xs.length > 0) x = nearestPlacementX(xs, x, width, wall.width)
 
   const lockY = opening.type === 'door' && Boolean(opening.stairs?.enabled)
   if (!lockY) {
-    if (opts?.snapHeight !== false) {
+    if (snapHeight) {
       const ysCuts = openingMasonryCourseYs(wall, atY)
       if (ysCuts.length >= 2) {
         const top = nearestValue(ysCuts, y)
@@ -510,5 +567,10 @@ export function alignOpeningToMasonry(
     if (ys.length > 0) y = nearestValue(ys, y)
   }
 
+  // #region agent log
+  if (snapWidth || Math.abs(width - widthIn) > 0.05) {
+    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c6b426'},body:JSON.stringify({sessionId:'c6b426',runId:'post-fix',hypothesisId:'B',location:'openingPanelSnap.ts:alignOpeningToMasonry',message:'align masonry out',data:{snapWidth,snapHeight,xIn,widthIn,xOut:x,widthOut:width,flushCount:flushXs.length,atY,wallWidth:wall.width},timestamp:Date.now()})}).catch(()=>{});
+  }
+  // #endregion
   return { x, y, width, height }
 }

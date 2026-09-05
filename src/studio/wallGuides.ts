@@ -161,6 +161,8 @@ export function computeSegmentAlignGuides(
 /**
  * Snappt einen freien Endpunkt auf bündige X/Z-Kanten anderer Wände.
  * Gibt den gesnappten Punkt und die aktiven Align-Guides zurück.
+ * Treffer = exakte Kante (kein weiteres 48-cm-Raster) — Lücke zu unverbundenen,
+ * aber bündigen Wänden schließt passgenau.
  */
 export function snapPointToWallEdges(
   point: { x: number; z: number },
@@ -203,4 +205,28 @@ export function snapPointToWallEdges(
     guides.push({ kind: 'endZ', value: snapZ, orientation: 'horizontal', source: 'align' })
   }
   return { point: { x, z }, guides }
+}
+
+/**
+ * Länge (cm) entlang `dir` vom Gelenk zum Kanten-Snap, wenn der freie Endpunkt
+ * eine bündige Kante trifft — sonst `null` (Raster behalten).
+ */
+export function snapBranchLengthToWallEdges(
+  joint: { x: number; z: number },
+  dirUnit: { x: number; z: number },
+  lengthCm: number,
+  floorWalls: Wall[],
+  skipWallIds: Iterable<string> = [],
+  tol = WALL_GUIDE_SNAP_CM,
+): { lengthCm: number; guides: WallGuide[] } | null {
+  const guess = {
+    x: joint.x + dirUnit.x * lengthCm,
+    z: joint.z + dirUnit.z * lengthCm,
+  }
+  const snapped = snapPointToWallEdges(guess, floorWalls, skipWallIds, tol)
+  if (snapped.guides.length === 0) return null
+  const proj =
+    (snapped.point.x - joint.x) * dirUnit.x + (snapped.point.z - joint.z) * dirUnit.z
+  if (proj < tol) return null
+  return { lengthCm: proj, guides: snapped.guides }
 }

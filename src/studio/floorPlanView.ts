@@ -15,7 +15,8 @@ import { floorIndex } from '../utils/layers'
 import type { BuildingGuide } from './buildingGuides'
 import { planGridBoundsForBuilding } from '../utils/buildings'
 
-export const PLAN_DRAW_CELLS = 32
+/** Zellen über die Zeichenfläche — Weltmaß wie früher 32×48 cm (= 192×8 cm). */
+export const PLAN_DRAW_CELLS = 192
 export const PLAN_VIEW_SIZE = PLAN_DRAW_CELLS * PLAN_GRID
 /** Abstand der Draufsicht-Kamera über dem höchsten Gebäudeteil (cm). */
 export const TOP_VIEW_CAMERA_PAD = 160

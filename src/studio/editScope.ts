@@ -70,9 +70,13 @@ function selectedFloorIndices(state: FacadeState, editor: EditorState): number[]
   return [...floors]
 }
 
-/** Gleicher Öffnungstyp (Fenster / Tür / Ausschnitt) — ohne Maße oder Keller. */
+/** Gleicher Öffnungstyp und gleiche Maße (Breite×Höhe, cm gerundet). Keller separat. */
 export function openingsMatchByType(a: Opening, b: Opening): boolean {
-  return a.type === b.type
+  if (a.type !== b.type) return false
+  return (
+    Math.round(a.width) === Math.round(b.width) &&
+    Math.round(a.height) === Math.round(b.height)
+  )
 }
 
 /** Alle Studio-Wände desselben Hauses (alle Seiten, alle Winkel, alle Etagen). */
@@ -227,8 +231,8 @@ function isDoorOrWindow(opening: Opening): boolean {
 
 /**
  * Ziele für Bogenform / Stichmaß: Fenster **und** Türen im Gültigkeitsbereich
- * (Ausschnitte ausgenommen). Bei „Auswahl“: alle Fenster/Türen derselben Wand(e).
- * Bei „Typ“: Fenster und Türen im selben Haus (nicht nur gleicher Typ).
+ * (Ausschnitte ausgenommen). Bei „Auswahl“: nur markierte Fenster/Türen.
+ * Bei „Typ“: gleicher Typ und gleiche Maße wie die Auswahl (wie `editOpeningTargets`).
  */
 export function editArchOpeningTargets(
   state: FacadeState,
@@ -257,12 +261,29 @@ export function editArchOpeningTargets(
     }
     return filterOpeningRefsByBasementParity(state, refs, editor)
   }
-  if (scope === 'facade' || scope === 'type') {
-    const walls =
-      scope === 'facade'
-        ? wallsMatchingFacadeYaws(studioWallsOfBuilding(state, anchorWall.id), facadeYawFilter)
-        : studioWallsOfBuilding(state, anchorWall.id)
-    for (const wall of walls) {
+  if (scope === 'type') {
+    const anchors: Opening[] = []
+    for (const ref of editor.selectedOpenings) {
+      const wall = getWall(state, ref.wallId)
+      const opening = wall?.openings.find((item) => item.id === ref.openingId)
+      if (opening && isDoorOrWindow(opening)) anchors.push(opening)
+    }
+    if (anchors.length === 0) return []
+    for (const wall of studioWallsOfBuilding(state, anchorWall.id)) {
+      for (const opening of wall.openings) {
+        if (!isDoorOrWindow(opening)) continue
+        if (anchors.some((anchor) => openingsMatchByType(anchor, opening))) {
+          refs.push({ wallId: wall.id, openingId: opening.id })
+        }
+      }
+    }
+    return filterOpeningRefsByBasementParity(state, refs, editor)
+  }
+  if (scope === 'facade') {
+    for (const wall of wallsMatchingFacadeYaws(
+      studioWallsOfBuilding(state, anchorWall.id),
+      facadeYawFilter,
+    )) {
       pushDoorWindow(wall, refs)
     }
     return filterOpeningRefsByBasementParity(state, refs, editor)

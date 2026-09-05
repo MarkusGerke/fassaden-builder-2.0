@@ -43,13 +43,13 @@ function wallWith(openingItem: Opening, profiles: Wall['profiles'] = []): Wall {
 }
 
 describe('pediment gable layout', () => {
-  it('spannt immer Öffnungsbreite plus Überstand', () => {
+  it('spannt Öffnungsbreite plus Überstand ohne Horizontalen', () => {
     const ped = normalizeOpeningPediment({
       enabled: true,
       form: 'triangleClosed',
       overhang: 8,
-      gableWidth: 40,
-      sideArmWidth: 16,
+      gableWidth: 0,
+      sideArmWidth: 0,
       gableHeight: 24,
     })
     const win = opening(96)
@@ -61,7 +61,7 @@ describe('pediment gable layout', () => {
     expect(layout.x1).toBe(win.x + win.width + 8)
   })
 
-  it('offenes Dreieck hat keine extra Seitenlinien', () => {
+  it('offenes Dreieck mit Horizontalen setzt Seitenarme', () => {
     const ped = normalizeOpeningPediment({
       enabled: true,
       form: 'triangle',
@@ -73,9 +73,12 @@ describe('pediment gable layout', () => {
     const win = opening(96)
     const layout = pedimentGableLayout(win, ped)
     const pts = pedimentFormPoints('triangle', layout)
+    expect(layout.gableRight - layout.gableLeft).toBe(40)
+    expect(layout.x0).toBe(layout.gableLeft - 16)
+    expect(layout.x1).toBe(layout.gableRight + 16)
     expect(pts[0]?.x).toBe(layout.x0)
     expect(pts[pts.length - 1]?.x).toBe(layout.x1)
-    expect(pts).toHaveLength(3)
+    expect(pts.length).toBeGreaterThan(3)
   })
 
   it('geschlossenes Dreieck ist ein Dreieck über der Fensterbreite inkl. Überstand', () => {
