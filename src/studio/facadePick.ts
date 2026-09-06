@@ -7,6 +7,7 @@ export function isNonPickableIndoorKind(kind: string | undefined): boolean {
   return (
     kind === 'sunCeilingOccluder' ||
     kind === 'baySoffit' ||
+    kind === 'bayMouthSunOccluder' ||
     kind === 'pointLightRoomOccluder' ||
     kind === 'openingShadowTunnel'
   )

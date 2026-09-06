@@ -2,6 +2,21 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Erker-Mundblende gegen helle Flecken unter dem Erker (2026-09-06) — v2.0.264
+
+**Symptom:** Nach v2.0.263 „besser, aber immer noch“: zwei weiche helle Flecken direkt unter der Erker-Untersicht (einer je Frontfenster), nach unten auslaufend.
+
+**Ursache (in der Shadow-Map gemessen):** Glas wirft keinen Schatten — die Sonne sieht durch die Erker-Fenster in den Raum. Diese Loch-Texel liegen in Map-UV nur ~56 cm über der Fuge Wand/Untersicht; der PCSS-Weichfilter (Erker-Front als Blocker, Near-Plane nah → großer Filterradius) greift hinein und zählt sie als „lit“.
+
+**Nicht geholfen / verworfen:**
+- Shader-Lochfilter (Taps hinter der Empfängerebene ignorieren, `pcssTapOnPlane` + Toleranz-Uniform): allgemein, aber Look-Änderung an Silhouetten und mehr Shader-Kosten — gegen `schatten-qualitaet-soll.mdc`; zurückgenommen.
+- Brüstung 80/120 cm in der Mundöffnung: nächstes Loch nur von 56 auf 78 cm verschoben.
+- Near-Plane der Schattenkamera künstlich dichter: reproduziert nur Penumbra-Wash, nicht die Flecken.
+
+**Fix:** `bayMouthSunOccluder` in `FacadeController.rebuildIndoorFloors`: unsichtbare Blende (`colorWrite: false`, nur Layer 0, `castShadow`, kein Raycast, `isNonPickableIndoorKind`) 10 cm hinter der Wandebene im Erker, volle Geschosshöhe über die Mundöffnung (erster ↔ letzter Ringpunkt). Glas-Loch-Texel im Erkerbereich: 0. Kein Distance-Material → Punktlichter unberührt. Nebenwirkung: kein Sonnenfleck im Raum hinter dem Erker (Erker-Innenraum bleibt besonnt). Nutzer bestätigt: Licht scheint nicht mehr durch.
+
+**Docs:** [bay-windows.md](bay-windows.md), [shadows.md](shadows.md).
+
 ### Kein Licht durch Erkerboden (2026-09-06) — v2.0.263
 
 **Symptom:** An der Wand unter dem Erker helle Flecken — Sonne scheint durch den Erkerboden.

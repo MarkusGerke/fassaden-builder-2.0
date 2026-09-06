@@ -9,6 +9,7 @@ describe('facadePick', () => {
   it('schließt Schatten-Okkluder und Soffits von der Deckenwahl aus', () => {
     expect(isNonPickableIndoorKind('sunCeilingOccluder')).toBe(true)
     expect(isNonPickableIndoorKind('baySoffit')).toBe(true)
+    expect(isNonPickableIndoorKind('bayMouthSunOccluder')).toBe(true)
     expect(isSelectableCeilingKind('sunCeilingOccluder', 'ceiling')).toBe(false)
     expect(isSelectableCeilingKind('ceiling', 'ceiling')).toBe(true)
     expect(isSelectableCeilingKind('floor', 'floor')).toBe(true)

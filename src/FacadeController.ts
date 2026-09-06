@@ -136,6 +136,7 @@ import {
 } from './studio/labelGeometry'
 import { wallHasLabel, wallLabel, wallLabels } from './utils/wallLabel'
 import {
+  BAY_MOUTH_SUN_OCCLUDER_INSET_CM,
   INDOOR_SLAB_THICKNESS,
   INDOOR_SLAB_VISUAL_INSET_CM,
   SHADOW_LAYER_EXTERIOR,
@@ -707,6 +708,13 @@ export class FacadeController {
         } else if (child.customDistanceMaterial === this.shadowDistanceMaterial) {
           child.customDistanceMaterial = undefined
         }
+        continue
+      }
+      if (child.userData.kind === 'bayMouthSunOccluder') {
+        // Nur Sonne (Layer Außen), kein Punktlicht-Distance-Material — Raumlichter unberührt.
+        child.castShadow = true
+        child.receiveShadow = false
+        child.layers.set(SHADOW_LAYER_EXTERIOR)
         continue
       }
       // Sichtbare Platten: nur Innen-Layer (keine Fassadenstreifen). Sonne: sunCeilingOccluder.
@@ -1795,7 +1803,11 @@ export class FacadeController {
         depthMat.dispose()
         child.customDepthMaterial = undefined
       }
-      if (child.userData.kind === 'sunCeilingOccluder' || child.userData.kind === 'baySoffit') {
+      if (
+        child.userData.kind === 'sunCeilingOccluder' ||
+        child.userData.kind === 'baySoffit' ||
+        child.userData.kind === 'bayMouthSunOccluder'
+      ) {
         const mat = child.material
         if (mat && !Array.isArray(mat)) mat.dispose()
       }
@@ -1895,6 +1907,58 @@ export class FacadeController {
       mesh.receiveShadow = true
       mesh.userData.kind = 'baySoffit'
       mesh.userData.buildingId = buildingId
+      this.indoorFloorGroup.add(mesh)
+    }
+
+    /**
+     * Unsichtbare Sonnen-Blende in der Erker-Mundöffnung (v2.0.264). Glas wirft keinen
+     * Schatten: die Sonne sieht durch die Erker-Fenster in den Raum dahinter. In der
+     * Shadow-Map liegen diese „Löcher“ in Map-UV nur ~50–80 cm über der Fuge Untersicht/Wand
+     * — der Erker-Boden selbst ist aus Lichtsicht hinter der Erker-Front verborgen, deshalb
+     * schätzt PCSS dort eine breite Penumbra (Erker-Front als Blocker) und der Weichfilter
+     * greift in die Löcher: helle Flecken an der Wand unter dem Erker (je Fenster einer).
+     * Die Blende (Layer 0, `colorWrite: false`, 10 cm vor der Wandebene im Erker) schließt
+     * den Mund in voller Geschosshöhe nur für die Sonnen-Map; sichtbar ist sie nie.
+     */
+    const addBayMouthSunOccluder = (
+      a: { x: number; z: number },
+      b: { x: number; z: number },
+      inward: { x: number; z: number },
+      bottomY: number,
+      height: number,
+      buildingId: string,
+    ) => {
+      const len = Math.hypot(b.x - a.x, b.z - a.z)
+      if (len < 2 || height <= 0) return
+      const ox = inward.x * BAY_MOUTH_SUN_OCCLUDER_INSET_CM
+      const oz = inward.z * BAY_MOUTH_SUN_OCCLUDER_INSET_CM
+      const geo = new THREE.BufferGeometry()
+      const y0 = bottomY
+      const y1 = bottomY + height
+      const pos = new Float32Array([
+        a.x + ox, y0, a.z + oz,
+        b.x + ox, y0, b.z + oz,
+        b.x + ox, y1, b.z + oz,
+        a.x + ox, y0, a.z + oz,
+        b.x + ox, y1, b.z + oz,
+        a.x + ox, y1, a.z + oz,
+      ])
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+      geo.computeVertexNormals()
+      const mat = new THREE.MeshBasicMaterial({
+        colorWrite: false,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      })
+      mat.shadowSide = THREE.DoubleSide
+      const mesh = new THREE.Mesh(geo, mat)
+      mesh.castShadow = true
+      mesh.receiveShadow = false
+      mesh.frustumCulled = false
+      mesh.layers.set(SHADOW_LAYER_EXTERIOR)
+      mesh.userData.kind = 'bayMouthSunOccluder'
+      mesh.userData.buildingId = buildingId
+      mesh.raycast = () => {}
       this.indoorFloorGroup.add(mesh)
     }
 
@@ -2020,6 +2084,25 @@ export class FacadeController {
         }
         cx /= ring.length
         cz /= ring.length
+        // Mundöffnung = offene Ringseite an der Wandebene (erster ↔ letzter Ringpunkt);
+        // die Sonnen-Brüstung dort stopft die Glas-„Löcher“ der Shadow-Map über der Fuge.
+        {
+          const a = ring[0]!
+          const b = ring[ring.length - 1]!
+          const mx = (a.x + b.x) / 2
+          const mz = (a.z + b.z) / 2
+          const il = Math.hypot(cx - mx, cz - mz)
+          if (il > 1e-3) {
+            addBayMouthSunOccluder(
+              a,
+              b,
+              { x: (cx - mx) / il, z: (cz - mz) / il },
+              host.y ?? 0,
+              host.height,
+              building.id,
+            )
+          }
+        }
         const hasBayAbove = buildingWalls.some((w) => {
           if (w.id === host.id) return false
           if (!w.bayWindow?.wallIds?.length) return false
@@ -2356,8 +2439,9 @@ export class FacadeController {
         child.visible = floor ? floor.showCeiling !== false && !floor.hidden : true
         continue
       }
-      if (child.userData.kind === 'baySoffit') {
+      if (child.userData.kind === 'baySoffit' || child.userData.kind === 'bayMouthSunOccluder') {
         // Immer sichtbar — kein floorIndex; darf nicht an Decken-Flag hängen.
+        // (Mund-Brüstung ist colorWrite:false → nur in der Sonnen-Map sichtbar.)
         child.visible = true
         continue
       }
@@ -2398,6 +2482,12 @@ export class FacadeController {
         mesh.receiveShadow = true
         mesh.layers.set(SHADOW_LAYER_EXTERIOR)
         mesh.layers.enable(SHADOW_LAYER_INTERIOR)
+        continue
+      }
+      if (mesh.userData.kind === 'bayMouthSunOccluder') {
+        mesh.castShadow = true
+        mesh.receiveShadow = false
+        mesh.layers.set(SHADOW_LAYER_EXTERIOR)
         continue
       }
       mesh.castShadow = mesh.visible

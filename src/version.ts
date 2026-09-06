@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.263'
+export const APP_VERSION = '2.0.264'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,15 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.264',
+    date: '2026-09-06',
+    title: 'Keine hellen Flecken unter dem Erker',
+    changes: [
+      'Erker: Die Wand unter der Untersicht bleibt durchgehend im Schatten — die Sonne „sah“ bisher durch die Erker-Fenster in den Raum und der weiche Schatten griff diese Lücke auf',
+      'Unsichtbare Blende in der Erker-Öffnung nur für die Sonnen-Schatten; Raumlichter und Erker-Innenraum unverändert',
+    ],
+  },
   {
     version: '2.0.263',
     date: '2026-09-06',

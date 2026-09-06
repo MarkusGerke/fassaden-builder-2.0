@@ -203,6 +203,18 @@ export const SHADOW_LAYER_OCCLUDER = 3
 /** Dicke der Innenboden-/Decken-Extrusion (cm) für stabile Shadow-Occluder. */
 export const INDOOR_SLAB_THICKNESS = 8
 /**
+ * Unsichtbare Sonnen-Blende in der Erker-Mundöffnung (v2.0.264), volle Geschosshöhe.
+ * Glas wirft keinen Schatten → die Sonnen-Map sieht durch die Erker-Fenster in den Raum.
+ * Diese „Löcher“ liegen in Map-UV nur ~50–80 cm über der Fuge Untersicht/Wand (gemessen);
+ * der PCSS-Weichfilter (Erker-Front als Blocker, Near-Plane nah → große Penumbra) greift
+ * hinein → helle Flecken an der Wand unter dem Erker. Die Blende schließt den Mund für die
+ * Sonne komplett (nur Layer Außen, `colorWrite: false`) — im Raum hinter dem Erker gibt es
+ * keinen Sonnenfleck mehr, der Erker-Innenraum selbst bleibt besonnt. Eine 120-cm-Brüstung
+ * rückte das nächste Loch nur von 56 auf 78 cm — zu wenig gegen Radien um 1 m.
+ * Abstand vor der Wandebene in den Erker hinein (cm) — kein Z-Fighting mit der Wand.
+ */
+export const BAY_MOUTH_SUN_OCCLUDER_INSET_CM = 10
+/**
  * Zusätzlicher Rückzug der sichtbaren Platte hinter die Wandinnenseite (cm).
  * Vermeidet Z-Fighting / Flackern an der Innenwand; Lichtdichte über Okkluder + Wand.
  */

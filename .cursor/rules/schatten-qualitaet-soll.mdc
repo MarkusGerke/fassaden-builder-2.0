@@ -16,6 +16,7 @@ Nutzer-Feedback (2026-09-06): **Schatten so wie jetzt sind optimal** — Ergänz
 - Render Shadow-Map **8192**, `SHADOW_GROUND_MAX_LENGTH` **2400**
 - Freiraum-Cap: `castShadow = false`, `skipFacadeShade`, Empfang an
 - Erker-Soffit: `castShadow = true`, Layer Außen+Innen — auch ohne Punktlicht-Okklusion (`applyIndoorShadowCasting` darf den Layer nicht auf Innen allein setzen, v2.0.263)
+- Erker-Mundblende `bayMouthSunOccluder` (v2.0.264): unsichtbar, volle Geschosshöhe, nur Layer Außen — schließt die Glas-„Löcher“ der Sonnen-Map hinter dem Erker. Nicht auf Brüstungshöhe kürzen (78 cm reichten nicht), nicht durch Shader-Lochfilter ersetzen (Look-Änderung, verworfen)
 - `dirLight.shadow.intensity` aus Schatten-Dunkelheit; Default Density **0,70**
 
 ## Verboten ohne Nutzerauftrag
