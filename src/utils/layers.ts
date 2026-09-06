@@ -7,7 +7,15 @@ import { groupWallsByFloorForBuilding, sortedFloorIndicesForBuilding } from '../
 export type LayerItem = { kind: 'wall'; wallId: string }
 
 export function floorIndex(wall: Wall, wallHeight = WALL_HEIGHT): number {
-  return Math.round(wall.y / wallHeight)
+  if (typeof wall.storeyIndex === 'number' && Number.isFinite(wall.storeyIndex)) {
+    return Math.max(0, Math.round(wall.storeyIndex))
+  }
+  // Ohne persistierten Index: Fuß ggf. um Erker-Drop anheben (Drop hängt unter der Etage).
+  const drop =
+    typeof wall.bayWindow?.dropCm === 'number' && Number.isFinite(wall.bayWindow.dropCm)
+      ? Math.max(0, wall.bayWindow.dropCm)
+      : 0
+  return Math.round(((wall.y ?? 0) + drop) / wallHeight)
 }
 
 /** Y-Position der Geschossoberkante (Decke/Boden-Trennfläche) aus den Wänden dieser Etage. */

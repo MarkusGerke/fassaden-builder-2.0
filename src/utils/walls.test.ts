@@ -12,6 +12,7 @@ import {
   resizeStoreyHeight,
   STOREY_COPY_PLAN_ONLY,
   updateCeilingColorForWalls,
+  removeStorey,
 } from './walls'
 import { createStudioWall, studioWallOuterLocalZ, studioWallOuterSpine, studioWallTransform, attachAngledWallFromEnd, wallStartPoint, wallEndPoint, pointsMeet } from '../studio/walls'
 import { finalizeStudioGeometry, applyGlobalWallDepth } from '../studio/planGeometry'
@@ -70,6 +71,48 @@ describe('insertStoreyAbove', () => {
     expect(floorIndex(clones[0]!, h)).toBe(1)
   })
 
+  it('setzt storeyIndex korrekt nach Duplikat trotz abweichender EG-Höhe', () => {
+    const hTall = 448
+    const hShort = 384
+    const eg = wall('eg', 0)
+    eg.height = hTall
+    const og1 = wall('og1', hTall)
+    og1.height = hTall
+    const og2 = wall('og2', hTall * 2)
+    og2.height = hTall
+    const og3 = wall('og3', hTall * 3)
+    og3.height = hTall
+    let base: FacadeState = {
+      buildings: [
+        {
+          id: 'b1',
+          name: 'Haus',
+          wallHeight: hTall,
+          wallDepth: WALL_DEPTH,
+          walls: [eg, og1, og2, og3],
+          floors: [
+            { nodes: [], edges: [] },
+            { nodes: [], edges: [] },
+            { nodes: [], edges: [] },
+            { nodes: [], edges: [] },
+          ],
+        },
+      ],
+      activeBuildingId: 'b1',
+    }
+    base = resizeStoreyHeight(base, 0, hShort - hTall)
+    const next = duplicateStorey(base, 3, { copyOpenings: false })
+    const building = next.buildings[0]!
+    const source = building.walls.find((item) => item.id === 'og3')!
+    const clone = building.walls.find(
+      (item) => !['eg', 'og1', 'og2', 'og3'].includes(item.id),
+    )!
+    expect(floorIndex(source, building.wallHeight)).toBe(3)
+    expect(floorIndex(clone, building.wallHeight)).toBe(4)
+    expect(clone.storeyIndex).toBe(4)
+    expect(building.walls.some((w) => floorIndex(w, building.wallHeight) === 5)).toBe(false)
+  })
+
   it('fügt zwischen Quelle und bestehender oberer Wand ein', () => {
     const h = 456
     const base: FacadeState = {
@@ -94,12 +137,85 @@ describe('insertStoreyAbove', () => {
     expect(building.floors).toHaveLength(3)
   })
 
-  it('entfernt groupId beim Klon', () => {
+  it('erhält groupId und remappt Gruppen der Klone', () => {
     const base = twoFloorState()
     base.buildings[0]!.walls[0]!.groupId = 'grp-1'
+    base.buildings[0]!.groups = [{ id: 'grp-1', name: 'Erker', memberWallIds: ['eg'] }]
     const next = insertStoreyAbove(base, 0, { wallIds: ['eg'], copyOpenings: false })
     const clone = next.buildings[0]!.walls.find((item) => item.id !== 'eg' && item.id !== 'og')
-    expect(clone?.groupId).toBeUndefined()
+    expect(clone?.groupId).toBeTruthy()
+    expect(clone?.groupId).not.toBe('grp-1')
+    const group = next.buildings[0]!.groups?.find((g) => g.id === clone?.groupId)
+    expect(group?.name).toBe('Erker')
+    expect(group?.memberWallIds).toEqual([clone!.id])
+  })
+
+  it('remappt Erker-bayParentId und bayWindow.wallIds auf Klone', () => {
+    const h = 456
+    const frontId = 'bay-front'
+    const leftId = 'bay-left'
+    const rightId = 'bay-right'
+    const base: FacadeState = {
+      buildings: [
+        {
+          id: 'b1',
+          name: 'Haus',
+          wallHeight: h,
+          wallDepth: WALL_DEPTH,
+          walls: [
+            {
+              ...wall(frontId, 0),
+              bayRole: 'front',
+              groupId: 'bay-g',
+              bayWindow: {
+                frontWidthCm: 192,
+                depthCm: 96,
+                shape: 'rect',
+                kind: 'bay',
+                wallIds: [leftId, frontId, rightId],
+              },
+            },
+            {
+              ...wall(leftId, 0),
+              bayRole: 'side',
+              bayParentId: frontId,
+              groupId: 'bay-g',
+              width: 96,
+            },
+            {
+              ...wall(rightId, 0),
+              bayRole: 'side',
+              bayParentId: frontId,
+              groupId: 'bay-g',
+              width: 96,
+            },
+          ],
+          floors: [{ nodes: [], edges: [] }],
+          groups: [{ id: 'bay-g', name: 'Erker 192', memberWallIds: [leftId, frontId, rightId] }],
+        },
+      ],
+      activeBuildingId: 'b1',
+    }
+    const next = insertStoreyAbove(base, 0, {
+      wallIds: [leftId, frontId, rightId],
+      copyOpenings: false,
+    })
+    const clones = next.buildings[0]!.walls.filter(
+      (w) => w.id !== leftId && w.id !== frontId && w.id !== rightId,
+    )
+    expect(clones).toHaveLength(3)
+    const cloneFront = clones.find((w) => w.bayWindow?.wallIds?.length)
+    expect(cloneFront).toBeTruthy()
+    expect(cloneFront!.bayParentId).toBeUndefined()
+    expect(cloneFront!.bayWindow!.wallIds).toHaveLength(3)
+    expect(cloneFront!.bayWindow!.wallIds.every((id) => clones.some((c) => c.id === id))).toBe(
+      true,
+    )
+    const cloneSides = clones.filter((w) => w.bayRole === 'side')
+    expect(cloneSides).toHaveLength(2)
+    expect(cloneSides.every((w) => w.bayParentId === cloneFront!.id)).toBe(true)
+    const group = next.buildings[0]!.groups?.find((g) => g.id === cloneFront!.groupId)
+    expect(group?.memberWallIds.sort()).toEqual(clones.map((c) => c.id).sort())
   })
 
   it('löst planLinked bei Einzelwand, behält sie bei Mehrfachklon', () => {
@@ -168,6 +284,34 @@ describe('insertStoreyAbove', () => {
     const clone = next.buildings[0]!.walls.find((item) => item.id !== 'eg' && item.id !== 'og')
     expect(clone?.panel?.pattern).toBe('none')
     expect(clone?.panel?.enabled).toBe(false)
+  })
+
+  it('ändert EG-Schrift nicht, wenn ein Obergeschoss dupliziert wird', () => {
+    const base = twoFloorState()
+    const eg = base.buildings[0]!.walls.find((w) => w.id === 'eg')!
+    eg.labels = [
+      {
+        id: 'lbl-eg',
+        enabled: true,
+        text: 'EG',
+        x: 64,
+        y: 320,
+        heightCm: 48,
+        depth: 'flat',
+        extrudeCm: 4,
+        offsetForward: 0,
+        align: 'center',
+        fontId: 'federo',
+      },
+    ]
+    eg.label = eg.labels[0]
+    const labelYBefore = eg.labels[0]!.y
+    const next = insertStoreyAbove(base, 1, { wallIds: ['og'], copyOpenings: false })
+    const egAfter = next.buildings[0]!.walls.find((w) => w.id === 'eg')!
+    expect(egAfter.labels?.[0]?.y).toBe(labelYBefore)
+    expect(egAfter.labels?.[0]?.x).toBe(64)
+    expect(egAfter.labels?.[0]?.text).toBe('EG')
+    expect(egAfter.y).toBe(0)
   })
 
   it('deaktiviert Sockel inkl. Höhe, wenn copy.plinth false ist', () => {
@@ -242,6 +386,118 @@ describe('duplicateStorey', () => {
     const ids = new Set(['eg', og.id])
     const second = next.buildings[0]!.walls.find((item) => !ids.has(item.id))!
     expect(second.y).toBe(ogShrunk.y + ogShrunk.height)
+  })
+
+  it('dritte Etage: Klone sitzen darüber, nie auf derselben Geschosshöhe', () => {
+    const h = 456
+    const base: FacadeState = {
+      buildings: [
+        {
+          id: 'b1',
+          name: 'Haus',
+          wallHeight: h,
+          wallDepth: WALL_DEPTH,
+          walls: [wall('eg', 0), wall('og', h), wall('dg', h * 2)],
+          floors: [{ nodes: [], edges: [] }, { nodes: [], edges: [] }, { nodes: [], edges: [] }],
+        },
+      ],
+      activeBuildingId: 'b1',
+    }
+    const next = duplicateStorey(base, 2, { copyOpenings: false })
+    const building = next.buildings[0]!
+    expect(building.floors).toHaveLength(4)
+    const dg = building.walls.find((item) => item.id === 'dg')!
+    expect(dg.y).toBe(h * 2)
+    const clones = building.walls.filter((item) => !['eg', 'og', 'dg'].includes(item.id))
+    expect(clones).toHaveLength(1)
+    expect(clones[0]!.y).toBe(h * 3)
+    expect(floorIndex(clones[0]!, h)).toBe(3)
+    expect(floorIndex(clones[0]!, h)).not.toBe(floorIndex(dg, h))
+  })
+
+  it('duplizieren lässt Quell-Geschoss unverändert (Höhe und Fuß)', () => {
+    const h = 456
+    const base: FacadeState = {
+      buildings: [
+        {
+          id: 'b1',
+          name: 'Haus',
+          wallHeight: h,
+          wallDepth: WALL_DEPTH,
+          walls: [wall('eg', 0), wall('og', h), wall('dg', h * 2)],
+          floors: [{ nodes: [], edges: [] }, { nodes: [], edges: [] }, { nodes: [], edges: [] }],
+        },
+      ],
+      activeBuildingId: 'b1',
+    }
+    const next = duplicateStorey(base, 1, { copyOpenings: false })
+    const eg = next.buildings[0]!.walls.find((item) => item.id === 'eg')!
+    const og = next.buildings[0]!.walls.find((item) => item.id === 'og')!
+    expect(eg.y).toBe(0)
+    expect(eg.height).toBe(h)
+    expect(og.y).toBe(h)
+    expect(og.height).toBe(h)
+  })
+})
+
+describe('removeStorey', () => {
+  it('ändert Höhe und Fuß der Etagen darunter nicht', () => {
+    const h = 456
+    const base: FacadeState = {
+      buildings: [
+        {
+          id: 'b1',
+          name: 'Haus',
+          wallHeight: h,
+          wallDepth: WALL_DEPTH,
+          walls: [wall('eg', 0), wall('og', h), wall('dg', h * 2)],
+          floors: [{ nodes: [], edges: [] }, { nodes: [], edges: [] }, { nodes: [], edges: [] }],
+        },
+      ],
+      activeBuildingId: 'b1',
+    }
+    const next = removeStorey(base, 2)
+    const building = next.buildings[0]!
+    expect(building.walls.map((w) => w.id).sort()).toEqual(['eg', 'og'])
+    const eg = building.walls.find((w) => w.id === 'eg')!
+    const og = building.walls.find((w) => w.id === 'og')!
+    expect(eg.y).toBe(0)
+    expect(eg.height).toBe(h)
+    expect(og.y).toBe(h)
+    expect(og.height).toBe(h)
+    expect(building.floors).toHaveLength(2)
+  })
+
+  it('senkt höhere Etagen um die echte Höhe der gelöschten ab', () => {
+    const hEg = 500
+    const hOg = 400
+    const eg = wall('eg', 0)
+    eg.height = hEg
+    const og = wall('og', hEg)
+    og.height = hOg
+    const dg = wall('dg', hEg + hOg)
+    dg.height = 450
+    const base: FacadeState = {
+      buildings: [
+        {
+          id: 'b1',
+          name: 'Haus',
+          wallHeight: hEg,
+          wallDepth: WALL_DEPTH,
+          walls: [eg, og, dg],
+          floors: [{ nodes: [], edges: [] }, { nodes: [], edges: [] }, { nodes: [], edges: [] }],
+        },
+      ],
+      activeBuildingId: 'b1',
+    }
+    const next = removeStorey(base, 1)
+    const building = next.buildings[0]!
+    const eg2 = building.walls.find((w) => w.id === 'eg')!
+    const dg2 = building.walls.find((w) => w.id === 'dg')!
+    expect(eg2.height).toBe(hEg)
+    expect(eg2.y).toBe(0)
+    expect(dg2.y).toBe(hEg)
+    expect(dg2.height).toBe(450)
   })
 })
 

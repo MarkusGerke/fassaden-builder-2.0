@@ -88,6 +88,7 @@ export function createBuilding(partial?: Partial<Building>): Building {
       memberWallIds: [...group.memberWallIds],
     })) ?? [],
     roof: cloneRoof(partial?.roof),
+    facadeDecor: partial?.facadeDecor,
     wallHeight: partial?.wallHeight ?? WALL_HEIGHT,
     wallDepth: partial?.wallDepth ?? WALL_DEPTH,
     windowDepthOffset:

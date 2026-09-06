@@ -1580,6 +1580,11 @@ export function moveOpening(
           grid,
           { snapToGrid: !useMasonry },
         )
+        // Verschieben: kein Mindestabstand — nur echte Überlappung blockieren.
+        if (mode === 'drag') {
+          const overlaps = others.some((o) => openingsTooClose(clamped, o, 0))
+          return overlaps ? opening : clamped
+        }
         const hasConflict = others.some((o) => openingsTooClose(clamped, o, MIN_GAP))
         return hasConflict ? opening : clamped
       }),

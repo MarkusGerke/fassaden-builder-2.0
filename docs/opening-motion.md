@@ -4,6 +4,7 @@
 
 Jedes **Fenster** und jede **Tür** hat den Reiter **Animation** (nicht bei Nischen/Cutouts). Öffnen und Schließen sind getrennte Kurven.
 
+- **Einzeln öffnen (v2.0.235):** Ruhewinkel-Slider (`#window-open-group`) stehen **oben im Reiter Animation** (nicht mehr unter Fensterteilung).
 - **Phase:** Öffnen oder Schließen — Editor, Dauer und Punkte gelten nur für die aktive Phase.
 - **Vorlagen:** Fenster (leicht überdrehen, ein paar Grad zurück), Haustür (träger Start, zähe letzte Winkel, Pause, schnelleres Zufallen), Linear.
 - **Kurve:** Zeit von links (Start) nach rechts (Ende). Senkrecht: zu → offen (Linie „offen“ = Zielwinkel). Werte dürfen leicht über „offen“ oder unter „zu“ (Überdrehen).

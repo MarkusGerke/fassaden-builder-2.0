@@ -4,6 +4,12 @@
 
 Im Reiter **Schrift**: Textfeld, darunter **Schriftart**-Karten wie die Paneel-Vorschau. Jede Karte ist **16:9**, die Karten stehen **untereinander**. Die Vorschau zeigt denselben Text wie das Feld oben, gesetzt in der jeweiligen Schrift (leer → Platzhalter des Textfelds). Klick wählt die Schrift für die Wandbeschriftung. Standard bleibt **Federo**.
 
+**v2.0.237:** Mehrere Schriften pro Wand (`Wall.labels[]` mit `id`; Legacy `label` wird hydratisiert). Kopieren → Rechtsklick auf Wand → **Schrift einfügen** legt eine weitere Instanz an (Offset oder Klickpunkt); einzeln verschiebbar.
+
+**v2.0.239:** Auswahl/Bearbeiten/Verschieben über `selectedLabelId` (Highlight, Live-Drag, Toolbar, Guides). Hydrate ändert bestehende Schriften nicht mehr durch Nudge beim Geschoss-Duplikat.
+
+**v2.0.240:** Jede Schrift erscheint in der Ebenenliste unter der Wand (wie Fenster); Klick setzt `selectedLabelId` und öffnet die Schrift-Einstellungen.
+
 **Quellen** (neben der Versionsnummer) nennt Urheber und Lizenzen. Peter-Wiegel-Schriften unter OFL 1.1 dürfen kommerziell gebündelt werden; **Berlin Email** und **Waschküche** stehen unter **CC BY-NC-SA 3.0 DE** (nicht kommerziell, Namensnennung, ShareAlike).
 
 ## Betroffene Dateien
@@ -22,7 +28,7 @@ Im Reiter **Schrift**: Textfeld, darunter **Schriftart**-Karten wie die Paneel-V
 
 ## Datenfluss
 
-`wall.label.fontId` → `resolveLabelFontId` → TTF (`FontFace`/Canvas) bzw. `*.typeface.json` (`TextGeometry`). Die Karten lesen live `#studio-label-text` (`input`), speichern die Schrift erst beim Klick (`commitLabelPatch({ fontId })`).
+`wall.labels[].fontId` / Legacy `wall.label.fontId` → `resolveLabelFontId` → TTF (`FontFace`/Canvas) bzw. `*.typeface.json` (`TextGeometry`). Die Karten lesen live `#studio-label-text` (`input`), speichern die Schrift erst beim Klick (`commitLabelPatch({ fontId })`).
 
 ## Defaults / Konstanten
 

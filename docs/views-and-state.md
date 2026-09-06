@@ -185,6 +185,8 @@ function commitStudioPanelPatch(patch) {
 
 Buttons `#edit-scope-element|type|floor|facade` in `#edit-scope-bar`. Bei Fassade: `#edit-scope-facade-yaws` (Himmelsrichtungen). Persistiert als `editScope` / `editFacadeYawFilter`. Ersetzt die frühere Checkbox `#studio-apply-all` (nur Paneele).
 
+**v2.0.233 / v2.0.234:** Nach einem Property-Edit mit Scope **Auswahl** oder **Etage** erscheint leise `#scope-propagate-offer` im `#scope-bar-slot` (an Stelle von „Gültig für“: Fade out → Angebot von unten, **5-s-Timer**, dann umgekehrt), wenn eine höhere Stufe mehr Ziele träfe. Übernahme: `propagateSelectionEdit` in `src/studio/scopePropagate.ts` (Deltas der Auswahl, Geometrie bleibt). Schließen, Timeout oder Scope-Wechsel blendet aus.
+
 Gilt analog für Gesims, Wandfarben, Öffnungs-Profil, Fensterbank, Treppe, Rahmen/Glas — jeweils über `editWallTargets` oder `editOpeningTargets` / `scopedOpeningRefs()`.
 
 Bei Scope **Etage** werden alle `floorIndex`-Werte aus der aktuellen Auswahl gesammelt (nicht nur der erste Anker), sodass Multi-Etagen-Auswahl alle betroffenen Geschosse trifft.
@@ -224,17 +226,26 @@ Dialog `#storey-copy-dialog` (Etagen-⋯ **Duplizieren**, Bibliothek **+ oben**)
 - `copy.openings` steuert Öffnungen; Treppen werden abgestreift
 - Erweitert `state.floors` um Kopie des Quell-Grundrisses
 
-`insertStoreyAbove(state, sourceFloorIndex, { copyOpenings, copy?, wallIds? })` (v0.7.113 / v0.7.115):
+`insertStoreyAbove(state, sourceFloorIndex, { copyOpenings, copy?, wallIds? })` (v0.7.113 / v0.7.115 / v2.0.234):
 - Fügt Geschoss **direkt über** `sourceFloorIndex` ein
 - Wände mit `floorIndex > source`: `y += wallHeight`; `floors[]` wird an Index `source+1` eingeschoben
-- Wand-Kontextmenü **Darüber**; Etagen-⋯-Menü nutzt `duplicateStorey` (Ans Ende)
+- Wand-Kontextmenü **Darüber**; Etagen-⋯-Menü nutzt `duplicateStorey` (= `insertStoreyAbove`)
 - Mehrere Klone: `planLinked` untereinander behalten; Einzelklon: `planLinked: false`
+- **v2.0.234:** `groupId` / Erker-`bayParentId` / `bayWindow.wallIds` werden auf Klon-IDs remappt; neue `building.groups`-Einträge — Gruppen lösen sich nicht auf
 
 ---
 
 ## Ebenen-Panel (`src/utils/layers.ts`)
 
 Die Ebenen-Liste in der Sidebar gruppiert alle Wände nach Etage.
+
+**v2.0.236:** Pro Haus Segment **Ebenen | Fassadenschmuck**. Fassadenschmuck steuert `Building.facadeDecor` (Defaults an = sichtbar): Paneele/Mauerwerk, Sockel, Gesimse, Zierbänder, Profile, Schrift — einzeln oder **Alle**. Nur Darstellung (`FacadeController.applyFacadeDecorVisibility` / SVG-Gates); Daten bleiben. Toggle-Pfad ohne Geometrie-Rebuild (`facadeStateDiffersOnlyByFacadeDecor` → `refreshFacadeDecorVisibility`).
+
+**v2.0.238 Fallstricke:** „Alle“ muss die Ebenenliste neu zeichnen (`skipLayerList` nicht bei `decorOnly`). Ausgeblendeter Schmuck: `visible` **und** `castShadow` aus, sonst dunkelgraue Wand bzw. bleibender Schrift-Schatten; danach Shadow-Map aktualisieren. „Profile“ blendet keine Fensterrahmen über bloßes `openingId` aus.
+
+**v2.0.239:** Laibung/`revealMeshes` sind kein Schmuck (bleiben bei „Alle aus“). Decor-Toggle: `flushSunShadowMap` sofort (kein Debounce).
+
+**v2.0.240:** „Profile“ blendet Öffnungs-Rahmenprofile (`openingPart` trim/sill, `lodTier: profile`) aus — nicht nur Gesimse.
 
 | Funktion | Beschreibung |
 |---|---|

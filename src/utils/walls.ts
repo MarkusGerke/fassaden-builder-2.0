@@ -37,6 +37,12 @@ import {
   updateBuilding,
 } from './buildings'
 import { hydrateFacadeState } from './hydrate'
+import {
+  bayDropCm,
+  bayHostWall,
+  bayMemberIds,
+  stripBayDropFromStoreyClone,
+} from '../studio/baySegment'
 
 const TOUCH_EPS = 0.5
 const OVERLAP_EPS = JOIN_OVERLAP + 0.05
@@ -977,7 +983,7 @@ function cloneWallForStorey(
   wall: Wall,
   targetY: number,
   copyOpenings: boolean,
-  options: { stripStairs?: boolean; keepPlanLinked?: boolean } = {},
+  options: { stripStairs?: boolean; keepPlanLinked?: boolean; keepGroupId?: boolean } = {},
 ): Wall {
   const openingIdMap = new Map<string, string>()
   const openings = copyOpenings
@@ -1000,7 +1006,8 @@ function cloneWallForStorey(
     id: createId(),
     y: targetY,
     neighbors: emptyNeighbors(),
-    groupId: undefined,
+    // groupId bleibt vorerst (Remap in insertStoreyAbove); ohne Gruppe bewusst leeren.
+    groupId: options.keepGroupId === true ? wall.groupId : undefined,
     openings,
     profiles: copyOpenings
       ? wall.profiles.map((profile) => ({
@@ -1019,6 +1026,84 @@ function cloneWallForStorey(
   return cloned
 }
 
+/**
+ * Remapt Erker-/Gruppen-Referenzen der Geschoss-Klone auf neue IDs.
+ * Gruppen dürfen sich beim Duplizieren nicht auflösen; bayParentId/wallIds müssen
+ * auf die Klone zeigen — sonst zerfällt der Erker in lose Wände.
+ * Erker-Drop der Quelle wird an Klonen entfernt (Höhe/Öffnungen/Schrift).
+ */
+function remapStoreyCloneRelations(
+  sourceWalls: Wall[],
+  clones: Wall[],
+  buildingGroups: NonNullable<Building['groups']> | undefined,
+): { clones: Wall[]; groups: NonNullable<Building['groups']> } {
+  const idMap = new Map<string, string>()
+  for (let i = 0; i < sourceWalls.length; i += 1) {
+    const src = sourceWalls[i]
+    const clone = clones[i]
+    if (src && clone) idMap.set(src.id, clone.id)
+  }
+
+  const groupIdMap = new Map<string, string>()
+  const newGroups: NonNullable<Building['groups']> = []
+  for (const src of sourceWalls) {
+    if (!src.groupId || groupIdMap.has(src.groupId)) continue
+    const newId = createId()
+    groupIdMap.set(src.groupId, newId)
+    const old = buildingGroups?.find((g) => g.id === src.groupId)
+    const memberWallIds = sourceWalls
+      .filter((w) => w.groupId === src.groupId)
+      .map((w) => idMap.get(w.id))
+      .filter((id): id is string => Boolean(id))
+    if (memberWallIds.length > 0) {
+      newGroups.push({
+        id: newId,
+        name: old?.name ?? 'Gruppe',
+        memberWallIds,
+      })
+    }
+  }
+
+  const dropBySourceId = new Map<string, number>()
+  for (const src of sourceWalls) {
+    const host = bayHostWall(sourceWalls, src.id)
+    const drop = host ? bayDropCm(sourceWalls, host.id) : 0
+    if (drop <= 0) continue
+    for (const mid of bayMemberIds(sourceWalls, host!.id) ?? [host!.id]) {
+      dropBySourceId.set(mid, drop)
+    }
+  }
+
+  const remapped = clones.map((clone, index) => {
+    let next: Wall = { ...clone }
+    if (next.bayParentId && idMap.has(next.bayParentId)) {
+      next = { ...next, bayParentId: idMap.get(next.bayParentId)! }
+    }
+    if (next.endPieceParentId && idMap.has(next.endPieceParentId)) {
+      next = { ...next, endPieceParentId: idMap.get(next.endPieceParentId)! }
+    }
+    if (next.bayWindow?.wallIds?.length) {
+      next = {
+        ...next,
+        bayWindow: {
+          ...next.bayWindow,
+          wallIds: next.bayWindow.wallIds.map((id) => idMap.get(id) ?? id),
+        },
+      }
+    }
+    if (next.groupId && groupIdMap.has(next.groupId)) {
+      next = { ...next, groupId: groupIdMap.get(next.groupId)! }
+    } else if (next.groupId && !groupIdMap.has(next.groupId)) {
+      next = { ...next, groupId: undefined }
+    }
+    const src = sourceWalls[index]
+    const drop = src ? dropBySourceId.get(src.id) ?? 0 : 0
+    return stripBayDropFromStoreyClone(src ?? next, next, drop)
+  })
+
+  return { clones: remapped, groups: newGroups }
+}
+
 function cloneFloorPlan(plan: FloorPlan): FloorPlan {
   return {
     nodes: plan.nodes.map((node) => ({ ...node })),
@@ -1028,10 +1113,29 @@ function cloneFloorPlan(plan: FloorPlan): FloorPlan {
   }
 }
 
+function wallStoreyIndex(wall: Wall, wallHeight: number, allWalls: Wall[] = []): number {
+  if (typeof wall.storeyIndex === 'number' && Number.isFinite(wall.storeyIndex)) {
+    return Math.max(0, Math.round(wall.storeyIndex))
+  }
+  let drop =
+    typeof wall.bayWindow?.dropCm === 'number' && Number.isFinite(wall.bayWindow.dropCm)
+      ? Math.max(0, wall.bayWindow.dropCm)
+      : 0
+  if (!drop && wall.bayParentId && allWalls.length > 0) {
+    const host = allWalls.find((h) => h.id === wall.bayParentId)
+    const hostDrop = host?.bayWindow?.dropCm
+    if (typeof hostDrop === 'number' && Number.isFinite(hostDrop)) {
+      drop = Math.max(0, hostDrop)
+    }
+  }
+  return Math.round(((wall.y ?? 0) + drop) / wallHeight)
+}
+
 /**
  * Neues Geschoss direkt über sourceFloorIndex einfügen.
  * Jeder Klon sitzt Fläche-auf-Fläche: y = source.y + source.height.
  * Höhere Etagen werden so weit angehoben, dass sie über den Klon-Oberkanten liegen.
+ * `storeyIndex` wird explizit gesetzt (Quelle+1), damit y/wallHeight-Rundung nicht entgleist.
  */
 export function insertStoreyAbove(
   state: FacadeState,
@@ -1044,50 +1148,82 @@ export function insertStoreyAbove(
   const copy = resolveStoreyCopy(options)
   const copyOpenings = copy.openings
 
+  const indexedWalls = building.walls.map((wall) => ({
+    ...cloneWall(wall),
+    storeyIndex: wallStoreyIndex(wall, height, building.walls),
+  }))
+
   const sourceWalls = wallIds
-    ? building.walls.filter((w) => wallIds.includes(w.id))
-    : building.walls.filter((w) => floorIndex(w, height) === sourceFloorIndex)
+    ? indexedWalls.filter((w) => wallIds.includes(w.id))
+    : indexedWalls.filter((w) => wallStoreyIndex(w, height, indexedWalls) === sourceFloorIndex)
 
   if (sourceWalls.length === 0) return cloneFacadeState(state)
 
   const targetIndex = sourceFloorIndex + 1
-  // Fläche auf Fläche: Oberkante Quelle = Unterkante Klon (pro Wand).
-  const maxCloneTop = Math.max(...sourceWalls.map((w) => w.y + w.height * 2))
-  const higherWalls = building.walls.filter((w) => floorIndex(w, height) > sourceFloorIndex)
+  const keepPlanLinked = sourceWalls.length > 1
+  const rawClones = sourceWalls.map((wall) =>
+    applyStoreyCopyStyle(
+      cloneWallForStorey(wall, wall.y + wall.height, copyOpenings, {
+        stripStairs: true,
+        keepPlanLinked,
+        keepGroupId: true,
+      }),
+      copy,
+    ),
+  )
+  const { clones: remappedClones, groups: clonedGroups } = remapStoreyCloneRelations(
+    sourceWalls,
+    rawClones,
+    building.groups,
+  )
+  const clones = remappedClones.map((clone) => ({
+    ...clone,
+    storeyIndex: targetIndex,
+  }))
+
+  // Lift aus Quell-Geometrie (Drop abgezogen) — nicht aus genormter Klon-Höhe
+  // (normalizeStudioWall snappt Höhe auf 16-cm-Raster und würde sonst og.y driftend anheben).
+  const maxCloneTop = Math.max(
+    ...sourceWalls.map((w) => {
+      const host = bayHostWall(sourceWalls, w.id)
+      const drop = host ? bayDropCm(sourceWalls, host.id) : 0
+      const cloneHeight = Math.max(1, w.height - drop)
+      return w.y + w.height + cloneHeight
+    }),
+  )
+  const higherWalls = indexedWalls.filter((w) => wallStoreyIndex(w, height, indexedWalls) > sourceFloorIndex)
   const minHigherY =
     higherWalls.length > 0
       ? Math.min(...higherWalls.map((w) => w.y))
       : targetIndex * height
   const lift = Math.max(0, maxCloneTop - minHigherY)
 
-  const shiftedWalls = building.walls.map((wall) => {
-    if (floorIndex(wall, height) > sourceFloorIndex) {
-      return { ...cloneWall(wall), y: wall.y + lift }
+  const shiftedWalls = indexedWalls.map((wall) => {
+    const fi = wallStoreyIndex(wall, height, indexedWalls)
+    if (fi > sourceFloorIndex) {
+      return {
+        ...cloneWall(wall),
+        y: wall.y + lift,
+        storeyIndex: fi + 1,
+      }
     }
-    return cloneWall(wall)
+    // Quelle / darunter: Labels und Geometrie unverändert — nur Index behalten.
+    return wall
   })
-
-  const keepPlanLinked = sourceWalls.length > 1
-  const clones = sourceWalls.map((wall) =>
-    applyStoreyCopyStyle(
-      cloneWallForStorey(wall, wall.y + wall.height, copyOpenings, {
-        stripStairs: true,
-        keepPlanLinked,
-      }),
-      copy,
-    ),
-  )
 
   const floors = (building.floors ?? [{ nodes: [], edges: [] }]).map(cloneFloorPlan)
   while (floors.length <= sourceFloorIndex) floors.push(createEmptyFloorPlan())
   const sourcePlan = floors[sourceFloorIndex] ?? createEmptyFloorPlan()
   floors.splice(targetIndex, 0, cloneFloorPlan(sourcePlan))
 
+  const groups = [...(building.groups ?? []), ...clonedGroups]
+
   return updateBuilding(state, building.id, (b) =>
     rebuildBuildingNeighbors({
       ...b,
       walls: [...shiftedWalls, ...clones],
       floors,
+      groups,
     }),
   )
 }
@@ -1193,51 +1329,18 @@ export function moveWalls(
  * Dupliziert alle Wände einer Etage (oder einer Auswahl) als neues Geschoss
  * direkt auf die aktuelle Gebäudeoberkante (echte Wandoberkanten, nicht Index × wallHeight).
  */
+/**
+ * Geschoss duplizieren: immer direkt über der Quell-Etage einfügen
+ * (`insertStoreyAbove`), damit Wände nie auf derselben Etage landen.
+ * Früher `buildingTop` + `floorIndex(round)` konnte bei abweichender
+ * Wand-/Geschosshöhe Klone derselben Etage zuordnen — nur die Decke wirkte neu.
+ */
 export function duplicateStorey(
   state: FacadeState,
   sourceFloorIndex: number,
   options: { wallIds?: string[]; copyOpenings: boolean; copy?: Partial<StoreyCopyOptions> },
 ): FacadeState {
-  const building = getActiveBuilding(state)
-  const { wallIds } = options
-  const copy = resolveStoreyCopy(options)
-  const copyOpenings = copy.openings
-  const sourceWalls = wallIds
-    ? building.walls.filter((w) => wallIds.includes(w.id))
-    : building.walls.filter((w) => floorIndex(w, building.wallHeight) === sourceFloorIndex)
-
-  if (sourceWalls.length === 0) return cloneFacadeState(state)
-
-  const buildingTop = Math.max(0, ...building.walls.map((wall) => wall.y + wall.height))
-  const keepPlanLinked = sourceWalls.length > 1
-  const clones: Wall[] = sourceWalls.map((wall) =>
-    applyStoreyCopyStyle(
-      cloneWallForStorey(wall, buildingTop, copyOpenings, {
-        stripStairs: true,
-        keepPlanLinked,
-      }),
-      copy,
-    ),
-  )
-
-  const floors = (building.floors ?? [{ nodes: [], edges: [] }]).map(cloneFloorPlan)
-  while (floors.length <= sourceFloorIndex) floors.push(createEmptyFloorPlan())
-  const targetIndex = Math.max(
-    sourceFloorIndex + 1,
-    floors.length,
-    ...(building.walls.map((w) => floorIndex(w, building.wallHeight) + 1)),
-  )
-  while (floors.length <= targetIndex) floors.push(createEmptyFloorPlan())
-  const sourcePlan = floors[sourceFloorIndex]
-  floors[targetIndex] = cloneFloorPlan(sourcePlan)
-
-  return updateBuilding(state, building.id, (b) =>
-    rebuildBuildingNeighbors({
-      ...b,
-      walls: [...b.walls, ...clones],
-      floors,
-    }),
-  )
+  return insertStoreyAbove(state, sourceFloorIndex, options)
 }
 
 /**
@@ -1254,13 +1357,16 @@ export function resizeStoreyHeight(
   return updateActiveBuilding(state, (building) => {
     const height = building.wallHeight
     const walls = building.walls.map((wall) => {
-      const fi = floorIndex(wall, height)
-      if (fi < sourceFloorIndex) return cloneWall(wall)
+      const fi = wallStoreyIndex(wall, height, building.walls)
+      if (fi < sourceFloorIndex) {
+        return { ...cloneWall(wall), storeyIndex: fi }
+      }
       if (fi === sourceFloorIndex) {
         if (isStudioWall(wall)) {
           return normalizeStudioWall({
             ...cloneWall(wall),
             height: wall.height + deltaHeight,
+            storeyIndex: fi,
           })
         }
         const dims = clampWallDimensions({
@@ -1272,10 +1378,11 @@ export function resizeStoreyHeight(
         return {
           ...cloned,
           ...dims,
+          storeyIndex: fi,
           openings: cloned.openings.map((opening) => clampOpeningToWall(opening, dims)),
         }
       }
-      return { ...cloneWall(wall), y: wall.y + deltaHeight }
+      return { ...cloneWall(wall), y: wall.y + deltaHeight, storeyIndex: fi }
     })
     const wallHeight =
       sourceFloorIndex === 0 ? height + deltaHeight : building.wallHeight
@@ -1284,30 +1391,45 @@ export function resizeStoreyHeight(
 }
 
 /**
- * Entfernt eine Etage: Wände löschen, höhere Etagen um eine Geschosshöhe absenken,
- * zugehörigen Grundriss entfernen.
+ * Entfernt eine Etage: Wände der Etage löschen, höhere Etagen um die **tatsächliche**
+ * Höhe der gelöschten Etage absenken. Wände darunter (Höhe und Fuß) bleiben unverändert.
+ * `storeyIndex` der höheren Wände wird um 1 verringert.
  */
 export function removeStorey(state: FacadeState, storeyIndex: number): FacadeState {
   return updateActiveBuilding(state, (building) => {
     const height = building.wallHeight
+    const removed = building.walls.filter(
+      (wall) => wallStoreyIndex(wall, height, building.walls) === storeyIndex,
+    )
+    const drop =
+      removed.length > 0
+        ? Math.max(
+            ...removed.map((wall) => (wall.y ?? 0) + wall.height),
+          ) -
+          Math.min(...removed.map((wall) => wall.y ?? 0))
+        : height
+    const dropCm = Math.max(0, Math.round(drop))
+
     const walls = building.walls
-      .filter((wall) => floorIndex(wall, height) !== storeyIndex)
+      .filter((wall) => wallStoreyIndex(wall, height, building.walls) !== storeyIndex)
       .map((wall) => {
-        if (floorIndex(wall, height) <= storeyIndex) return cloneWall(wall)
-        return { ...cloneWall(wall), y: wall.y - height }
+        const fi = wallStoreyIndex(wall, height, building.walls)
+        if (fi < storeyIndex) return { ...cloneWall(wall), storeyIndex: fi }
+        return {
+          ...cloneWall(wall),
+          y: (wall.y ?? 0) - dropCm,
+          storeyIndex: fi - 1,
+        }
       })
 
     const floors = (building.floors ?? [{ nodes: [], edges: [] }])
       .filter((_, index) => index !== storeyIndex)
-      .map((plan) => ({
-        nodes: plan.nodes.map((node) => ({ ...node })),
-        edges: plan.edges.map((edge) => ({ ...edge })),
-      }))
+      .map(cloneFloorPlan)
 
     return rebuildBuildingNeighbors({
       ...building,
       walls,
-      floors: floors.length > 0 ? floors : [{ nodes: [], edges: [] }],
+      floors: floors.length > 0 ? floors : [createEmptyFloorPlan()],
     })
   })
 }

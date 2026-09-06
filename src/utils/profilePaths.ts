@@ -523,10 +523,217 @@ function corniceEndJoin(
   return { miter: 0, cap: false }
 }
 
+/**
+ * Erker-Gesims-Umschluss (item 14): Sitzt ein Erker (`kind: bay`) auf Etage F>0
+ * und die Etage darunter (F−1) hat auf der kollinearen Wand unter der Mundöffnung
+ * ein Traufgesims (`edge: 'top'`), so darf dieses **nicht** gerade durch den
+ * Mund laufen. Stattdessen:
+ *  1. das Gesims der unteren Wand über die Mundbreite unterbrechen (Gaps), und
+ *  2. Umlauf-Gesimspfade auf den Erker-Wänden (Schenkel + Front) auf der
+ *     Geschossfuge (Welt-Y = Oberkante der unteren Wand = Erker-Fuß vor `dropCm`)
+ *     mit Profil/Einstellungen der unteren Wand ergänzen.
+ * Die Wrap-Pfade werden zur Bauzeit abgeleitet (kein persistenter Trim).
+ */
+interface BayCorniceWrapResult {
+  wraps: ProfilePath[]
+  gapsByWallId: Map<string, Array<{ x0: number; x1: number }>>
+}
+
+function crossXZ(ax: number, az: number, bx: number, bz: number): number {
+  return ax * bz - az * bx
+}
+
+/**
+ * Mundöffnung (`mouthA`..`mouthB` in Welt-XZ) auf die Planlinie von `wall`
+ * projizieren. Liefert das lokale, zentrierte X-Intervall (−w/2..w/2), falls
+ * die Mundpunkte auf der Wandlinie liegen und sich mit der Wand überlappen.
+ */
+function projectMouthLocalRange(
+  wall: Wall,
+  mouthA: { x: number; z: number },
+  mouthB: { x: number; z: number },
+): { x0: number; x1: number } | null {
+  const start = wallStartPoint(wall)
+  const end = wallEndPoint(wall)
+  const dx = end.x - start.x
+  const dz = end.z - start.z
+  const len = Math.hypot(dx, dz)
+  if (len < 1e-6) return null
+  const ux = dx / len
+  const uz = dz / len
+  const perp = (p: { x: number; z: number }) =>
+    Math.abs(crossXZ(ux, uz, p.x - start.x, p.z - start.z))
+  if (perp(mouthA) > 3 || perp(mouthB) > 3) return null
+  const proj = (p: { x: number; z: number }) => (p.x - start.x) * ux + (p.z - start.z) * uz
+  const pa = proj(mouthA)
+  const pb = proj(mouthB)
+  const lo = Math.min(pa, pb)
+  const hi = Math.max(pa, pb)
+  if (hi <= 1 || lo >= len - 1) return null
+  const half = wall.width / 2
+  return {
+    x0: Math.max(0, lo) - half,
+    x1: Math.min(len, hi) - half,
+  }
+}
+
+function isBayWrapWall(wall: Wall | undefined): wall is Wall {
+  return Boolean(wall && (wall.bayRole === 'side' || wall.bayRole === 'front'))
+}
+
+function buildBayCorniceWraps(state: FacadeState, visibleIds: Set<string>): BayCorniceWrapResult {
+  const wraps: ProfilePath[] = []
+  const gapsByWallId = new Map<string, Array<{ x0: number; x1: number }>>()
+
+  for (const building of state.buildings) {
+    if (building.hidden) continue
+    const wallHeight = building.wallHeight
+    const walls = building.walls
+    const byId = new Map(walls.map((wall) => [wall.id, wall] as const))
+
+    for (const host of walls) {
+      const meta = host.bayWindow
+      if (!meta?.wallIds?.length) continue
+      if ((meta.kind ?? 'bay') !== 'bay') continue
+      if (!visibleIds.has(host.id)) continue
+
+      const members = meta.wallIds
+        .map((id) => byId.get(id))
+        .filter((wall): wall is Wall => Boolean(wall))
+      const sides = members.filter((wall) => wall.bayRole === 'side')
+      if (sides.length < 2) continue
+
+      // Mundpunkte auf der Fassade (Konvention wie resolveBaySlideContext).
+      const mouthA = wallStartPoint(sides[0]!)
+      const mouthB = wallEndPoint(sides[sides.length - 1]!)
+
+      // Oberkante bleibt bei `dropCm` fix → Etage aus dem Dach ableiten.
+      const bayFloor = Math.round((host.y + host.height) / wallHeight) - 1
+      if (bayFloor <= 0) continue
+
+      // Untere, kollineare Wände (Etage F−1) mit Traufgesims.
+      const lowerHits: Wall[] = []
+      let junctionY: number | null = null
+      for (const lower of walls) {
+        if (!isStudioWall(lower)) continue
+        if (meta.wallIds.includes(lower.id) || lower.id === host.id) continue
+        if (Math.round(lower.y / wallHeight) !== bayFloor - 1) continue
+        if (!wallHasCornice(lower, 'top')) continue
+        const range = projectMouthLocalRange(lower, mouthA, mouthB)
+        if (!range || range.x1 - range.x0 <= 0.5) continue
+        lowerHits.push(lower)
+        const list = gapsByWallId.get(lower.id) ?? []
+        list.push(range)
+        gapsByWallId.set(lower.id, list)
+        const top = lower.y + lower.height
+        junctionY = junctionY === null ? top : Math.max(junctionY, top)
+      }
+      if (junctionY === null || lowerHits.length === 0) continue
+
+      const lower = lowerHits[0]!
+      const lc = wallCornice(lower)
+      const profile = resolveProfile(lc.profileId ?? 'traufgesims70x150', state.customProfiles)
+      if (!profile?.projecting || !profile.section) continue
+
+      for (const wall of members) {
+        if (!isBayWrapWall(wall)) continue
+        if (!visibleIds.has(wall.id)) continue
+        const localY = junctionY - (wall.y + wall.height / 2)
+        if (localY < -wall.height / 2 - 1 || localY > wall.height / 2 + 1) continue
+
+        const startAdj = findAdjacentWall(wall, 'start', members)
+        const endAdj = findAdjacentWall(wall, 'end', members)
+        const startWraps = isBayWrapWall(startAdj)
+        const endWraps = isBayWrapWall(endAdj)
+        const startMiter = startWraps ? cornicePlanMiterTan(wall, startAdj!, 'start') : 0
+        const endMiter = endWraps ? cornicePlanMiterTan(wall, endAdj!, 'end') : 0
+
+        wraps.push({
+          profileId: lc.profileId ?? 'traufgesims70x150',
+          wallId: wall.id,
+          points: [
+            { x: -wall.width / 2, y: localY },
+            { x: wall.width / 2, y: localY },
+          ],
+          closed: false,
+          outward: [{ x: 0, y: -1 }],
+          zOffset: profileZOffset(wall),
+          localSpace: true,
+          forwardSign: wall.panelFlip ? -1 : 1,
+          cornerJoin: 'none',
+          color: lc.color ?? lower.profileColor ?? wall.profileColor,
+          finish: lc.finish ?? lower.profileFinish ?? wall.profileFinish,
+          sectionScale: lc.scale,
+          sectionScaleForward: lc.sectionScaleForward ?? lc.scale,
+          rotationDeg: lc.rotationDeg ?? 0,
+          flipOutward: lc.flipOutward ?? false,
+          flipForward: lc.flipForward ?? false,
+          offsetForward: lc.offsetForward ?? 0,
+          planMiterStart: pictureFramePlanMiter(startMiter, 'start'),
+          planMiterEnd: pictureFramePlanMiter(endMiter, 'end'),
+          capStart: !startWraps,
+          capEnd: !endWraps,
+          useWallOuterFace: !wallHasPanels(wall),
+        })
+      }
+    }
+  }
+
+  return { wraps, gapsByWallId }
+}
+
+/**
+ * Gesims-X-Intervall [`x0`,`x1`] um die Erker-Mund-Gaps kürzen. Äußere Enden
+ * behalten Kappe/Gehrung; neue innere Enden an den Gaps werden gekappt.
+ */
+function subtractCorniceGaps(
+  x0: number,
+  x1: number,
+  gaps: Array<{ x0: number; x1: number }>,
+  outer: { capStart: boolean; capEnd: boolean; miterStart: number; miterEnd: number },
+): Array<{ a: number; b: number; capA: boolean; capB: boolean; miterA: number; miterB: number }> {
+  const clamped = gaps
+    .map((g) => ({
+      x0: Math.max(x0, Math.min(g.x0, g.x1)),
+      x1: Math.min(x1, Math.max(g.x0, g.x1)),
+    }))
+    .filter((g) => g.x1 - g.x0 > 0.5)
+    .sort((a, b) => a.x0 - b.x0)
+  if (clamped.length === 0) {
+    return [
+      {
+        a: x0,
+        b: x1,
+        capA: outer.capStart,
+        capB: outer.capEnd,
+        miterA: outer.miterStart,
+        miterB: outer.miterEnd,
+      },
+    ]
+  }
+  const out: Array<{ a: number; b: number; capA: boolean; capB: boolean; miterA: number; miterB: number }> = []
+  let cursor = x0
+  let capA = outer.capStart
+  let miterA = outer.miterStart
+  for (const g of clamped) {
+    if (g.x0 - cursor > 0.5) {
+      out.push({ a: cursor, b: g.x0, capA, capB: true, miterA, miterB: 0 })
+    }
+    cursor = Math.max(cursor, g.x1)
+    capA = true
+    miterA = 0
+  }
+  if (x1 - cursor > 0.5) {
+    out.push({ a: cursor, b: x1, capA, capB: outer.capEnd, miterA, miterB: outer.miterEnd })
+  }
+  return out
+}
+
 function buildCornicePaths(state: FacadeState): ProfilePath[] {
   const paths: ProfilePath[] = []
   const allWalls = getAllWalls(state)
   const visibleIds = new Set(getVisibleWalls(state).map((wall) => wall.id))
+  const { wraps, gapsByWallId } = buildBayCorniceWraps(state, visibleIds)
 
   for (const wall of allWalls) {
     if (!visibleIds.has(wall.id)) continue
@@ -552,34 +759,47 @@ function buildCornicePaths(state: FacadeState): ProfilePath[] {
       !wallHasPanels(wall) ||
       (cornice.edge === 'top' && topBare !== null)
 
-    paths.push({
-      profileId: cornice.profileId ?? 'traufgesims70x150',
-      wallId: wall.id,
-      points: [
-        { x: x0, y: edgeY },
-        { x: x1, y: edgeY },
-      ],
-      closed: false,
-      outward: [{ x: 0, y: cornice.edge === 'bottom' ? 1 : -1 }],
-      zOffset: profileZOffset(wall),
-      localSpace: studio,
-      forwardSign: studio ? (wall.panelFlip ? -1 : 1) : 1,
-      cornerJoin: 'none',
-      color: cornice.color ?? wall.profileColor,
-      finish: cornice.finish ?? wall.profileFinish,
-      sectionScale: cornice.scale,
-      sectionScaleForward: cornice.sectionScaleForward ?? cornice.scale,
-      rotationDeg: cornice.rotationDeg ?? 0,
-      flipOutward: cornice.flipOutward ?? false,
-      flipForward: cornice.flipForward ?? false,
-      offsetForward: cornice.offsetForward ?? 0,
-      planMiterStart: pictureFramePlanMiter(start.miter, 'start'),
-      planMiterEnd: pictureFramePlanMiter(end.miter, 'end'),
+    // Erker-Umschluss: Gesims der unteren Wand über die Mundöffnung unterbrechen.
+    const gaps = cornice.edge === 'top' ? gapsByWallId.get(wall.id) : undefined
+    const segments = subtractCorniceGaps(x0, x1, gaps ?? [], {
       capStart: start.cap,
       capEnd: end.cap,
-      useWallOuterFace,
+      miterStart: start.miter,
+      miterEnd: end.miter,
     })
+
+    for (const seg of segments) {
+      paths.push({
+        profileId: cornice.profileId ?? 'traufgesims70x150',
+        wallId: wall.id,
+        points: [
+          { x: seg.a, y: edgeY },
+          { x: seg.b, y: edgeY },
+        ],
+        closed: false,
+        outward: [{ x: 0, y: cornice.edge === 'bottom' ? 1 : -1 }],
+        zOffset: profileZOffset(wall),
+        localSpace: studio,
+        forwardSign: studio ? (wall.panelFlip ? -1 : 1) : 1,
+        cornerJoin: 'none',
+        color: cornice.color ?? wall.profileColor,
+        finish: cornice.finish ?? wall.profileFinish,
+        sectionScale: cornice.scale,
+        sectionScaleForward: cornice.sectionScaleForward ?? cornice.scale,
+        rotationDeg: cornice.rotationDeg ?? 0,
+        flipOutward: cornice.flipOutward ?? false,
+        flipForward: cornice.flipForward ?? false,
+        offsetForward: cornice.offsetForward ?? 0,
+        planMiterStart: pictureFramePlanMiter(seg.miterA, 'start'),
+        planMiterEnd: pictureFramePlanMiter(seg.miterB, 'end'),
+        capStart: seg.capA,
+        capEnd: seg.capB,
+        useWallOuterFace,
+      })
+    }
   }
+
+  paths.push(...wraps)
 
   return paths
 }
@@ -1389,6 +1609,32 @@ export function createPlinthProfileSweepGeometry(
 }
 
 /**
+ * Erker-Drop: Sockelprofil startet am Etagenfuß, nicht am verlängerten Wandfuß.
+ * Lokal gehalten (kein Import aus bayWindow → keine Zyklen mit Geometrie).
+ * Messung wie `bayWallSkirtDropCm`: Abstand zum Restwand-Fuß bei gleicher Oberkante.
+ */
+function plinthSkirtDropCm(wall: Wall, walls: Wall[]): number {
+  const host =
+    wall.bayWindow?.dropCm != null
+      ? wall
+      : wall.bayParentId
+        ? walls.find((item) => item.id === wall.bayParentId)
+        : undefined
+  const stored = host?.bayWindow?.dropCm ?? wall.bayWindow?.dropCm
+  if (!(typeof stored === 'number' && Number.isFinite(stored)) || stored <= 0) return 0
+
+  const top = (wall.y ?? 0) + wall.height
+  for (const other of walls) {
+    if (!isStudioWall(other)) continue
+    if (other.id === wall.id) continue
+    if (other.bayParentId || other.bayRole || other.bayWindow) continue
+    if (Math.abs((other.y ?? 0) + other.height - top) > 2) continue
+    return Math.max(0, Math.round((other.y ?? 0) - (wall.y ?? 0)))
+  }
+  return Math.max(0, Math.round(stored))
+}
+
+/**
  * Dekoratives Sockelprofil: SVG-Höhe = Sockelhöhe vom Boden, liegt auf der Wand
  * (forward = 0 an der Paneel-/Wandfläche). SVG-Breite = Tiefe. Aussparung an Öffnungen.
  */
@@ -1413,7 +1659,8 @@ function buildPlinthProfilePaths(state: FacadeState): ProfilePath[] {
     const heightScale = nativeH > 1e-6 ? plinthH / nativeH : 1
     const depthCm = panel.plinthDepth && panel.plinthDepth > 0 ? panel.plinthDepth : nativeD || 8
     const depthScale = nativeD > 1e-6 ? depthCm / nativeD : 1
-    const floorY = -wall.height / 2
+    const skirtDrop = plinthSkirtDropCm(wall, allWalls)
+    const floorY = -wall.height / 2 + skirtDrop
     const halfW = wall.width / 2
     const miterEnds = plinthMiterEnds(wall, allWalls)
     const offsetForward = panel.plinthOffsetForward ?? 0

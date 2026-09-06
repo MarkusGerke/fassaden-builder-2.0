@@ -12,6 +12,7 @@ import type {
   WallLabelConfig,
 } from '../types/facade'
 import { cloneWall } from '../types/facade'
+import { normalizeFacadeDecor } from '../studio/facadeDecor'
 import {
   DEFAULT_CEILING_COLOR,
   DEFAULT_GLASS_COLOR,
@@ -49,7 +50,8 @@ import { normalizeOpeningMotion } from './openingMotion'
 import { normalizeDaySchedule } from './daySchedule'
 import { normalizeStudioPanel, DEFAULT_STUDIO_PANEL } from '../studio/constants'
 import { clearPersistedCladdingZones, isTwoHorizontalBandCladding } from '../studio/facadeLayers'
-import { NEUTRAL_WALL_LABEL, nudgeWallLabelOffOpenings } from './wallLabel'
+import { NEUTRAL_WALL_LABEL, normalizeWallLabel, nudgeWallLabelOffOpenings } from './wallLabel'
+import { floorIndex } from './layers'
 import { normalizeWallTrimBand } from './trimBands'
 
 /** Vorstand der Außenbank über die äußere Fassadenfläche (cm). Hartes Maximum. */
@@ -307,14 +309,44 @@ export function hydrateWall(wall: Wall): Wall {
       : cloned.cornice
 
   const wallForLabel = { ...cloned, openings }
-  const label: WallLabelConfig | undefined = isStudioKind(cloned)
-    ? nudgeWallLabelOffOpenings(
-        wallForLabel,
-        cloned.label
-          ? { ...NEUTRAL_WALL_LABEL, ...cloned.label, enabled: Boolean(cloned.label.enabled) }
-          : { ...NEUTRAL_WALL_LABEL },
-      )
-    : cloned.label
+  let labels: WallLabelConfig[] | undefined
+  let label: WallLabelConfig | undefined
+  if (isStudioKind(cloned)) {
+    const rawList =
+      Array.isArray(cloned.labels) && cloned.labels.length > 0
+        ? cloned.labels
+        : cloned.label
+          ? [cloned.label]
+          : []
+    if (rawList.length === 0) {
+      labels = []
+      label = { ...NEUTRAL_WALL_LABEL }
+    } else {
+      labels = rawList.map((item) => {
+        const merged = {
+          ...NEUTRAL_WALL_LABEL,
+          ...item,
+          enabled: Boolean(item.enabled),
+        }
+        // Bestehende Schriften nicht neu andocken — sonst wandern sie beim Geschoss-Duplikat.
+        if (item.id && ((item.text ?? '').trim() || item.enabled)) {
+          return normalizeWallLabel(merged, wallForLabel)
+        }
+        return nudgeWallLabelOffOpenings(wallForLabel, merged)
+      })
+      label = labels[0]
+    }
+  } else {
+    label = cloned.label
+    labels = cloned.labels
+  }
+
+  const dropForIndex = 0
+  void dropForIndex
+  const storeyIndex =
+    typeof cloned.storeyIndex === 'number' && Number.isFinite(cloned.storeyIndex)
+      ? Math.max(0, Math.round(cloned.storeyIndex))
+      : undefined
 
   const bayWindow = cloned.bayWindow
     ? {
@@ -331,6 +363,10 @@ export function hydrateWall(wall: Wall): Wall {
         wallIds: Array.isArray(cloned.bayWindow.wallIds)
           ? cloned.bayWindow.wallIds.map(String)
           : [],
+        dropCm:
+          typeof cloned.bayWindow.dropCm === 'number' && Number.isFinite(cloned.bayWindow.dropCm)
+            ? cloned.bayWindow.dropCm
+            : 0,
       }
     : undefined
 
@@ -356,7 +392,9 @@ export function hydrateWall(wall: Wall): Wall {
     panel,
     cornice,
     trimBands: cloned.trimBands?.map((band) => normalizeWallTrimBand(band)),
+    labels,
     label,
+    storeyIndex,
     openings,
     profiles: cloned.profiles.map((p) => ({ ...p })),
     bayWindow,
@@ -382,19 +420,58 @@ export function hydrateFacadeState(state: FacadeState): FacadeState {
   const leafState = normalizeGroundLeafState(state)
   return {
     ...state,
-    buildings: state.buildings.map((building) => ({
-      ...building,
-      bareWalls: building.bareWalls ?? false,
-      floors: (building.floors ?? []).map((plan) => ({
-        ...plan,
-        ceilingColor: plan.ceilingColor ?? DEFAULT_CEILING_COLOR,
-      })),
-      walls: building.walls.map(hydrateWall),
-      groups: (building.groups ?? []).map((g) => ({ ...g })),
-    })),
+    buildings: state.buildings.map((building) => {
+      const walls = building.walls.map(hydrateWall)
+      const withIndex = ensureBuildingStoreyIndices({ ...building, walls })
+      return {
+        ...withIndex,
+        bareWalls: building.bareWalls ?? false,
+        facadeDecor: normalizeFacadeDecor(building.facadeDecor),
+        floors: (building.floors ?? []).map((plan) => ({
+          ...plan,
+          ceilingColor: plan.ceilingColor ?? DEFAULT_CEILING_COLOR,
+        })),
+        groups: (building.groups ?? []).map((g) => ({ ...g })),
+      }
+    }),
     sceneLights: lightState.sceneLights,
     sceneLightGroups: lightState.sceneLightGroups,
     groundLeaves: leafState.groundLeaves,
+  }
+}
+
+/** Weist fehlende `storeyIndex` zu (Fuß + Drop → Bins, dann dicht 0…n). */
+function ensureBuildingStoreyIndices(building: {
+  wallHeight: number
+  walls: Wall[]
+  floors: FacadeState['buildings'][0]['floors']
+  id: string
+  name: string
+}): FacadeState['buildings'][0] {
+  const wh = Math.max(1, building.wallHeight)
+  const walls = building.walls
+  if (walls.length === 0 || walls.every((w) => typeof w.storeyIndex === 'number')) {
+    return building as FacadeState['buildings'][0]
+  }
+  const feet = walls.map((w) => {
+    let drop = w.bayWindow?.dropCm ?? 0
+    if (!drop && w.bayParentId) {
+      const host = walls.find((h) => h.id === w.bayParentId)
+      drop = host?.bayWindow?.dropCm ?? 0
+    }
+    return (w.y ?? 0) + Math.max(0, drop)
+  })
+  const bins = [...new Set(feet.map((f) => Math.round(f / wh)))].sort((a, b) => a - b)
+  const binToIdx = new Map(bins.map((b, i) => [b, i]))
+  return {
+    ...(building as FacadeState['buildings'][0]),
+    walls: walls.map((w, i) => ({
+      ...w,
+      storeyIndex:
+        typeof w.storeyIndex === 'number'
+          ? w.storeyIndex
+          : (binToIdx.get(Math.round(feet[i]! / wh)) ?? floorIndex(w, wh)),
+    })),
   }
 }
 

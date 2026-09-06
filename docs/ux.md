@@ -59,7 +59,7 @@ OS-artiges Textmenü (`position: fixed`), Untermenü nach rechts per Hover, Esc 
 
 **Geometrie kopieren (v0.7.188, Einfügerichtung v0.7.205, Untermenü v0.7.241 / v0.7.266, Öffnung flach v2.0.223):** Rechtsklick **Kopieren → Objekt** (Wand) legt nur die Geometrie in die Zwischenablage. **Kopieren → Stile** füllt die Stil-Zwischenablage. **Kopieren → Alles** (Wände) macht beides. **Kopieren → Paneele** (usw.) füllt nur die gewählte Stileigenschaft. Bei **Fenster/Tür**: **„Fenster kopieren“** / **„Tür kopieren“** und **„Stil kopieren“** direkt im Menü. **Einfügen** auf einer anderen Wand per Untermenü **Nach links / Nach rechts / Darüber** (`pasteWallsRelativeToTarget` in `src/utils/walls.ts`); auf der leeren Bühne **Fassade einfügen** (versetzt wie bisher). Öffnungen werden in die Zielwand(n) eingefügt; Wände behalten Öffnungen und Profile (`planLinked: false`). Häuser über `insertBuildingClone` nach Osten.
 
-**Wand duplizieren (v0.7.113 / v0.7.115, Ketteneinfügung v0.7.212):** Nach links/rechts = gleiche Etage (`duplicateWalls`). Liegt die Quellwand in einer kollinearen Kette und duplizierst du **in Richtung eines Nachbarn**, wird die Kopie **zwischen** Quellwand und diesem Nachbarn eingefügt; weiter außen liegende Wände rutschen um die Klonbreite (`collinearChainFromEnd`). Am freien Wandende bleibt das Verhalten wie bisher (Kopie außerhalb). **Darüber** = `insertStoreyAbove` — neues Geschoss direkt über der Quell-Etage, höhere Etagen rutschen nach oben; Mehrfachauswahl wird mitkopiert, Treppen an Türen bleiben aus, `groupId` wird gelöscht. Bei mehreren Klonen bleibt `planLinked` untereinander erhalten (v0.7.115); Einzelwand darüber ist unverbunden. **Separiert** (Studio) = senkrechte Parallelkopie im Grundriss (`planLinked: false`).
+**Wand duplizieren (v0.7.113 / v0.7.115, Ketteneinfügung v0.7.212):** Nach links/rechts = gleiche Etage (`duplicateWalls`). Liegt die Quellwand in einer kollinearen Kette und duplizierst du **in Richtung eines Nachbarn**, wird die Kopie **zwischen** Quellwand und diesem Nachbarn eingefügt; weiter außen liegende Wände rutschen um die Klonbreite (`collinearChainFromEnd`). Am freien Wandende bleibt das Verhalten wie bisher (Kopie außerhalb). **Darüber** = `insertStoreyAbove` — neues Geschoss direkt über der Quell-Etage, höhere Etagen rutschen nach oben; Mehrfachauswahl wird mitkopiert, Treppen an Türen bleiben aus. **v2.0.234:** `groupId` und Erker-Links (`bayParentId` / `bayWindow.wallIds`) werden auf neue IDs remappt — Gruppen/Erker lösen sich nicht auf. Bei mehreren Klonen bleibt `planLinked` untereinander erhalten (v0.7.115); Einzelwand darüber ist unverbunden. **Separiert** (Studio) = senkrechte Parallelkopie im Grundriss (`planLinked: false`).
 
 Richtung **links/rechts** folgt der **Blickrichtung** (Kamera): „links“ ist immer links auf dem Bildschirm, unabhängig von Wand-Yaw oder Himmelsrichtung (`viewerSideToAlongSign` in `src/studio/walls.ts`, `viewerRightXZ()` aus der Kamera). Gilt für Duplizieren, Einfügen, Bibliotheks-Gizmos (+/−), Erker-Anbindung und Endstücke. Studio-Wände verschieben `origin` entlang der Wandachse; Modul-Wände über Layout-`x`. Rechtsklick auf ein bereits ausgewähltes Element behält die Mehrfachauswahl (Löschen/Duplizieren wirkt auf alle).
 
@@ -192,7 +192,9 @@ Das Fenster bleibt 24 cm hinter der Wandkörper-Außenkante; die Leibung holt di
 
 Meshes sind per `userData.indoorRole` (`ceiling` \| `floor`) und `userData.kind` getaggt sowie `buildingId` / `floorIndex`. **3D-Render (v2.0.56):** Decke und Fußboden hell wie Innenwände (`createIndoorSlabMaterial`: EnvMap, kein Gegenlicht-Dim). Default **Weiß**; `FloorPlan.ceilingColor` gilt für die 3D-Albedo (Farb-Toolbar).
 
-**Auswahl:** Linksklick auf die Decke in 3D setzt `selectedCeiling` (orange Highlight); Toolbar `#toolbar-ceiling` mit Farbe (`FloorPlan.ceilingColor`, Default Weiß). Dieselbe Farbe steht im Wand-Reiter **Farben**. Ebenenliste wie bisher.
+**Auswahl:** Linksklick auf die Decke (oder den Fußboden) in 3D setzt `selectedCeiling` (orange Highlight); Toolbar `#toolbar-ceiling` mit Farbe (`FloorPlan.ceilingColor`, Default Weiß). Dieselbe Farbe steht im Wand-Reiter **Farben**. Ebenenliste wie bisher.
+
+**Pick (v2.0.232):** Raycaster trifft Innen-Layer (sichtbare Platten). Unsichtbare `sunCeilingOccluder` und Öffnungs-Schattentunnel sind nicht raycastbar. Decke gewinnt nur, wenn sie klar näher ist als Wand/Paneel — sonst wirkte die Auswahl ab dem 2. OG „tot“ (Plattenkante/Okkluder vor der Fassade). Logik: `src/studio/facadePick.ts`, `pickFromEvent` in `main.ts`.
 
 **Sichtbarkeit (3D):** `floors[fi].showCeiling !== false && !floors[fi].hidden` — die Platte trennt die Etage darüber von der darunter. **v2.0.145:** Ohne geschlossenen Grundrissring gibt es keine Meshes — nach Extrusion konnten Wandenden 1 Rasterzelle auseinander landen (`floorPlanFromWalls` → `sealNearClosedPlanGaps` schließt das). Ebenen „Einblenden“ ruft zusätzlich `rebuildIndoorFloor` auf. **v2.0.199:** Nach Reload fehlten Decken/Böden/Dach trotz korrekter Flags — Konstruktor baute nur Wände; Fix: Indoor+Dach beim Start mitbauen (siehe [floor-plan.md](floor-plan.md#fallstricke)).
 
@@ -229,6 +231,7 @@ Yaw-Konvention überall gleich: **0=N, 90=W, 180=S, 270=O** (gegen Uhrzeigersinn
 - **v2.0.207:** Bibliothek-Paneele und Stil einfügen / Stil-Vorlage nutzen `scopedWallIds()` / `scopedOpeningRefs()` — Scope **Etage** gilt auch dafür
 - Öffnungs-Edits (Profil, Fensterbank, Treppe, Rahmen/Glas, Gründerzeit, **Position/Nudge/Drag**): `editOpeningTargets` / `scopedOpeningRefs()`
 - Beim Verschieben: Delta gilt für alle Scoped-Refs. Türen mit aktiver Treppe behalten Auto-Y aus Stufen.
+- **v2.0.233 / v2.0.234:** Nach Edit mit Scope **Auswahl**/**Etage** ggf. `#scope-propagate-offer` im `#scope-bar-slot` — „Gültig für“ fadet aus, Angebot fährt von unten an dieselbe Stelle, **5-s-Countdown**, dann umgekehrt (Property-Deltas, siehe [views-and-state.md](views-and-state.md)).
 
 | Scope | Wände | Öffnungen |
 |---|---|---|
@@ -330,7 +333,7 @@ Unter **Höhe** im Tab Paneele: **Reihen unten ausblenden** / **Reihen oben ausb
 
 ### Wandbeschriftung (v0.7.109)
 
-Tab **Schrift** (`data-settings-section="label"`): Checkbox, Textfeld mit **Speichern** (`#studio-label-text-save`) bzw. Enter, **Schriftart**-Karten darunter (`#studio-label-font-cards`, 16:9, eine Spalte). Die Vorschau setzt denselben Text wie das Feld oben in der jeweiligen Schrift; Klick speichert `label.fontId`. Standard **Federo**; weitere Schnitte von Peter Wiegel (`docs/fonts.md`). Höhe, Position X/Y (cm von links/unten), Ausrichtung, Farbe, **Flach** vs. **Mit Tiefe** (Extrusion in cm). **Versatz (cm, + außen / − innen)** (`#studio-label-offset-forward`) verschiebt die Schrift senkrecht zur Fassade. Klick auf die Schrift in 3D öffnet den Tab; Schrift per Drag auf der Fassade verschiebbar. **v0.7.180:** Schrift-Vorstand auch negativ (nach hinten, −80…80 cm). **v0.7.227:** Versatz-Feld standardmäßig sichtbar (nicht nur im Komplex-Modus). **v0.7.244:** Schriftwahl mit Live-Vorschau. **v0.7.252 / v0.7.254:** In der 3D-Ansicht folgt die Schrift dem Fassadenschatten (Schattenseite und Gebäudeschatten dunkler; Wand-Bounce-Fill gilt nicht für Schrift). **v0.7.288:** Gesims und Zierband werfen wieder Schatten auf den Freistreifen unter der Schrift.
+Tab **Schrift** (`data-settings-section="label"`): Checkbox, Textfeld mit **Speichern** (`#studio-label-text-save`) bzw. Enter, **Schriftart**-Karten darunter (`#studio-label-font-cards`, 16:9, eine Spalte). Die Vorschau setzt denselben Text wie das Feld oben in der jeweiligen Schrift; Klick speichert `label.fontId`. Standard **Federo**; weitere Schnitte von Peter Wiegel (`docs/fonts.md`). Höhe, Position X/Y (cm von links/unten), Ausrichtung, Farbe, **Flach** vs. **Mit Tiefe** (Extrusion in cm). **Versatz (cm, + außen / − innen)** (`#studio-label-offset-forward`) verschiebt die Schrift senkrecht zur Fassade. Klick auf die Schrift in 3D öffnet den Tab; Schrift per Drag auf der Fassade verschiebbar (**8-cm-Raster**, `STUDIO_MASONRY`). **v2.0.234:** Bei Teil-Fokus Schrift keine Wand-Skalierungs-Greifer. **v2.0.233:** Beim Ziehen Hilfslinien/Abstände wie bei Öffnungen (`labelAsGuideOpening`); Schatten der extrudierten Schrift folgt live (`wallLabelsNeedShadowUpdate`). Beim Wand-Strecken bleibt die Schrift ortsfest in Welt-X (wie Öffnungen). **v0.7.180:** Schrift-Vorstand auch negativ (nach hinten, −80…80 cm). **v0.7.227:** Versatz-Feld standardmäßig sichtbar (nicht nur im Komplex-Modus). **v0.7.244:** Schriftwahl mit Live-Vorschau. **v0.7.252 / v0.7.254:** In der 3D-Ansicht folgt die Schrift dem Fassadenschatten (Schattenseite und Gebäudeschatten dunkler; Wand-Bounce-Fill gilt nicht für Schrift). **v0.7.288:** Gesims und Zierband werfen wieder Schatten auf den Freistreifen unter der Schrift.
 
 ## Teil-Selektion von Öffnungen und Wand-Teilen (v0.5.0)
 
@@ -621,7 +624,7 @@ Oben links in der Zeichenfläche: Segmented Controls — **Oben | 2D | 3D** (Ans
 
 **Ebenen** in der linken Sidebar immer eingeblendet. **Datei** (JSON speichern/öffnen, Link) ist ein Dropdown unter dem Titel „Fassaden-Konfigurator“.
 
-**Gültig für** (Element / Typ / Etage / Fassade) ist oben in der rechten Toolbar sticky.
+**Gültig für** (Element / Typ / Etage / Fassade) ist oben in der rechten Toolbar sticky. **v2.0.231:** Nach Abwahl (leerer Klick) springt der Scope immer auf **Auswahl** (`element`).
 
 ### Paneele abwechselnd
 
@@ -655,7 +658,7 @@ Beim **Verschieben oder Platzieren** von Wänden und Öffnungen erscheint ein bl
 - **Wand aus Bibliothek / Wand verschieben:** **32-cm**-Gitter auf dem **Boden** der Ziel-Etage (Oben, 2D, 3D) — unverändert `STUDIO_TILE`.
 - **Öffnung verschieben (v2.0.89):** Gitter auf der **Zielwand** = **Stoßfugen und Schichtgrenzen** des Paneels/Mauerwerks (`wallFaceGridXs` / `wallFaceGridYs`, gleiche Cuts wie `openingPanelSnap`). Streifen: nur Laibungen vertikal; ohne Modul: 32 cm.
 - Nach **Ablegen** oder Abbruch wird das Raster ausgeblendet (`clearPlacementGridOverlay`).
-- Öffnungs-**Position** (Drag, Nudge, Zahlenfelder): bei Modulverband Drag = Fuge + Wandmitte; Nudge = Fuge / Steinmitte / Wandmitte, Schrittweite **8·n** cm (Numpad 1–9); bei Zwei-Bändern je Zone Y-bewusst; sonst **8 cm**. Schrift-Position bleibt 32 cm.
+- Öffnungs-**Position** (Drag, Nudge, Zahlenfelder): bei Modulverband Drag = Fuge + Wandmitte; Nudge = Fuge / Steinmitte / Wandmitte, Schrittweite **8·n** cm (Numpad 1–9); bei Zwei-Bändern je Zone Y-bewusst; sonst **8 cm**. Schrift-Position ebenfalls **8 cm** (`STUDIO_MASONRY`).
 - **Orangene Drag-Vorschau:** unter `siteOffset` (dreht mit dem Haus); bei Breiten-/Höhen-Snap wird der Ghost neu gebaut.
 
 ### Öffnungen (`src/studio/openingGuides.ts`)
@@ -755,7 +758,7 @@ UI: `#studio-pattern-panel-cards` (Streifen, Läuferverband) und `#studio-patter
 
 Flügel und Türen öffnen **immer nach innen** (`LEAF_OPEN_INWARD` in `gruenderzeit.ts`). Kein UI für Außenöffnung.
 
-Ruhewinkel: Slider **Einzeln öffnen** (`leafOpenDeg` / `transomOpenDeg`). Zeitliche Bewegung: Reiter **Animation** — getrennte Kurven für Öffnen und Schließen, Vorlagen Fenster/Haustür/Linear, SVG-Punkteeditor, Abspielen, JSON-Datensatz. Details und das Format zum Wiederverwenden: [opening-motion.md](opening-motion.md).
+Ruhewinkel: Slider **Einzeln öffnen** (`leafOpenDeg` / `transomOpenDeg`) **oben im Reiter Animation** (v2.0.235). Darunter Kurven für Öffnen/Schließen, Vorlagen Fenster/Haustür/Linear, SVG-Punkteeditor, Abspielen, JSON-Datensatz. Details: [opening-motion.md](opening-motion.md).
 
 ### Rollläden (v0.7.177)
 
@@ -817,7 +820,7 @@ Swatch `transparent` (`TRANSPARENT_GLASS`) macht Klarverglasung. 3D-Glas (`apply
 ## Ebenen-Baum (Multi-Haus)
 
 - `FacadeState.buildings[]` + `activeBuildingId`; Legacy-Saves werden beim Laden in ein Gebäude „Haus 1“ migriert (`migrateToBuildings`).
-- Ebenen-Liste: **Lichter** (Szene, aufklappbar) → **Haus** → **Dach** (Sektion, aufklappbar) → **Geschosse** → **Decke / Boden** / Wände / Öffnungen / **Treppe** (Unterzeile unter Tür).
+- Ebenen-Liste: **Lichter** (Szene, aufklappbar) → **Haus** → Segment **Ebenen | Fassadenschmuck** → (Ebenen:) **Dach** → **Geschosse** → Wände mit aufgeklappt **Fenster/Türen** und **Schrift** (wie Öffnungen wählbar) bzw. (Fassadenschmuck:) Toggles Alle / Paneele·Mauerwerk / Sockel / Gesimse / Zierbänder / Profile / Schrift (`Building.facadeDecor`, nur Sichtbarkeit, Hydrate `normalizeFacadeDecor`). **v2.0.240:** Profile-Toggle blendet Rahmenprofile; Sockel aus bei Paneelen an → Sockelzone in Wandfarbe.
 - **Auswahl Sync (v2.0.192):** Klick in der Bühne (3D/2D) auf Wand, Öffnung, Treppe, Decke, Licht oder Haus markiert dieselbe Zeile links; Haus/Etage/Wand/Dach/Lichter-Gruppe werden bei Bedarf aufgeklappt, die Zeile gescrollt. Profile/Gesims/Sockel ohne eigene Zeile markieren die Parent-Wand bzw. -Öffnung. (Lichter schon seit v2.0.178.)
 - **Lichter:** Alle platzierten Punktlichter (`FacadeState.sceneLights`) als eigene Sektion oben im Ebenenbaum. Namen nach Art + Nummer (`Blaulicht 2`, `Laterne`, …). **Shift+Klick** Bereichsauswahl (v2.0.183); **Ctrl/Cmd+Klick** Mehrfachauswahl → Mehr-Menü **Gruppieren** (persistente `sceneLightGroups`). Gruppenzeile wählt alle Mitglieder; Mehr-Menü: ein-/ausblenden, umbenennen, auflösen. Pro Licht: Klick wählt (`selectedSceneLightId` / `selectedSceneLightIds`); ⋯ oder **Rechtsklick** (Mehrfachauswahl bleibt) → **Ein-/Ausblenden**, **Duplizieren**, **Entfernen** für alle Gewählten. Sektions-Mehr-Menü: **Punktlicht einfügen**, **Alle ein-/ausblenden**, **Alle löschen** — manuelles Alle ausblenden wird nicht sofort von „Lichter mit Sonne“ überschrieben (v2.0.183). Globaler Toggle auch unter Bibliothek → Licht und Szene → Licht. Ausgeschaltete Lichter gedimmt (`.layer-dimmed`). **v2.0.178 / v2.0.192:** Auswahl auf der Bühne markiert die passende Ebenen-Zeile und klappt die Lichter-Sektion auf.
 - **Shift-Bereichsauswahl (v2.0.183):** Im Ebenenbaum wählt Shift+Klick alle sichtbaren Zeilen zwischen dem letzten Anker und der geklickten Zeile (Lichter, Wände, aufgeklappte Öffnungen). Ctrl/Cmd+Klick bleibt einzelnes Hinzufügen/Entfernen.
@@ -845,6 +848,7 @@ Andocken, lösen, Etage darüber, Ghost-Platzierung: Abschnitte oben („Wände 
 
 - **Fugenfarbe:** `panel.jointColor`, Default `#c8c0b8`; UI `#joint-color-swatches-studio` sobald Paneele an; Tiefe-Block nur bei `joint > 0`.
 - **Schrift speichern:** ändert nur Text/`enabled` (Position bleibt). Drag/X/Y auf 8-cm-Raster. Schriften: [fonts.md](fonts.md).
+- **Schrift Rechtsklick (v2.0.236):** wie Öffnung — Ein-/Ausblenden, Duplizieren nach links/rechts, Schrift kopieren, Stil kopieren, Einfügen, Löschen (`labelContextItems`).
 - **Bibliothek-DnD:** Ghost 50 % opacity; Raster an Dock-Zielen; kollinear → `mergeCollinearDockedWalls`.
-- **3D-Pick:** nächste Fassadenebene gewinnt (keine Auswahl durch Öffnung hindurch). Cursor Pfeil; Greifer nur an `.wall-resize-grip`.
+- **3D-Pick:** nächste Fassadenebene gewinnt (keine Auswahl durch Öffnung hindurch). **v2.0.232:** Decke/Boden nur wenn klar näher als Wand/Paneel; Schatten-Okkluder nicht pickbar — sonst ab 2. OG keine Wandwahl. **v2.0.236:** Auswahl auf `pointerdown` bleibt — `pointerup` darf sie nicht mit Decken-Nachpick verwerfen (`pointerDownDidSelect`). Cursor Pfeil; Greifer nur an `.wall-resize-grip`.
 - **Glas-Default:** neue Öffnungen `glassMode: 'tint'`.

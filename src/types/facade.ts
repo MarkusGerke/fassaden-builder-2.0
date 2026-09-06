@@ -113,6 +113,8 @@ export type SurfaceFinish = 'matte' | 'glossy' | 'metal'
 
 /** Beschriftung / Inschrift auf der Fassadenfläche. */
 export interface WallLabelConfig {
+  /** Stabil für Mehrfach-Schriften / Pick / Toolbar. */
+  id?: string
   enabled?: boolean
   text?: string
   /** cm von links (Ankerpunkt je nach align). */
@@ -1002,6 +1004,8 @@ export interface Wall extends WallDimensions {
     kind?: 'bay' | 'balcony' | 'loggia'
     /** Kind-Wand-IDs (3 bei U-Form, mehr bei rundem Erker). */
     wallIds: string[]
+    /** Erker nach unten verlängern (cm). Oberkante bleibt fix. Default 0. */
+    dropCm?: number
   }
   /** Erker-Schenkel: Verweis auf Parent-Wand mit `bayWindow`. */
   bayParentId?: string
@@ -1047,12 +1051,22 @@ export interface Wall extends WallDimensions {
   cornice?: WallCorniceConfig
   /** Zusätzliche horizontale Zierbänder / Profile. */
   trimBands?: WallTrimBand[]
-  /** Fassadenbeschriftung (Hausnummer, Inschrift, …). */
+  /**
+   * Fassadenbeschriftungen (Hausnummer, Inschrift, …). Mehrere pro Wand.
+   * Legacy-Feld `label` wird beim Hydrate nach `labels` migriert.
+   */
+  labels?: WallLabelConfig[]
+  /** @deprecated Nutze `labels[]`. Einzellabel für Altstände / Sync mit labels[0]. */
   label?: WallLabelConfig
   /** Zugehöriges Gebäude. */
   buildingId?: string
   /** Persistente Editor-Gruppe (z. B. Erker oder Nutzer-Gruppe). */
   groupId?: string
+  /**
+   * Expliziter Geschoss-Index (0 = EG). Unabhängig von `y / wallHeight`,
+   * damit Resize/Drop/ungleiche Höhen die Ebenenliste nicht durcheinanderbringen.
+   */
+  storeyIndex?: number
   /**
    * Teil des Grundriss-Graphen (Gehrung, gemeinsames Verschieben).
    * `false` = frei; fehlt das Feld, gilt die Wand als verknüpft (Bestandsprojekte).
@@ -1081,6 +1095,11 @@ export interface Building {
    * Daten bleiben erhalten; nur die Darstellung.
    */
   bareWalls?: boolean
+  /**
+   * Sichtbarkeit von Fassadenschmuck (Paneele, Sockel, Gesims, …) — nur Darstellung.
+   * Fehlt / true = sichtbar. Siehe `normalizeFacadeDecor`.
+   */
+  facadeDecor?: Partial<import('../studio/facadeDecor').FacadeDecorVisibility>
   floors: FloorPlan[]
   /** Jede Wand sollte `buildingId === building.id` haben. */
   walls: Wall[]
@@ -1170,6 +1189,8 @@ export interface EditorState {
   selectedWallPart?: 'group' | 'cornice' | 'plinth' | 'cladding' | 'label' | 'trimBand'
   /** Gewähltes Zierband (bei `selectedWallPart === 'trimBand'`). */
   selectedTrimBandId?: string
+  /** Gewählte Fassaden-Schrift (bei `selectedWallPart === 'label'`). */
+  selectedLabelId?: string
   /** Gewähltes Dach (Gebäude-ID); leert Wand/Öffnung bei Klick auf Dach-Zeile. */
   selectedRoofBuildingId?: string
   /** Fokus auf Dach-Teil (Toolbar). */
@@ -1332,6 +1353,7 @@ export function cloneWall(wall: Wall): Wall {
     })),
     cornice: wall.cornice ? { ...wall.cornice } : undefined,
     trimBands: wall.trimBands?.map((band) => ({ ...band })),
+    labels: wall.labels?.map((item) => ({ ...item })),
     label: wall.label ? { ...wall.label } : undefined,
   }
 }

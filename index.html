@@ -215,7 +215,8 @@
             </div>
           </div>
         </div>
-        <div id="edit-scope-bar" class="edit-scope-bar viewport-scope-bar" hidden>
+        <div id="scope-bar-slot" class="scope-bar-slot viewport-scope-bar" hidden>
+        <div id="edit-scope-bar" class="edit-scope-bar">
           <span class="toolbar-label">Gültig für</span>
           <div class="preset-group scope-toggle">
             <button id="edit-scope-element" class="preset-btn active" type="button">Auswahl</button>
@@ -224,6 +225,14 @@
             <button id="edit-scope-facade" class="preset-btn" type="button">Fassade</button>
           </div>
           <div id="edit-scope-facade-yaws" class="edit-scope-facade-yaws preset-group" hidden role="group" aria-label="Himmelsrichtungen der Fassade"></div>
+        </div>
+        <div id="scope-propagate-offer" class="scope-propagate-offer" hidden role="status" aria-live="polite">
+          <span id="scope-propagate-timer" class="scope-propagate-timer" aria-hidden="true">5</span>
+          <span class="scope-propagate-label">Übernehmen?</span>
+          <button id="scope-propagate-floor" class="preset-btn" type="button" hidden>Etage</button>
+          <button id="scope-propagate-facade" class="preset-btn" type="button" hidden>Fassade</button>
+          <button id="scope-propagate-dismiss" class="preset-btn scope-propagate-dismiss" type="button" title="Schließen" aria-label="Schließen">×</button>
+        </div>
         </div>
         <div id="wall-library-gizmos" hidden>
           <div class="wall-library-gizmo" data-side="left">
@@ -715,6 +724,13 @@
                   <button id="studio-end-piece-plus" class="preset-btn" type="button">+10°</button>
                 </div>
                 <button id="studio-end-piece-remove" class="preset-btn toolbar-danger" type="button">Endstück entfernen</button>
+              </div>
+              <div id="studio-bay-drop-section" class="toolbar-group" hidden>
+                <label class="toolbar-check"><input id="studio-bay-drop-enabled" type="checkbox" /> Nach unten verlängern</label>
+                <div id="studio-bay-drop-fields" hidden>
+                  <span class="toolbar-label">Verlängerung (cm)</span>
+                  <input id="studio-bay-drop-cm" type="number" min="16" max="448" step="16" value="96" aria-label="Erker nach unten verlängern" />
+                </div>
               </div>
             
 </div>
@@ -1643,13 +1659,13 @@
                   </div>
                 </div>
               </div>
+            </div>
+            </div>
+            <div id="opening-motion-section" class="settings-section toolbar-group" data-settings-section="motion" data-settings-label="Animation" data-settings-order="45">
               <div class="toolbar-group window-open-block">
                 <span class="toolbar-label">Einzeln öffnen</span>
                 <div id="window-open-group" class="window-open-group"></div>
               </div>
-            </div>
-            </div>
-            <div id="opening-motion-section" class="settings-section toolbar-group" data-settings-section="motion" data-settings-label="Animation" data-settings-order="45">
               <p class="toolbar-hint compact-hint">Öffnen und Schließen getrennt. Punkte ziehen; Klick in die Fläche setzt einen Zwischenpunkt. Kurve = weich, Linie = linear.</p>
               <div class="toolbar-group">
                 <span class="toolbar-label">Phase</span>

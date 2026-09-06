@@ -4,6 +4,8 @@ import { WALL_DEPTH } from '../constants/presets'
 import { resolveProfile } from '../profiles/registry'
 import { DEFAULT_STUDIO_PANEL } from '../studio/constants'
 import { finalizeStudioGeometry } from '../studio/planGeometry'
+import { applyBayDrop, bayHostWall, insertBayAsWallSegment } from '../studio/baySegment'
+import { BAY_WINDOW_PRESETS } from '../studio/bayWindow'
 import {
   attachAngledWallFromEnd,
   createStudioWall,
@@ -587,5 +589,113 @@ describe('Sockel um Kellerfenster', () => {
       }
     }
     expect(inside).toBe(0)
+  })
+})
+
+describe('Erker-Gesims-Umschluss (item 14)', () => {
+  const WALL_HEIGHT = 448
+
+  function twoFloorState(): { state: FacadeState; lowerId: string; upperId: string } {
+    const lower: Wall = {
+      ...createStudioWall(0, 0),
+      id: 'lower',
+      width: 576,
+      height: WALL_HEIGHT,
+      depth: WALL_DEPTH,
+      panelFlip: true,
+      planLinked: true,
+      cornice: { enabled: true, edge: 'top', scale: 1, profileId: 'traufgesims70x150' },
+    }
+    const upper: Wall = {
+      ...createStudioWall(0, WALL_HEIGHT),
+      id: 'upper',
+      width: 576,
+      height: WALL_HEIGHT,
+      depth: WALL_DEPTH,
+      panelFlip: true,
+      planLinked: true,
+    }
+    const state: FacadeState = {
+      buildings: [
+        {
+          id: 'b1',
+          name: 'Haus',
+          wallHeight: WALL_HEIGHT,
+          wallDepth: WALL_DEPTH,
+          walls: [lower, upper],
+          floors: [
+            { nodes: [], edges: [] },
+            { nodes: [], edges: [] },
+          ],
+        },
+      ],
+      activeBuildingId: 'b1',
+    } as FacadeState
+    return { state, lowerId: lower.id, upperId: upper.id }
+  }
+
+  function bayPreset(front: number, depth: number) {
+    return BAY_WINDOW_PRESETS.find((p) => p.id === `bay-f${front}-d${depth}-rect`)!
+  }
+
+  it('unterbricht das untere Gesims über der Mundöffnung und ergänzt Umlaufpfade', () => {
+    const { state, lowerId, upperId } = twoFloorState()
+    const inserted = insertBayAsWallSegment(state, upperId, bayPreset(192, 96), 288, {
+      singleFloor: true,
+    })!
+    const bayState = inserted.state
+    const walls = bayState.buildings[0]!.walls
+    const host = bayHostWall(walls, inserted.bayWallIds[0]!)!
+    const bayMemberIds = host.bayWindow!.wallIds
+
+    const paths = buildProfilePaths(bayState)
+    const lowerCornice = paths.filter(
+      (p) => p.wallId === lowerId && !p.openingId && p.role === undefined,
+    )
+    // Zwei Segmente links/rechts statt eines durchgehenden Pfads.
+    expect(lowerCornice.length).toBe(2)
+    // Gap um die Mundmitte (lokal zentriert 0), Mund 192 → [-96, 96].
+    const xs = lowerCornice.flatMap((p) => p.points.map((pt) => pt.x)).sort((a, b) => a - b)
+    expect(Math.min(...xs)).toBeCloseTo(-288, 0)
+    expect(Math.max(...xs)).toBeCloseTo(288, 0)
+    // Innere Kanten am Mund: −96 und +96.
+    const innerEdges = xs.filter((x) => Math.abs(Math.abs(x) - 96) < 1)
+    expect(innerEdges.length).toBe(2)
+
+    // Umlaufpfade auf den Erker-Wänden (Schenkel + Front) auf der Geschossfuge.
+    const wrapPaths = paths.filter(
+      (p) => bayMemberIds.includes(p.wallId) && !p.openingId && p.role === undefined && p.localSpace,
+    )
+    expect(wrapPaths.length).toBe(3)
+    // Profil/Skalierung von der unteren Wand übernommen.
+    for (const wrap of wrapPaths) {
+      expect(wrap.profileId).toBe('traufgesims70x150')
+    }
+    // Fuge = Oberkante der unteren Wand = 448 (Erker-Fuß vor drop). Erker-Wände
+    // liegen bei y=448..896 → lokal −224 (Wandfuß).
+    const front = walls.find((w) => w.id === host.id)!
+    const frontWrap = wrapPaths.find((p) => p.wallId === front.id)!
+    expect(frontWrap.points[0]!.y).toBeCloseTo(-WALL_HEIGHT / 2, 0)
+  })
+
+  it('hält die Fuge auf 448, auch wenn der Erker nach unten verlängert ist', () => {
+    const { state, upperId } = twoFloorState()
+    const inserted = insertBayAsWallSegment(state, upperId, bayPreset(192, 96), 288, {
+      singleFloor: true,
+    })!
+    const host = bayHostWall(inserted.state.buildings[0]!.walls, inserted.bayWallIds[0]!)!
+    const dropped = applyBayDrop(inserted.state, host.id, 96)!
+    const walls = dropped.buildings[0]!.walls
+    const droppedHost = bayHostWall(walls, host.id)!
+    const bayMemberIds = droppedHost.bayWindow!.wallIds
+
+    const wrapPaths = buildProfilePaths(dropped).filter(
+      (p) => bayMemberIds.includes(p.wallId) && !p.openingId && p.role === undefined && p.localSpace,
+    )
+    expect(wrapPaths.length).toBe(3)
+    // Erker jetzt y=352..896, Mitte 624. Fuge 448 → lokal 448−624 = −176.
+    const front = walls.find((w) => w.id === droppedHost.id)!
+    const frontWrap = wrapPaths.find((p) => p.wallId === front.id)!
+    expect(frontWrap.points[0]!.y).toBeCloseTo(-176, 0)
   })
 })

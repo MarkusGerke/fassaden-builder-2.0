@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Wall } from '../types/facade'
 import { emptyNeighbors } from '../types/facade'
 import { DEFAULT_STUDIO_PANEL, PLAN_DIAGONAL_STEP } from './constants'
-import { layoutPanelTiles, masonryPatternCuts, panelCourseCount, visiblePanelRowRect } from './panelLayout'
+import { layoutPanelTiles, masonryPatternCuts, panelCourseCount, visiblePanelRowRect, clipTilesAbovePlinth } from './panelLayout'
 import { WALL_DEPTH } from '../constants/presets'
 import { panelMiterEnds, studioPanelFaceLocalZ } from './walls'
 import { studioMiterLocalX } from './wallMiterX'
@@ -36,6 +36,19 @@ function studioWall(partial: Partial<Wall> & { id: string }): Wall {
 describe('hide panel rows', () => {
   it('zählt Schichten aus Wandhöhe und Paneelhöhe', () => {
     expect(panelCourseCount(456, { ...DEFAULT_STUDIO_PANEL, plinthEnabled: false, plinthHeight: 0 })).toBe(15)
+  })
+
+  it('clipTilesAbovePlinth schneidet Erker-Rock auch ohne Sockel', () => {
+    const tiles = [
+      { x: 0, y: 0, width: 96, height: 48 },
+      { x: 0, y: 48, width: 96, height: 48 },
+      { x: 0, y: 96, width: 96, height: 48 },
+    ]
+    const panel = { ...DEFAULT_STUDIO_PANEL, plinthEnabled: false, plinthHeight: 0 }
+    const clipped = clipTilesAbovePlinth(tiles, panel, 96)
+    expect(clipped).toHaveLength(1)
+    expect(clipped[0]!.y).toBe(96)
+    expect(clipped[0]!.height).toBe(48)
   })
 
   it('blendet unterste Reihe aus', () => {

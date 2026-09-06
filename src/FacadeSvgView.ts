@@ -17,11 +17,13 @@ import type { EditorState, FacadeState, Opening, OpeningEdge, Wall } from './typ
 import { openingCutsWall, openingGlazingArchForm, openingShowsGlazing, openingActsAsWindow, openingMaskSvgPath, openingMaskPolyline, openingPanelClearance, openingClearanceBandSvgPath, normalizeOpeningArch } from './utils/openingGeometry'
 import { cloneFacadeState } from './types/facade'
 import { appendGruenderzeitSvg, gruenderzeitConfigForOpening, layoutGruenderzeitWindow } from './windows/gruenderzeit'
+import { bayWallSkirtDropCm } from './studio/bayWindow'
 import { studioPlinthActive } from './studio/constants'
 import { snapToGrid } from './utils/grid'
 import { buildProfilePaths, clipProfileSectionAboveCm, profileBandPolygon, scaleProfileSectionAxes, transformProfileSection, type ProfilePath } from './utils/profilePaths'
 import { edgeIsJoined, getWall, connectedWallsOnFloor, type WallMovePosition } from './utils/walls'
 import { buildingShowsBareWalls, findBuildingForWall, findWall, getAllWalls, getVisibleWalls } from './utils/buildings'
+import { normalizeFacadeDecor, type FacadeDecorKind } from './studio/facadeDecor'
 import { openingHasProfile } from './utils/openings'
 import { layoutStairTreads } from './studio/stairs'
 import { pedimentBaseLiftCm } from './studio/openingProfileLift'
@@ -527,6 +529,19 @@ export class FacadeSvgView {
       if (!profile?.projecting) continue
       const wall = findWall(this.state, rawPath.wallId)
       if (wall && buildingShowsBareWalls(findBuildingForWall(this.state, wall.id))) continue
+      if (wall) {
+        const role = rawPath.role
+        if (role === 'plinthProfile') {
+          if (!this.facadeDecorVisible(wall.id, 'plinth')) continue
+        } else if (role === 'trimBand') {
+          if (!this.facadeDecorVisible(wall.id, 'trimBands')) continue
+        } else if (role === 'sillOuter' || role === 'sillInner' || rawPath.openingId) {
+          if (!this.facadeDecorVisible(wall.id, 'profiles')) continue
+        } else if (!this.facadeDecorVisible(wall.id, 'cornice')) {
+          // Wand-Gesims und andere vorspringende Profile ohne role
+          continue
+        }
+      }
       const path = this.pathInElevation(rawPath, wall)
       const profileColor = path.color ?? wall?.profileColor ?? DEFAULT_PROFILE_COLOR
       let section = profile.section
@@ -615,6 +630,12 @@ export class FacadeSvgView {
   private isWallSelected(id: string) {
     if (this.suppressSelectionHighlight) return false
     return this.editor.selectedWallIds.includes(id)
+  }
+
+  private facadeDecorVisible(wallId: string, kind: FacadeDecorKind): boolean {
+    const building = findBuildingForWall(this.state, wallId)
+    if (!building) return true
+    return normalizeFacadeDecor(building.facadeDecor)[kind] !== false
   }
 
   private isOpeningSelected(wallId: string, openingId: string) {
@@ -715,11 +736,13 @@ export class FacadeSvgView {
     const plinthHeight = panel && studioPlinthActive(panel) ? (panel.plinthHeight ?? 0) : 0
     const decorativePlinth =
       Boolean(panel?.plinthProfileId) && panel?.plinthProfileId !== 'sockelStandard'
-    if (plinthHeight > 0.5 && !decorativePlinth) {
+    const skirtDrop = bayWallSkirtDropCm(wall, getAllWalls(this.state))
+    if (plinthHeight > 0.5 && !decorativePlinth && this.facadeDecorVisible(wall.id, 'plinth')) {
       // Volle Breite + Öffnungsmaske: Sockel umschließt Fenster unter der Sockeloberkante.
+      // Bei Erker-Drop ab Etagenfuß (`skirtDrop`), nicht am verlängerten Wandfuß.
       const plinth = createEl('rect')
       plinth.setAttribute('x', '0')
-      plinth.setAttribute('y', String(wall.height - plinthHeight + extraTop))
+      plinth.setAttribute('y', String(wall.height - plinthHeight - skirtDrop + extraTop))
       plinth.setAttribute('width', String(drawWidth))
       plinth.setAttribute('height', String(plinthHeight))
       plinth.setAttribute('fill', this.renderStyle === 'line' ? '#ffffff' : wall.wallColor ?? DEFAULT_WALL_COLOR)
@@ -732,7 +755,7 @@ export class FacadeSvgView {
     }
 
     const cladding = resolveCladding(wall)
-    if (cladding && this.renderStyle !== 'line') {
+    if (cladding && this.renderStyle !== 'line' && this.facadeDecorVisible(wall.id, 'panels')) {
       const overlay = createEl('rect')
       overlay.setAttribute('width', String(drawWidth))
       overlay.setAttribute('height', String(drawHeight))
@@ -748,6 +771,7 @@ export class FacadeSvgView {
 
     const profileGroup = createEl('g')
     profileGroup.setAttribute('pointer-events', 'none')
+    if (this.facadeDecorVisible(wall.id, 'profiles')) {
     for (const assignment of wall.profiles) {
       const opening = wall.openings.find((item) => item.id === assignment.openingId)
       const profile = resolveProfile(assignment.profileId, this.state.customProfiles)
@@ -768,6 +792,7 @@ export class FacadeSvgView {
           outwardExtra,
         ),
       )
+    }
     }
     group.appendChild(profileGroup)
 

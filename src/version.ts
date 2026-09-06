@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.230'
+export const APP_VERSION = '2.0.240'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,116 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.240',
+    date: '2026-09-06',
+    title: 'Schrift in Ebenen, Profile-Toggle, Sockel-Wandfarbe',
+    changes: [
+      'Schrift erscheint unter der Wand in der Ebenenliste (wie Fenster)',
+      'Schrift aus der Ebenenliste einzeln wählbar und bearbeitbar',
+      'Paneele an, Sockel aus: Sockelbereich in Hauswandfarbe',
+      'Fassadenschmuck „Profile“ blendet Rahmenprofile wirklich aus',
+    ],
+  },
+  {
+    version: '2.0.239',
+    date: '2026-09-06',
+    title: 'Fassadenschmuck, Erker-Farbe, Schriften, Decke',
+    changes: [
+      'Fassadenschmuck aus: Laibung und Innenwände bleiben sichtbar',
+      'Schmuck ein/aus: Schatten wechselt sofort mit',
+      'Erker-Verlängerung unten in Hauswandfarbe (Paneele starten am Etagenfuß)',
+      'Mehrere Schriften pro Wand einzeln wählbar, bearbeitbar und verschiebbar',
+      'Erker löschen: Decke ohne Ausschnitt; Erker darunter oben geschlossen',
+      'Geschoss duplizieren: Schrift im EG bleibt an Ort und Stelle',
+    ],
+  },
+  {
+    version: '2.0.238',
+    date: '2026-09-06',
+    title: 'Fassadenschmuck: Alle-Toggle, Wandfarbe, Schrift-Schatten',
+    changes: [
+      '„Alle“ abwählen setzt auch alle Einzel-Checkboxen zurück',
+      'Schmuck aus: Wand in Hausfarbe (kein Dunkelgrau durch Schatten ausgeblendeter Paneele)',
+      'Schrift aus: kein bleibender Schrift-Schatten mehr',
+    ],
+  },
+  {
+    version: '2.0.237',
+    date: '2026-09-06',
+    title: 'Erker-Gruppe, Drop-Klone, Etagen-Index, Mehrfach-Schrift',
+    changes: [
+      'Erker: Klick auf eine Fläche wählt alle drei Wände',
+      'Erker nach unten: nur mit Freiraum darunter; Geschoss-Duplikat ohne Drop',
+      'Geschoss duplizieren: stabile storeyIndex-Zuordnung (kein Decken-/Ebenen-Chaos)',
+      'Mehrere Schriften pro Wand; Rechtsklick „Schrift einfügen“ auch auf derselben Wand',
+    ],
+  },
+  {
+    version: '2.0.236',
+    date: '2026-09-06',
+    title: 'Fassadenschmuck-Ebenen, Schrift-Menü, Etagenwahl, Geschoss löschen',
+    changes: [
+      'Ebenen: Segment „Ebenen | Fassadenschmuck“ — Paneele, Sockel, Gesimse, Zierbänder, Profile, Schrift einzeln oder alle ein-/ausblenden',
+      'Rechtsklick auf Schrift: Einblenden, Duplizieren links/rechts, Kopieren, Stil, Einfügen, Löschen wie bei Öffnungen',
+      'Wandwahl bleibt auf jeder Etage (kein Abwählen durch Decken-Nachpick nach pointerdown)',
+      'Geschoss löschen: darunterliegende Etagen behalten Höhe und Fuß; Absenken nur der Etagen darüber um die echte Höhe',
+    ],
+  },
+  {
+    version: '2.0.235',
+    date: '2026-09-06',
+    title: 'Einzeln öffnen unter Animation',
+    changes: [
+      'Ruhewinkel-Slider „Einzeln öffnen“ stehen im Reiter Animation (oben), nicht mehr unter Fensterteilung',
+    ],
+  },
+  {
+    version: '2.0.234',
+    date: '2026-09-06',
+    title: 'Erker-Sockel, Etagen-Gruppen, Kompass, Scope-Angebot',
+    changes: [
+      'Erker nach unten: Sockel auf Schenkeln und Front bündig zum Restwand-Fuß; Rock volle Wandtiefe in Wandfarbe',
+      'Geschoss duplizieren: Erker und Wandgruppen bleiben Gruppen (IDs remappt), keine Selbstauflösung',
+      'Kompassausrichtung bleibt beim Wechsel 3D ↔ 2D-Aufriss',
+      'Schrift wählen: keine Wand-Skalierungs-Greifer; Position weiter in 8-cm-Schritten',
+      'Leises Übernehmen-Angebot: „Gültig für“ fadet aus, Angebot fährt von unten ein, 5-s-Timer, dann umgekehrt',
+    ],
+  },
+  {
+    version: '2.0.233',
+    date: '2026-09-06',
+    title: 'Erker 2D/8 cm, Schrift, Etage duplizieren',
+    changes: [
+      'Erker in der 2D-Front verschieben (feste Fassadenebene); Gleiten in 8-cm-Schritten',
+      'Erker nach unten: Sockel und Paneele bleiben auf Etagenfuß, darunter nur rohe Wand',
+      'Schrift: bleibt bei Wand-Streckung ortsfest; Hilfslinien und Schatten folgen beim Verschieben',
+      'Nach Bearbeitung mit „Auswahl“/„Etage“: leises Angebot, auf Etage oder Fassade zu übernehmen',
+      'Geschoss duplizieren setzt Wände immer auf die neue Etage (nie auf derselben wie die Quelle)',
+    ],
+  },
+  {
+    version: '2.0.232',
+    date: '2026-09-06',
+    title: 'Auswahl auf allen Etagen',
+    changes: [
+      'Wände und Paneele auf dem 2. Obergeschoss und höher wieder per Klick wählbar',
+      'Unsichtbare Decken-Okkluder stehlen die Auswahl nicht mehr vor der Fassade',
+    ],
+  },
+  {
+    version: '2.0.231',
+    date: '2026-09-06',
+    title: 'Erker-Hilfslinien, Einfügen, Stil, Undo',
+    changes: [
+      'Erker verschieben: Hilfslinien und Abstände wie bei Wandöffnungen (auch 2D-Front)',
+      'Erker einsetzen: Fassaden-/Fensterstil der Etage; Untersicht geschlossen; optional nach unten verlängern; Gesims der unteren Etage umschließt',
+      'Öffnung aus Zwischenablage an Rechtsklick-Position; Stil einfügen unabhängig von Maßen (auch Fenster↔Tür)',
+      'Bibliothek ohne Wandwahl: Fenster und Türen sichtbar; nach Abwahl „Gültig für“ = Auswahl',
+      'Kein Mindestabstand beim Öffnungs-Verschieben; Wandzug zeigt Abstand Ecke→Öffnung; Undo/Redo 30 Schritte',
+      'Schrift einzeln wählbar inkl. Rechtsklick; Mörtelfugen werfen keine harten Eigen-Schatten mehr auf Paneele',
+    ],
+  },
   {
     version: '2.0.230',
     date: '2026-09-06',

@@ -77,7 +77,9 @@ body {
 #app.stage-view #ui-right,
 #app.stage-view #ui-left-collapse,
 #app.stage-view #viewport-chrome,
+#app.stage-view #scope-bar-slot,
 #app.stage-view #edit-scope-bar,
+#app.stage-view #scope-propagate-offer,
 #app.stage-view #library-dock,
 #app.stage-view #nav-help-btn,
 #app.stage-view #wall-library-gizmos,
@@ -861,6 +863,29 @@ body {
   flex-direction: row;
   align-items: center;
   gap: 0.65rem;
+  transition: opacity 0.28s ease;
+}
+
+.scope-bar-slot {
+  position: absolute;
+  bottom: 0.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 12;
+  pointer-events: auto;
+  display: grid;
+  grid-template: 1fr / 1fr;
+  justify-items: center;
+  align-items: end;
+}
+
+.scope-bar-slot > .edit-scope-bar,
+.scope-bar-slot > .scope-propagate-offer {
+  grid-area: 1 / 1;
+}
+
+.scope-bar-slot[hidden] {
+  display: none !important;
 }
 
 .viewport-scope-bar {
@@ -874,6 +899,72 @@ body {
 
 .viewport-scope-bar[hidden] {
   display: none !important;
+}
+
+.edit-scope-bar.is-offer-faded {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.scope-propagate-offer {
+  z-index: 13;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0.55rem 0.85rem;
+  background: rgba(255, 255, 255, 0.94);
+  border-radius: 0.45rem;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+  border: 1px solid #ddd;
+  pointer-events: auto;
+  color: #333;
+  opacity: 0;
+  transform: translateY(110%);
+  transition: opacity 0.28s ease, transform 0.32s ease;
+}
+
+.scope-propagate-offer.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.scope-propagate-offer[hidden] {
+  display: none !important;
+}
+
+.scope-propagate-timer {
+  flex: 0 0 auto;
+  min-width: 1.35rem;
+  height: 1.35rem;
+  padding: 0 0.2rem;
+  border-radius: 999px;
+  background: #eee;
+  color: #444;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.scope-propagate-label {
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.scope-propagate-offer .preset-btn {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.5rem;
+}
+
+.scope-propagate-dismiss {
+  min-width: 1.6rem;
+  padding: 0.15rem 0.35rem;
+  opacity: 0.7;
 }
 
 .edit-scope-bar .toolbar-label {
@@ -1009,7 +1100,9 @@ body {
 #viewport.view-export #three-canvas,
 #viewport.view-export #view-compass,
 #viewport.view-export #history-toolbar,
+#viewport.view-export #scope-bar-slot,
 #viewport.view-export #edit-scope-bar,
+#viewport.view-export #scope-propagate-offer,
 #viewport.view-export #wall-library-gizmos,
 #viewport.view-export #wall-resize-gizmos {
   visibility: hidden;
@@ -3788,6 +3881,42 @@ html[data-ui-mode='simple'] [data-ui-level='advanced'] {
   display: flex;
   align-items: center;
   gap: 0.25rem;
+}
+
+.layer-mode-toggle {
+  margin: 0.35rem 0.35rem 0.25rem;
+  flex-wrap: wrap;
+}
+
+.layer-mode-toggle .view-mode-btn {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.72rem;
+  padding: 0.28rem 0.4rem;
+}
+
+.layer-decor-body {
+  list-style: none;
+  margin: 0;
+  padding: 0.15rem 0.35rem 0.45rem;
+}
+
+.layer-decor-row {
+  margin: 0;
+  padding: 0.12rem 0;
+}
+
+.layer-decor-label {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+  width: 100%;
+}
+
+.layer-decor-label input {
+  margin: 0;
 }
 
 .layer-building-header .layer-floor-toggle {

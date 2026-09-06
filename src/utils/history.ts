@@ -19,7 +19,7 @@ export class EditHistory {
   private redoStack: HistorySnapshot[] = []
   private readonly limit: number
 
-  constructor(limit = 50) {
+  constructor(limit = 30) {
     this.limit = limit
   }
 

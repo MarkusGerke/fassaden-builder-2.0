@@ -153,23 +153,40 @@ export function layoutBaySideOpenings(sideWidthCm: number, depthCm: number): Bay
   return layoutBayOpeningsOnWall(sideWidthCm, baySideWindowWidthCm(depthCm), { count: 1 })
 }
 
-function openingsFromLayouts(wall: Wall, layouts: BayOpeningLayout[]): Opening[] {
+function openingsFromLayouts(
+  wall: Wall,
+  layouts: BayOpeningLayout[],
+  donorWalls?: Wall[],
+): Opening[] {
   return layouts.map((layout) =>
-    createOpening('window', layout.width, layout.height, wall, { x: layout.x, y: layout.y }),
+    createOpening('window', layout.width, layout.height, wall, { x: layout.x, y: layout.y }, {
+      donorWalls,
+    }),
   )
 }
 
 /** Echte, nachträglich editierbare Fenster auf Front- und Schenkelwänden. */
-export function applyBayPresetOpenings(walls: Wall[], preset: BayWindowPreset): Wall[] {
+export function applyBayPresetOpenings(
+  walls: Wall[],
+  preset: BayWindowPreset,
+  donorWalls?: Wall[],
+): Wall[] {
   if (bayPresetKind(preset) !== 'bay') return walls
   return walls.map((wall) => {
     if (wall.bayRole === 'front') {
-      return { ...wall, openings: openingsFromLayouts(wall, layoutBayFrontOpenings(wall.width)) }
+      return {
+        ...wall,
+        openings: openingsFromLayouts(wall, layoutBayFrontOpenings(wall.width), donorWalls),
+      }
     }
     if (wall.bayRole === 'side') {
       return {
         ...wall,
-        openings: openingsFromLayouts(wall, layoutBaySideOpenings(wall.width, preset.depthCm)),
+        openings: openingsFromLayouts(
+          wall,
+          layoutBaySideOpenings(wall.width, preset.depthCm),
+          donorWalls,
+        ),
       }
     }
     return wall
@@ -224,11 +241,16 @@ function copyWallOptics(from: Wall, to: Wall): Wall {
     ...to,
     panelFlip: to.panelFlip ?? from.panelFlip ?? true,
     wallColor: from.wallColor,
+    wallFinish: from.wallFinish,
     interiorColor: from.interiorColor,
     claddingColor: from.claddingColor,
+    claddingFinish: from.claddingFinish,
     profileColor: from.profileColor,
+    profileFinish: from.profileFinish,
     panel: from.panel ? { ...from.panel } : to.panel,
+    claddingZones: from.claddingZones?.map((zone) => ({ ...zone, id: createId() })),
     cornice: from.cornice ? { ...from.cornice } : to.cornice,
+    trimBands: from.trimBands?.map((band) => ({ ...band, id: createId() })),
     height: to.height ?? from.height,
     depth: to.depth ?? from.depth ?? WALL_DEPTH,
   }
@@ -415,7 +437,8 @@ function buildUShapeWalls(
   rightSide.bayParentId = parent.id
   front.bayParentId = parent.id
 
-  const withOpenings = applyBayPresetOpenings([leftSide, front, rightSide], preset)
+  const donors = [parent, ...(parent.openings?.length ? [parent] : [])]
+  const withOpenings = applyBayPresetOpenings([leftSide, front, rightSide], preset, donors)
   return { parent: updatedParent, walls: withOpenings }
 }
 
@@ -541,6 +564,35 @@ export function bayMetaForWall(
 }
 
 /**
+ * Nach-unten-Verlängerung (cm): Sockel/Paneele bleiben auf Etagenfuß,
+ * darunter nur roher Wandblock + Untersicht.
+ *
+ * Quelle der Wahrheit ist der gemessene Abstand zum Etagenfuß der Restwände
+ * (gleiche Oberkante, keine Erker-Rolle) — nicht allein `dropCm`. So bleiben
+ * Sockel auf Schenkeln und Front bündig, auch wenn Y-Drop und Meta kurz divergieren.
+ */
+export function bayWallSkirtDropCm(wall: Wall, walls: Wall[] = []): number {
+  const meta = bayMetaForWall(walls, wall) ?? wall.bayWindow
+  const stored = meta?.dropCm
+  if (!(typeof stored === 'number' && Number.isFinite(stored)) || stored <= 0) return 0
+
+  const top = (wall.y ?? 0) + wall.height
+  let remnantFloor: number | null = null
+  for (const other of walls) {
+    if (!isStudioWall(other)) continue
+    if (other.id === wall.id) continue
+    if (other.bayParentId || other.bayRole || other.bayWindow) continue
+    if (Math.abs((other.y ?? 0) + other.height - top) > 2) continue
+    remnantFloor = other.y ?? 0
+    break
+  }
+  if (remnantFloor != null) {
+    return Math.max(0, Math.round(remnantFloor - (wall.y ?? 0)))
+  }
+  return Math.max(0, Math.round(stored))
+}
+
+/**
  * Alle Wand-IDs einer Erker-/Balkon-Baugruppe (die Flächen der Baugruppe).
  * Dedupliziert — bei Standalone-Erker ist die Front Host und steht bereits in `wallIds`.
  */
@@ -650,11 +702,17 @@ export function buildBayWindowAtPose(
     height,
     depth: needsBackWall ? depth : 0,
     panel: styleFrom?.panel ? { ...styleFrom.panel } : undefined,
+    claddingZones: styleFrom?.claddingZones?.map((zone) => ({ ...zone, id: createId() })),
     cornice: styleFrom?.cornice ? { ...styleFrom.cornice } : undefined,
+    trimBands: styleFrom?.trimBands?.map((band) => ({ ...band, id: createId() })),
     wallColor: styleFrom?.wallColor,
+    wallFinish: styleFrom?.wallFinish,
     interiorColor: styleFrom?.interiorColor,
     claddingColor: styleFrom?.claddingColor,
+    claddingFinish: styleFrom?.claddingFinish,
     profileColor: styleFrom?.profileColor,
+    profileFinish: styleFrom?.profileFinish,
+    openings: styleFrom?.openings ? styleFrom.openings.map((o) => ({ ...o })) : [],
     bayRole: needsBackWall ? 'back' : undefined,
     planLinked: true,
   }

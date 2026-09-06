@@ -54,6 +54,7 @@ import {
   rusticationSectorRMax,
 } from './archRustication'
 import { STUDIO_MASONRY, panelKindForPattern, studioPlinthActive } from './constants'
+import { bayWallSkirtDropCm } from './bayWindow'
 import { basementWindowEnabled } from './basementWindow'
 import { studioMiterLocalX } from './wallMiterX'
 import { WINDOW_RECESS, WALL_DEPTH } from '../constants/presets'
@@ -1979,7 +1980,7 @@ export function createStudioPanelLowGeometry(
   if (panel.enabled === false || panel.pattern === 'none') {
     return new THREE.BufferGeometry()
   }
-  const band = visiblePanelRowRect(wall, panel)
+  const band = visiblePanelRowRect(wall, panel, allWalls)
   if (!band) return new THREE.BufferGeometry()
   const tiles = [band]
   return buildStudioPanelGeometry(wall, panel, tiles, allWalls)
@@ -2333,7 +2334,7 @@ function plinthClipOpenings(wall: Wall): Opening[] {
   return result
 }
 
-/** Sockelplatte vor den Paneelen, von y=0 bis plinthHeight. */
+/** Sockelplatte vor den Paneelen; bei Erker-Drop ab `dropCm` (Etagenfuß), nicht am verlängerten Wandfuß. */
 export function createStudioPlinthGeometry(
   wall: Wall,
   panel: StudioPanelConfig,
@@ -2342,6 +2343,7 @@ export function createStudioPlinthGeometry(
   if (!studioPlinthActive(panel)) return null
   const height = panel.plinthHeight ?? 0
   if (height < 0.5) return null
+  const skirtDrop = bayWallSkirtDropCm(wall, allWalls)
   const sign = studioWindowDepthForwardSign(wall)
   const offset = (panel.plinthOffsetForward ?? 0) * sign
   const innerZ = studioPanelFaceLocalZ(wall) + offset
@@ -2352,7 +2354,7 @@ export function createStudioPlinthGeometry(
   const clipOpenings = plinthClipOpenings(wall)
   const parts = flushClipPartsToOpeningJambs(
     clipTileAgainstOpenings(
-      { x: 0, y: 0, width: wall.width, height },
+      { x: 0, y: skirtDrop, width: wall.width, height },
       clipOpenings,
       PANEL_OPENING_CLEARANCE,
     ),
@@ -2539,7 +2541,7 @@ export function createStudioMortarGeometry(
 
   // Gleiches gerastertes Loch wie die Paneele, damit Mörtel und Steine zusammenpassen.
   const tiles = precomputedTiles ?? layoutPanelTiles(wall, panel, allWalls)
-  const band = visiblePanelRowRect(wall, panel)
+  const band = visiblePanelRowRect(wall, panel, allWalls)
   if (!band) return null
   const holes = snapOpeningHolesToTileGrid(wall, panel, tiles)
   const mortarX0 = tiles.length > 0 ? Math.min(...tiles.map((t) => t.x)) : band.x
@@ -3165,12 +3167,19 @@ export function createStudioWallGeometry(wall: Wall, allWalls: Wall[] = []): THR
 
   // Außenfläche immer — auch bei Paneelen (z. B. ausgeblendete Reihen). Leicht nach innen versetzt, damit
   // keine Z-Fights mit Mörtel/Steinrücken entstehen (Moiré). Im oberen Freistreifen volle Tiefe — sonst kein Bodenschatten.
+  // Erker-Drop-Rock: ebenfalls volle Tiefe — sonst wirkt die eingesunkene Schale unter dem Sockel schwarz/fremd.
   const bareTop = panelsOn ? topBareBandForWall(wall) : null
+  const skirtDrop = bayWallSkirtDropCm(wall, allWalls)
+  const bareSkirt = skirtDrop > 0.5
+  const plinthH =
+    wall.panel && studioPlinthActive(wall.panel) ? (wall.panel.plinthHeight ?? 0) : 0
+  const barePlinth = plinthH > 0.5
   const sign = studioWindowDepthForwardSign(wall)
   const insetFaceZ = outerZ - sign * 0.15
   const faceReverse = (z: number) => wallFaceNormalReverse(wall, z, innerZ)
-  // Freistreifen oben: volle Tiefe, damit die nackte Wandfläche sichtbar bleibt und Schatten wirft.
-  const outerFaceZ = panelsOn && !bareTop ? insetFaceZ : outerZ
+  // Freistreifen oben / Erker-Rock / Sockelzone: volle Tiefe (Wandfarbe sichtbar, wenn Sockel aus).
+  const outerFaceZ =
+    panelsOn && !bareTop && !bareSkirt && !barePlinth ? insetFaceZ : outerZ
   appendShapeFace(studioWallFaceShape(wall, outerFaceZ), outerFaceZ, faceReverse(outerFaceZ), positions, normals, indices)
 
   const yBottom = -halfH
@@ -3221,10 +3230,15 @@ export function createStudioWallGeometry(wall: Wall, allWalls: Wall[] = []): THR
   )
 
   // Unterseite der Wandstärke: Lücken nur unter Bodentüren (früher: ganz ohne Boden bei Tür).
-  const groundDoors = wall.openings
-    .filter((opening) => openingCutsFromGround(opening))
-    .slice()
-    .sort((a, b) => a.x - b.x)
+  // Erker-Wände (Schenkel/Front) bekommen immer den vollen Boden — sonst fehlt die
+  // Untersicht (Soffit) und man sieht von unten durch den Erker.
+  const isBayWall = Boolean(wall.bayParentId || wall.bayRole)
+  const groundDoors = isBayWall
+    ? []
+    : wall.openings
+        .filter((opening) => openingCutsFromGround(opening))
+        .slice()
+        .sort((a, b) => a.x - b.x)
   const addBottomSpan = (xStart: number, xEnd: number) => {
     if (xEnd - xStart < 0.05) return
     const o0 = wallLocalX(wall, xStart, outerZ)
@@ -3764,7 +3778,7 @@ function buildStudioPanelFlatJointGeometry(
 ): THREE.BufferGeometry | null {
   const joint = Math.max(0, panel.joint ?? 0)
   if (joint <= 1e-6) return null
-  const band = visiblePanelRowRect(wall, panel)
+  const band = visiblePanelRowRect(wall, panel, allWalls)
   if (!band) return null
   const halfJ = joint * 0.5
   const holes = snapOpeningHolesToTileGrid(wall, panel, tiles)

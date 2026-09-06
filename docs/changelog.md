@@ -2,6 +2,91 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Schrift-Ebene, Profile-Toggle, Sockel-Wandfarbe (2026-09-06) — v2.0.240
+
+**Symptom / Fix:**
+
+1. **Schrift in Ebenen:** Wie Fenster unter der Wand (`LayerTreeEntry` `label`, Expand-Pfeil, Auswahl → `selectedLabelId`).
+2. **Profile bleiben sichtbar:** Öffnungs-Rahmenprofile hatten `openingPart: trim` ohne Decor-Klassifizierung. **Fix:** `trim`/`sill*`/`lodTier: profile` → `profiles`; SVG ebenfalls über `openingId`.
+3. **Sockel aus → fremde Farbe:** Wandaußenfläche blieb hinter dem Sockel eingesunken. **Fix:** bei aktivem Sockel volle Außentiefe (`barePlinth`) — ausgeblendeter Sockel zeigt Wandfarbe.
+
+**Docs:** [ux.md](ux.md), [fonts.md](fonts.md), [views-and-state.md](views-and-state.md), [panel-geometry.md](panel-geometry.md).
+
+### Fassadenschmuck, Erker-Rock-Farbe, Multi-Schrift, Decke (2026-09-06) — v2.0.239
+
+**Symptom / Fix:**
+
+1. **Schmuck aus → Laibung weg:** Reveals in `profileGroup` wurden als `profiles` klassifiziert. **Fix:** Laibung/`openingPart: group` und `revealMeshes` aus Decor; kein `profileGroup.traverse`.
+2. **Schatten verzögert:** Decor-Toggle nutzte `scheduleShadowMapUpdate`. **Fix:** `flushSunShadowMap` sofort.
+3. **Erker-Drop braun/grau:** `clipTilesAbovePlinth` schnitt Rock nur bei aktivem Sockel — Paneele/Mörtel überdeckten den Rock. **Fix:** Schnitt immer ab `skirtDrop`; `visiblePanelRowRect` startet am Skirt.
+4. **Mehrere Schriften:** Live-Drag/Highlight/Toolbar ohne `selectedLabelId`. **Fix:** Delta/Offset/Highlight/Guides/Farbe an ID.
+5. **Erker löschen → Deckenloch:** Flatten mit Drop-`y`/`height` ohne `storeyIndex`; kein Deckel oben. **Fix:** Flat auf Etagenfuß + Index; Soffit auch an Erker-Oberkante ohne Erker darüber.
+6. **OG-Duplikat verschiebt EG-Schrift:** Hydrate nudgte Labels; Quellwände unnötig neu geklont; Drop-Schenkel-Index. **Fix:** bestehende Labels nur normalisieren; Quelle behalten; `wallStoreyIndex` mit Host-Drop.
+
+**Docs:** [views-and-state.md](views-and-state.md), [bay-windows.md](bay-windows.md), [fonts.md](fonts.md), [panel-geometry.md](panel-geometry.md).
+
+### Fassadenschmuck-Toggle: Checkboxen, Wandfarbe, Schrift-Schatten (2026-09-06) — v2.0.238
+
+**Symptom:** „Alle“ abwählen ließ Einzel-Checkboxen angehakt; ohne Schmuck wirkte die Fassade dunkelgrau; Schrift aus ließ den Schatten stehen.
+
+**Ursache / Fix:** Decor-only-Updates übersprangen die Ebenenliste (`skipLayerList`). Ausgeblendete Meshes behielten `castShadow` → Schatten auf der Wandschale / am Boden. **Fix:** Ebenenliste bei `decorOnly` neu zeichnen; `castShadow` mit aus; Shadow-Map-Update; Fensterrahmen nicht mehr über `openingId` als „Profile“ ausblenden.
+
+**Umsetzung:** `main.ts`, `FacadeController.applyFacadeDecorVisibility`. Docs: [views-and-state.md](views-and-state.md).
+
+### Erker-Gruppe, Drop-Klone, Etagen-Index, Mehrfach-Schrift (2026-09-06) — v2.0.237
+
+**Nutzer:** Erker als Ganzes wählbar; Drop nur mit Freiraum / Klone ohne Drop; Geschoss-Duplikat hält Ebenen/Decken konsistent; mehrere Schriften pro Wand inkl. Einfügen auf derselben Wand.
+
+**Fehlersuche Etagen-Chaos:** Symptom — nach Duplikat des 3. OG Ebenen/Decken vertauscht. Ursache: `floorIndex = round(y / wallHeight)` vs. echte Stapelhöhen + `floors.splice`. **Fix:** persistentes `Wall.storeyIndex` bei Insert/Remove/Resize/Hydrate; `floorIndex` liest das Feld.
+
+**Umsetzung:** `selectWall` expandiert Bay auch bei `cladding`/`plinth`/`cornice`; `stripBayDropFromStoreyClone` + `bayDropClearanceCm`; `labels[]` + `addWallLabel`. Docs: [bay-windows.md](bay-windows.md), [floor-plan.md](floor-plan.md), [ux.md](ux.md), [fonts.md](fonts.md).
+
+### Fassadenschmuck, Schrift-Kontext, Etagenwahl, Geschoss löschen (2026-09-06) — v2.0.236
+
+**Nutzer:** Pro Haus Segment **Ebenen | Fassadenschmuck** mit Toggles (Alle / Paneele / Sockel / Gesimse / Zierbänder / Profile / Schrift). Rechtsklick Schrift wie Öffnung. Wandwahl auf oberen Etagen bleibt. Geschoss löschen ändert darunterliegende Höhen nicht.
+
+**Fehlersuche Etagenwahl:** Symptom — 3. Etage kurz orange, dann abgewählt. Hypothesen: Decken-Priorität (teilweise schon v2.0.232, `ceilingBeatsFacadeMesh` eps 12); **nicht** ausreichend — `pointerup` pickte erneut und traf Decke/`selectWall(null)`. **Fix:** `pointerDownDidSelect` + Skip Re-Pick auf `pointerup`; Auswahl bleibt.
+
+**Fehlersuche Geschoss löschen:** Alt: Absenkung um festes `building.wallHeight` konnte untere Etagen indirekt verzerren / Drop falsch. **Fix:** Drop = echte Span-Höhe der gelöschten Wände; `fi < storeyIndex` → unverändert klonen.
+
+**Umsetzung:** `Building.facadeDecor` + `facadeDecor.ts`; Ebenen-UI; `applyFacadeDecorVisibility` / `refreshFacadeDecorVisibility`; Label-Kontextmenü; `removeStorey`; Tests. Docs: [ux.md](ux.md), [views-and-state.md](views-and-state.md), [floor-plan.md](floor-plan.md).
+
+### Einzeln öffnen unter Animation (2026-09-06) — v2.0.235
+
+**Nutzer:** Ruhewinkel-Slider „Einzeln öffnen“ stehen oben im Reiter **Animation** (nicht mehr unter Fensterteilung).
+
+**Umsetzung:** Block `.window-open-block` / `#window-open-group` von `#window-style-section` nach `#opening-motion-section`. Docs: [opening-motion.md](opening-motion.md), [ux.md](ux.md).
+
+### Erker-Sockel, Gruppen, Kompass, Scope-UI (2026-09-06) — v2.0.234
+
+**Nutzer:** Erker-Sockel auf Schenkeln bündig zum Rest; Rock in Wandfarbe (volle Tiefe); Geschoss-Duplikat erhält Erker/Gruppen; Kompass 3D↔2D stabil; Schrift ohne Wand-Greifer; leises Angebot mit 5-s-Timer an Stelle von „Gültig für“.
+
+**Fehlersuche Sockel/Farbe:** Symptom — Schenkel-Sockel zu hoch, Rock schwarz. Hypothese „nur `dropCm`“ reichte nicht, wenn Y-Drop und Meta divergieren; eingesunkene Paneel-Schale unter dem Sockel wirkte schwarz. **Nicht** geholfen: Sockel nur am Host. **Fix:** `bayWallSkirtDropCm` / Profil-Sockel messen Restwand-Fuß bei gleicher Oberkante; bei `skirtDrop` Außenfläche volle Tiefe; Soffit in `wallColor`.
+
+**Umsetzung:** `remapStoreyCloneRelations` in `insertStoreyAbove`; `setView` Elevation aus 3D / `orbitCameraToYaw` zurück; Greifer aus bei `selectedWallPart === 'label'`; `#scope-bar-slot` Fade/Slide + Timer. Docs: [bay-windows.md](bay-windows.md), [ux.md](ux.md), [camera.md](camera.md), [views-and-state.md](views-and-state.md).
+
+### Erker 2D/8 cm, Schrift, Scope-Angebot (2026-09-06) — v2.0.233
+
+**Nutzer:** Erker in 2D-Front verschiebbar (8-cm-Raster); Sockel bleibt bei Drop auf Etagenfuß; Schrift skaliert nicht mit Wandzug, hat Hilfslinien und mitlaufenden Schatten; nach Auswahl-/Etagen-Edit leises Übernehmen auf Etage/Fassade; Geschoss-Duplikat landet immer darüber.
+
+**Fehlersuche Erker-2D:** SVG-`hitTest` in Front unbrauchbar (`#svg-view` display:none). Mesh-Pick allein brach ab, sobald der Cursor den Mund verließ. **Lösung:** feste Fassaden-Ebene (`setup3dDragForWall` + `buildBaySlideGuideModel`) wie bei Öffnungs-Drag.
+
+**Umsetzung:** `BAY_SLIDE_STEP_CM = 8`; `bayWallSkirtDropCm` in Paneel-/Sockel-/Profil-Pfad; `labelAsGuideOpening` / `refreshLabelGuides`; Label-Shadow-Dirty live; `scopePropagate.ts` + `#scope-propagate-offer`; `duplicateStorey` → `insertStoreyAbove`. Docs: [bay-windows.md](bay-windows.md), [ux.md](ux.md), [views-and-state.md](views-and-state.md).
+
+### Auswahl aller Etagen (2026-09-06) — v2.0.232
+
+**Nutzer:** Wände und Paneele auf dem 2. OG und höher wieder per Klick wählbar (nicht nur EG / 1. OG).
+
+**Symptom / Ursache:** Decken-Priorität in `pickFromEvent` + unsichtbare `sunCeilingOccluder` stahlen Treffer vor der Fassade.
+
+**Fix:** Okkluder ohne Raycast; Raycaster Innen+Außen-Layer; Decke nur wenn näher als Wand (`facadePick.ts`). Docs: [floor-plan.md](floor-plan.md), [ux.md](ux.md).
+
+### Erker-Hilfslinien, Einfügen, Stil (2026-09-06) — v2.0.231
+
+**Nutzer:** Erker verschieben mit denselben Hilfslinien/Abständen wie Öffnungen (auch 2D); Erker übernimmt Etagenstil; Untersicht zu; optional nach unten verlängern; unteres Gesims umschließt oberen Erker. Öffnung einfügen an Rechtsklick; Stil ohne Maßbindung; Bibliothek Fenster/Türen ohne Wandwahl; Abwahl → „Gültig für“ Auswahl; kein Min-Abstand beim Öffnungszug; Wandzug Ecke→Öffnung; Undo 30; Schrift-Rechtsklick; weichere Paneel-Schatten (Mörtel wirft nicht).
+
+**Umsetzung:** `buildBaySlideGuideModel` + `refreshBaySlideGuides`; Front-Drag über `wallElevationAlong`; `applyBayDrop` / Soffit / `buildBayCorniceWraps`; `pasteOpeningsFromClipboard(at)`; `inheritOpeningStyles` beim Stil-Einfügen; `allowedLibraryTabs` + `setEditScope('element')` bei Abwahl; `moveOpening` drag ohne Gap; `computeWallCornerOpeningDistanceLines`; `EditHistory(30)`; Label-Context; `mortarMesh.castShadow = false`. Docs: [bay-windows.md](bay-windows.md), [ux.md](ux.md), [shadows.md](shadows.md).
+
 ### Defaults & Bibliothek (2026-09-06) — v2.0.230
 
 **Nutzer:** Kompass reagiert zuverlässig; Bibliothek startet mit Fenster/Türen; Defaults für Einsetzen/Gesims/Oberlicht; Übersicht-Tab; Duplikat-Abstand 96 cm; Erker nur auf markierter Etage.

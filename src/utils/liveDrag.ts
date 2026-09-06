@@ -99,11 +99,12 @@ export function labelWorldDeltaFromStates(
   base: FacadeState,
   next: FacadeState,
   wallId: string,
+  labelId?: string | null,
 ): { x: number; y: number; z: number } {
   const fromWall = findWall(base, wallId)
   const toWall = findWall(next, wallId)
   if (!fromWall || !toWall) return { x: 0, y: 0, z: 0 }
-  const from = wallLabel(fromWall)
-  const to = wallLabel(toWall)
+  const from = wallLabel(fromWall, labelId)
+  const to = wallLabel(toWall, labelId)
   return wallLocalDeltaToWorld(toWall, (to.x ?? 0) - (from.x ?? 0), (to.y ?? 0) - (from.y ?? 0))
 }

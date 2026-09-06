@@ -48,6 +48,10 @@ import {
 } from './studio/roomEnvironment'
 import { BAY_WINDOW_PRESETS, buildBayWindowWalls, buildBayWindowAtPose, bayWindowGhostSegments, bayWallSelectionIds, bayMetaForWall, type BayWindowPreset, bayPresetKind, scaleBayPresetToMouthWidth, bayMinMouthWidthCm, bayMouthWidthCm, bayWindowPreviewSvg } from './studio/bayWindow'
 import {
+  ceilingBeatsFacadeMesh,
+  isSelectableCeilingKind,
+} from './studio/facadePick'
+import {
   DEFAULT_CEILING_COLOR,
   DEFAULT_FRAME_COLOR,
   DEFAULT_GLASS_COLOR,
@@ -137,6 +141,7 @@ import {
   resetOpenings,
   updateWindowFrameColorsForWalls,
   updateWindowGlassColorsForWalls,
+  inheritOpeningStyles,
 } from './utils/openings'
 import {
   DEFAULT_NICHE_DEPTH_CM,
@@ -204,8 +209,12 @@ import {
   facadeStateDiffersOnlyByWallLabels,
   syncWallDecorToTopBareBand,
   updateWallLabel,
+  addWallLabel,
+  removeWallLabel,
   wallHasLabel,
   wallLabel,
+  wallLabels,
+  labelAsGuideOpening,
 } from './utils/wallLabel'
 import {
   DEFAULT_SCENE_APPEARANCE,
@@ -273,6 +282,14 @@ import {
   floorLabel,
   type LayerItem,
 } from './utils/layers'
+import {
+  FACADE_DECOR_KINDS,
+  allFacadeDecorVisible,
+  facadeStateDiffersOnlyByFacadeDecor,
+  normalizeFacadeDecor,
+  withAllFacadeDecor,
+  type FacadeDecorKind,
+} from './studio/facadeDecor'
 import { matchingCladdings, resolveCladding } from './meshes/catalog'
 import { validateOpeningPlacement } from './utils/validation'
 import { EditHistory, type HistorySnapshot } from './utils/history'
@@ -399,7 +416,10 @@ import {
   wallSplitStack,
 } from './studio/wallSplit'
 import {
+  applyBayDrop,
+  bayDropCm,
   bayHostWall,
+  buildBaySlideGuideModel,
   canSlideBaySegment,
   flattenBayToFlatWall,
   insertBayAsWallSegment,
@@ -410,6 +430,13 @@ import {
   slideBaySegmentAlong,
   swapBayPreset,
 } from './studio/baySegment'
+import {
+  computeOpeningGuidesForRefs,
+  computeOpeningDistanceLinesForRefs,
+  computeOpeningGuides,
+  computeOpeningDistanceLines,
+  computeWallCornerOpeningDistanceLines,
+} from './studio/openingGuides'
 import {
   defaultUpperBandWidth,
   isTwoHorizontalBandCladding,
@@ -440,6 +467,12 @@ import {
   normalizeFacadeYawFilter,
   type EditScope,
 } from './studio/editScope'
+import {
+  isPropertyOnlyFacadeEdit,
+  propagateSelectionEdit,
+  scopePropagateAvailable,
+  type ScopePropagateKind,
+} from './studio/scopePropagate'
 import { clonePatternPreviewSvg } from './studio/patternPreview'
 import { snapToGrid } from './utils/grid'
 import { openingPreviewSvg, openingSizePreviewSvg } from './studio/openingPreview'
@@ -464,9 +497,8 @@ import {
   normalizeOpeningGuard,
   normalizeOpeningInteriorShade,
 } from './windows/openingExtras'
-import { facadeOutward, facadeSunIsGrazing, wallsForYaw, type ElevationFilter } from './studio/elevation'
+import { facadeOutward, facadeSunIsGrazing, wallsForYaw, wallElevationAlong, type ElevationFilter } from './studio/elevation'
 import { normalizeYawDeg, snapYawTo1, snapYawTo45, solarAzimuthToWallYaw, viewedFacadeYaw, wallCompassLabel, wallDockAxisFromFacadeYaw, yawFromCompassSvgPoint } from './studio/compass'
-import { computeOpeningGuidesForRefs, computeOpeningDistanceLinesForRefs } from './studio/openingGuides'
 import { panelCourseCount, visiblePanelRowRange } from './studio/panelLayout'
 import {
   DEFAULT_STUDIO_PANEL,
@@ -1416,8 +1448,8 @@ function allowedLibraryTabs(): Set<LibraryTab> {
     ])
   }
 
-  // Keine Auswahl / Dach/Decke: Platzieren
-  return new Set<LibraryTab>(['walls', 'bay', 'balcony', 'lights'])
+  // Keine Auswahl / Dach/Decke: Platzieren — Fenster/Türen neben Wänden sichtbar (v2.0.231).
+  return new Set<LibraryTab>(['windows', 'doors', 'walls', 'bay', 'balcony', 'lights'])
 }
 
 function loadUiMode(): UiMode {
@@ -1929,6 +1961,39 @@ function refreshWallMoveGuides(wallIds: string[]) {
   floorPlanView.showWallMoveGuides(guides)
   const height = Math.max(...active.map((w) => w.height), activeWallHeight())
   facade.setPlanWallGuides(guides, { floorY, height })
+
+  // Sichtbare Seite: Abstand Ecke → nächste Öffnung (wie beim Öffnungs-Verschieben).
+  const cornerBatch = active
+    .map((wall) => ({
+      wall,
+      wallId: wall.id,
+      guides: [] as ReturnType<typeof computeOpeningGuides>,
+      distanceLines: computeWallCornerOpeningDistanceLines(wall),
+    }))
+    .filter((entry) => entry.distanceLines.length > 0)
+  if (cornerBatch.length > 0) {
+    facade.setOpeningGuidesBatch(
+      cornerBatch.map(({ wall, guides, distanceLines }) => ({ wall, guides, distanceLines })),
+    )
+    svgView.setOpeningGuidesBatch(
+      cornerBatch.map(({ wallId, guides, distanceLines }) => ({ wallId, guides, distanceLines })),
+    )
+  }
+}
+
+/** Hilfslinien + Abstände beim Erker-Gleiten — wie bei Wandöffnungen. */
+function refreshBaySlideGuides(seedWallId: string) {
+  const walls = getAllWalls(state)
+  const model = buildBaySlideGuideModel(walls, seedWallId)
+  if (!model) {
+    facade.clearOpeningGuides()
+    svgView.clearOpeningGuides()
+    return
+  }
+  const guides = computeOpeningGuides(model.wall, model.opening, model.peers)
+  const distanceLines = computeOpeningDistanceLines(model.wall, model.opening, model.peers)
+  facade.setOpeningGuidesBatch([{ wall: model.wall, guides, distanceLines }])
+  svgView.setOpeningGuidesBatch([{ wallId: model.wall.id, guides, distanceLines }])
 }
 
 function disposeWallDockGhostObject(obj: THREE.Object3D) {
@@ -3616,7 +3681,8 @@ function updateWallResizeGizmos() {
   const show =
     Boolean(wall) &&
     isSceneEditView() &&
-    canEditActiveBuildingNow()
+    canEditActiveBuildingNow() &&
+    editor.selectedWallPart !== 'label'
   if (!show || !wall) {
     host.hidden = true
     return
@@ -4536,6 +4602,7 @@ type LayerTreeEntry =
   | { kind: 'light'; lightId: string }
   | { kind: 'wall'; wallId: string }
   | { kind: 'opening'; wallId: string; openingId: string }
+  | { kind: 'label'; wallId: string; labelId: string }
 
 /** Sichtbare auswählbare Zeilen — gleiche Reihenfolge wie im Ebenenbaum. */
 function buildLayerTreeEntries(): LayerTreeEntry[] {
@@ -4600,6 +4667,11 @@ function buildLayerTreeEntries(): LayerTreeEntry[] {
           for (const opening of wall.openings) {
             entries.push({ kind: 'opening', wallId: wall.id, openingId: opening.id })
           }
+          for (const label of wallLabels(wall)) {
+            if (!label.id) continue
+            if (!label.enabled && !(label.text ?? '').trim()) continue
+            entries.push({ kind: 'label', wallId: wall.id, labelId: label.id })
+          }
         }
       }
     }
@@ -4607,22 +4679,16 @@ function buildLayerTreeEntries(): LayerTreeEntry[] {
   return entries
 }
 
+function layerTreeEntryKey(entry: LayerTreeEntry): string {
+  if (entry.kind === 'light') return `light:${entry.lightId}`
+  if (entry.kind === 'wall') return `wall:${entry.wallId}`
+  if (entry.kind === 'opening') return `opening:${entry.wallId}:${entry.openingId}`
+  return `label:${entry.wallId}:${entry.labelId}`
+}
+
 function layerTreeIndexOf(entry: LayerTreeEntry): number {
-  const key =
-    entry.kind === 'light'
-      ? `light:${entry.lightId}`
-      : entry.kind === 'wall'
-        ? `wall:${entry.wallId}`
-        : `opening:${entry.wallId}:${entry.openingId}`
-  return buildLayerTreeEntries().findIndex((item) => {
-    const itemKey =
-      item.kind === 'light'
-        ? `light:${item.lightId}`
-        : item.kind === 'wall'
-          ? `wall:${item.wallId}`
-          : `opening:${item.wallId}:${item.openingId}`
-    return itemKey === key
-  })
+  const key = layerTreeEntryKey(entry)
+  return buildLayerTreeEntries().findIndex((item) => layerTreeEntryKey(item) === key)
 }
 
 function applyLayerTreeRange(from: number, to: number): void {
@@ -4637,8 +4703,11 @@ function applyLayerTreeRange(from: number, to: number): void {
   const openings = slice
     .filter((e): e is Extract<LayerTreeEntry, { kind: 'opening' }> => e.kind === 'opening')
     .map((e) => ({ wallId: e.wallId, openingId: e.openingId }))
+  const labels = slice.filter(
+    (e): e is Extract<LayerTreeEntry, { kind: 'label' }> => e.kind === 'label',
+  )
 
-  if (lightIds.length > 0 && wallIds.length === 0 && openings.length === 0) {
+  if (lightIds.length > 0 && wallIds.length === 0 && openings.length === 0 && labels.length === 0) {
     pendingSelectionToolbarTab = 'sceneLight'
     applyEditorSelection({
       ...createDefaultEditorState(),
@@ -4648,8 +4717,18 @@ function applyLayerTreeRange(from: number, to: number): void {
     return
   }
 
+  // Eine Schrift im Bereich → Fokus auf diese Schrift (wie Einzelwahl).
+  if (labels.length === 1 && openings.length === 0 && wallIds.length === 0) {
+    selectWall(labels[0]!.wallId, false, 'label', undefined, labels[0]!.labelId)
+    return
+  }
+
   const selectedWallIds = [
-    ...new Set([...wallIds, ...openings.map((o) => o.wallId)]),
+    ...new Set([
+      ...wallIds,
+      ...openings.map((o) => o.wallId),
+      ...labels.map((l) => l.wallId),
+    ]),
   ]
   applyEditorSelection({
     ...createDefaultEditorState(),
@@ -4658,6 +4737,8 @@ function applyLayerTreeRange(from: number, to: number): void {
     selectedEdges:
       openings.length === 1 ? openingEdgesForSelection(openings[0]!) : [],
     selectedOpeningPart: openings.length > 0 ? 'group' : undefined,
+    selectedWallPart: labels.length === 1 && openings.length === 0 ? 'label' : 'group',
+    selectedLabelId: labels.length === 1 && openings.length === 0 ? labels[0]!.labelId : undefined,
   })
 }
 
@@ -4677,6 +4758,10 @@ function selectLayerTreeEntry(
       selectWall(entry.wallId, additive)
       return
     }
+    if (entry.kind === 'label') {
+      selectWall(entry.wallId, additive, 'label', undefined, entry.labelId)
+      return
+    }
     selectOpening(entry.wallId, entry.openingId, additive, 'group')
     return
   }
@@ -4689,6 +4774,10 @@ function selectLayerTreeEntry(
     }
     if (entry.kind === 'wall') {
       selectWall(entry.wallId, true)
+      return
+    }
+    if (entry.kind === 'label') {
+      selectWall(entry.wallId, true, 'label', undefined, entry.labelId)
       return
     }
     selectOpening(entry.wallId, entry.openingId, true, 'group')
@@ -4707,6 +4796,10 @@ function selectLayerTreeEntry(
   }
   if (entry.kind === 'wall') {
     selectWall(entry.wallId, false)
+    return
+  }
+  if (entry.kind === 'label') {
+    selectWall(entry.wallId, false, 'label', undefined, entry.labelId)
     return
   }
   selectOpening(entry.wallId, entry.openingId, false, 'group')
@@ -4747,6 +4840,8 @@ let sceneLightsManualHold: boolean | null = null
 
 const collapsedFloors = new Set<number>()
 const collapsedBuildings = new Set<string>()
+/** Pro Haus: Ebenen-Baum vs. Fassadenschmuck-Toggles. */
+const buildingLayersPanelMode = new Map<string, 'layers' | 'decor'>()
 const expandedRoofs = new Set<string>()
 let sceneLightsLayerCollapsed = false
 /** Eingeklappte Lichtgruppen im Ebenenbaum. */
@@ -5234,7 +5329,10 @@ function copyBuildingToClipboard(buildingId: string) {
   planStatus.textContent = `Haus „${building.name}“ kopiert`
 }
 
-function pasteOpeningsFromClipboard(wallIds: string[]) {
+function pasteOpeningsFromClipboard(
+  wallIds: string[],
+  at?: { wallId: string; localX: number; localY: number },
+) {
   if (elementClipboard?.kind !== 'openings' || wallIds.length === 0) return
   let next = state
   const newRefs: OpeningRef[] = []
@@ -5242,7 +5340,19 @@ function pasteOpeningsFromClipboard(wallIds: string[]) {
     if (!getWall(next, wallId)) continue
     for (const item of elementClipboard.items) {
       const newId = createId()
-      const opening = { ...deepCloneJson(item.opening), id: newId }
+      let opening = { ...deepCloneJson(item.opening), id: newId }
+      // Rechtsklick-Position: erste Öffnung an der Maus, weitere mit Original-Relativabstand.
+      if (at && wallId === at.wallId) {
+        const src = elementClipboard.items[0]!.opening
+        const dx = item.opening.x - src.x
+        const dy = item.opening.y - src.y
+        const placeX = at.localX - src.width / 2 + dx
+        const placeY =
+          item.opening.type === 'door' || item.opening.type === 'cutout'
+            ? Math.max(0, dy)
+            : at.localY - src.height / 2 + dy
+        opening = { ...opening, x: placeX, y: placeY }
+      }
       next = addOpening(next, wallId, opening)
       const profiles = item.profiles.map((profile) => ({
         ...profile,
@@ -5385,7 +5495,7 @@ function pasteBuildingFromClipboard() {
   planStatus.textContent = 'Haus eingefügt'
 }
 
-function pasteElementClipboard(opts?: { wallId?: string }) {
+function pasteElementClipboard(opts?: { wallId?: string; localX?: number; localY?: number }) {
   if (!elementClipboard) return
   if (elementClipboard.kind === 'openings') {
     let wallIds: string[] = []
@@ -5403,7 +5513,15 @@ function pasteElementClipboard(opts?: { wallId?: string }) {
       planStatus.textContent = 'Zum Einfügen einer Öffnung eine Wand wählen'
       return
     }
-    pasteOpeningsFromClipboard(wallIds)
+    const at =
+      opts?.wallId != null && opts.localX != null
+        ? {
+            wallId: opts.wallId,
+            localX: opts.localX,
+            localY: opts.localY ?? WINDOW_SILL_Y,
+          }
+        : undefined
+    pasteOpeningsFromClipboard(wallIds, at)
     return
   }
   if (elementClipboard.kind === 'walls') {
@@ -5413,7 +5531,11 @@ function pasteElementClipboard(opts?: { wallId?: string }) {
   pasteBuildingFromClipboard()
 }
 
-function elementPasteMenuItems(opts?: { wallId?: string }): MenuItem[] {
+function elementPasteMenuItems(opts?: {
+  wallId?: string
+  localX?: number
+  localY?: number
+}): MenuItem[] {
   if (!elementClipboard) return []
   if (elementClipboard.kind === 'openings') {
     if (!opts?.wallId && editor.selectedWallIds.length === 0 && editor.selectedOpenings.length === 0) {
@@ -5828,11 +5950,17 @@ const attachButtons = Array.from(
   document.querySelectorAll<HTMLButtonElement>('[data-side]'),
 )
 const editScopeBar = document.querySelector<HTMLDivElement>('#edit-scope-bar')!
+const scopeBarSlot = document.querySelector<HTMLDivElement>('#scope-bar-slot')!
 const editScopeElement = document.querySelector<HTMLButtonElement>('#edit-scope-element')!
 const editScopeType = document.querySelector<HTMLButtonElement>('#edit-scope-type')!
 const editScopeFloor = document.querySelector<HTMLButtonElement>('#edit-scope-floor')!
 const editScopeFacade = document.querySelector<HTMLButtonElement>('#edit-scope-facade')!
 const editScopeFacadeYaws = document.querySelector<HTMLDivElement>('#edit-scope-facade-yaws')!
+const scopePropagateOffer = document.querySelector<HTMLDivElement>('#scope-propagate-offer')!
+const scopePropagateTimer = document.querySelector<HTMLSpanElement>('#scope-propagate-timer')!
+const scopePropagateFloorBtn = document.querySelector<HTMLButtonElement>('#scope-propagate-floor')!
+const scopePropagateFacadeBtn = document.querySelector<HTMLButtonElement>('#scope-propagate-facade')!
+const scopePropagateDismissBtn = document.querySelector<HTMLButtonElement>('#scope-propagate-dismiss')!
 const viewShowCeiling = document.querySelector<HTMLInputElement>('#view-show-ceiling')
 const viewShowIntermediateFloors = document.querySelector<HTMLInputElement>('#view-show-intermediate-floors')
 const viewShowLightMarkers = document.querySelector<HTMLInputElement>('#view-show-light-markers')
@@ -5982,6 +6110,10 @@ const studioEndPieceAngle = document.querySelector<HTMLInputElement>('#studio-en
 const studioEndPieceMinus = document.querySelector<HTMLButtonElement>('#studio-end-piece-minus')!
 const studioEndPiecePlus = document.querySelector<HTMLButtonElement>('#studio-end-piece-plus')!
 const studioEndPieceRemove = document.querySelector<HTMLButtonElement>('#studio-end-piece-remove')!
+const studioBayDropSection = document.querySelector<HTMLDivElement>('#studio-bay-drop-section')!
+const studioBayDropEnabled = document.querySelector<HTMLInputElement>('#studio-bay-drop-enabled')!
+const studioBayDropFields = document.querySelector<HTMLDivElement>('#studio-bay-drop-fields')!
+const studioBayDropCm = document.querySelector<HTMLInputElement>('#studio-bay-drop-cm')!
 const studioPatternPanelCards = document.querySelector<HTMLDivElement>('#studio-pattern-panel-cards')!
 const studioPatternMasonryCards = document.querySelector<HTMLDivElement>('#studio-pattern-masonry-cards')!
 const roofTilePatternCards = document.querySelector<HTMLDivElement>('#roof-tile-pattern-cards')!
@@ -6636,7 +6768,7 @@ const floorSelect = document.querySelector<HTMLSelectElement>('#floor-select')!
 const floorAddBtn = document.querySelector<HTMLButtonElement>('#floor-add')!
 const floorRemoveBtn = document.querySelector<HTMLButtonElement>('#floor-remove')!
 
-const editHistory = new EditHistory()
+const editHistory = new EditHistory(30)
 let pendingDragUndo: HistorySnapshot | null = null
 
 function currentSnapshot(): HistorySnapshot {
@@ -7086,6 +7218,7 @@ function syncEditScopeFacadeYawChips() {
 function setEditScope(scope: EditScope) {
   editScope = scope
   if (scope !== 'facade') editFacadeYawFilter = null
+  hideScopePropagateOffer()
   syncEditScopeButtons()
   persistApp()
 }
@@ -7451,6 +7584,7 @@ function syncStudioToolbar(wall: Wall) {
   studioWallDepthInput.value = String(activeBuilding().wallDepth ?? WALL_DEPTH)
   studioWallYawInput.value = String(Math.round(wall.yawDeg ?? 0))
   syncEndPieceControls(wall)
+  syncBayDropControls(wall)
   syncEndBossControls(wall, activeBuilding().walls)
   studioJointDepthInput.value = String(panel.jointDepth ?? 0)
   studioTaperInput.value = String(panel.taper)
@@ -7533,7 +7667,7 @@ function syncLabelFontCards(fontId?: string) {
 function selectLabelFont(fontId: string) {
   commitLabelPatch({ fontId })
   const wall = anchorWall()
-  const depth = wall ? wallLabel(wall).depth : 'flat'
+  const depth = wall ? wallLabel(wall, editor.selectedLabelId).depth : 'flat'
   const job =
     depth === 'extruded' ? retryWallLabelExtrudedFont(fontId) : preloadWallLabelFlatFont(fontId)
   void job.then(() => {
@@ -7565,11 +7699,11 @@ function buildLabelFontCards() {
     studioLabelFontCards.appendChild(btn)
   }
   const wall = anchorWall()
-  syncLabelFontCards(wall ? wallLabel(wall).fontId : undefined)
+  syncLabelFontCards(wall ? wallLabel(wall, editor.selectedLabelId).fontId : undefined)
 }
 
 function syncLabelControls(wall: Wall) {
-  const label = wallLabel(wall)
+  const label = wallLabel(wall, editor.selectedLabelId)
   studioLabelEnabled.checked = Boolean(label.enabled)
   studioLabelOptions.hidden = !label.enabled
   studioLabelText.value = label.text ?? ''
@@ -7591,7 +7725,9 @@ function syncLabelControls(wall: Wall) {
     'profile',
     color,
     (next) => commitLabelPatch({ color: next }),
-    previewSelectionColor((next) => updateWallLabel(state, scopedWallIds(), { color: next })),
+    previewSelectionColor((next) =>
+      updateWallLabel(state, scopedWallIds(), { color: next }, editor.selectedLabelId),
+    ),
   )
   studioLabelFinishSelect.value =
     label.finish === 'glossy' || label.finish === 'metal' ? label.finish : 'matte'
@@ -9068,12 +9204,13 @@ function initOpeningLibrary() {
 
   if (libraryTab === 'label') {
     const wall = selectedWalls()[0]
-    const activeFont = wall ? wallLabel(wall).fontId : undefined
+    const activeFont = wall ? wallLabel(wall, editor.selectedLabelId).fontId : undefined
     for (const font of LABEL_FONTS) {
       const card = document.createElement('button')
       card.type = 'button'
       card.className = 'opening-library-card'
-      if (wall && wallLabel(wall).enabled && activeFont === font.id) card.classList.add('library-card-applied')
+      if (wall && wallLabel(wall, editor.selectedLabelId).enabled && activeFont === font.id)
+        card.classList.add('library-card-applied')
       card.title = `${font.name} — Schrift auf ausgewählte Wand setzen`
       const thumb = document.createElement('div')
       thumb.className = 'opening-library-thumb'
@@ -9093,7 +9230,7 @@ function initOpeningLibrary() {
         }
         const patch: Partial<WallLabelConfig> = { enabled: true, fontId: font.id }
         const anchor = selectedWalls()[0]
-        if (anchor && !(wallLabel(anchor).text ?? '').trim()) {
+        if (anchor && !(wallLabel(anchor, editor.selectedLabelId).text ?? '').trim()) {
           patch.text = 'Text'
         }
         commitLabelPatch(patch)
@@ -9520,10 +9657,8 @@ async function addOpeningTemplateToSelection(
 }
 
 function pickWallAtClient(clientX: number, clientY: number): { wallId: string; localX: number; localY: number } | null {
-  if (currentView === 'front') {
-    return svgView.hitTestClient(clientX, clientY)
-  }
-  if (currentView !== '3d') return null
+  // 2D-Front nutzt die 3D-Canvas (SVG ist display:none) — Raycast wie in 3D.
+  if (currentView !== '3d' && currentView !== 'front') return null
 
   const rect = canvas.getBoundingClientRect()
   const ndc = new THREE.Vector2(
@@ -9531,7 +9666,7 @@ function pickWallAtClient(clientX: number, clientY: number): { wallId: string; l
     -((clientY - rect.top) / rect.height) * 2 + 1,
   )
   const ray = new THREE.Raycaster()
-  ray.setFromCamera(ndc, camera)
+  ray.setFromCamera(ndc, getActiveCamera())
   const hits = ray.intersectObjects([facade.wallGroup, facade.claddingGroup], true)
   for (const hit of hits) {
     let current: THREE.Object3D | null = hit.object
@@ -9615,6 +9750,13 @@ function normalizeEditor(nextState: FacadeState, nextEditor: EditorState): Edito
       selectedTrimBandId = nextEditor.selectedTrimBandId
     }
   }
+  let selectedLabelId: string | undefined
+  if (selectedWallPart === 'label' && nextEditor.selectedLabelId && selectedWallIds[0]) {
+    const wall = getWall(nextState, selectedWallIds[0])
+    if (wall && wallLabels(wall).some((item) => item.id === nextEditor.selectedLabelId)) {
+      selectedLabelId = nextEditor.selectedLabelId
+    }
+  }
 
   return {
     selectedWallIds,
@@ -9624,6 +9766,7 @@ function normalizeEditor(nextState: FacadeState, nextEditor: EditorState): Edito
       selectedOpenings.length > 0 ? nextEditor.selectedOpeningPart ?? 'group' : undefined,
     selectedWallPart,
     selectedTrimBandId,
+    selectedLabelId,
     selectedRoofBuildingId: nextEditor.selectedRoofBuildingId,
     selectedRoofPart: nextEditor.selectedRoofBuildingId
       ? nextEditor.selectedRoofPart ?? 'group'
@@ -10739,7 +10882,10 @@ function applyState(nextState: FacadeState, nextEditor = editor) {
 
   const labelOnly =
     !openingDragCommit && facadeStateDiffersOnlyByWallLabels(prevState, state)
-  let rebuildIds = labelOnly ? [] : buildingIdsNeedingRebuild(prevState, state)
+  const decorOnly =
+    !openingDragCommit && !labelOnly && facadeStateDiffersOnlyByFacadeDecor(prevState, state)
+  let rebuildIds =
+    labelOnly || decorOnly ? [] : buildingIdsNeedingRebuild(prevState, state)
   if (openingDragCommit) {
     const dragBuildingIds = buildingIdsForWallIds(state, openingDragWallIds)
     if (dragBuildingIds.length === 0) {
@@ -10758,6 +10904,29 @@ function applyState(nextState: FacadeState, nextEditor = editor) {
     facade.setState(state, { rebuildBuildingIds: [] })
     facade.refreshWallLabels()
     applySunLighting({ updateShadowMap: true })
+  } else if (decorOnly) {
+    // Sockel ein/aus: Wandaußenfläche braucht volle Tiefe in der Sockelzone (Wandfarbe).
+    const plinthRebuildIds: string[] = []
+    for (let i = 0; i < state.buildings.length; i += 1) {
+      const prevB = prevState.buildings[i]
+      const nextB = state.buildings[i]
+      if (!prevB || !nextB || prevB.id !== nextB.id) continue
+      if (
+        normalizeFacadeDecor(prevB.facadeDecor).plinth !==
+        normalizeFacadeDecor(nextB.facadeDecor).plinth
+      ) {
+        plinthRebuildIds.push(nextB.id)
+      }
+    }
+    if (plinthRebuildIds.length > 0) {
+      geometryChanged = true
+      facade.setState(state, { rebuildBuildingIds: plinthRebuildIds })
+    } else {
+      facade.setState(state, { rebuildBuildingIds: [] })
+      facade.refreshFacadeDecorVisibility()
+    }
+    // Sofort mit Sichtbarkeit — kein Debounce (sonst Schatten nach dem Mesh).
+    flushSunShadowMap({ reflections: false, sceneLights: true })
   } else if (geometryUnchanged) {
     // Nur Editor/Selektion/Lichter — kein Geometrie-Rebuild.
     facade.setState(state, { rebuildBuildingIds: [] })
@@ -10769,7 +10938,7 @@ function applyState(nextState: FacadeState, nextEditor = editor) {
     facade.setState(state)
   }
 
-  if (!labelOnly && (!geometryUnchanged || openingDragCommit)) {
+  if ((!labelOnly && (!geometryUnchanged || openingDragCommit)) || decorOnly) {
     svgView.setState(state, editor)
   }
 
@@ -10822,7 +10991,8 @@ function applyState(nextState: FacadeState, nextEditor = editor) {
   const selChanged = prevLayerSelKey !== editorLayerSelectionKey(editor)
   if (selChanged) revealSelectionInLayerTree()
   renderUi({
-    skipLayerList: geometryUnchanged && !labelOnly && !lightsChanged && !selChanged,
+    skipLayerList:
+      geometryUnchanged && !labelOnly && !decorOnly && !lightsChanged && !selChanged,
   })
   if (selChanged) scrollSelectedLayerRowIntoView()
   updateHistoryButtons()
@@ -11080,10 +11250,128 @@ function previewLiveState(nextState: FacadeState, nextEditor = editor) {
   }
 }
 
+let pendingScopePropagate: {
+  before: FacadeState
+  after: FacadeState
+  editor: EditorState
+  fromScope: EditScope
+} | null = null
+
+const SCOPE_OFFER_SECONDS = 5
+let scopeOfferTimerId: ReturnType<typeof setInterval> | null = null
+let scopeOfferHideTimeoutId: ReturnType<typeof setTimeout> | null = null
+
+function clearScopeOfferTimers() {
+  if (scopeOfferTimerId != null) {
+    clearInterval(scopeOfferTimerId)
+    scopeOfferTimerId = null
+  }
+  if (scopeOfferHideTimeoutId != null) {
+    clearTimeout(scopeOfferHideTimeoutId)
+    scopeOfferHideTimeoutId = null
+  }
+}
+
+function hideScopePropagateOffer(opts?: { animate?: boolean }) {
+  pendingScopePropagate = null
+  clearScopeOfferTimers()
+  const animate = opts?.animate !== false && scopePropagateOffer.classList.contains('is-visible')
+  scopePropagateFloorBtn.hidden = true
+  scopePropagateFacadeBtn.hidden = true
+  if (!animate) {
+    scopePropagateOffer.classList.remove('is-visible')
+    scopePropagateOffer.hidden = true
+    editScopeBar.classList.remove('is-offer-faded')
+    return
+  }
+  scopePropagateOffer.classList.remove('is-visible')
+  editScopeBar.classList.remove('is-offer-faded')
+  scopeOfferHideTimeoutId = setTimeout(() => {
+    scopePropagateOffer.hidden = true
+    scopeOfferHideTimeoutId = null
+  }, 320)
+}
+
+function showScopePropagateOfferIfUseful(
+  before: FacadeState,
+  after: FacadeState,
+  nextEditor: EditorState,
+  fromScope: EditScope,
+) {
+  if (fromScope !== 'element' && fromScope !== 'floor') {
+    hideScopePropagateOffer({ animate: false })
+    return
+  }
+  if (!isPropertyOnlyFacadeEdit(before, after)) {
+    hideScopePropagateOffer({ animate: false })
+    return
+  }
+  const offerFloor = scopePropagateAvailable(after, nextEditor, fromScope, 'floor')
+  const offerFacade = scopePropagateAvailable(after, nextEditor, fromScope, 'facade')
+  if (!offerFloor && !offerFacade) {
+    hideScopePropagateOffer({ animate: false })
+    return
+  }
+  pendingScopePropagate = {
+    before,
+    after,
+    editor: {
+      ...nextEditor,
+      selectedWallIds: [...nextEditor.selectedWallIds],
+      selectedOpenings: nextEditor.selectedOpenings.map((ref) => ({ ...ref })),
+    },
+    fromScope,
+  }
+  clearScopeOfferTimers()
+  scopePropagateFloorBtn.hidden = !offerFloor
+  scopePropagateFacadeBtn.hidden = !offerFacade
+  let remaining = SCOPE_OFFER_SECONDS
+  scopePropagateTimer.textContent = String(remaining)
+  scopePropagateOffer.hidden = false
+  // Reflow, dann einblenden — sonst kein Slide von unten.
+  void scopePropagateOffer.offsetWidth
+  editScopeBar.classList.add('is-offer-faded')
+  scopePropagateOffer.classList.add('is-visible')
+  scopeOfferTimerId = setInterval(() => {
+    remaining -= 1
+    if (remaining <= 0) {
+      hideScopePropagateOffer({ animate: true })
+      return
+    }
+    scopePropagateTimer.textContent = String(remaining)
+  }, 1000)
+}
+
+function acceptScopePropagate(toScope: ScopePropagateKind) {
+  const pending = pendingScopePropagate
+  if (!pending) return
+  hideScopePropagateOffer()
+  const next = propagateSelectionEdit(
+    pending.before,
+    pending.after,
+    pending.editor,
+    toScope,
+  )
+  if (next === pending.after) return
+  editHistory.record(currentSnapshot())
+  applyState(next, pending.editor)
+  scheduleShareHashWrite()
+  planStatus.textContent =
+    toScope === 'floor' ? 'Änderung auf Etage übernommen' : 'Änderung auf Fassade übernommen'
+  updateHistoryButtons()
+}
+
+scopePropagateFloorBtn.addEventListener('click', () => acceptScopePropagate('floor'))
+scopePropagateFacadeBtn.addEventListener('click', () => acceptScopePropagate('facade'))
+scopePropagateDismissBtn.addEventListener('click', () => hideScopePropagateOffer())
+
 function commitState(nextState: FacadeState, nextEditor = editor) {
+  const before = state
+  const scopeAtCommit = editScope
   editHistory.record(currentSnapshot())
   applyState(nextState, nextEditor)
   scheduleShareHashWrite()
+  showScopePropagateOfferIfUseful(before, nextState, nextEditor, scopeAtCommit)
 }
 
 function previewState(nextState: FacadeState, nextEditor = editor) {
@@ -11202,6 +11490,8 @@ function renderUi(opts?: { skipLayerList?: boolean }) {
   planSidebar.hidden = true
   syncSceneToolbarTabs()
   editScopeBar.hidden = !showSelectionUi
+  scopeBarSlot.hidden = !showSelectionUi
+  if (!showSelectionUi) hideScopePropagateOffer({ animate: false })
   syncEditScopeFacadeYawChips()
   // Auswahl-Optionen liegen unten; rechte Toolbar nur als DOM-Host (CSS blendet aus).
   selectionToolbar.hidden = !showSelectionUi
@@ -11570,28 +11860,48 @@ function applyStyleClipboardDirect(target: NonNullable<typeof stylePasteTarget>)
     })
   }
   const openingRefs = openingRefsForStylePaste(next, target)
-  if (openingRefs.length > 0) {
+  if (openingRefs.length > 0 && clip.opening) {
     next = clip.frameProfileId
       ? assignProfilesToOpenings(next, openingRefs, [...ALL_EDGES], clip.frameProfileId)
       : removeProfilesFromOpenings(next, openingRefs, [...ALL_EDGES])
-    if (clip.opening && (clip.opening.type === 'window' || clip.opening.type === 'door')) {
-      for (const ref of openingRefs) {
-        next = updateOpening(next, ref.wallId, ref.openingId, {
-          trim: clip.opening.trim ? { ...clip.opening.trim } : undefined,
-        })
-      }
-    }
-    if (clip.opening && openingSupportsPediment(clip.opening)) {
-      next = updateOpeningPediment(next, openingRefs, {
-        ...normalizeOpeningPediment(clip.opening.pediment),
+    // Stil unabhängig von Maßen und Typ (Fenster↔Tür): Optik übernehmen, Geometrie behalten.
+    for (const ref of openingRefs) {
+      const wall = getWall(next, ref.wallId)
+      const opening = wall?.openings.find((o) => o.id === ref.openingId)
+      if (!wall || !opening) continue
+      const styled = inheritOpeningStyles(opening, clip.opening)
+      next = updateOpening(next, ref.wallId, ref.openingId, {
+        frameColor: styled.frameColor,
+        frameFinish: styled.frameFinish,
+        revealExteriorColor: styled.revealExteriorColor,
+        revealInteriorColor: styled.revealInteriorColor,
+        glassColor: styled.glassColor,
+        glassMode: styled.glassMode,
+        glassIor: styled.glassIor,
+        glassRoughness: styled.glassRoughness,
+        glassTransmission: styled.glassTransmission,
+        glassThickness: styled.glassThickness,
+        trim: styled.trim,
+        gruenderzeit: styled.gruenderzeit,
+        sillInner: styled.sillInner,
+        sillOuter: styled.sillOuter,
+        pediment: styled.pediment,
+        taperedField: styled.taperedField,
+        stairs: styled.stairs,
+        rollerShutter: styled.rollerShutter,
+        basementWindow: styled.basementWindow,
+        arch: styled.arch,
+        fill: styled.fill,
+        panelClearance: styled.panelClearance,
+        revealFrame: styled.revealFrame,
+        depthOffset: styled.depthOffset,
+        cutoutShape: styled.cutoutShape,
       })
     }
-    if (clip.opening) {
-      next = updateOpeningSills(next, openingRefs, {
-        inner: clip.opening.sillInner,
-        outer: clip.opening.sillOuter,
-      })
-    }
+  } else if (openingRefs.length > 0) {
+    next = clip.frameProfileId
+      ? assignProfilesToOpenings(next, openingRefs, [...ALL_EDGES], clip.frameProfileId)
+      : removeProfilesFromOpenings(next, openingRefs, [...ALL_EDGES])
   }
   const wallIds =
     target.kind === 'wall' ? target.ids : [...new Set(openingRefs.map((r) => r.wallId))]
@@ -11693,24 +12003,45 @@ function applyStylePasteFromDialog() {
       next = clip.frameProfileId
         ? assignProfilesToOpenings(next, openingRefs, [...ALL_EDGES], clip.frameProfileId)
         : removeProfilesFromOpenings(next, openingRefs, [...ALL_EDGES])
-      if (clip.opening && (clip.opening.type === 'window' || clip.opening.type === 'door')) {
-        for (const ref of openingRefs) {
-          next = updateOpening(next, ref.wallId, ref.openingId, {
-            trim: clip.opening.trim ? { ...clip.opening.trim } : undefined,
-          })
+    }
+    if (clip.opening) {
+      for (const ref of openingRefs) {
+        const wall = getWall(next, ref.wallId)
+        const opening = wall?.openings.find((o) => o.id === ref.openingId)
+        if (!wall || !opening) continue
+        const styled = inheritOpeningStyles(opening, clip.opening)
+        const patch: Partial<Opening> = {}
+        if (checked('frameProfile')) {
+          patch.frameColor = styled.frameColor
+          patch.frameFinish = styled.frameFinish
+          patch.revealExteriorColor = styled.revealExteriorColor
+          patch.revealInteriorColor = styled.revealInteriorColor
+          patch.glassColor = styled.glassColor
+          patch.glassMode = styled.glassMode
+          patch.glassIor = styled.glassIor
+          patch.glassRoughness = styled.glassRoughness
+          patch.glassTransmission = styled.glassTransmission
+          patch.glassThickness = styled.glassThickness
+          patch.trim = styled.trim
+          patch.gruenderzeit = styled.gruenderzeit
+          patch.taperedField = styled.taperedField
+          patch.stairs = styled.stairs
+          patch.rollerShutter = styled.rollerShutter
+          patch.basementWindow = styled.basementWindow
+          patch.arch = styled.arch
+          patch.fill = styled.fill
+          patch.panelClearance = styled.panelClearance
+          patch.revealFrame = styled.revealFrame
+          patch.depthOffset = styled.depthOffset
+          patch.cutoutShape = styled.cutoutShape
         }
+        if (checked('pediment')) patch.pediment = styled.pediment
+        if (checked('sills')) {
+          patch.sillInner = styled.sillInner
+          patch.sillOuter = styled.sillOuter
+        }
+        next = updateOpening(next, ref.wallId, ref.openingId, patch)
       }
-    }
-    if (checked('pediment') && clip.opening && openingSupportsPediment(clip.opening)) {
-      next = updateOpeningPediment(next, openingRefs, {
-        ...normalizeOpeningPediment(clip.opening.pediment),
-      })
-    }
-    if (checked('sills') && clip.opening) {
-      next = updateOpeningSills(next, openingRefs, {
-        inner: clip.opening.sillInner,
-        outer: clip.opening.sillOuter,
-      })
     }
   }
   if (checked('panelFlip')) {
@@ -11838,7 +12169,10 @@ function runDuplicateWallsAbove(wallId: string) {
   rebuildFloorPlanOverlay()
 }
 
-function wallContextItems(wallId: string): MenuItem[] {
+function wallContextItems(
+  wallId: string,
+  pasteAt?: { localX: number; localY: number },
+): MenuItem[] {
   const wall = getWall(state, wallId)
   const building = activeBuilding()
   const replace = wallReplaceItems(wallId)
@@ -11852,12 +12186,21 @@ function wallContextItems(wallId: string): MenuItem[] {
       children: wallDuplicateMenuItems(wallId),
     },
   ]
-  if (wall && wallLabel(wall).enabled) {
+  if (wall && wallHasLabel(wall)) {
     items.push({
       label: 'Schrift entfernen',
       action: () => {
         ensureWallSelected(wallId)
-        commitLabelPatch({ enabled: false })
+        commitState(removeWallLabel(state, wallId))
+      },
+    })
+  }
+  if (labelClipboard) {
+    items.push({
+      label: 'Schrift einfügen',
+      action: () => {
+        ensureWallSelected(wallId)
+        pasteWallLabelClipboard(wallId, pasteAt)
       },
     })
   }
@@ -11967,14 +12310,13 @@ function wallContextItems(wallId: string): MenuItem[] {
       { label: 'Fensterbänke', action: copyStylePart(['sills']) },
     ],
   })
-  items.push(...elementPasteMenuItems({ wallId }))
-  items.push({
-    label: 'Stile kopieren',
-    action: () => {
-      ensureWallSelected(wallId)
-      copyStylesFromWall(wallId)
-    },
-  })
+  items.push(
+    ...elementPasteMenuItems({
+      wallId,
+      localX: pasteAt?.localX,
+      localY: pasteAt?.localY,
+    }),
+  )
   items.push({
     label: 'Stil als Vorlage speichern…',
     action: () => {
@@ -12397,12 +12739,139 @@ function showElementContextMenu(
     showContextMenu(clientX, clientY, trimBandContextItems(hit.wallId, hit.bandId))
     return
   }
+  if (hit.wallId && hit.wallPart === 'label') {
+    selectWall(hit.wallId, false, 'label', undefined, hit.labelId)
+    showContextMenu(clientX, clientY, labelContextItems(hit.wallId, hit.labelId))
+    return
+  }
   if (hit.wallId) {
     const inSel =
       editor.selectedWallIds.includes(hit.wallId) && editor.selectedOpenings.length === 0
     if (!inSel) selectWall(hit.wallId, false)
-    showContextMenu(clientX, clientY, wallContextItems(hit.wallId))
+    const wallPick = pickWallAtClient(clientX, clientY)
+    const pasteAt =
+      wallPick && wallPick.wallId === hit.wallId
+        ? { localX: wallPick.localX, localY: wallPick.localY }
+        : undefined
+    showContextMenu(clientX, clientY, wallContextItems(hit.wallId, pasteAt))
   }
+}
+
+function labelContextItems(wallId: string, labelId?: string): MenuItem[] {
+  const wall = getWall(state, wallId)
+  const label = wall ? wallLabel(wall, labelId ?? editor.selectedLabelId) : null
+  const items: MenuItem[] = [
+    {
+      label: visibilityMenuLabel(label?.enabled === false),
+      action: () => {
+        selectWall(wallId, false, 'label', undefined, labelId)
+        commitLabelPatch({ enabled: label?.enabled === false }, labelId)
+      },
+    },
+    {
+      label: 'Duplizieren nach links',
+      action: () => duplicateWallLabelToNeighbor(wallId, 'start', labelId),
+    },
+    {
+      label: 'Duplizieren nach rechts',
+      action: () => duplicateWallLabelToNeighbor(wallId, 'end', labelId),
+    },
+    {
+      label: 'Schrift kopieren',
+      action: () => {
+        selectWall(wallId, false, 'label', undefined, labelId)
+        copyWallLabelToClipboard(wallId, labelId)
+      },
+    },
+    {
+      label: 'Stil kopieren',
+      action: () => {
+        selectWall(wallId, false, 'label', undefined, labelId)
+        copyStylesFromWall(wallId)
+      },
+    },
+  ]
+  items.push(...elementPasteMenuItems({ wallId }))
+  if (labelClipboard) {
+    items.push({
+      label: 'Schrift einfügen',
+      action: () => {
+        selectWall(wallId, false, 'label', undefined, labelId)
+        pasteWallLabelClipboard(wallId)
+      },
+    })
+  }
+  if (styleClipboard) {
+    items.push({
+      label: 'Stile einfügen…',
+      action: () => {
+        selectWall(wallId, false, 'label', undefined, labelId)
+        askStylePaste({ kind: 'wall', ids: scopedWallIds() })
+      },
+    })
+  }
+  items.push({
+    label: 'Löschen',
+    danger: true,
+    action: () => {
+      selectWall(wallId, false, 'label', undefined, labelId)
+      commitState(removeWallLabel(state, wallId, labelId ?? label?.id))
+    },
+  })
+  return items
+}
+
+let labelClipboard: WallLabelConfig | null = null
+
+function copyWallLabelToClipboard(wallId: string, labelId?: string) {
+  const wall = getWall(state, wallId)
+  if (!wall || !wallHasLabel(wall)) return
+  labelClipboard = { ...wallLabel(wall, labelId ?? editor.selectedLabelId) }
+  planStatus.textContent = 'Schrift kopiert — Rechtsklick auf eine Wand zum Einfügen'
+}
+
+function pasteWallLabelClipboard(
+  wallId: string,
+  pasteAt?: { localX: number; localY: number },
+) {
+  if (!labelClipboard) return
+  const next = addWallLabel(state, wallId, labelClipboard, {
+    at: pasteAt ? { x: pasteAt.localX, y: pasteAt.localY } : undefined,
+  })
+  commitState(next)
+  const wall = getWall(next, wallId)
+  const added = wall ? wallLabels(wall).at(-1) : undefined
+  if (added?.id) {
+    selectWall(wallId, false, 'label', undefined, added.id)
+  }
+  planStatus.textContent = 'Schrift eingefügt'
+}
+
+function duplicateWallLabelToNeighbor(
+  wallId: string,
+  end: 'start' | 'end',
+  labelId?: string,
+) {
+  const wall = getWall(state, wallId)
+  if (!wall || !wallHasLabel(wall)) return
+  const neighbor =
+    findAdjacentWall(wall, end, getAllWalls(state), { ignorePlanLink: true }) ??
+    findCollinearDockWall(wall, end, getAllWalls(state))
+  if (!neighbor || !isStudioWall(neighbor)) {
+    planStatus.textContent = 'Keine Nachbarwand zum Duplizieren'
+    return
+  }
+  const src = wallLabel(wall, labelId ?? editor.selectedLabelId)
+  const next = addWallLabel(state, neighbor.id, {
+    ...src,
+    enabled: true,
+    x: Math.min(neighbor.width, src.x ?? neighbor.width / 2),
+  })
+  commitState(next)
+  const added = getWall(next, neighbor.id)
+  const label = added ? wallLabels(added).at(-1) : undefined
+  selectWall(neighbor.id, false, 'label', undefined, label?.id)
+  planStatus.textContent = 'Schrift dupliziert'
 }
 
 function trimBandContextItems(wallId: string, bandId: string): MenuItem[] {
@@ -12987,6 +13456,61 @@ function renderLayerList() {
     buildingItem.appendChild(buildingHeader)
 
     if (!buildingCollapsed) {
+      const panelMode = buildingLayersPanelMode.get(building.id) ?? 'layers'
+      const modeToggle = document.createElement('div')
+      modeToggle.className = 'layer-mode-toggle view-mode-toggle'
+      modeToggle.setAttribute('role', 'group')
+      modeToggle.setAttribute('aria-label', 'Haus-Ansicht')
+      const mkModeBtn = (mode: 'layers' | 'decor', label: string) => {
+        const btn = document.createElement('button')
+        btn.type = 'button'
+        btn.className = 'preset-btn view-mode-btn' + (panelMode === mode ? ' active' : '')
+        btn.textContent = label
+        btn.addEventListener('click', (event) => {
+          event.stopPropagation()
+          buildingLayersPanelMode.set(building.id, mode)
+          renderLayerList()
+        })
+        return btn
+      }
+      modeToggle.append(mkModeBtn('layers', 'Ebenen'), mkModeBtn('decor', 'Fassadenschmuck'))
+      buildingItem.appendChild(modeToggle)
+
+      if (panelMode === 'decor') {
+        const decorList = document.createElement('ul')
+        decorList.className = 'layer-floor-body layer-decor-body'
+        const decor = normalizeFacadeDecor(building.facadeDecor)
+        const allOn = allFacadeDecorVisible(decor)
+
+        const appendDecorToggle = (label: string, checked: boolean, onChange: (next: boolean) => void) => {
+          const row = document.createElement('li')
+          row.className = 'layer-decor-row'
+          const lab = document.createElement('label')
+          lab.className = 'layer-decor-label checkbox-label'
+          const input = document.createElement('input')
+          input.type = 'checkbox'
+          input.checked = checked
+          input.addEventListener('change', () => {
+            if (!isActive) activateBuilding(building.id)
+            onChange(input.checked)
+          })
+          const text = document.createElement('span')
+          text.textContent = label
+          lab.append(input, text)
+          row.appendChild(lab)
+          decorList.appendChild(row)
+        }
+
+        appendDecorToggle('Alle', allOn, (visible) => {
+          commitBuildingFacadeDecor(building.id, withAllFacadeDecor(visible))
+        })
+        for (const kind of FACADE_DECOR_KINDS) {
+          appendDecorToggle(kind.label, decor[kind.id] !== false, (visible) => {
+            commitBuildingFacadeDecor(building.id, { [kind.id]: visible })
+          })
+        }
+        buildingItem.appendChild(decorList)
+      } else {
       const buildingBody = document.createElement('ul')
       buildingBody.className = 'layer-floor-body'
 
@@ -13189,7 +13713,8 @@ function renderLayerList() {
           const item = document.createElement('li')
           const wallSelected =
             wallsForEntry.every((wall) => editor.selectedWallIds.includes(wall.id)) &&
-            editor.selectedOpenings.length === 0
+            editor.selectedOpenings.length === 0 &&
+            editor.selectedWallPart !== 'label'
           const wallLayerIndex = entry.kind === 'wall' ? layerIndex++ : -1
 
           const wallRow = document.createElement('div')
@@ -13198,11 +13723,20 @@ function renderLayerList() {
           const wallToggleBtn = document.createElement('button')
           wallToggleBtn.type = 'button'
           wallToggleBtn.className = 'layer-wall-collapse'
-          wallToggleBtn.title = 'Öffnungen ein-/ausklappen'
+          wallToggleBtn.title = 'Öffnungen und Schrift ein-/ausklappen'
           const expandKey = entry.kind === 'group' ? entry.group.id : primaryWall.id
           const wallExpanded = expandedWalls.has(expandKey)
           const totalOpenings = wallsForEntry.reduce((sum, wall) => sum + wall.openings.length, 0)
-          wallToggleBtn.textContent = totalOpenings === 0 ? '' : wallExpanded ? '▾' : '▸'
+          const totalLabels = wallsForEntry.reduce(
+            (sum, wall) =>
+              sum +
+              wallLabels(wall).filter(
+                (label) => label.id && (label.enabled || (label.text ?? '').trim()),
+              ).length,
+            0,
+          )
+          const totalChildren = totalOpenings + totalLabels
+          wallToggleBtn.textContent = totalChildren === 0 ? '' : wallExpanded ? '▾' : '▸'
           wallToggleBtn.addEventListener('click', (e) => {
             e.stopPropagation()
             if (expandedWalls.has(expandKey)) expandedWalls.delete(expandKey)
@@ -13263,7 +13797,7 @@ function renderLayerList() {
           wallRow.append(wallToggleBtn, wallButton, wallMoreBtn)
           item.appendChild(wallRow)
 
-          if (wallExpanded && totalOpenings > 0) {
+          if (wallExpanded && totalChildren > 0) {
             const openingList = document.createElement('ul')
             openingList.className = 'layer-opening-list'
             for (const wall of wallsForEntry) {
@@ -13369,6 +13903,55 @@ function renderLayerList() {
                 openingList.appendChild(stairsItem)
               }
             }
+              for (const label of wallLabels(wall)) {
+                if (!label.id) continue
+                if (!label.enabled && !(label.text ?? '').trim()) continue
+                const labelSelected =
+                  editor.selectedWallPart === 'label' &&
+                  editor.selectedLabelId === label.id &&
+                  editor.selectedWallIds.includes(wall.id) &&
+                  editor.selectedOpenings.length === 0
+                const labelItem = document.createElement('li')
+                const labelBtn = document.createElement('button')
+                labelBtn.type = 'button'
+                labelBtn.className =
+                  (labelSelected ? 'layer-row layer-opening-row selected' : 'layer-row layer-opening-row') +
+                  layerHiddenClass(label.enabled === false)
+                const labelKind = document.createElement('span')
+                labelKind.className = 'layer-kind'
+                labelKind.textContent = 'Schrift'
+                const labelName = document.createElement('span')
+                labelName.className = 'layer-label'
+                labelName.textContent = ''
+                const labelMeta = document.createElement('span')
+                labelMeta.className = 'layer-meta'
+                labelMeta.dataset.layerLabelRef = `${wall.id}:${label.id}`
+                const text = (label.text ?? '').trim() || 'Text'
+                labelMeta.textContent = text.length > 24 ? `${text.slice(0, 23)}…` : text
+                labelBtn.append(labelKind, labelName, labelMeta)
+                labelBtn.addEventListener('click', (e) => {
+                  e.stopPropagation()
+                  if (!isActive) activateBuilding(building.id)
+                  const additive = e.metaKey || e.ctrlKey
+                  selectLayerTreeEntry(
+                    { kind: 'label', wallId: wall.id, labelId: label.id! },
+                    e.shiftKey && !additive,
+                    additive,
+                  )
+                })
+                const labelMoreBtn = createLayerMoreButton(labelContextItems(wall.id, label.id))
+                const labelRow = document.createElement('div')
+                labelRow.className = 'layer-wall-row'
+                labelRow.addEventListener('contextmenu', (event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  selectWall(wall.id, false, 'label', undefined, label.id)
+                  showContextMenu(event.clientX, event.clientY, labelContextItems(wall.id, label.id))
+                })
+                labelRow.append(labelBtn, labelMoreBtn)
+                labelItem.appendChild(labelRow)
+                openingList.appendChild(labelItem)
+              }
             }
             item.appendChild(openingList)
           }
@@ -13380,10 +13963,31 @@ function renderLayerList() {
       }
 
       buildingItem.appendChild(buildingBody)
+      }
     }
 
     layerList.appendChild(buildingItem)
   }
+}
+
+function commitBuildingFacadeDecor(
+  buildingId: string,
+  patch: Partial<Record<FacadeDecorKind, boolean>> | ReturnType<typeof withAllFacadeDecor>,
+) {
+  const next = {
+    ...state,
+    buildings: state.buildings.map((building) => {
+      if (building.id !== buildingId) return building
+      return {
+        ...building,
+        facadeDecor: {
+          ...normalizeFacadeDecor(building.facadeDecor),
+          ...patch,
+        },
+      }
+    }),
+  }
+  commitState(next)
 }
 
 function selectRoof(buildingId: string, part: 'group' | 'shell' | 'tiles' | 'gutter' = 'group') {
@@ -14622,6 +15226,43 @@ function syncEndPieceControls(wall: Wall) {
   studioEndPieceSection.hidden = !show
   if (!show) return
   studioEndPieceAngle.value = String(parent.endPiece?.angleDeg ?? END_PIECE_DEFAULT_ANGLE_DEG)
+}
+
+/** Grenzen für die Erker-Verlängerung (cm), an den HTML-Input angeglichen. */
+const BAY_DROP_MIN_CM = 16
+const BAY_DROP_MAX_CM = 448
+const BAY_DROP_STEP_CM = 16
+
+function clampBayDropInput(value: number): number {
+  if (!Number.isFinite(value)) return BAY_DROP_MIN_CM
+  const snapped = Math.round(value / BAY_DROP_STEP_CM) * BAY_DROP_STEP_CM
+  return Math.max(BAY_DROP_MIN_CM, Math.min(BAY_DROP_MAX_CM, snapped))
+}
+
+function syncBayDropControls(wall: Wall) {
+  const walls = getAllWalls(state)
+  const host = bayHostWall(walls, wall.id)
+  // Nur echte Erker (kein Balkon/Loggia) — MVP.
+  const kind = host?.bayWindow?.kind ?? 'bay'
+  const show = Boolean(host?.bayWindow) && kind === 'bay' && isStudioWall(host!)
+  studioBayDropSection.hidden = !show
+  if (!show || !host) return
+  const drop = bayDropCm(walls, host.id)
+  studioBayDropEnabled.checked = drop > 0
+  studioBayDropFields.hidden = drop <= 0
+  studioBayDropCm.value = String(drop > 0 ? drop : Number(studioBayDropCm.value) || 96)
+}
+
+function commitBayDrop(seedId: string, dropCm: number) {
+  const next = applyBayDrop(state, seedId, dropCm)
+  if (!next) return
+  const selection = bayStackWallIds(getAllWalls(next), seedId) ?? editor.selectedWallIds
+  commitState(next, {
+    selectedWallIds: selection,
+    selectedOpenings: [],
+    selectedEdges: [],
+  })
+  rebuildFloorPlanOverlay()
 }
 
 function clampEndPieceAngleInput(value: number): number {
@@ -16931,6 +17572,7 @@ function selectWall(
   additive: boolean,
   wallPart: NonNullable<EditorState['selectedWallPart']> = 'group',
   trimBandId?: string,
+  labelId?: string,
 ) {
   if (id === null) {
     if (additive) return
@@ -16945,16 +17587,31 @@ function selectWall(
       selectedBuildingId: undefined,
       selectedWallPart: undefined,
       selectedTrimBandId: undefined,
+      selectedLabelId: undefined,
       selectedOpeningPart: undefined,
     })
+    // Nach Abwahl: „Gültig für“ immer zurück auf Auswahl.
+    if (editScope !== 'element') setEditScope('element')
     return
   }
 
   queueSelectionToolbarTab(wallPartToSettingsTab(wallPart))
   const wall = getWall(state, id)
-  if (!additive) {
+  let resolvedLabelId = labelId
+  if (wallPart === 'label' && wall) {
+    expandedWalls.add(wall.groupId ?? wall.id)
+    if (!resolvedLabelId) {
+      resolvedLabelId = wallLabels(wall).find(
+        (item) => item.id && (item.enabled || (item.text ?? '').trim()),
+      )?.id
+    }
+  }
+  const expandBayOrGroup =
+    !additive &&
+    (wallPart === 'group' || wallPart === 'cladding' || wallPart === 'plinth' || wallPart === 'cornice')
+  if (expandBayOrGroup) {
     const bayIds = bayWallSelectionIds(getAllWalls(state), id)
-    if (bayIds && bayIds.length > 1 && wallPart === 'group') {
+    if (bayIds && bayIds.length > 1) {
       const treeIdx = layerTreeIndexOf({ kind: 'wall', wallId: bayIds[0]! })
       if (treeIdx >= 0) lastLayerTreeAnchor = treeIdx
       applyEditorSelection({
@@ -16965,8 +17622,9 @@ function selectWall(
         selectedRoofPart: undefined,
         selectedCeiling: undefined,
         selectedBuildingId: undefined,
-        selectedWallPart: 'group',
+        selectedWallPart: wallPart === 'group' ? 'group' : wallPart,
         selectedTrimBandId: undefined,
+        selectedLabelId: undefined,
         selectedOpeningPart: undefined,
       })
       if (isGalleryModeActive() && currentView === '3d') {
@@ -16993,6 +17651,7 @@ function selectWall(
         selectedBuildingId: undefined,
         selectedWallPart: 'group',
         selectedTrimBandId: undefined,
+        selectedLabelId: undefined,
         selectedOpeningPart: undefined,
       })
       return
@@ -17017,6 +17676,7 @@ function selectWall(
       selectedWallPart: selectedWallIds.length === 1 ? wallPart : 'group',
       selectedTrimBandId:
         selectedWallIds.length === 1 && wallPart === 'trimBand' ? trimBandId : undefined,
+      selectedLabelId: undefined,
       selectedOpeningPart: undefined,
     })
     if (isGalleryModeActive() && currentView === '3d' && selectedWallIds.length > 0) {
@@ -17028,7 +17688,10 @@ function selectWall(
     return
   }
 
-  const treeIdx = layerTreeIndexOf({ kind: 'wall', wallId: id })
+  const treeIdx =
+    wallPart === 'label' && resolvedLabelId
+      ? layerTreeIndexOf({ kind: 'label', wallId: id, labelId: resolvedLabelId })
+      : layerTreeIndexOf({ kind: 'wall', wallId: id })
   if (treeIdx >= 0) lastLayerTreeAnchor = treeIdx
   applyEditorSelection({
     selectedWallIds: [id],
@@ -17040,6 +17703,7 @@ function selectWall(
     selectedBuildingId: undefined,
     selectedWallPart: wallPart,
     selectedTrimBandId: wallPart === 'trimBand' ? trimBandId : undefined,
+    selectedLabelId: wallPart === 'label' ? resolvedLabelId : undefined,
     selectedOpeningPart: undefined,
   })
   if (isGalleryModeActive() && currentView === '3d') {
@@ -19165,13 +19829,39 @@ function refreshOpeningGuides(wallId: string, openingId: string) {
   svgView.setOpeningGuidesBatch(batch.map(({ wallId, guides, distanceLines }) => ({ wallId, guides, distanceLines })))
 }
 
+function refreshLabelGuides(wallId: string) {
+  const wall = getWall(state, wallId)
+  const synthetic = wall ? labelAsGuideOpening(wall, editor.selectedLabelId ?? drag3dLabel?.labelId) : null
+  if (!wall || !synthetic) {
+    facade.clearOpeningGuides()
+    svgView.clearOpeningGuides()
+    return
+  }
+  const guideWall: Wall = {
+    ...wall,
+    openings: [...wall.openings, synthetic],
+  }
+  const walls = getAllWalls(state).map((w) => (w.id === wallId ? guideWall : w))
+  const guides = computeOpeningGuides(guideWall, synthetic, walls)
+  const distanceLines = computeOpeningDistanceLinesForRefs(walls, [
+    { wallId, openingId: synthetic.id },
+  ]).get(wallId) ?? []
+  facade.setOpeningGuidesBatch([{ wall: guideWall, guides, distanceLines }])
+  svgView.setOpeningGuidesBatch([{ wallId, guides, distanceLines }])
+}
+
 const raycaster = new THREE.Raycaster()
+// Sichtbare Decken/Böden liegen nur auf dem Innen-Layer — sonst greifen nur unsichtbare Okkluder.
+raycaster.layers.enable(SHADOW_LAYER_EXTERIOR)
+raycaster.layers.enable(SHADOW_LAYER_INTERIOR)
 const pointerNdc = new THREE.Vector2()
 let pointerDown: {
   x: number
   y: number
   additive: boolean
 } | null = null
+/** Auswahl wurde schon auf pointerdown gesetzt — pointerup darf nicht mit Decke/Leer überschreiben. */
+let pointerDownDidSelect = false
 
 /** Shift+Drag Rechteckauswahl — nur bei leerer Auswahl. */
 let marqueeSelect: {
@@ -19439,11 +20129,14 @@ let drag3dWallMove: {
   lastDgz: number
   /** Erker entlang der Fassade gegleitet (Reststücke gestreckt) → Commit mit Rebuild. */
   baySlid?: boolean
+  /** Front-Ansicht: Start-Aufriss-X (statt Grundraster). */
+  startFacadeAlongX?: number
+  lastFacadeAlongX?: number
 } | null = null
 let drag3dWallMoved = false
 
 /** 3D-Drag für Wandbeschriftung (wie Öffnung auf der Fassadenebene). */
-let drag3dLabel: { wallId: string } | null = null
+let drag3dLabel: { wallId: string; labelId?: string } | null = null
 let drag3dLabelMoved = false
 let drag3dSceneLight: {
   lightId: string
@@ -19541,6 +20234,7 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
   openingPart?: OpeningPart
   wallPart?: NonNullable<EditorState['selectedWallPart']>
   bandId?: string
+  labelId?: string
   ceiling?: { buildingId: string; floorIndex: number }
   sceneLightId?: string
 } | null {
@@ -19582,7 +20276,7 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
     while (current) {
       const role = current.userData.indoorRole as string | undefined
       const kind = current.userData.kind as string | undefined
-      if (role === 'ceiling' || kind === 'ceiling') {
+      if (isSelectableCeilingKind(kind, role)) {
         const buildingId = current.userData.buildingId as string | undefined
         const floorIndex = current.userData.floorIndex as number | undefined
         if (buildingId && floorIndex !== undefined) {
@@ -19602,6 +20296,7 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
     openingPart?: OpeningPart
     wallPart?: NonNullable<EditorState['selectedWallPart']>
     bandId?: string
+    labelId?: string
   } | null => {
     let current: THREE.Object3D | null = object
     while (current) {
@@ -19611,11 +20306,12 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
       const openingPart = current.userData.openingPart as OpeningPart | undefined
       const wallPart = current.userData.wallPart as EditorState['selectedWallPart'] | undefined
       const bandId = current.userData.bandId as string | undefined
+      const labelId = current.userData.labelId as string | undefined
       if (wallId && kind === 'opening' && openingId) {
         return { wallId, openingId, openingPart: openingPart ?? 'group' }
       }
       if (wallId && kind === 'wall' && wallPart && wallPart !== 'group') {
-        return { wallId, wallPart, bandId }
+        return { wallId, wallPart, bandId, labelId }
       }
       if (wallId && kind === 'wall') {
         return { wallId, wallPart: 'group' as const }
@@ -19628,10 +20324,21 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
   const isBehindFrontFacade = (distance: number, wallId?: string) =>
     Boolean(front && distance > front.t + behindSlack && wallId !== front.wall.id)
 
+  // Zuerst nächste Fassaden-Mesh-Distanz — Decke darf keine näheren Wände/Paneele stehlen
+  // (Symptom: ab 2. OG wirkte die Auswahl „tot“, weil Geschossplatten/Okkluder griffen).
+  let nearestFacadeMeshDist = Infinity
+  for (const hit of hits) {
+    const resolved = resolveHit(hit.object)
+    if (!resolved) continue
+    if (isBehindFrontFacade(hit.distance, resolved.wallId)) continue
+    nearestFacadeMeshDist = Math.min(nearestFacadeMeshDist, hit.distance)
+  }
+
   for (const hit of hits) {
     const ceiling = resolveCeilingHit(hit.object)
     if (!ceiling) continue
     if (front && hit.distance > front.t + behindSlack) continue
+    if (!ceilingBeatsFacadeMesh(hit.distance, nearestFacadeMeshDist)) continue
     return ceiling
   }
 
@@ -20092,13 +20799,14 @@ canvas.addEventListener('pointerdown', (event) => {
           return
         }
       }
-      selectWall(hit.wallId, additive, hit.wallPart ?? 'group', hit.bandId)
+      selectWall(hit.wallId, additive, hit.wallPart ?? 'group', hit.bandId, hit.labelId)
+      pointerDownDidSelect = true
       if (hit.wallPart === 'label' && wallHasLabel(wall)) {
-        const label = wallLabel(wall)
-        drag3dLabel = { wallId: hit.wallId }
+        const label = wallLabel(wall, hit.labelId)
+        drag3dLabel = { wallId: hit.wallId, labelId: label.id }
         drag3dLabelMoved = false
-        drag3dStartLabelX = label.x ?? wall.width / 2
-        drag3dStartLabelY = label.y ?? wall.height / 2
+        drag3dStartLabelX = snapToGrid(label.x ?? wall.width / 2, STUDIO_MASONRY)
+        drag3dStartLabelY = snapToGrid(label.y ?? wall.height / 2, STUDIO_MASONRY)
         setup3dDragForWall(wall, {
           x: drag3dStartLabelX,
           y: drag3dStartLabelY,
@@ -20107,6 +20815,7 @@ canvas.addEventListener('pointerdown', (event) => {
         drag3dStartLocalHit =
           pick3dLocal(event) ?? { x: drag3dStartLabelX, y: drag3dStartLabelY }
         canvas.setPointerCapture(event.pointerId)
+        pointerDownDidSelect = false
         return
       }
       // Zierband / Gesims / Sockel: kein Wand-Drag in der Grundrissebene
@@ -20116,10 +20825,17 @@ canvas.addEventListener('pointerdown', (event) => {
         hit.wallPart === 'plinth' ||
         hit.wallPart === 'label'
       ) {
+        pointerDown = { x: event.clientX, y: event.clientY, additive }
         return
       }
       const grid = pickGroundGridFromClient(event.clientX, event.clientY)
-      if (grid) {
+      const canBaySlide =
+        canSlideBaySegment(activeBuilding().walls, hit.wallId) && !event.shiftKey
+      // 2D-Front: kein Bodenraster — Erker über Fassaden-Lokal-X gleiten.
+      if (!grid && !(currentView === 'front' && canBaySlide)) {
+        // kein Drag — Auswahl bleibt; pointerup darf sie nicht mit Decke verwerfen.
+      } else if (grid || (currentView === 'front' && canBaySlide)) {
+        pointerDownDidSelect = false
         const seeds = expandPlanLinkedWallIds(
           activeBuilding().walls,
           editor.selectedWallIds.length > 0 && editor.selectedWallIds.includes(hit.wallId)
@@ -20127,16 +20843,32 @@ canvas.addEventListener('pointerdown', (event) => {
             : [hit.wallId],
         )
         const wallIds = wallIdsForMoveDrag(state, seeds, false)
+        let facadeAlong: number | undefined
+        if (currentView === 'front' && canBaySlide) {
+          // Feste Fassadenebene (nicht Mesh-Pick): sonst bricht der Zug ab, sobald
+          // der Cursor über dem Erker-Mund oder neben der Wand ist (SVG in Front aus).
+          const model = buildBaySlideGuideModel(activeBuilding().walls, hit.wallId)
+          const planeWall = model?.wall ?? getWall(state, hit.wallId)
+          if (planeWall) {
+            setup3dDragForWall(planeWall, { x: 0, y: 0, width: planeWall.width })
+            const local = pick3dLocalAt(event.clientX, event.clientY)
+            if (local) {
+              facadeAlong = wallElevationAlong(planeWall) + local.x
+            }
+          }
+        }
         drag3dWallMove = {
           seedWallIds: seeds,
           lastWallIds: wallIds,
-          startGx: grid.gx,
-          startGz: grid.gz,
+          startGx: grid?.gx ?? 0,
+          startGz: grid?.gz ?? 0,
           startState: cloneFacadeState(state),
           startClientX: event.clientX,
           startClientY: event.clientY,
           lastDgx: 0,
           lastDgz: 0,
+          startFacadeAlongX: facadeAlong,
+          lastFacadeAlongX: facadeAlong,
         }
         drag3dWallMoved = false
         canvas.setPointerCapture(event.pointerId)
@@ -20247,16 +20979,11 @@ canvas.addEventListener('pointermove', (event) => {
     if (!drag3dWallMoved && dist2 < 36) return
     drag3dWallMoved = true
     if (currentView === '3d') controls.enabled = false
-    const grid = pickGroundGridFromClient(event.clientX, event.clientY)
-    if (!grid) return
-    const dgx = grid.gx - drag3dWallMove.startGx
-    const dgz = grid.gz - drag3dWallMove.startGz
-    if (dgx === drag3dWallMove.lastDgx && dgz === drag3dWallMove.lastDgz) return
+    const seedId = drag3dWallMove.seedWallIds[0]
     const startBuilding =
       drag3dWallMove.startState.buildings.find(
         (b) => b.id === drag3dWallMove!.startState.activeBuildingId,
       ) ?? drag3dWallMove.startState.buildings[0]
-    const seedId = drag3dWallMove.seedWallIds[0]
     // Eingebetteter Erker: entlang der Fassade gleiten (Reststücke links/rechts), nicht freischieben.
     if (
       seedId &&
@@ -20264,33 +20991,61 @@ canvas.addEventListener('pointermove', (event) => {
       canSlideBaySegment(startBuilding.walls, seedId) &&
       !event.shiftKey
     ) {
-      const along = baySlideDeltaFromWorldMove(
-        startBuilding.walls,
-        seedId,
-        dgx * PLAN_GRID,
-        dgz * PLAN_GRID,
-      )
+      let along: number | null = null
+      if (
+        currentView === 'front' &&
+        drag3dWallMove.startFacadeAlongX != null
+      ) {
+        const local = pick3dLocal(event)
+        if (!local) return
+        const guide = buildBaySlideGuideModel(startBuilding.walls, seedId)
+        if (!guide) return
+        const alongX = wallElevationAlong(guide.wall) + local.x
+        if (
+          drag3dWallMove.lastFacadeAlongX != null &&
+          Math.abs(alongX - drag3dWallMove.lastFacadeAlongX) < 0.25
+        ) {
+          return
+        }
+        along = alongX - drag3dWallMove.startFacadeAlongX
+        drag3dWallMove.lastFacadeAlongX = alongX
+      } else {
+        const grid = pickGroundGridFromClient(event.clientX, event.clientY)
+        if (!grid) return
+        const dgx = grid.gx - drag3dWallMove.startGx
+        const dgz = grid.gz - drag3dWallMove.startGz
+        if (dgx === drag3dWallMove.lastDgx && dgz === drag3dWallMove.lastDgz) return
+        drag3dWallMove.lastDgx = dgx
+        drag3dWallMove.lastDgz = dgz
+        along = baySlideDeltaFromWorldMove(
+          startBuilding.walls,
+          seedId,
+          dgx * PLAN_GRID,
+          dgz * PLAN_GRID,
+        )
+      }
       const slid =
         along != null ? slideBaySegmentAlong(drag3dWallMove.startState, seedId, along) : null
-      drag3dWallMove.lastDgx = dgx
-      drag3dWallMove.lastDgz = dgz
       if (slid) {
         const slidWalls = slid.buildings.find((b) => b.id === slid.activeBuildingId)?.walls ?? []
         const bayIds = bayStackWallIds(slidWalls, seedId) ?? drag3dWallMove.seedWallIds
         drag3dWallMove.lastWallIds = bayIds
         drag3dWallMove.baySlid = true
-        // Reststücke ändern ihre Länge → Geometrie-Rebuild nötig (kein reines Mesh-Translate,
-        // sonst bleiben die Nachbarwände alt und es entstehen Lücken).
         previewLiveState(slid, {
           ...editor,
           selectedWallIds: bayIds,
           selectedOpenings: [],
         })
-        updateWallMoveDockHighlight(bayIds)
-        planStatus.textContent = 'Erker entlang der Wand verschieben (24-cm-Schritte)'
+        refreshBaySlideGuides(seedId)
+        planStatus.textContent = 'Erker entlang der Wand verschieben (8-cm-Schritte)'
       }
       return
     }
+    const grid = pickGroundGridFromClient(event.clientX, event.clientY)
+    if (!grid) return
+    const dgx = grid.gx - drag3dWallMove.startGx
+    const dgz = grid.gz - drag3dWallMove.startGz
+    if (dgx === drag3dWallMove.lastDgx && dgz === drag3dWallMove.lastDgz) return
     const wallIds = wallIdsForMoveDrag(
       drag3dWallMove.startState,
       drag3dWallMove.seedWallIds,
@@ -20337,16 +21092,27 @@ canvas.addEventListener('pointermove', (event) => {
         const newY = Math.round((drag3dStartLabelY + local.y - drag3dStartLocalHit.y) / STUDIO_MASONRY) * STUDIO_MASONRY
         const clampedX = Math.max(0, Math.min(wall.width, newX))
         const clampedY = Math.max(0, Math.min(wall.height, newY))
-        const label = wallLabel(wall)
+        const label = wallLabel(wall, drag3dLabel.labelId)
         if (clampedX !== label.x || clampedY !== label.y) {
           if (!labelDragBase) labelDragBase = cloneFacadeState(state)
-          const next = updateWallLabel(labelDragBase, [drag3dLabel.wallId], {
-            x: clampedX,
-            y: clampedY,
-          })
+          const next = updateWallLabel(
+            labelDragBase,
+            [drag3dLabel.wallId],
+            {
+              x: clampedX,
+              y: clampedY,
+            },
+            drag3dLabel.labelId,
+          )
           previewMeshDrag(next, editor, () => {
-            facade.applyLiveLabelOffset(labelDragBase!, state, drag3dLabel!.wallId)
+            facade.applyLiveLabelOffset(
+              labelDragBase!,
+              state,
+              drag3dLabel!.wallId,
+              drag3dLabel!.labelId,
+            )
           })
+          refreshLabelGuides(drag3dLabel.wallId)
           const updated = getWall(state, drag3dLabel.wallId)
           if (updated) syncLabelControls(updated)
         }
@@ -20567,7 +21333,10 @@ canvas.addEventListener('pointerup', (event) => {
     drag3dWallMove = null
     drag3dWallMoved = false
     wallMoveDragBase = null
+    drag3dWallPlane = null
     clearWallDockPreview()
+    facade.clearOpeningGuides()
+    svgView.clearOpeningGuides()
     if (currentView === '3d') controls.enabled = true
     if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId)
     return
@@ -20581,15 +21350,19 @@ canvas.addEventListener('pointerup', (event) => {
           ...editor,
           selectedWallIds: [drag3dLabel.wallId],
           selectedWallPart: 'label',
+          selectedLabelId: drag3dLabel.labelId,
           selectedOpenings: [],
         },
         'Schrift verschoben',
       )
+      applySunLighting({ updateShadowMap: true })
     }
     drag3dLabel = null
     drag3dLabelMoved = false
     labelDragBase = null
     drag3dWallPlane = null
+    facade.clearOpeningGuides()
+    svgView.clearOpeningGuides()
     if (currentView === '3d') controls.enabled = true
     if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId)
     return
@@ -20650,10 +21423,15 @@ canvas.addEventListener('pointerup', (event) => {
   const dx = event.clientX - pointerDown.x
   const dy = event.clientY - pointerDown.y
   const additive = pointerDown.additive
+  const keepDownSelection = pointerDownDidSelect
   pointerDown = null
+  pointerDownDidSelect = false
 
   if (dx * dx + dy * dy > 16) return
   if (trySwapDraftWallSegmentAtClick(event)) return
+  // Auswahl schon auf pointerdown (z. B. obere Etage ohne Boden-Drag): nicht erneut
+  // picken — Deckenkante / Leertreffer würde die Wand sonst sofort wieder abwählen.
+  if (keepDownSelection) return
   const hit = pickFromEvent(event)
   if (lightEditMode) {
     if (hit?.sceneLightId) selectSceneLight(hit.sceneLightId, additive)
@@ -20763,6 +21541,7 @@ function updateViewCompass() {
 }
 
 function setView(mode: AppView) {
+  const previousView = currentView
   const leavingExport = currentView === 'export' && mode !== 'export'
   const enteringExport = mode === 'export' && currentView !== 'export'
   if (enteringExport) {
@@ -20777,6 +21556,15 @@ function setView(mode: AppView) {
     setUiLeftCollapsed(exportChromeSnapshot.leftCollapsed)
     appRoot.classList.toggle('ui-bottom-collapsed', exportChromeSnapshot.bottomCollapsed)
     exportChromeSnapshot = null
+  }
+
+  // Kompassausrichtung 3D ↔ 2D-Aufriss beibehalten.
+  if (previousView === '3d' && mode === 'front') {
+    const lookX = controls.target.x - camera.position.x
+    const lookZ = controls.target.z - camera.position.z
+    currentElevation = { kind: 'yaw', yaw: snapYawTo45(viewedFacadeYaw(lookX, lookZ)) }
+  } else if (previousView === 'front' && mode === '3d' && currentElevation.kind === 'yaw') {
+    // Kamera später auf currentElevation ausrichten (nicht Standard-Isometrie).
   }
 
   currentView = mode
@@ -20842,8 +21630,13 @@ function setView(mode: AppView) {
     updateGroundPlane()
     if (!cameraInitialized) {
       initCameraTarget()
+      focusCameraExterior(getAllWalls(state))
+    } else if (previousView === 'front' && currentElevation.kind === 'yaw') {
+      // Aufriss → 3D: gleiche Fassadenrichtung beibehalten (Abstand behalten).
+      orbitCameraToYaw(currentElevation.yaw, getAllWalls(state))
+    } else if (previousView !== '3d' && previousView !== 'front') {
+      focusCameraExterior(getAllWalls(state))
     }
-    focusCameraExterior(getAllWalls(state))
   }
 
   if (mode === 'export') {
@@ -23063,6 +23856,36 @@ studioEndPieceAngle?.addEventListener('change', () => {
 })
 studioEndPieceRemove?.addEventListener('click', () => removeSelectedEndPiece())
 
+/** Erker-Seed aus der aktuellen Auswahl (Host oder Schenkel). */
+function selectedBaySeedId(): string | null {
+  const walls = getAllWalls(state)
+  for (const id of editor.selectedWallIds) {
+    if (bayHostWall(walls, id)) return id
+  }
+  return null
+}
+
+studioBayDropEnabled?.addEventListener('change', () => {
+  const seed = selectedBaySeedId()
+  if (!seed) return
+  if (studioBayDropEnabled.checked) {
+    const cm = clampBayDropInput(Number(studioBayDropCm.value) || 96)
+    studioBayDropCm.value = String(cm)
+    studioBayDropFields.hidden = false
+    commitBayDrop(seed, cm)
+  } else {
+    studioBayDropFields.hidden = true
+    commitBayDrop(seed, 0)
+  }
+})
+studioBayDropCm?.addEventListener('change', () => {
+  const seed = selectedBaySeedId()
+  if (!seed || !studioBayDropEnabled.checked) return
+  const cm = clampBayDropInput(Number(studioBayDropCm.value))
+  studioBayDropCm.value = String(cm)
+  commitBayDrop(seed, cm)
+})
+
 const wallLibraryGizmos = document.querySelector<HTMLDivElement>('#wall-library-gizmos')
 wallLibraryGizmos?.addEventListener('pointerdown', (event) => event.stopPropagation())
 wallLibraryGizmos?.addEventListener('click', (event) => {
@@ -23468,17 +24291,18 @@ function commitCornicePatch(patch: Partial<WallCorniceConfig>) {
   commitState(updateWallCornice(state, corniceTargetWallIds(), patch))
 }
 
-function commitLabelPatch(patch: Partial<WallLabelConfig>) {
+function commitLabelPatch(patch: Partial<WallLabelConfig>, labelId?: string | null) {
   if (!canEditActiveBuildingNow()) return
   const ids = scopedWallIds().filter((id) => canEditWallNow(id))
   if (ids.length === 0) return
+  const targetLabelId = labelId ?? editor.selectedLabelId
   const enablingFresh =
     patch.enabled === true &&
     ids.some((id) => {
       const wall = getWall(state, id)
-      return wall && !wallLabel(wall).enabled
+      return wall && !wallLabel(wall, targetLabelId).enabled
     })
-  let next = updateWallLabel(state, ids, patch)
+  let next = updateWallLabel(state, ids, patch, targetLabelId)
   if (enablingFresh) {
     next = syncWallDecorToTopBareBand(next, ids)
   }
@@ -23490,7 +24314,11 @@ function commitLabelPatch(patch: Partial<WallLabelConfig>) {
 studioLabelEnabled.addEventListener('change', () => {
   const wall = anchorWall()
   const patch: Partial<WallLabelConfig> = { enabled: studioLabelEnabled.checked }
-  if (studioLabelEnabled.checked && wall && !(wallLabel(wall).text ?? '').trim()) {
+  if (
+    studioLabelEnabled.checked &&
+    wall &&
+    !(wallLabel(wall, editor.selectedLabelId).text ?? '').trim()
+  ) {
     const heightCm = clampStudioPanelSize(DEFAULT_WALL_LABEL.heightCm)
     const anchor = defaultWallLabelAnchor(wall, heightCm)
     patch.text = 'Text'
@@ -23566,7 +24394,7 @@ function commitLabelText() {
   const patch: Partial<WallLabelConfig> = { text }
   const wall = anchorWall()
   const wantEnabled = text.trim().length > 0 || studioLabelEnabled.checked
-  const currentlyEnabled = wall ? wallLabel(wall).enabled : false
+  const currentlyEnabled = wall ? wallLabel(wall, editor.selectedLabelId).enabled : false
   if (wantEnabled !== currentlyEnabled) {
     patch.enabled = wantEnabled
   }
@@ -23629,7 +24457,9 @@ studioLabelDepthExtruded.addEventListener('click', () => {
   studioLabelDepthExtruded.classList.add('active')
   studioLabelDepthFlat.classList.remove('active')
   studioLabelExtrudeRow.hidden = false
-  const fontId = resolveLabelFontId(anchorWall() ? wallLabel(anchorWall()!).fontId : undefined)
+  const fontId = resolveLabelFontId(
+    anchorWall() ? wallLabel(anchorWall()!, editor.selectedLabelId).fontId : undefined,
+  )
   // Typeface zuerst laden, dann speichern — sonst erscheint kurz/dauerhaft die Flachschrift.
   void retryWallLabelExtrudedFont(fontId).then(() => {
     commitLabelPatch({ depth: 'extruded' as WallLabelDepth })

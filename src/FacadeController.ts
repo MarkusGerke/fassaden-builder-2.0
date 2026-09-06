@@ -22,6 +22,10 @@ import {
   getVisibleWalls,
   wallWithoutOpenings,
 } from './utils/buildings'
+import {
+  normalizeFacadeDecor,
+  type FacadeDecorKind,
+} from './studio/facadeDecor'
 import { resolveProfile } from './profiles/registry'
 import { applyPlinthOpeningFragmentDiscard, buildProfilePaths, clipProfileSectionAboveCm, createPlinthProfileSweepGeometry, createProfileSweepGeometry, createSimpleProfileBarGeometry, disposePlinthOpeningDiscard, scaleProfileSectionAxes, transformProfileSection, transformProfileSectionAnchored } from './utils/profilePaths'
 import { clampFacadeState, edgeIsJoined } from './utils/walls'
@@ -115,7 +119,7 @@ import {
 import { planFacesWithHoles } from './studio/floorPlan'
 import { notchSlabRingAtOpenings } from './studio/slabNotches'
 import { floorIndex, storeyFloorSurfaceY, storeyTopY } from './utils/layers'
-import { isStudioWall, leafOpenSignForWall, outerSillBoardPose, studioFacadeOutwardLocalZ, studioFacadeSelectionLocalZ, studioPanelFaceLocalZ, studioProfileAnchorLocalZ, studioWallOuterLocalZ, studioWallTransform, studioWindowOriginZ, wallHasPanels, windowDepthForwardSign } from './studio/walls'
+import { isStudioWall, leafOpenSignForWall, outerSillBoardPose, studioFacadeOutwardLocalZ, studioFacadeSelectionLocalZ, studioPanelFaceLocalZ, studioProfileAnchorLocalZ, studioWallOuterLocalZ, studioWallTransform, studioWindowOriginZ, wallEndPoint, wallHasPanels, wallStartPoint, windowDepthForwardSign } from './studio/walls'
 import { buildMansardRoof } from './studio/roof'
 import {
   createWallLabelMeshSpec,
@@ -130,7 +134,7 @@ import {
   wallLabelNeedsFont,
   wallLabelNeedsFlatFont,
 } from './studio/labelGeometry'
-import { wallHasLabel, wallLabel } from './utils/wallLabel'
+import { wallHasLabel, wallLabel, wallLabels } from './utils/wallLabel'
 import {
   INDOOR_SLAB_THICKNESS,
   INDOOR_SLAB_VISUAL_INSET_CM,
@@ -438,26 +442,34 @@ export class FacadeController {
     for (const wall of getVisibleWalls(this.state)) {
       if (this.wallIsBare(wall)) continue
       if (!isStudioWall(wall)) continue
-      const labelSpec = createWallLabelMeshSpec(wall)
-      if (!labelSpec) continue
       const transform = wallPlacement(wall)
       const buildingId = wall.buildingId ?? findBuildingForWall(this.state, wall.id)?.id
-      labelSpec.geometry.translate(labelSpec.localX, labelSpec.localY, labelSpec.localZ)
-      const labelMesh = new THREE.Mesh(labelSpec.geometry, labelSpec.material)
-      this.configureLabelShadow(labelMesh, labelSpec.material)
-      labelMesh.userData.lodTier = 'label'
-      labelMesh.userData.buildingId = buildingId
-      labelMesh.userData.wallId = wall.id
-      tagPickable(labelMesh, { kind: 'wall', wallId: wall.id, wallPart: 'label' })
-      labelMesh.userData.originalMaterial = labelSpec.material
-      labelMesh.position.set(transform.position.x, transform.position.y, transform.position.z)
-      labelMesh.rotation.y = transform.rotationY + labelSpec.rotationY
-      labelMesh.renderOrder = 30
-      this.claddingGroup.add(labelMesh)
-      this.wallLabelMeshes.push(labelMesh)
-      if (this.renderStyle === 'line') {
-        labelMesh.material = this.whiteMaterial
-        this.addMeshEdges(labelMesh)
+      for (const label of wallLabels(wall)) {
+        const labelSpec = createWallLabelMeshSpec(wall, label)
+        if (!labelSpec) continue
+        labelSpec.geometry.translate(labelSpec.localX, labelSpec.localY, labelSpec.localZ)
+        const labelMesh = new THREE.Mesh(labelSpec.geometry, labelSpec.material)
+        this.configureLabelShadow(labelMesh, labelSpec.material)
+        labelMesh.userData.lodTier = 'label'
+        labelMesh.userData.buildingId = buildingId
+        labelMesh.userData.wallId = wall.id
+        labelMesh.userData.labelId = label.id
+        tagPickable(labelMesh, {
+          kind: 'wall',
+          wallId: wall.id,
+          wallPart: 'label',
+          labelId: label.id,
+        })
+        labelMesh.userData.originalMaterial = labelSpec.material
+        labelMesh.position.set(transform.position.x, transform.position.y, transform.position.z)
+        labelMesh.rotation.y = transform.rotationY + labelSpec.rotationY
+        labelMesh.renderOrder = 30
+        this.claddingGroup.add(labelMesh)
+        this.wallLabelMeshes.push(labelMesh)
+        if (this.renderStyle === 'line') {
+          labelMesh.material = this.whiteMaterial
+          this.addMeshEdges(labelMesh)
+        }
       }
     }
     this.syncLineOverlayVisibility()
@@ -651,6 +663,17 @@ export class FacadeController {
         if (enable) {
           child.customDistanceMaterial = this.shadowDistanceMaterial
         } else if (child.customDistanceMaterial === this.shadowDistanceMaterial) {
+          child.customDistanceMaterial = undefined
+        }
+        continue
+      }
+      if (child.userData.kind === 'baySoffit') {
+        // Erker-Untersicht: außen sichtbar (Exterior-Sonne), wirft keinen Schatten, empfängt.
+        child.castShadow = false
+        child.receiveShadow = true
+        child.layers.set(SHADOW_LAYER_EXTERIOR)
+        child.layers.enable(SHADOW_LAYER_INTERIOR)
+        if (child.customDistanceMaterial === this.shadowDistanceMaterial) {
           child.customDistanceMaterial = undefined
         }
         continue
@@ -1288,13 +1311,18 @@ export class FacadeController {
     )
   }
 
-  applyLiveLabelOffset(base: FacadeState, next: FacadeState, wallId: string) {
+  applyLiveLabelOffset(base: FacadeState, next: FacadeState, wallId: string, labelId?: string | null) {
     this.state = next
-    const world = labelWorldDeltaFromStates(base, next, wallId)
+    const world = labelWorldDeltaFromStates(base, next, wallId, labelId)
     this.offsetLiveRoots(
-      (obj) => obj.userData.wallId === wallId && obj.userData.wallPart === 'label',
+      (obj) =>
+        obj.userData.wallId === wallId &&
+        obj.userData.wallPart === 'label' &&
+        (!labelId || obj.userData.labelId === labelId),
       world,
     )
+    // Extrudierte Schrift: Shadow-Map mitziehen (sonst bleibt der Schatten am Start).
+    this.wallLabelsNeedShadowUpdate = true
   }
 
   private offsetLiveRoots(
@@ -1690,7 +1718,7 @@ export class FacadeController {
         depthMat.dispose()
         child.customDepthMaterial = undefined
       }
-      if (child.userData.kind === 'sunCeilingOccluder') {
+      if (child.userData.kind === 'sunCeilingOccluder' || child.userData.kind === 'baySoffit') {
         const mat = child.material
         if (mat && !Array.isArray(mat)) mat.dispose()
       }
@@ -1760,6 +1788,35 @@ export class FacadeController {
       mesh.userData.indoorRole = 'ceiling'
       mesh.userData.buildingId = buildingId
       mesh.userData.floorIndex = floorIdx
+      // Unsichtbarer Schatten-Helfer: nie Raycast (sonst Deckenwahl vor Wänden ab 2. OG).
+      mesh.raycast = () => {}
+      this.indoorFloorGroup.add(mesh)
+    }
+
+    /**
+     * Untersicht (Soffit) unter einem Erker: schließt die Unterseite, damit man von
+     * unten nicht durch den Erker sieht. Von außen sichtbar (Exterior-Layer), wirft
+     * keinen Schatten, empfängt Schatten. Y-Oberkante = Erker-Fuß (host.y).
+     */
+    const addBaySoffit = (
+      shape: THREE.Shape,
+      topY: number,
+      material: THREE.Material,
+      buildingId: string,
+    ) => {
+      const geo = new THREE.ExtrudeGeometry(shape, {
+        depth: slabThickness,
+        bevelEnabled: false,
+      })
+      const mesh = new THREE.Mesh(geo, material)
+      mesh.rotation.x = -Math.PI / 2
+      mesh.position.set(0, topY - slabThickness, 0)
+      mesh.layers.set(SHADOW_LAYER_EXTERIOR)
+      mesh.layers.enable(SHADOW_LAYER_INTERIOR)
+      mesh.castShadow = false
+      mesh.receiveShadow = true
+      mesh.userData.kind = 'baySoffit'
+      mesh.userData.buildingId = buildingId
       this.indoorFloorGroup.add(mesh)
     }
 
@@ -1837,6 +1894,80 @@ export class FacadeController {
             }
             addSunCeilingOccluder(sunShape, ceilingY, building.id, fi)
           }
+        }
+      }
+
+      // Erker-Untersicht (item 6): unter jedem echten Erker (kein Balkon/Loggia) die
+      // Unterseite schließen. Außenpolygon aus Schenkel- + Frontwänden (Planlinie = Außenkante).
+      for (const host of buildingWalls) {
+        const bay = host.bayWindow
+        if (!bay?.wallIds?.length) continue
+        if ((bay.kind ?? 'bay') !== 'bay') continue
+        const memberWalls = bay.wallIds
+          .map((id) => buildingWalls.find((w) => w.id === id))
+          .filter((w): w is Wall => Boolean(w) && w!.bayRole !== 'back')
+        if (memberWalls.length === 0) continue
+        const ring: Array<{ x: number; z: number }> = []
+        const pushPt = (p: { x: number; z: number }) => {
+          const last = ring[ring.length - 1]
+          if (last && Math.hypot(last.x - p.x, last.z - p.z) < 1) return
+          ring.push(p)
+        }
+        for (const w of memberWalls) {
+          pushPt(wallStartPoint(w))
+          pushPt(wallEndPoint(w))
+        }
+        // Ringschluss: doppelten Endpunkt an der Mundöffnung entfernen.
+        if (ring.length > 1) {
+          const first = ring[0]!
+          const last = ring[ring.length - 1]!
+          if (Math.hypot(first.x - last.x, first.z - last.z) < 1) ring.pop()
+        }
+        if (ring.length < 3) continue
+        const soffitShape = ringToShapeXY(ring)
+        if (!soffitShape) continue
+        // Wandfarbe (nicht Bekleidung) — Untersicht/Rock soll zur übrigen Wand passen.
+        const soffitColor = host.wallColor ?? DEFAULT_WALL_COLOR
+        const soffitMat = slabMatFor(soffitColor)
+        addBaySoffit(soffitShape, host.y, soffitMat, building.id)
+        // Deckel oben, wenn kein Erker darüber denselben Vorsprung fortsetzt —
+        // sonst bleibt die Untersicht der Etage darüber / der Erker-Innenraum offen.
+        const hostFloor = floorIndex(host, building.wallHeight)
+        const hostTop = (host.y ?? 0) + host.height
+        let cx = 0
+        let cz = 0
+        for (const p of ring) {
+          cx += p.x
+          cz += p.z
+        }
+        cx /= ring.length
+        cz /= ring.length
+        const hasBayAbove = buildingWalls.some((w) => {
+          if (w.id === host.id) return false
+          if (!w.bayWindow?.wallIds?.length) return false
+          if ((w.bayWindow.kind ?? 'bay') !== 'bay') return false
+          if (floorIndex(w, building.wallHeight) !== hostFloor + 1) return false
+          const members = (w.bayWindow.wallIds ?? [])
+            .map((id) => buildingWalls.find((x) => x.id === id))
+            .filter((x): x is Wall => Boolean(x))
+          if (members.length === 0) return false
+          let ax = 0
+          let az = 0
+          let n = 0
+          for (const m of members) {
+            const a = wallStartPoint(m)
+            const b = wallEndPoint(m)
+            ax += a.x + b.x
+            az += a.z + b.z
+            n += 2
+          }
+          if (n === 0) return false
+          ax /= n
+          az /= n
+          return Math.hypot(ax - cx, az - cz) < 120
+        })
+        if (!hasBayAbove) {
+          addBaySoffit(soffitShape, hostTop, soffitMat, building.id)
         }
       }
     }
@@ -2756,7 +2887,104 @@ export class FacadeController {
     for (const [wallId, mesh] of this.openingShadowTunnelMeshes) {
       mesh.visible = this.isGalleryWallDrawn(wallId)
     }
+    this.applyFacadeDecorVisibility()
     this.syncLineOverlayVisibility()
+  }
+
+  private facadeDecorKindForObject(obj: THREE.Object3D): FacadeDecorKind | null {
+    // Laibung / Reveal sitzt in profileGroup, ist aber kein Fassadenschmuck —
+    // sonst verschwinden mit „Profile/Alle aus“ auch die inneren Öffnungswände.
+    if (obj.userData.kind === 'opening' && obj.userData.openingPart === 'group') {
+      return null
+    }
+    if (this.revealMeshes.includes(obj as THREE.Mesh)) return null
+    const wallPart = obj.userData.wallPart as string | undefined
+    const lodTier = obj.userData.lodTier as string | undefined
+    const openingPart = obj.userData.openingPart as string | undefined
+    if (wallPart === 'label' || lodTier === 'label') return 'labels'
+    if (wallPart === 'plinth' || lodTier === 'plinth') return 'plinth'
+    if (wallPart === 'cornice') return 'cornice'
+    if (wallPart === 'trimBand') return 'trimBands'
+    // Öffnungs-Rahmenprofile / Profil-Bänke = „Profile“ (nicht Gesims/Zierband).
+    if (
+      obj.userData.kind === 'profile' ||
+      lodTier === 'profile' ||
+      wallPart === 'profile' ||
+      openingPart === 'trim' ||
+      openingPart === 'sillOuter' ||
+      openingPart === 'sillInner'
+    ) {
+      return 'profiles'
+    }
+    if (
+      wallPart === 'cladding' ||
+      lodTier === 'low' ||
+      lodTier === 'light' ||
+      lodTier === 'mortar' ||
+      lodTier === 'high'
+    ) {
+      return 'panels'
+    }
+    return null
+  }
+
+  /** Blendet Fassadenschmuck je Haus laut `building.facadeDecor` aus (nur Sichtbarkeit). */
+  applyFacadeDecorVisibility() {
+    let labelsChanged = false
+    const visit = (obj: THREE.Object3D) => {
+      const kind = this.facadeDecorKindForObject(obj)
+      if (!kind) return
+      const buildingId = obj.userData.buildingId as string | undefined
+      const wallId = obj.userData.wallId as string | undefined
+      const building = buildingId
+        ? this.state.buildings.find((b) => b.id === buildingId)
+        : wallId
+          ? findBuildingForWall(this.state, wallId)
+          : undefined
+      if (!building) return
+      const decor = normalizeFacadeDecor(building.facadeDecor)
+      const hide = decor[kind] === false
+      if (hide) {
+        if (kind === 'labels' && obj.visible) labelsChanged = true
+        obj.visible = false
+        // Unsichtbarer Schmuck darf nicht weiter schattenwerfen (Wand sonst dunkelgrau).
+        if ('castShadow' in obj) {
+          const mesh = obj as THREE.Mesh
+          if (mesh.userData.facadeDecorCastBackup === undefined) {
+            mesh.userData.facadeDecorCastBackup = mesh.castShadow
+          }
+          mesh.castShadow = false
+        }
+        obj.userData.facadeDecorHidden = true
+      } else if (obj.userData.facadeDecorHidden) {
+        if (kind === 'labels') labelsChanged = true
+        obj.userData.facadeDecorHidden = false
+        if ('castShadow' in obj && obj.userData.facadeDecorCastBackup !== undefined) {
+          ;(obj as THREE.Mesh).castShadow = Boolean(obj.userData.facadeDecorCastBackup)
+          delete obj.userData.facadeDecorCastBackup
+        }
+      }
+    }
+    for (const mesh of this.claddingLodLowMeshes) visit(mesh)
+    for (const mesh of this.claddingLodHighMeshes) visit(mesh)
+    for (const mesh of this.studioCladdingMeshes) visit(mesh)
+    for (const mesh of this.profileMeshes) visit(mesh)
+    for (const mesh of this.innerSillMeshes) visit(mesh)
+    for (const mesh of this.outerSillMeshes) visit(mesh)
+    for (const mesh of this.pedimentMeshes) visit(mesh)
+    for (const mesh of this.wallLabelMeshes) visit(mesh)
+    // Kein profileGroup.traverse — Laibungen liegen dort und sind kein Schmuck.
+    this.claddingGroup.traverse((obj) => {
+      if (!(obj instanceof THREE.Mesh)) return
+      const wallPart = obj.userData.wallPart as string | undefined
+      if (wallPart === 'cornice' || wallPart === 'trimBand' || wallPart === 'plinth') visit(obj)
+    })
+    if (labelsChanged) this.wallLabelsNeedShadowUpdate = true
+  }
+
+  /** Nach Toggle von `building.facadeDecor` ohne Geometrie-Rebuild. */
+  refreshFacadeDecorVisibility() {
+    this.applyLodVisibility()
   }
 
   private disposeBuildingHighDetail(buildingId: string) {
@@ -3370,6 +3598,8 @@ export class FacadeController {
       buildingId: wall.buildingId,
       shadowOccluder: true,
     }
+    // Nur Schatten — nicht wählbar / nicht vor Paneelen.
+    mesh.raycast = () => {}
     mesh.layers.enable(SHADOW_LAYER_EXTERIOR)
     mesh.layers.enable(SHADOW_LAYER_INTERIOR)
     const transform = wallPlacement(wall)
@@ -3788,7 +4018,8 @@ export class FacadeController {
                   else this.finishMortarMaterial(mortarMaterial)
                   applyDepthLayerOffset(mortarMaterial, DEPTH_LAYER_MORTAR_UNITS)
                   const mortarMesh = new THREE.Mesh(mortarGeometry, mortarMaterial)
-                  mortarMesh.castShadow = true
+                  // Fugen werfen keinen Schatten (harte Kerbschatten auf Paneelen vermeiden); empfangen weiter.
+                  mortarMesh.castShadow = false
                   mortarMesh.userData.lodTier = 'mortar'
                   mortarMesh.userData.skipLineEdges = true
                   mortarMesh.userData.buildingId = buildingId
@@ -3900,7 +4131,8 @@ export class FacadeController {
                   this.finishMortarMaterial(mortarMaterial)
                   applyDepthLayerOffset(mortarMaterial, DEPTH_LAYER_MORTAR_UNITS)
                   const mortarMesh = new THREE.Mesh(mortarGeometry, mortarMaterial)
-                  mortarMesh.castShadow = true
+                  // Fugen werfen keinen Schatten (harte Kerbschatten auf Paneelen vermeiden); empfangen weiter.
+                  mortarMesh.castShadow = false
                   mortarMesh.userData.lodTier = 'mortar'
                   mortarMesh.userData.skipLineEdges = true
                   mortarMesh.userData.buildingId = buildingId
@@ -4312,6 +4544,7 @@ export class FacadeController {
           openingId: path.openingId,
           openingPart: part,
         })
+        mesh.userData.lodTier = 'profile'
       } else if (wall) {
         tagPickable(mesh, {
           kind: 'wall',
@@ -4607,13 +4840,22 @@ export class FacadeController {
       }
       const wallId = mesh.userData.wallId as string | undefined
       const meshPart = mesh.userData.wallPart as string | undefined
+      const meshLabelId = mesh.userData.labelId as string | undefined
       const base = (mesh.userData.originalMaterial as THREE.Material | undefined) ?? this.material
-      const labelKeepTexture = meshPart === 'label' && wallPart !== 'label'
+      const labelKeepTexture =
+        meshPart === 'label' &&
+        (wallPart !== 'label' ||
+          (Boolean(this.editor.selectedLabelId) && meshLabelId !== this.editor.selectedLabelId))
       const selected =
         !labelKeepTexture &&
         this.editor.selectedWallIds.includes(wallId ?? '') &&
         this.editor.selectedOpenings.length === 0 &&
-        (wallPart === 'group' || wallPart === meshPart || (wallPart === 'cladding' && meshPart === 'cladding'))
+        (wallPart === 'group' ||
+          wallPart === meshPart ||
+          (wallPart === 'cladding' && meshPart === 'cladding')) &&
+        (meshPart !== 'label' ||
+          !this.editor.selectedLabelId ||
+          meshLabelId === this.editor.selectedLabelId)
       mesh.material = !this.suppressSelectionHighlight && selected ? this.selectedMaterial : base
     }
 
@@ -4990,6 +5232,7 @@ function tagPickable(
     openingPart?: string
     wallPart?: string
     bandId?: string
+    labelId?: string
   },
 ) {
   object.traverse((child) => {
@@ -4999,5 +5242,6 @@ function tagPickable(
     if (data.openingPart) child.userData.openingPart = data.openingPart
     if (data.wallPart) child.userData.wallPart = data.wallPart
     if (data.bandId) child.userData.bandId = data.bandId
+    if (data.labelId) child.userData.labelId = data.labelId
   })
 }

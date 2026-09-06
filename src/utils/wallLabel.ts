@@ -1,16 +1,20 @@
-import type { FacadeState, Wall, WallLabelConfig, WallLabelDepth, WallTrimBand } from '../types/facade'
+import type { FacadeState, Opening, Wall, WallLabelConfig, WallLabelDepth, WallTrimBand } from '../types/facade'
 import { STUDIO_MASONRY, studioPlinthActive } from '../studio/constants'
 import { visiblePanelRowRange } from '../studio/panelLayout'
 import { openingCutsWall } from './openingGeometry'
 import { snapToGrid } from './grid'
 import { normalizeWallTrimBand } from './trimBands'
 import { resolveLabelFontId } from '../studio/labelFonts'
+import { createId } from './id'
 
 export type WallLabelAlign = 'left' | 'center' | 'right'
 
+/** Versatz beim Einfügen einer weiteren Schrift auf derselben Wand (cm). */
+export const WALL_LABEL_PASTE_OFFSET = STUDIO_MASONRY * 2
+
 export const DEFAULT_WALL_LABEL: Required<
-  Omit<WallLabelConfig, 'color' | 'fontId' | 'finish'>
-> & { color?: string; fontId?: string; finish?: WallLabelConfig['finish'] } = {
+  Omit<WallLabelConfig, 'color' | 'fontId' | 'finish' | 'id'>
+> & { color?: string; fontId?: string; finish?: WallLabelConfig['finish']; id?: string } = {
   enabled: false,
   text: '',
   x: 0,
@@ -63,10 +67,18 @@ export function syncWallLabelDefaultPlacement(state: FacadeState, wallIds: strin
     ...building,
     walls: building.walls.map((wall) => {
       if (!ids.has(wall.id)) return wall
-      const placed = placeWallLabelDefault(wall)
-      if (!placed) return wall
+      const existing = wallLabels(wall)
+      if (existing.length === 0) return wall
+      let labelsChanged = false
+      const next = existing.map((item) => {
+        const placed = placeWallLabelDefault(wall, item)
+        if (!placed) return item
+        labelsChanged = true
+        return placed
+      })
+      if (!labelsChanged) return wall
       changed = true
-      return { ...wall, label: placed }
+      return withWallLabels(wall, next)
     }),
   }))
   return changed ? { ...state, buildings } : state
@@ -133,6 +145,7 @@ export function normalizeWallLabel(raw?: WallLabelConfig, wall?: Wall): WallLabe
     y = Math.max(0, Math.min(wall.height, y))
   }
   return {
+    id: typeof raw?.id === 'string' && raw.id.trim() ? raw.id : createId(),
     enabled: Boolean(raw?.enabled),
     text: typeof raw?.text === 'string' ? raw.text : DEFAULT_WALL_LABEL.text,
     x,
@@ -151,13 +164,74 @@ export function normalizeWallLabel(raw?: WallLabelConfig, wall?: Wall): WallLabe
   }
 }
 
-export function wallLabel(wall: Wall): WallLabelConfig {
+/** Alle Schriften der Wand (`labels[]`, sonst Legacy `label`). */
+export function wallLabels(wall: Wall): WallLabelConfig[] {
+  if (Array.isArray(wall.labels) && wall.labels.length > 0) {
+    return wall.labels.map((item) => normalizeWallLabel(item, wall))
+  }
+  if (wall.label) {
+    const single = normalizeWallLabel(wall.label, wall)
+    if (single.enabled || (single.text ?? '').trim()) return [single]
+  }
+  return []
+}
+
+export function wallLabel(wall: Wall, labelId?: string | null): WallLabelConfig {
+  const all = wallLabels(wall)
+  if (labelId) {
+    const found = all.find((item) => item.id === labelId)
+    if (found) return found
+  }
+  const active = all.find((item) => item.enabled && (item.text ?? '').trim())
+  if (active) return active
+  if (all[0]) return all[0]
   return normalizeWallLabel(wall.label, wall)
 }
 
 export function wallHasLabel(wall: Wall): boolean {
-  const label = wallLabel(wall)
-  return label.enabled === true && (label.text ?? '').trim().length > 0
+  return wallLabels(wall).some(
+    (label) => label.enabled === true && (label.text ?? '').trim().length > 0,
+  )
+}
+
+/** Sync: `labels` kanonisch, `label` = erste Schrift (Alt-Code/Toolbar). */
+export function withWallLabels(wall: Wall, labels: WallLabelConfig[]): Wall {
+  const normalized = labels.map((item) => normalizeWallLabel(item, wall))
+  return {
+    ...wall,
+    labels: normalized,
+    label: normalized[0] ?? { ...NEUTRAL_WALL_LABEL, id: createId() },
+  }
+}
+
+export function findWallLabel(wall: Wall, labelId: string): WallLabelConfig | undefined {
+  return wallLabels(wall).find((item) => item.id === labelId)
+}
+
+/**
+ * Synthetische Öffnung für Hilfslinien/Abstände beim Schrift-Verschieben
+ * (Anker + ungefähre Textbreite, damit Kanten/Mitte wie bei Fenstern snappen).
+ */
+export function labelAsGuideOpening(wall: Wall, labelId?: string | null): Opening | null {
+  if (!wallHasLabel(wall)) return null
+  const label = wallLabel(wall, labelId)
+  if (!label.enabled || !(label.text ?? '').trim()) return null
+  const text = (label.text ?? '').trim()
+  const heightCm = clampHeightCm(label.heightCm)
+  const width = Math.max(heightCm, Math.round(text.length * heightCm * 0.55))
+  const anchorX = label.x ?? wall.width / 2
+  const align = label.align ?? 'center'
+  let x = anchorX
+  if (align === 'center') x -= width / 2
+  else if (align === 'right') x -= width
+  return {
+    id: label.id ? `__wall_label__${label.id}` : '__wall_label__',
+    type: 'window',
+    x: Math.max(0, Math.min(wall.width - width, x)),
+    y: Math.max(0, Math.min(wall.height - heightCm, label.y ?? 0)),
+    width,
+    height: heightCm,
+  }
 }
 
 /** Anker auf der geschlossenen Wandfläche (nicht in Tür/Fenster, oberhalb Sockel). */
@@ -302,6 +376,7 @@ export function updateWallLabel(
   state: FacadeState,
   wallIds: string[],
   patch: Partial<WallLabelConfig>,
+  labelId?: string | null,
 ): FacadeState {
   const ids = new Set(wallIds)
   return {
@@ -310,10 +385,86 @@ export function updateWallLabel(
       ...building,
       walls: building.walls.map((wall) => {
         if (!ids.has(wall.id)) return wall
-        return {
-          ...wall,
-          label: normalizeWallLabel({ ...wallLabel(wall), ...patch }, wall),
+        const existing = wallLabels(wall)
+        if (existing.length === 0) {
+          return withWallLabels(wall, [
+            normalizeWallLabel(
+              { ...NEUTRAL_WALL_LABEL, ...patch, enabled: patch.enabled ?? true },
+              wall,
+            ),
+          ])
         }
+        const targetId = labelId ?? existing[0]?.id
+        const next = existing.map((item) =>
+          item.id === targetId ? normalizeWallLabel({ ...item, ...patch }, wall) : item,
+        )
+        return withWallLabels(wall, next)
+      }),
+    })),
+  }
+}
+
+/** Fügt eine Schrift hinzu (Kopie / Paste); versetzt Anker, wenn schon Schriften da sind. */
+export function addWallLabel(
+  state: FacadeState,
+  wallId: string,
+  source: Partial<WallLabelConfig>,
+  opts?: { at?: { x: number; y: number } },
+): FacadeState {
+  return {
+    ...state,
+    buildings: state.buildings.map((building) => ({
+      ...building,
+      walls: building.walls.map((wall) => {
+        if (wall.id !== wallId) return wall
+        const existing = wallLabels(wall)
+        let x = opts?.at?.x
+        let y = opts?.at?.y
+        if (x === undefined || y === undefined) {
+          const base = normalizeWallLabel({ ...source, enabled: true }, wall)
+          x = base.x ?? wall.width / 2
+          y = base.y ?? wall.height / 2
+          if (existing.length > 0) {
+            x = Math.min(wall.width, x + WALL_LABEL_PASTE_OFFSET)
+            y = Math.max(0, y - WALL_LABEL_PASTE_OFFSET)
+          }
+        }
+        const added = normalizeWallLabel(
+          {
+            ...source,
+            id: createId(),
+            enabled: true,
+            x,
+            y,
+          },
+          wall,
+        )
+        return withWallLabels(wall, [...existing, added])
+      }),
+    })),
+  }
+}
+
+export function removeWallLabel(
+  state: FacadeState,
+  wallId: string,
+  labelId?: string | null,
+): FacadeState {
+  return {
+    ...state,
+    buildings: state.buildings.map((building) => ({
+      ...building,
+      walls: building.walls.map((wall) => {
+        if (wall.id !== wallId) return wall
+        const existing = wallLabels(wall)
+        if (existing.length === 0) return wall
+        if (!labelId || existing.length === 1) {
+          return withWallLabels(wall, [])
+        }
+        return withWallLabels(
+          wall,
+          existing.filter((item) => item.id !== labelId),
+        )
       }),
     })),
   }
@@ -325,7 +476,7 @@ function stateWithoutWallLabels(state: FacadeState): unknown {
     buildings: state.buildings.map((building) => ({
       ...building,
       walls: building.walls.map((wall) => {
-        const { label: _label, ...rest } = wall
+        const { label: _label, labels: _labels, ...rest } = wall
         return rest
       }),
     })),

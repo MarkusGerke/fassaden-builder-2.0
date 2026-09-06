@@ -2,7 +2,7 @@
  * Erker als Wandsegment einsetzen und entlang der Fassade verschieben.
  * Doku: docs/bay-windows.md
  */
-import type { FacadeState, Wall } from '../types/facade'
+import type { FacadeState, Opening, Wall } from '../types/facade'
 import { createId } from '../utils/id'
 import { findBuildingForWall, updateBuilding } from '../utils/buildings'
 import { BAY_SLIDE_STEP_CM, STUDIO_WALL_WIDTH_STEP } from './constants'
@@ -80,6 +80,139 @@ export function bayHostWall(walls: Wall[], seedId: string): Wall | null {
 
 export function bayMemberIds(walls: Wall[], seedId: string): string[] | null {
   return bayWallSelectionIds(walls, seedId)
+}
+
+/**
+ * Aktuell gespeicherte Verlängerung nach unten (cm) für die Erker-Gruppe des Seeds.
+ */
+export function bayDropCm(walls: Wall[], seedId: string): number {
+  const host = bayHostWall(walls, seedId)
+  const drop = host?.bayWindow?.dropCm
+  return typeof drop === 'number' && Number.isFinite(drop) ? Math.max(0, drop) : 0
+}
+
+/**
+ * Freiraum unter dem Erker-Fuß bis zur nächsten Wandoberkante darunter (cm).
+ * `Infinity`, wenn darunter nichts ist (z. B. EG über dem Boden).
+ */
+export function bayDropClearanceCm(walls: Wall[], seedId: string): number {
+  const host = bayHostWall(walls, seedId)
+  if (!host) return 0
+  const memberIds = new Set(bayMemberIds(walls, seedId) ?? [host.id])
+  const members = walls.filter((w) => memberIds.has(w.id))
+  if (members.length === 0) return 0
+  const foot = Math.min(...members.map((w) => w.y ?? 0))
+  let maxBelowTop = -Infinity
+  for (const other of walls) {
+    if (memberIds.has(other.id) || other.hidden) continue
+    const top = (other.y ?? 0) + other.height
+    if (top > foot + 0.5) continue
+    maxBelowTop = Math.max(maxBelowTop, top)
+  }
+  if (!Number.isFinite(maxBelowTop)) return Number.POSITIVE_INFINITY
+  return Math.max(0, foot - maxBelowTop)
+}
+
+/** Maximal erlaubter Drop-Zielwert (aktueller Drop + Freiraum darunter). */
+export function bayDropMaxCm(walls: Wall[], seedId: string): number {
+  const current = bayDropCm(walls, seedId)
+  const clearance = bayDropClearanceCm(walls, seedId)
+  if (!Number.isFinite(clearance)) return Number.POSITIVE_INFINITY
+  return Math.max(0, current + clearance)
+}
+
+/**
+ * Entfernt Erker-Drop von Geschoss-Klonen: Höhe/Öffnungen/Schrift zurück auf Etagenmaß,
+ * `dropCm: 0`. Quelle bleibt unverändert; Klone stehen immer auf der Etage ohne Rock.
+ */
+export function stripBayDropFromStoreyClone(source: Wall, clone: Wall, dropCm: number): Wall {
+  const drop = Math.max(0, Math.round(dropCm))
+  if (drop <= 0) {
+    if (!clone.bayWindow) return clone
+    return {
+      ...clone,
+      bayWindow: { ...clone.bayWindow, dropCm: 0 },
+    }
+  }
+  const openings = clone.openings.map((o) => ({
+    ...o,
+    y: Math.max(0, (o.y ?? 0) - drop),
+  }))
+  let label = clone.label
+  if (label && typeof label.y === 'number') {
+    label = { ...label, y: Math.max(0, label.y - drop) }
+  }
+  const labels = clone.labels?.map((item) =>
+    typeof item.y === 'number' ? { ...item, y: Math.max(0, item.y - drop) } : { ...item },
+  )
+  let bayWindow = clone.bayWindow
+  if (bayWindow) {
+    bayWindow = { ...bayWindow, dropCm: 0 }
+  }
+  const next: Wall = {
+    ...clone,
+    height: Math.max(1, clone.height - drop),
+    openings,
+    label,
+    labels,
+    bayWindow,
+  }
+  return isStudioWall(next) ? normalizeStudioWall(next, { keepOpenings: true }) : next
+}
+
+/**
+ * Erker nach unten verlängern (MVP, item 14): Oberkante bleibt fix, der Fuß aller
+ * Erker-Wände (Front/Schenkel/Host) wandert um `dropCm` nach unten.
+ * `dropCm` ist der Zielwert (absolut, ≥ 0); die Differenz zum gespeicherten Wert wird angewandt.
+ * Nur soweit Freiraum darunter (`bayDropClearanceCm`); sonst wird geklemmt.
+ * Öffnungen/Schrift bleiben auf gleicher Welthöhe (lokales `y` wächst mit dem Delta).
+ * Sockel und Paneele starten lokal bei `dropCm` (roher Wandblock darunter).
+ */
+export function applyBayDrop(
+  state: FacadeState,
+  seedId: string,
+  dropCm: number,
+): FacadeState | null {
+  const building = findBuildingForWall(state, seedId)
+  if (!building) return null
+  const host = bayHostWall(building.walls, seedId)
+  if (!host?.bayWindow) return null
+  const memberIds = new Set(bayMemberIds(building.walls, seedId) ?? [host.id])
+  const maxDrop = bayDropMaxCm(building.walls, seedId)
+  const target = Math.max(
+    0,
+    Math.round(Number.isFinite(maxDrop) ? Math.min(dropCm, maxDrop) : dropCm),
+  )
+  const current = bayDropCm(building.walls, seedId)
+  const delta = target - current
+  if (delta === 0) return state
+
+  const nextWalls = building.walls.map((wall) => {
+    if (!memberIds.has(wall.id)) return wall
+    const newY = (wall.y ?? 0) - delta
+    const newH = Math.max(1, (wall.height ?? 0) + delta)
+    const openings = wall.openings.map((o) => ({ ...o, y: (o.y ?? 0) + delta }))
+    let label = wall.label
+    if (label && typeof label.y === 'number') {
+      label = { ...label, y: label.y + delta }
+    }
+    const labels = wall.labels?.map((item) =>
+      typeof item.y === 'number' ? { ...item, y: item.y + delta } : { ...item },
+    )
+    const next: Wall = normalizeStudioWall(
+      { ...cloneWall(wall), y: newY, height: newH, openings, label, labels },
+      { keepOpenings: true },
+    )
+    if (wall.id === host.id && next.bayWindow) {
+      next.bayWindow = { ...next.bayWindow, dropCm: target }
+    }
+    return next
+  })
+
+  let next = updateBuilding(state, building.id, { walls: nextWalls })
+  next = syncFloorPlansFromWalls(next)
+  next = finalizeStudioGeometry(next)
+  return next
 }
 
 /**
@@ -405,6 +538,53 @@ export function canSlideBaySegment(walls: Wall[], seedWallId: string): boolean {
   return resolveBaySlideContext(walls, seedWallId) != null
 }
 
+/**
+ * Synthetische Wand + Öffnung für Hilfslinien/Abstände beim Erker-Gleiten —
+ * wie eine Wandöffnung auf der durchgehenden Fassade (Rest links | Mund | Rest rechts).
+ */
+export function buildBaySlideGuideModel(
+  walls: Wall[],
+  seedWallId: string,
+): { wall: Wall; opening: Opening; peers: Wall[] } | null {
+  const ctx = resolveBaySlideContext(walls, seedWallId)
+  if (!ctx) return null
+  const left = walls.find((w) => w.id === ctx.leftRemnantId)
+  const right = walls.find((w) => w.id === ctx.rightRemnantId)
+  const host = bayHostWall(walls, seedWallId)
+  if (!left || !right || !host?.bayWindow || !isStudioWall(left) || !isStudioWall(right)) return null
+  const mouth = Math.hypot(
+    wallStartPoint(right).x - wallEndPoint(left).x,
+    wallStartPoint(right).z - wallEndPoint(left).z,
+  )
+  if (mouth < 1) return null
+  const openingId = '__bay_slide__'
+  const opening: Opening = {
+    id: openingId,
+    type: 'window',
+    x: left.width,
+    y: 0,
+    width: mouth,
+    height: left.height,
+  }
+  const remappedRight = right.openings.map((o) => ({
+    ...o,
+    x: o.x + left.width + mouth,
+  }))
+  const wall: Wall = {
+    ...left,
+    width: left.width + mouth + right.width,
+    openings: [...left.openings, opening, ...remappedRight],
+  }
+  const skip = new Set([left.id, right.id, ...ctx.memberIds])
+  const peers = walls.filter(
+    (w) =>
+      isStudioWall(w) &&
+      !skip.has(w.id) &&
+      Math.abs((w.y ?? 0) - (left.y ?? 0)) < 1,
+  )
+  return { wall, opening, peers: [wall, ...peers] }
+}
+
 /** Projektion eines Welt-Deltas auf die Fassaden-Richtung des Erkers. */
 export function baySlideDeltaFromWorldMove(
   walls: Wall[],
@@ -476,9 +656,28 @@ export function flattenBayToFlatWall(
   if (width < EPS) return null
 
   const flatId = createId()
+  const drop = bayDropCm(building.walls, host.id)
+  // Flat-Wand auf Etagenfuß/-höhe (ohne Rock), sonst falscher floorIndex und Deckenloch.
+  const remnant = building.walls.find(
+    (w) =>
+      !memberSet.has(w.id) &&
+      isStudioWall(w) &&
+      !w.bayParentId &&
+      !w.bayRole &&
+      !w.bayWindow &&
+      Math.abs((w.y ?? 0) + w.height - ((styleFrom.y ?? 0) + styleFrom.height)) < 2,
+  )
+  const storeyY = remnant?.y ?? (styleFrom.y ?? 0) + drop
+  const storeyH = remnant?.height ?? Math.max(1, styleFrom.height - drop)
+  const storeyIndex =
+    typeof host.storeyIndex === 'number' && Number.isFinite(host.storeyIndex)
+      ? Math.max(0, Math.round(host.storeyIndex))
+      : typeof styleFrom.storeyIndex === 'number' && Number.isFinite(styleFrom.storeyIndex)
+        ? Math.max(0, Math.round(styleFrom.storeyIndex))
+        : undefined
   const flat = normalizeStudioWall(
     {
-      ...createStudioWall(leftAttach.x, styleFrom.y),
+      ...createStudioWall(leftAttach.x, storeyY),
       id: flatId,
       originX: leftAttach.x,
       originZ: leftAttach.z,
@@ -486,7 +685,7 @@ export function flattenBayToFlatWall(
       yawDeg: facadeYaw,
       panelFlip: styleFrom.panelFlip ?? true,
       width,
-      height: styleFrom.height,
+      height: storeyH,
       depth: styleFrom.depth,
       wallColor: styleFrom.wallColor,
       interiorColor: styleFrom.interiorColor,
@@ -496,6 +695,7 @@ export function flattenBayToFlatWall(
       cornice: styleFrom.cornice ? { ...styleFrom.cornice } : undefined,
       planLinked: true,
       openings: [],
+      ...(storeyIndex != null ? { storeyIndex } : {}),
     },
     { keepOpenings: true },
   )

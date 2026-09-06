@@ -189,7 +189,11 @@ const walls = floors.flatMap((plan, i) =>
 
 ### Etage hinzufügen / duplizieren
 
-**`duplicateStorey` / `insertStoreyAbove` (v0.7.240):** Klont Wände einer Etage mit `y += wallHeight`. Dialog `#storey-copy-dialog`: Checkboxen, **Auswahl speichern** oder **Nur Grundriss übernehmen**. Hilfslinien beim Zeichnen: `collectPlanDrawGuides` (orangene Linien bei bündigem Cursor).
+**`duplicateStorey` / `insertStoreyAbove` (v0.7.240 / v2.0.237):** Klont Wände einer Etage mit `y = source.y + source.height`. Setzt explizites `Wall.storeyIndex` (Quelle+1, höhere +1), damit `floorIndex` nicht mehr allein von `round(y / wallHeight)` abhängt. Dialog `#storey-copy-dialog`: Checkboxen, **Auswahl speichern** oder **Nur Grundriss übernehmen**. Hilfslinien beim Zeichnen: `collectPlanDrawGuides` (orangene Linien bei bündigem Cursor). Erker-Drop der Quelle wird an Klonen gestrippt.
+
+### Etage löschen (`removeStorey`, v2.0.236)
+
+Entfernt Wände der Etage und senkt **nur höhere** Etagen um die **echte** Höhe der gelöschten Wände (`max(top) − min(foot)`). Wände mit `floorIndex < storeyIndex` behalten Fuß und Höhe unverändert. Duplizieren darf Quell-Geschosse ebenfalls nicht verändern.
 
 ---
 
@@ -238,6 +242,27 @@ Im `navigate`-Modus können Öffnungen per Drag entlang der Wand verschoben werd
 ---
 
 ## Fallstricke
+
+### Wände ab 2. OG nicht anwählbar (v2.0.232)
+
+**Symptom:** EG und 1. OG lassen sich in 3D anklicken; höhere Geschosse wirken „tot“ (Klick wählt nichts Nützliches / nur Decke).
+
+**Hypothesen / Versuche (verworfen):**
+- `canEditWall` / Etagen-Filter — prüft nur aktives Haus, kein Floor-Cutoff.
+- LOD/Far-Hull blendet höhere Etagen aus — LOD ist gebäudeweit, nicht etagenweise.
+- Nur `behindSlack` vergrößern — maskiert Okkluder, heilt Priorität nicht.
+
+**Ursache:** `pickFromEvent` gab Decken-Hits **vor** Wand/Paneel zurück. Unsichtbare `sunCeilingOccluder` (`indoorRole: 'ceiling'`, Layer 0) und Geschossplatten an der Fassadenkante lagen oft gleich nah wie die Wand — besonders mit mehr Etagenplatten. Sichtbare Decken lagen nur auf Layer 1 und waren für den Default-Raycaster (nur Layer 0) unsichtbar; die Okkluder übernahmen die „Decken“wahl.
+
+**Lösung:** Okkluder/`openingShadowTunnel` ohne Raycast; Raycaster Layer 0+1; Decke nur wenn klar näher als Fassaden-Mesh (`facadePick.ts`). Nicht rückgängig machen.
+
+### Wandwahl kurz orange, dann abgewählt (v2.0.236)
+
+**Symptom:** Klick auf Wand der 3. Etage (oder höher) markiert kurz, Auswahl springt weg.
+
+**Zusätzlich zu v2.0.232:** Auf oberen Etagen oft kein Bodenraster-Drag → Auswahl nur auf `pointerdown`. `pointerup` pickte erneut; Deckenkante / Leertreffer → `selectCeiling` / `selectWall(null)`.
+
+**Lösung:** `pointerDownDidSelect` — bei reiner Auswahl ohne Drag kein Re-Pick auf `pointerup`. `ceilingBeatsFacadeMesh` eps 12 beibehalten.
 
 ### Decken/Böden/Dach fehlen nach Reload (v2.0.199)
 

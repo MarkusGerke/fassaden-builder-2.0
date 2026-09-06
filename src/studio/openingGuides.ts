@@ -433,10 +433,6 @@ export function computeOpeningDistanceLines(
     })
   }
 
-  // #region agent log
-  fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c6b426'},body:JSON.stringify({sessionId:'c6b426',runId:'pre-fix',hypothesisId:'D',location:'openingGuides.ts:computeOpeningDistanceLines',message:'distance edges',data:{openingId:active.id,wallId:wall.id,local:{x:active.x,w:active.width,y:active.y,h:active.height},edges:a,activeLeftGlobal,activeRightGlobal,nearestLeftGlobal,nearestRightGlobal,leftDist,rightDist,bottomDist,topDist,labels:lines.map((l)=>({dir:l.direction,cm:l.distanceCm,fromX:l.fromX,toX:l.toX,fromY:l.fromY,toY:l.toY,space:l.space})),wallW:wall.width},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
-
   return lines
 }
 
@@ -453,4 +449,53 @@ export function computeOpeningDistanceLinesForRefs(
     byWall.set(wall.id, computeOpeningDistanceLines(wall, opening, walls))
   }
   return byWall
+}
+
+/**
+ * Beim Wand-Verschieben: Abstand der sichtbaren Ecken zur nächsten Öffnung
+ * (links Wandkante→Öffnung, rechts Öffnung→Wandkante).
+ */
+export function computeWallCornerOpeningDistanceLines(wall: Wall): OpeningDistanceLine[] {
+  const visible = wall.openings.filter((o) => !o.hidden)
+  if (visible.length === 0) return []
+  const lines: OpeningDistanceLine[] = []
+
+  let nearestLeft = visible[0]!
+  let nearestRight = visible[0]!
+  for (const o of visible) {
+    if (o.x < nearestLeft.x) nearestLeft = o
+    if (o.x + o.width > nearestRight.x + nearestRight.width) nearestRight = o
+  }
+
+  const leftDist = nearestLeft.x
+  if (leftDist >= 1) {
+    const midY = nearestLeft.y + nearestLeft.height / 2
+    pushDistanceLine(lines, {
+      direction: 'left',
+      distanceCm: Math.round(leftDist),
+      wallId: wall.id,
+      fromX: 0,
+      fromY: midY,
+      toX: nearestLeft.x,
+      toY: midY,
+      space: 'wallLocal',
+    })
+  }
+
+  const rightDist = wall.width - (nearestRight.x + nearestRight.width)
+  if (rightDist >= 1) {
+    const midY = nearestRight.y + nearestRight.height / 2
+    pushDistanceLine(lines, {
+      direction: 'right',
+      distanceCm: Math.round(rightDist),
+      wallId: wall.id,
+      fromX: nearestRight.x + nearestRight.width,
+      fromY: midY,
+      toX: wall.width,
+      toY: midY,
+      space: 'wallLocal',
+    })
+  }
+
+  return lines
 }

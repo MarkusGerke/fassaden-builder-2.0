@@ -32,8 +32,8 @@ export const PLAN_DIAGONAL_STEP = STUDIO_WALL_WIDTH_STEP * Math.SQRT2
 export const STUDIO_WALL_HEIGHT_STEP = 16
 /** Boden-Raster beim Wand-Greifer = Breiten-Schritt. */
 export const WALL_RESIZE_FLOOR_STEP = STUDIO_WALL_WIDTH_STEP
-/** Erker entlang der Fassade gleiten: Schrittweite (Reststücke tauschen Länge in 24er-Schritten). */
-export const BAY_SLIDE_STEP_CM = 24
+/** Erker entlang der Fassade gleiten: Schrittweite (Reststücke tauschen Länge). */
+export const BAY_SLIDE_STEP_CM = 8
 /** Mindest-Breite/Höhe einer Studio-Wand (cm) = ein Greifer-Schritt. */
 export const STUDIO_MIN_SIZE = STUDIO_WALL_WIDTH_STEP
 /** Abstand Kante-zu-Kante beim Duplizieren von Wänden (absolut, nicht Plan-Zelle). */

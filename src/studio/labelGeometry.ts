@@ -1,12 +1,13 @@
 import * as THREE from 'three'
 import { FontLoader, type Font } from 'three/addons/loaders/FontLoader.js'
 import { TextGeometry } from 'three/addons/geometries/TextGeometry.js'
-import type { Wall } from '../types/facade'
+import type { Wall, WallLabelConfig } from '../types/facade'
 import {
   normalizeWallLabel,
   type WallLabelAlign,
   wallLabel,
   wallHasLabel,
+  wallLabels,
   topBareBandForWall,
 } from '../utils/wallLabel'
 import { applySurfaceFinish } from '../utils/threeColors'
@@ -282,8 +283,11 @@ export interface WallLabelMeshSpec {
   rotationY: number
 }
 
-export function createWallLabelMeshSpec(wall: Wall): WallLabelMeshSpec | null {
-  const label = normalizeWallLabel(wall.label, wall)
+export function createWallLabelMeshSpec(
+  wall: Wall,
+  labelRaw?: WallLabelConfig | null,
+): WallLabelMeshSpec | null {
+  const label = normalizeWallLabel(labelRaw ?? wallLabel(wall), wall)
   const text = (label.text ?? '').trim()
   if (!label.enabled || !text) return null
 
@@ -380,19 +384,16 @@ export function createWallLabelMeshSpec(wall: Wall): WallLabelMeshSpec | null {
 }
 
 export function wallLabelNeedsFont(wall: Wall): boolean {
-  if (!wallHasLabel(wall)) return false
-  return wallLabel(wall).depth === 'extruded'
+  return wallLabels(wall).some((label) => label.enabled && (label.text ?? '').trim() && label.depth === 'extruded')
 }
 
 export function wallLabelNeedsFlatFont(wall: Wall): boolean {
-  if (!wallHasLabel(wall)) return false
-  return wallLabel(wall).depth !== 'extruded'
+  return wallLabels(wall).some((label) => label.enabled && (label.text ?? '').trim() && label.depth !== 'extruded')
 }
 
 /** Opake 3D-Schrift wirft Schatten — Fassade muss dann empfangen. */
 export function wallLabelCastsShadow(wall: Wall): boolean {
-  if (!wallHasLabel(wall)) return false
-  return wallLabel(wall).depth === 'extruded'
+  return wallLabels(wall).some((label) => label.enabled && (label.text ?? '').trim() && label.depth === 'extruded')
 }
 
 export function disposeWallLabelTextureCache() {

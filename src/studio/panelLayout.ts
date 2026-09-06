@@ -1,5 +1,6 @@
 import type { EndBossPattern, Opening, StudioPanelConfig, StudioPanelPattern, Wall } from '../types/facade'
 import { DEFAULT_STUDIO_PANEL, panelKindForPattern, STUDIO_MASONRY, STUDIO_TILE, clampHideRows, normalizeStudioPanel, studioPlinthActive } from './constants'
+import { bayWallSkirtDropCm } from './bayWindow'
 import {
   findCollinearDockWall,
   panelMiterEnds,
@@ -1241,12 +1242,15 @@ export function visiblePanelRowRange(
 export function visiblePanelRowRect(
   wall: Wall,
   panel: StudioPanelConfig,
+  allWalls: Wall[] = [],
 ): { x: number; y: number; width: number; height: number } | null {
   if (!wall || panel.enabled === false || panel.pattern === 'none') return null
   panel = normalizeStudioPanel(panel)
   const { firstVisibleRow, lastVisibleRow, rowCuts } = visiblePanelRowRange(wall.height, panel)
   if (firstVisibleRow > lastVisibleRow) return null
-  const y = rowCuts[firstVisibleRow] ?? 0
+  const skirt = bayWallSkirtDropCm(wall, allWalls)
+  let y = rowCuts[firstVisibleRow] ?? 0
+  y = Math.max(y, skirt)
   const yEnd = rowCuts[lastVisibleRow + 1] ?? wall.height
   const height = yEnd - y
   if (height <= MIN_TILE) return null
@@ -1378,6 +1382,7 @@ function layoutPanelTilesForPanel(
       panelWidth,
     ),
     panel,
+    bayWallSkirtDropCm(wall, allWalls),
   )
 }
 
@@ -1401,26 +1406,30 @@ function tileOverlapsJambHoles(
 type JambHole = { x: number; y: number; width: number; height: number }
 
 /**
- * Sockelzone: Steine ganz unter der Sockeloberkante entfernen.
- * Steine, die den Sockel überlappen (typisch bei Paneelhöhe > Sockelhöhe), auf die
- * Oberkante kürzen — nicht die ganze Reihe verwerfen (sonst Lücke, v2.0.200).
+ * Sockelzone / Erker-Rock: Steine unter der Schnittkante entfernen bzw. kürzen.
+ * Ohne Sockel schneidet `skirtDrop` allein (roher Wandblock darunter bleibt in Wandfarbe).
+ * Mit Sockel: Schnitt = Etagenfuß + Sockelhöhe.
  * Der Sockelkörper liegt vor den Paneelen (Tiefe / renderOrder).
  */
-export function clipTilesAbovePlinth(tiles: PanelTile[], panel: StudioPanelConfig): PanelTile[] {
-  if (!studioPlinthActive(panel)) return tiles
-  const plinthH = panel.plinthHeight ?? 0
-  if (plinthH < 0.5) return tiles
+export function clipTilesAbovePlinth(
+  tiles: PanelTile[],
+  panel: StudioPanelConfig,
+  skirtDrop = 0,
+): PanelTile[] {
+  const plinthH = studioPlinthActive(panel) ? (panel.plinthHeight ?? 0) : 0
+  const cutY = skirtDrop + (plinthH >= 0.5 ? plinthH : 0)
+  if (cutY < 0.5) return tiles
   const out: PanelTile[] = []
   for (const tile of tiles) {
     const top = tile.y + tile.height
-    if (top <= plinthH + CLIP_EPS) continue
-    if (tile.y >= plinthH - CLIP_EPS) {
+    if (top <= cutY + CLIP_EPS) continue
+    if (tile.y >= cutY - CLIP_EPS) {
       out.push(tile)
       continue
     }
-    const height = top - plinthH
+    const height = top - cutY
     if (height <= MIN_TILE) continue
-    out.push({ ...tile, y: plinthH, height })
+    out.push({ ...tile, y: cutY, height })
   }
   return out
 }

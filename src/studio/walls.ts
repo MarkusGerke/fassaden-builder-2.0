@@ -318,10 +318,17 @@ export function stretchSingleStudioWall(wall: Wall, side: 'start' | 'end', delta
     updated.originZ = (updated.originZ ?? 0) + deltaVec.z
     updated.x = updated.originX ?? updated.x
     updated.width += deltaCm
+    // Öffnungen und Schrift bleiben weltfest (lokales x wächst mit dem Start).
     updated.openings = updated.openings.map((opening) => ({
       ...opening,
       x: opening.x + deltaCm,
     }))
+    if (updated.label && updated.label.x != null) {
+      updated = {
+        ...updated,
+        label: { ...updated.label, x: updated.label.x + deltaCm },
+      }
+    }
   } else {
     updated.width += deltaCm
   }
