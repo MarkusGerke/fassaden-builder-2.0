@@ -16,8 +16,17 @@ export const PCSS_NEAR_PLANE = 0.002
  * Penumbra-Verstärker für Ortho-Shadow-Maps (statt Perspektiv-`NEAR/z`).
  * Ohne ihn ist der Weichheit-Slider praktisch tot; zu groß (24+) wirkt fransig.
  * Softness-Default 2,5 hält den Kontakt ruhig — Slider 0,5…8 steuert die Breite.
+ * v2.0.258: wieder 8 (v2.0.257: 10 wusch Kontakt unter Fensterbänken aus).
  */
 export const PCSS_PENUMBRA_SCALE = 8
+
+/**
+ * Obergrenze der Empfänger-Tiefensteigung (Shadow-Tiefe pro Shadow-UV, ≈ tan des Winkels
+ * Licht↔Fläche). Darüber (Silhouetten, Ableitung über zwei Flächen) wird gekappt,
+ * sonst Lichtlecks an Kontaktkanten. Siehe `pcssReceiverPlaneSlope`.
+ * v2.0.258: 6 (zuvor 12) — weniger Peter-Panning unter Sohlbank/Laibung.
+ */
+export const PCSS_PLANE_SLOPE_MAX = 6
 
 /** Mehr Samples = weniger sichtbares Poisson-Raster in der Penumbra (Three.js-Beispiel: 17). */
 export const PCSS_NUM_SAMPLES = 32
@@ -62,20 +71,42 @@ float pcssPenumbraSize( const in float zReceiver, const in float zBlocker ) {
 	return ( zReceiver - zBlocker ) / zBlocker;
 }
 
-float pcssFindBlocker( sampler2D shadowMap, const in vec2 uv, const in float zReceiver, const in mat2 rot ) {
+/**
+ * Receiver-Plane-Depth-Bias: Tiefensteigung der Empfängerfläche im Shadow-UV-Raum
+ * (∂z/∂u, ∂z/∂v) aus Screen-Ableitungen. Jeder Tap vergleicht gegen die Ebene am Tap-Ort,
+ * nicht gegen die Tiefe des Fragmentmittelpunkts — sonst Selbstabschattung (Schraffur)
+ * auf horizontalen/schräg beleuchteten Flächen (Gesims-Oberseite, Sockel, Schwelle).
+ */
+vec2 pcssReceiverPlaneSlope( const in vec2 uv, const in float z ) {
+	vec2 duvdx = dFdx( uv );
+	vec2 duvdy = dFdy( uv );
+	float dzdx = dFdx( z );
+	float dzdy = dFdy( z );
+	float det = duvdx.x * duvdy.y - duvdx.y * duvdy.x;
+	if ( abs( det ) < 1e-14 ) return vec2( 0.0 );
+	vec2 slope = vec2( dzdx * duvdy.y - dzdy * duvdx.y, dzdy * duvdx.x - dzdx * duvdy.x ) / det;
+	// Silhouetten (Ableitung über zwei Flächen) begrenzen — sonst Lichtlecks an Kanten.
+	return clamp( slope, vec2( -PCSS_PLANE_SLOPE_MAX ), vec2( PCSS_PLANE_SLOPE_MAX ) );
+}
+
+float pcssFindBlocker( sampler2D shadowMap, const in vec2 uv, const in float zReceiver, const in mat2 rot, const in vec2 slope ) {
 	// Gleiche Skala wie der Filter — sonst weiche Umbra innen, harte Texel-Kante außen.
 	float searchRadius = pcssLightSizeUv * PCSS_PENUMBRA_SCALE * ( zReceiver - PCSS_NEAR_PLANE ) / zReceiver;
 	float blockerDepthSum = 0.0;
 	float numBlockers = 0.0;
 	float depth;
 	float isBlocker;
+	float zPlane;
+	vec2 offset;
 	#pragma unroll_loop_start
 	for ( int i = 0; i < ${PCSS_NUM_SAMPLES_INTERNAL}; i ++ ) {
-		depth = texture2D( shadowMap, uv + ( rot * pcssDisk[ i ] ) * searchRadius ).r;
+		offset = ( rot * pcssDisk[ i ] ) * searchRadius;
+		zPlane = zReceiver + dot( slope, offset );
+		depth = texture2D( shadowMap, uv + offset ).r;
 		#ifdef USE_REVERSED_DEPTH_BUFFER
-		isBlocker = step( zReceiver, depth );
+		isBlocker = step( zPlane, depth );
 		#else
-		isBlocker = 1.0 - step( zReceiver, depth );
+		isBlocker = 1.0 - step( zPlane, depth );
 		#endif
 		blockerDepthSum += depth * isBlocker;
 		numBlockers += isBlocker;
@@ -85,39 +116,54 @@ float pcssFindBlocker( sampler2D shadowMap, const in vec2 uv, const in float zRe
 	return blockerDepthSum / numBlockers;
 }
 
-float pcssFilter( sampler2D shadowMap, vec2 uv, float zReceiver, float filterRadius, const in mat2 rot ) {
+float pcssFilter( sampler2D shadowMap, vec2 uv, float zReceiver, float filterRadius, const in mat2 rot, const in vec2 slope ) {
 	float sum = 0.0;
 	float depth;
 	vec2 offset;
+	vec2 offset2;
 	#pragma unroll_loop_start
 	for ( int i = 0; i < ${PCSS_NUM_SAMPLES_INTERNAL}; i ++ ) {
 		offset = ( rot * pcssDisk[ i ] ) * filterRadius;
 		depth = texture2D( shadowMap, uv + offset ).r;
 		#ifdef USE_REVERSED_DEPTH_BUFFER
-		sum += step( depth, zReceiver );
+		sum += step( depth, zReceiver + dot( slope, offset ) );
 		#else
-		sum += step( zReceiver, depth );
+		sum += step( zReceiver + dot( slope, offset ), depth );
 		#endif
-		depth = texture2D( shadowMap, uv - offset.yx ).r;
+		offset2 = - offset.yx;
+		depth = texture2D( shadowMap, uv + offset2 ).r;
 		#ifdef USE_REVERSED_DEPTH_BUFFER
-		sum += step( depth, zReceiver );
+		sum += step( depth, zReceiver + dot( slope, offset2 ) );
 		#else
-		sum += step( zReceiver, depth );
+		sum += step( zReceiver + dot( slope, offset2 ), depth );
 		#endif
 	}
 	#pragma unroll_loop_end
 	return sum / ( 2.0 * float( ${PCSS_NUM_SAMPLES_INTERNAL} ) );
 }
 
-float pcssGetShadow( sampler2D shadowMap, vec4 coords ) {
+/** Hart-Tap am Fragmentzentrum — Kontakt (Fensterbank, Gesims) bleibt dunkel. */
+float pcssHardShadow( sampler2D shadowMap, const in vec2 uv, const in float zReceiver ) {
+	float depth = texture2D( shadowMap, uv ).r;
+	#ifdef USE_REVERSED_DEPTH_BUFFER
+	return step( depth, zReceiver );
+	#else
+	return step( zReceiver, depth );
+	#endif
+}
+
+float pcssGetShadow( sampler2D shadowMap, vec4 coords, const in vec2 slope ) {
 	vec2 uv = coords.xy;
 	float zReceiver = coords.z;
+	// Contact-Hardening: ohne min(hard, soft) wirken dünne Caster (Sohlbank) blass / lückenhaft.
+	float hard = pcssHardShadow( shadowMap, uv, zReceiver );
 	mat2 rot = pcssRotation( uv );
-	float avgBlockerDepth = pcssFindBlocker( shadowMap, uv, zReceiver, rot );
-	if ( avgBlockerDepth == -1.0 ) return 1.0;
+	float avgBlockerDepth = pcssFindBlocker( shadowMap, uv, zReceiver, rot, slope );
+	if ( avgBlockerDepth == -1.0 ) return hard;
 	float penumbraRatio = pcssPenumbraSize( zReceiver, avgBlockerDepth );
 	float filterRadius = penumbraRatio * pcssLightSizeUv * PCSS_PENUMBRA_SCALE;
-	return pcssFilter( shadowMap, uv, zReceiver, filterRadius, rot );
+	float soft = pcssFilter( shadowMap, uv, zReceiver, filterRadius, rot, slope );
+	return min( hard, soft );
 }
 `
 
@@ -130,11 +176,13 @@ const PCSS_BASIC_GET_SHADOW = `#else
 			#else
 				shadowCoord.z += shadowBias;
 			#endif
+			// Ableitungen vor dem Branch (uniformer Kontrollfluss für dFdx/dFdy).
+			vec2 pcssSlope = pcssReceiverPlaneSlope( shadowCoord.xy, shadowCoord.z );
 			bool inFrustum = shadowCoord.x >= 0.0 && shadowCoord.x <= 1.0 && shadowCoord.y >= 0.0 && shadowCoord.y <= 1.0;
 			bool frustumTest = inFrustum && shadowCoord.z <= 1.0;
 			if ( frustumTest ) {
 				// Immer volles PCSS — kein Orbit-1-Tap (wirkte als harter Schatten / Wandfarben-Flash).
-				shadow = pcssGetShadow( shadowMap, shadowCoord );
+				shadow = pcssGetShadow( shadowMap, shadowCoord, pcssSlope );
 			}
 			return mix( 1.0, shadow, shadowIntensity );
 		}
@@ -199,6 +247,7 @@ function buildPcssShadowmapParsFragment(): string {
 uniform float pcssLightSizeUv;
 #define PCSS_NEAR_PLANE ${PCSS_NEAR_PLANE.toFixed(8)}
 #define PCSS_PENUMBRA_SCALE ${PCSS_PENUMBRA_SCALE.toFixed(4)}
+#define PCSS_PLANE_SLOPE_MAX ${PCSS_PLANE_SLOPE_MAX.toFixed(4)}
 `
   let shader = base.replace('#ifdef USE_SHADOWMAP', `#ifdef USE_SHADOWMAP${defines}${PCSS_GLSL_HELPERS}`)
   if (!shader.includes(BASIC_GET_SHADOW_MARKER)) {

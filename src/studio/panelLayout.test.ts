@@ -729,7 +729,7 @@ describe('45° Verband-Ecke 0,5 / 1', () => {
       originZ: 0,
       yawDeg: 0,
       panelFlip: false,
-      miterStart: 40,
+      miterStart: 0,
       miterEnd: -miter,
       panel,
     })
@@ -746,18 +746,19 @@ describe('45° Verband-Ecke 0,5 / 1', () => {
       panel,
     })
     const walls = [a, b]
+    expect(panelMiterEnds(a, walls).end).toBe(true)
+    expect(panelMiterEnds(b, walls).start).toBe(true)
     const endA = courseTiles(layoutPanelTiles(a, panel, walls), 0).at(-1)!
     const startB = courseTiles(layoutPanelTiles(b, panel, walls), 0)[0]!
     const firstA = courseTiles(layoutPanelTiles(a, panel, walls), 0)[0]!
     const near = (w: number, t: number) => Math.abs(w - t) < 8
     const frontEndA = frontTileWidth(a, endA, walls)
     const frontStartB = frontTileWidth(b, startB, walls)
-    const frontFirstA = frontTileWidth(a, firstA, walls)
+    // Freies Start-Ende: bündig an Plan-Kante (kein Keil ohne Paneel-Nachbar).
+    expect(firstA.x).toBeGreaterThanOrEqual(-0.5)
     expect(near(frontEndA, 32) || near(frontEndA, 64)).toBe(true)
     expect(near(frontStartB, 32) || near(frontStartB, 64)).toBe(true)
     expect(Math.abs(frontEndA - frontStartB)).toBeGreaterThan(16)
-    expect(firstA.x).toBeLessThan(-8)
-    expect(near(frontFirstA, 32) || near(frontFirstA, 64)).toBe(true)
   })
 
   it('hält Läuferverband: gerade Lage 1er, versetzte 0,5er — nicht Stapelverband', () => {
@@ -928,7 +929,7 @@ describe('45° Verband-Ecke 0,5 / 1', () => {
     expect(Math.abs(even[1]!.x - odd[1]!.x)).toBeGreaterThan(16)
   })
 
-  it('gehrt die 90°-Kante auch ohne Mauerwerk am Nachbarn — Raster ab x=0 mit 0,5/1', () => {
+  it('ohne Paneel-Fortsetzung am Nachbarn: stumpf an Plan-Kante (kein Keil)', () => {
     const panel = {
       ...DEFAULT_STUDIO_PANEL,
       pattern: 'runningBond' as const,
@@ -977,17 +978,13 @@ describe('45° Verband-Ecke 0,5 / 1', () => {
       panel: { ...panel, pattern: 'none', enabled: false, plinthEnabled: false },
     })
     const walls = [a, b, blank]
-    expect(panelMiterEnds(a, walls).start).toBe(true)
+    // Start: nackte Nachbarwand → stumpf. Ende: Paneel-Nachbar → Gehrung.
+    expect(panelMiterEnds(a, walls).start).toBe(false)
+    expect(panelMiterEnds(a, walls).end).toBe(true)
     const even = courseTiles(layoutPanelTiles(a, panel, walls), 0)
-    const odd = courseTiles(layoutPanelTiles(a, panel, walls), 1)
-    expect(even[0]!.x).toBeLessThan(-8)
-    expect(odd[0]!.x).toBeLessThan(-8)
-    const near = (w: number, t: number) => Math.abs(w - t) < 8
-    const frontEven = frontTileWidth(a, even[0]!, walls)
-    const frontOdd = frontTileWidth(a, odd[0]!, walls)
-    expect(near(frontEven, 64) || near(frontEven, 32)).toBe(true)
-    expect(near(frontOdd, 64) || near(frontOdd, 32)).toBe(true)
-    expect(Math.abs(even[2]!.x - odd[2]!.x)).toBeGreaterThan(8)
+    expect(even[0]!.x).toBeGreaterThanOrEqual(-0.5)
+    const endA = even.at(-1)!
+    expect(endA.x + endA.width).toBeGreaterThan(a.width + 8)
   })
 
   it('hält Paneel-Y-Raster am Wandfuß; überlappende Reihe wird auf Sockel gekürzt (v2.0.200)', () => {

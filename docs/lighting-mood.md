@@ -10,7 +10,7 @@ Außenbeleuchtung in **3D** und **Oben** als Schichtenmodell — näher an reale
 - **Schattenfassade:** kühles Himmelslicht + warmes Bodenreflex-Licht von unten (nicht pechschwarz — gilt tagsüber).
 - **Slider:**
   - **Umgebungslicht** → Himmel-Fill (Hemisphere + SkyLightProbe)
-  - **Schatten-Kontrast** → Licht/Schatten an Fassade und Himmel
+  - **Schatten-Kontrast** → Licht/Schatten an Fassade und Himmel (**0,5…10**, v2.0.256 — höher = dunkler)
   - **Schatten-Weichheit** → PCSS-Randschärfe live (**nur Render**)
   - **Farbtemperatur** → Key-Lichtfarbe (Kelvin; Himmel bleibt physikalisch)
   - **Schatten-Dunkelheit** → aus UI entfernt (Legacy in gespeicherten Projekten)

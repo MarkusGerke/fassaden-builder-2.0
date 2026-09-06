@@ -22,7 +22,10 @@ import {
   panelMiterEnds,
   plinthMiterEnds,
   REVEAL_CLEARANCE_INSET_CM,
+  REVEAL_JAMB_INSET_CM,
   studioClearanceRecessZ,
+  studioOpeningRevealColorSplitZ,
+  studioOpeningRevealInnerZ,
   studioOpeningRevealOuterZ,
   studioPanelFaceLocalZ,
   studioWallOuterLocalZ,
@@ -257,6 +260,50 @@ describe('Bilderrahmen-Gehrung an Abzweig-Wänden', () => {
     expect(gap, `Frontlücke ${gap.toFixed(2)} cm bei ${JSON.stringify({ a, b, miterSrc: src.miterEnd, miterBr: branch.miterStart })}`).toBeLessThan(2)
   })
 
+  it('90° ohne Paneel-Fortsetzung: stumpf an Plan-Kante (kein Keil-Überstand)', () => {
+    const source = {
+      ...createStudioWall(0, 0),
+      id: 'w',
+      width: 192,
+      originX: 0,
+      originZ: 0,
+      yawDeg: 0 as const,
+      buildingId: 'b1',
+      planLinked: true,
+    }
+    let next = finalizeStudioGeometry(
+      attachAngledWallFromEnd(stateFromWall(source), 'w', 'end', 90, 96, 'branch'),
+    )
+    next = {
+      ...next,
+      buildings: next.buildings.map((b) => ({
+        ...b,
+        walls: b.walls.map((wall) =>
+          wall.id === 'branch'
+            ? {
+                ...wall,
+                panel: {
+                  ...wall.panel!,
+                  pattern: 'none' as const,
+                  enabled: false,
+                  plinthHeight: 0,
+                },
+              }
+            : wall,
+        ),
+      })),
+    }
+    next = finalizeStudioGeometry(next)
+    const walls = next.buildings[0]!.walls
+    const src = walls.find((item) => item.id === 'w')!
+    expect(Math.abs(src.miterEnd ?? 0)).toBeGreaterThan(20) // Wandkörper weiter geghert
+    expect(panelMiterEnds(src, walls).end).toBe(false)
+    expect(plinthMiterEnds(src, walls).end).toBe(false)
+    const tiles = layoutPanelTiles(src, src.panel!, walls)
+    const right = Math.max(...tiles.map((t) => t.x + t.width))
+    expect(right, `Paneel-Überstand über Plan ${right - src.width}`).toBeLessThanOrEqual(src.width + 0.5)
+  })
+
   it('90° links: Paneel-Fronten treffen sich an der Ecke', () => {
     const source = { ...createStudioWall(0, 0), id: 'w', width: 192, originX: 0, originZ: 0, yawDeg: 0 as const, buildingId: 'b1', planLinked: true }
     const next = finalizeStudioGeometry(
@@ -331,7 +378,7 @@ describe('Bilderrahmen-Gehrung an Abzweig-Wänden', () => {
   })
 })
 
-describe('90°-Ecke: Mauerwerk bis zur Außenecke (panelFlip false)', () => {
+describe('90°-Ecke ohne Paneel-Fortsetzung: stumpf an Plan-Kante', () => {
   const panel = {
     ...DEFAULT_STUDIO_PANEL,
     enabled: true,
@@ -405,13 +452,13 @@ describe('90°-Ecke: Mauerwerk bis zur Außenecke (panelFlip false)', () => {
     return xs.sort((a, b) => a - b)
   }
 
-  it('Paneel-Front reicht bis zur Wandkörper-Außenecke, erste Vertikale 0,5/1', () => {
+  it('ohne Paneel-Fortsetzung: Paneele stumpf an Plan-Kante, Wandkörper weiter geghert', () => {
     const walls = userLCorner()
     const front = walls.find((item) => item.id === 'front')!
-    expect(panelMiterEnds(front, walls).start).toBe(true)
-    expect(front.miterStart ?? 0, `miterStart sollte positiv sein (Front verlängern), ist ${front.miterStart}`).toBeGreaterThan(20)
+    expect(panelMiterEnds(front, walls).start).toBe(false)
+    expect(front.miterStart ?? 0, `miterStart sollte positiv sein (Wandkörper), ist ${front.miterStart}`).toBeGreaterThan(20)
     const firstTiles = layoutPanelTiles(front, front.panel!, walls).filter((t) => t.y < 40)
-    expect(firstTiles[0]!.x).toBeLessThan(-20)
+    expect(firstTiles[0]!.x).toBeGreaterThanOrEqual(-0.5)
 
     const outerZ = front.panelFlip ? 0 : front.depth
     const wallGeo = createStudioWallGeometry(front, walls)
@@ -430,27 +477,17 @@ describe('90°-Ecke: Mauerwerk bis zur Außenecke (panelFlip false)', () => {
     const panelGeo = createStudioPanelGeometry(front, front.panel!, walls)
     const xs = uniqueFrontXs(panelGeo, frontZ)
     const panelLeft = xs[0]!
-    const gapToWall = panelLeft - wallLeft
-    const fromLeft = xs.filter((x) => x > panelLeft + 2).map((x) => x - panelLeft)
-    const firstJoint = fromLeft[0] ?? NaN
-
-    expect(
-      gapToWall,
-      `Paneele ${gapToWall.toFixed(1)} cm kürzer als Wandkörper (wallLeft=${wallLeft.toFixed(1)} panelLeft=${panelLeft.toFixed(1)} miterStart=${front.miterStart} joints=${fromLeft.slice(0, 6).map((v) => v.toFixed(1)).join(',')})`,
-    ).toBeLessThan(3)
-
-    const nearHalfOrFull = (d: number) => Math.abs(d - 32) < 10 || Math.abs(d - 64) < 10
-    expect(
-      firstJoint,
-      `erste Vertikale ${firstJoint.toFixed(1)} cm von der Ecke — der ~Wandstärke-Streifen ohne Fuge muss weg (joints ${fromLeft.slice(0, 8).map((v) => v.toFixed(1)).join(', ')})`,
-    ).toBeLessThan(40)
-    expect(
-      nearHalfOrFull(firstJoint),
-      `erste Vertikale ${firstJoint.toFixed(1)} cm von der Ecke, erwartet 32 oder 64`,
-    ).toBe(true)
+    const halfW = front.width / 2
+    // Paneele enden an der Plan-Kante (−halfW); Wandkörper ragt weiter (Gehrung ohne Verkleidung).
+    expect(panelLeft).toBeGreaterThanOrEqual(-halfW - 0.5)
+    expect(panelLeft).toBeLessThanOrEqual(-halfW + 1)
+    expect(wallLeft).toBeLessThan(-halfW - 20)
+    expect(panelLeft - wallLeft).toBeGreaterThan(20)
+    panelGeo.dispose()
+    wallGeo.dispose()
   })
 
-  it('Bossen-Front (taper) reicht ebenfalls bis zur Außenecke, nicht um die Wandstärke zurück', () => {
+  it('Bossen ohne Paneel-Fortsetzung: ebenfalls stumpf an Plan-Kante', () => {
     const walls = userLCorner()
     const front = walls.find((item) => item.id === 'front')!
     front.panel = {
@@ -459,19 +496,7 @@ describe('90°-Ecke: Mauerwerk bis zur Außenecke (panelFlip false)', () => {
       taper: 0.45,
       taperDepth: 6,
     }
-    const outerZ = front.depth
-    const wallGeo = createStudioWallGeometry(front, walls)
-    const wallPos = wallGeo.getAttribute('position') as {
-      getX(i: number): number
-      getZ(i: number): number
-      count: number
-    }
-    let wallLeft = Infinity
-    for (let i = 0; i < wallPos.count; i += 1) {
-      if (Math.abs(wallPos.getZ(i) - outerZ) > 1) continue
-      wallLeft = Math.min(wallLeft, wallPos.getX(i))
-    }
-
+    expect(panelMiterEnds(front, walls).start).toBe(false)
     const bodyFrontZ = studioPanelFaceLocalZ(front)
     const taperFrontZ = bodyFrontZ + 6
     const panelGeo = createStudioPanelGeometry(front, front.panel, walls)
@@ -482,29 +507,19 @@ describe('90°-Ecke: Mauerwerk bis zur Außenecke (panelFlip false)', () => {
     }
     let bossLeft = Infinity
     let bodyLeft = Infinity
-    const bossXs: number[] = []
     for (let i = 0; i < pos.count; i += 1) {
       const z = pos.getZ(i)
       const x = pos.getX(i)
       if (Math.abs(z - bodyFrontZ) < 0.8) bodyLeft = Math.min(bodyLeft, x)
-      if (Math.abs(z - taperFrontZ) < 0.8) {
-        bossLeft = Math.min(bossLeft, x)
-        if (!bossXs.some((v) => Math.abs(v - x) < 1.5)) bossXs.push(x)
-      }
+      if (Math.abs(z - taperFrontZ) < 0.8) bossLeft = Math.min(bossLeft, x)
     }
-    bossXs.sort((a, b) => a - b)
-    const fromBoss = bossXs.filter((x) => x > bossLeft + 2).map((x) => x - bossLeft)
-    const gapBoss = bossLeft - wallLeft
-    const gapBody = bodyLeft - wallLeft
-
-    expect(
-      Number.isFinite(bossLeft),
-      `keine Bossen-Vertices bei z=${taperFrontZ}`,
-    ).toBe(true)
-    expect(
-      gapBoss,
-      `Bossen ${gapBoss.toFixed(1)} cm kürzer als Wand (wall=${wallLeft.toFixed(1)} body=${bodyLeft.toFixed(1)} boss=${bossLeft.toFixed(1)} gapBody=${gapBody.toFixed(1)} joints=${fromBoss.slice(0, 6).map((v) => v.toFixed(1)).join(',')})`,
-    ).toBeLessThan(8)
+    const halfW = front.width / 2
+    expect(Number.isFinite(bossLeft)).toBe(true)
+    expect(bodyLeft).toBeGreaterThanOrEqual(-halfW - 0.5)
+    expect(bodyLeft).toBeLessThanOrEqual(-halfW + 1)
+    expect(bossLeft).toBeGreaterThanOrEqual(-halfW - 0.5)
+    expect(bossLeft).toBeLessThanOrEqual(-halfW + 1)
+    panelGeo.dispose()
   })
 })
 
@@ -842,7 +857,8 @@ describe('createStudioOpeningRevealGeometry', () => {
     const geometry = createStudioOpeningRevealGeometry(wall, wall.openings[0]!)
     expect(geometry).not.toBeNull()
     const pos = geometry!.getAttribute('position')
-    const meshTop = openingTop - wall.height / 2
+    // Laibung leicht inset (REVEAL_JAMB_INSET_CM) gegen Ziegel-Jamb-Z-Fight.
+    const meshTop = openingTop - wall.height / 2 - REVEAL_JAMB_INSET_CM
     let maxY = -Infinity
     let topCount = 0
     for (let i = 0; i < pos.count; i += 1) {
@@ -881,6 +897,52 @@ describe('createStudioOpeningRevealGeometry', () => {
     expect(outerZ).toBeGreaterThan(recessZ!)
     // Kein großes Paneel-Inset — sonst Lichtspalte zwischen Freiraum und Laibung.
     expect(Math.abs(outerZ - recessZ!)).toBeLessThan(0.2)
+  })
+
+  it('Außenfarbe reicht bis hinter die Fensterfront (kein Innenfarben-Streifen davor)', () => {
+    const opening = {
+      id: 'o1',
+      type: 'window' as const,
+      x: 48,
+      y: 128,
+      width: 96,
+      height: 192,
+      depthOffset: 0,
+    }
+    const wall: Wall = {
+      ...studioWall({ ...DEFAULT_STUDIO_PANEL, projectDepth: 4, enabled: true }),
+      kind: 'studio',
+      panelFlip: true,
+      depth: 32,
+      openings: [opening],
+    }
+    const zOuter = studioOpeningRevealOuterZ(wall, opening)
+    const zInner = studioOpeningRevealInnerZ(wall)
+    const buildingOffset = 0
+    const mid = (zOuter + zInner) / 2
+    const split = studioOpeningRevealColorSplitZ(wall, opening, zOuter, zInner, buildingOffset)
+    // Building-Offset 0 → Front bei WINDOW_RECESS (24); Split dahinter, nicht Mid mit Default-8
+    expect(split).toBeGreaterThan(mid)
+    expect(split).toBeGreaterThanOrEqual(24)
+    const geometry = createStudioOpeningRevealGeometry(wall, opening, {
+      windowDepthOffset: buildingOffset,
+    })
+    expect(geometry).not.toBeNull()
+    const pos = geometry!.getAttribute('position')
+    let maxOuterBandZ = -Infinity
+    const g0 = geometry!.groups[0]!
+    const index = geometry!.getIndex()
+    if (index && g0) {
+      const seen = new Set<number>()
+      for (let i = g0.start; i < g0.start + g0.count; i += 1) {
+        const vi = index.getX(i)
+        if (seen.has(vi)) continue
+        seen.add(vi)
+        maxOuterBandZ = Math.max(maxOuterBandZ, pos.getZ(vi))
+      }
+    }
+    expect(maxOuterBandZ).toBeCloseTo(split, 1)
+    geometry!.dispose()
   })
 })
 

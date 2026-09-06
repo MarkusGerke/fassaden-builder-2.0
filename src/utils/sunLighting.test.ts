@@ -5,6 +5,10 @@ import {
   expandBoxByGroundShadow,
   formatTimeOfDay,
   intensityFromElevation,
+  shadowMapSizeForPresentation,
+  shadowMapSizeForSiteSpan,
+  SHADOW_MAP_SIZE,
+  SHADOW_MAP_SIZE_HIGH,
   shadowRadiusFromSoftness,
   shadowSoftnessFromElevation,
   sunFromTargetDirection,
@@ -116,5 +120,18 @@ describe('formatTimeOfDay', () => {
   it('formatiert 23:59 als Maximum', () => {
     expect(formatTimeOfDay(TIME_OF_DAY_MAX)).toBe('23:59')
     expect(formatTimeOfDay(25)).toBe('23:59')
+  })
+})
+
+describe('shadowMapSizeForPresentation', () => {
+  it('nutzt im Render immer 8192', () => {
+    expect(shadowMapSizeForPresentation(9000, 'render')).toBe(SHADOW_MAP_SIZE_HIGH)
+    expect(shadowMapSizeForPresentation(400, 'render')).toBe(SHADOW_MAP_SIZE_HIGH)
+  })
+
+  it('in Entwurf/Vorschau je nach Spanne', () => {
+    expect(shadowMapSizeForPresentation(400, 'draft')).toBe(SHADOW_MAP_SIZE_HIGH)
+    expect(shadowMapSizeForPresentation(9000, 'preview')).toBe(SHADOW_MAP_SIZE)
+    expect(shadowMapSizeForSiteSpan(400)).toBe(SHADOW_MAP_SIZE_HIGH)
   })
 })

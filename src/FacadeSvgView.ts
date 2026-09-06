@@ -535,7 +535,9 @@ export class FacadeSvgView {
           if (!this.facadeDecorVisible(wall.id, 'plinth')) continue
         } else if (role === 'trimBand') {
           if (!this.facadeDecorVisible(wall.id, 'trimBands')) continue
-        } else if (role === 'sillOuter' || role === 'sillInner' || rawPath.openingId) {
+        } else if (role === 'sillOuter' || role === 'sillInner') {
+          if (!this.facadeDecorVisible(wall.id, 'sills')) continue
+        } else if (rawPath.openingId) {
           if (!this.facadeDecorVisible(wall.id, 'profiles')) continue
         } else if (!this.facadeDecorVisible(wall.id, 'cornice')) {
           // Wand-Gesims und andere vorspringende Profile ohne role
@@ -867,7 +869,12 @@ export class FacadeSvgView {
       }
 
       const inner = opening.sillInner
-      if (inner?.enabled && openingActsAsWindow(opening) && opening.y > 0) {
+      if (
+        inner?.enabled &&
+        openingActsAsWindow(opening) &&
+        opening.y > 0 &&
+        this.facadeDecorVisible(wall.id, 'sills')
+      ) {
         const overhang = 8
         const band = createEl('rect')
         band.setAttribute('x', String(opening.x - overhang))

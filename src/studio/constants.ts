@@ -129,7 +129,7 @@ export const PATTERN_LABELS: Record<StudioPanelPattern, string> = {
 
 
 export const DEFAULT_STUDIO_PANEL: StudioPanelConfig = {
-  panelWidth: 32,
+  panelWidth: 64,
   panelHeight: 32,
   joint: 0.8,
   pattern: 'strip',
@@ -146,7 +146,7 @@ export const DEFAULT_STUDIO_PANEL: StudioPanelConfig = {
   tileColorVariance: 0,
   tileColorVariety: 0,
   plinthEnabled: true,
-  plinthHeight: 32,
+  plinthHeight: 64,
   plinthDepth: 8,
   plinthOffsetForward: 0,
   plinthProfileId: 'sockelprofil',
@@ -155,7 +155,50 @@ export const DEFAULT_STUDIO_PANEL: StudioPanelConfig = {
   plinthProfileFlipOutward: false,
   plinthProfileFlipForward: false,
   hideRowsBottom: 0,
-  hideRowsTop: 0,
+  hideRowsTop: 3,
+}
+
+/**
+ * Maße/Bossen beim Wechsel auf ein Paneelmuster (Karten + Bibliothek).
+ * Nur bekannte Muster — andere Verbände behalten aktuelle Maße.
+ */
+export function studioPanelDefaultsForPattern(
+  pattern: StudioPanelPattern,
+): Partial<StudioPanelConfig> {
+  switch (pattern) {
+    case 'strip':
+      return {
+        panelWidth: 64,
+        panelHeight: 32,
+        projectDepth: 4,
+        hideRowsBottom: 0,
+        hideRowsTop: 3,
+      }
+    case 'runningBond':
+    case 'runningBondThird':
+    case 'runningBondQuarter':
+    case 'runningBondDiagonal':
+      return {
+        panelWidth: 48,
+        panelHeight: 24,
+        projectDepth: 4,
+        hideRowsBottom: 0,
+        hideRowsTop: 0,
+        taperDepth: 1,
+        taper: 0.8,
+      }
+    case 'headerBond':
+      return {
+        panelWidth: 24,
+        panelHeight: 8,
+        projectDepth: 4,
+        hideRowsBottom: 0,
+        hideRowsTop: 0,
+        taperDepth: 0,
+      }
+    default:
+      return {}
+  }
 }
 
 export const PLINTH_OVERHANG = 0.6
@@ -326,7 +369,7 @@ export function normalizeStudioPanel(
     })(),
     jointColor: typeof raw?.jointColor === 'string' ? raw.jointColor : undefined,
     plinthEnabled: raw?.plinthEnabled !== false,
-    plinthHeight: clampPlinthHeight(raw?.plinthHeight ?? DEFAULT_STUDIO_PANEL.plinthHeight ?? 32),
+    plinthHeight: clampPlinthHeight(raw?.plinthHeight ?? DEFAULT_STUDIO_PANEL.plinthHeight ?? 64),
     plinthDepth: clampPlinthDepth(raw?.plinthDepth ?? DEFAULT_STUDIO_PANEL.plinthDepth ?? 8),
     plinthOffsetForward: clampPlinthOffsetForward(
       raw?.plinthOffsetForward ?? DEFAULT_STUDIO_PANEL.plinthOffsetForward ?? 0,

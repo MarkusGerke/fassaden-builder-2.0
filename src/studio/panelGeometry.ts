@@ -77,12 +77,14 @@ import {
   studioClearanceRecessZ,
   studioOpeningRevealInnerZ,
   studioOpeningRevealOuterZ,
+  studioOpeningRevealColorSplitZ,
   studioPanelFaceLocalZ,
-  studioFacadeOutwardLocalZ,
+  studioVisibleOutwardLocalZ,
   studioWallInnerLocalZ,
   studioWallOuterLocalZ,
   studioWallTransform,
   studioWindowDepthForwardSign,
+  REVEAL_JAMB_INSET_CM,
   turningAdjacentWalls,
   wallHasPanels,
   wallSpanAlongYaw,
@@ -3151,7 +3153,11 @@ function createArcBayWallGeometry(wall: Wall): THREE.BufferGeometry {
 }
 
 /** Gehrungskörper: Außenkante = gezeichnete Linie, Dicke nach innen, Enden 45°/135°. */
-export function createStudioWallGeometry(wall: Wall, allWalls: Wall[] = []): THREE.BufferGeometry {
+export function createStudioWallGeometry(
+  wall: Wall,
+  allWalls: Wall[] = [],
+  opts?: { treatAsBareWall?: boolean; treatPlinthInactive?: boolean },
+): THREE.BufferGeometry {
   if (wallHasArcBay(wall)) {
     return createArcBayWallGeometry(wall)
   }
@@ -3161,23 +3167,26 @@ export function createStudioWallGeometry(wall: Wall, allWalls: Wall[] = []): THR
   const halfH = wall.height / 2
   const outerZ = studioWallOuterLocalZ(wall)
   const innerZ = studioWallInnerLocalZ(wall)
-  const panelsOn = wallHasPanels(wall)
+  const panelsOn = wallHasPanels(wall) && !opts?.treatAsBareWall
   // Kappen-Order: outer→inner liefert +Y/−X/+X nur wenn outerZ < innerZ (panelFlip true).
   const capReverse = outerZ > innerZ
 
   // Außenfläche immer — auch bei Paneelen (z. B. ausgeblendete Reihen). Leicht nach innen versetzt, damit
   // keine Z-Fights mit Mörtel/Steinrücken entstehen (Moiré). Im oberen Freistreifen volle Tiefe — sonst kein Bodenschatten.
   // Erker-Drop-Rock: ebenfalls volle Tiefe — sonst wirkt die eingesunkene Schale unter dem Sockel schwarz/fremd.
+  // Decor „Paneele aus“: volle Außenkante (treatAsBareWall) — sonst Laibung/Bank vor der eingezogenen Fläche.
   const bareTop = panelsOn ? topBareBandForWall(wall) : null
   const skirtDrop = bayWallSkirtDropCm(wall, allWalls)
   const bareSkirt = skirtDrop > 0.5
   const plinthH =
-    wall.panel && studioPlinthActive(wall.panel) ? (wall.panel.plinthHeight ?? 0) : 0
+    !opts?.treatPlinthInactive && wall.panel && studioPlinthActive(wall.panel)
+      ? (wall.panel.plinthHeight ?? 0)
+      : 0
   const barePlinth = plinthH > 0.5
   const sign = studioWindowDepthForwardSign(wall)
   const insetFaceZ = outerZ - sign * 0.15
   const faceReverse = (z: number) => wallFaceNormalReverse(wall, z, innerZ)
-  // Freistreifen oben / Erker-Rock / Sockelzone: volle Tiefe (Wandfarbe sichtbar, wenn Sockel aus).
+  // Freistreifen oben / Erker-Rock / Sockelzone / Decor-Paneele-aus: volle Tiefe.
   const outerFaceZ =
     panelsOn && !bareTop && !bareSkirt && !barePlinth ? insetFaceZ : outerZ
   appendShapeFace(studioWallFaceShape(wall, outerFaceZ), outerFaceZ, faceReverse(outerFaceZ), positions, normals, indices)
@@ -3277,15 +3286,25 @@ const NICHE_SHADOW_SEAL_INSET_CM = 2
  * Lokales Z hinter der Nischenrückwand für den Shadow-Tunnel-Abschluss.
  * Muss hinter der sichtbaren Fläche liegen — sonst schwärzt die Kappe den Empfang.
  */
-function nicheShadowSealBackLocalZ(wall: Wall, opening: Opening, depthCm: number): number {
-  const zOuter = studioOpeningRevealOuterZ(wall, opening)
+function nicheShadowSealBackLocalZ(
+  wall: Wall,
+  opening: Opening,
+  depthCm: number,
+  opts?: { treatAsBareWall?: boolean },
+): number {
+  const zOuter = studioOpeningRevealOuterZ(wall, opening, opts)
   const outward = studioWindowDepthForwardSign(wall)
   return zOuter - outward * (Math.max(1, depthCm) + NICHE_SHADOW_SEAL_INSET_CM)
 }
 
 /** True wenn die Nischenrückwand hinter der Wandinnenkante liegt (Tiefe > Wanddicke). */
-function nicheBackPastWallInner(wall: Wall, opening: Opening, depthCm: number): boolean {
-  const zOuter = studioOpeningRevealOuterZ(wall, opening)
+function nicheBackPastWallInner(
+  wall: Wall,
+  opening: Opening,
+  depthCm: number,
+  opts?: { treatAsBareWall?: boolean },
+): boolean {
+  const zOuter = studioOpeningRevealOuterZ(wall, opening, opts)
   const outward = studioWindowDepthForwardSign(wall)
   const nicheBack = zOuter - outward * Math.max(1, depthCm)
   const wallInner = studioWallInnerLocalZ(wall)
@@ -3305,26 +3324,31 @@ function nicheBackPastWallInner(wall: Wall, opening: Opening, depthCm: number): 
 /** Leichte Aufweitung gegen Shadow-Bias / Peter-Panning an der Kontur (cm). */
 const OPENING_SHADOW_TUNNEL_INFLATE_CM = 2.5
 
-export function createStudioOpeningShadowTunnelGeometry(wall: Wall): THREE.BufferGeometry | null {
+export function createStudioOpeningShadowTunnelGeometry(
+  wall: Wall,
+  opts?: { treatAsBareWall?: boolean },
+): THREE.BufferGeometry | null {
   const positions: number[] = []
   const normals: number[] = []
   const indices: number[] = []
-  const facadeZ = studioFacadeOutwardLocalZ(wall)
+  // Sichtbare Front: bei Decor „Paneele aus“ die Wandkante — sonst ragt der Tunnel
+  // 4 cm vor die Wand und wirft einen Schattenrahmen um die Öffnung.
+  const facadeZ = studioVisibleOutwardLocalZ(wall, opts)
   const wallInnerZ = studioWallInnerLocalZ(wall)
   const forward = studioWindowDepthForwardSign(wall)
   let quads = 0
   for (const opening of wall.openings) {
     // Schicht-A-Vertrag: eingebettet / flush / hidden → kein Tunnel.
     if (opening.hidden || !openingCutsShell(opening)) continue
-    const revealZ = studioOpeningRevealOuterZ(wall, opening)
+    const revealZ = studioOpeningRevealOuterZ(wall, opening, opts)
     const outerZ = forward >= 0 ? Math.max(facadeZ, revealZ) : Math.min(facadeZ, revealZ)
     const fill = normalizeOpeningFill(opening.fill)
     const isNicheLike =
       openingIsConch(opening) || openingFillMode(opening) === 'niche'
     const nicheDepth = Math.max(1, fill.nicheDepthCm ?? 10)
-    const deepNiche = isNicheLike && nicheBackPastWallInner(wall, opening, nicheDepth)
+    const deepNiche = isNicheLike && nicheBackPastWallInner(wall, opening, nicheDepth, opts)
     const sealBackZ = isNicheLike
-      ? nicheShadowSealBackLocalZ(wall, opening, nicheDepth)
+      ? nicheShadowSealBackLocalZ(wall, opening, nicheDepth, opts)
       : wallInnerZ
     // Tunnel-Ende: bei tiefer Nische bis hinter die Rückwand, sonst Wandinnenkante.
     const tunnelEndZ = deepNiche ? sealBackZ : wallInnerZ
@@ -3425,13 +3449,16 @@ function appendOpeningMaskCap(
 export function createStudioOpeningRevealGeometry(
   wall: Wall,
   opening: Opening,
+  opts?: { windowDepthOffset?: number; treatAsBareWall?: boolean },
 ): THREE.BufferGeometry | null {
   if (!openingCutsWall(opening)) return null
   if (openingIsConch(opening)) return createStudioConchRevealGeometry(wall, opening)
 
   const positions: number[] = []
   const normals: number[] = []
-  const zOuter = studioOpeningRevealOuterZ(wall, opening)
+  const zOuter = studioOpeningRevealOuterZ(wall, opening, {
+    treatAsBareWall: opts?.treatAsBareWall,
+  })
   let zInner = studioOpeningRevealInnerZ(wall)
   const fill = normalizeOpeningFill(opening.fill)
   if (fill.mode === 'niche') {
@@ -3442,32 +3469,38 @@ export function createStudioOpeningRevealGeometry(
   }
   if (Math.abs(zOuter - zInner) < 0.35) return null
 
-  const poly = openingMaskPolyline(opening, 0, ARCH_MESH_SEGMENTS)
+  const poly = openingMaskPolyline(opening, -REVEAL_JAMB_INSET_CM, ARCH_MESH_SEGMENTS)
   if (poly.length < 3) return null
   const n = poly.length
   const skipSill = opening.y <= 0.5
   const outerIndices: number[] = []
   const innerIndices: number[] = []
+  const zSplit = studioOpeningRevealColorSplitZ(
+    wall,
+    opening,
+    zOuter,
+    zInner,
+    opts?.windowDepthOffset,
+  )
   for (let i = 0; i < n; i += 1) {
     const a = poly[i]!
     const b = poly[(i + 1) % n]!
     if (skipSill && a.y <= 0.5 && b.y <= 0.5) continue
-    const zMid = (zOuter + zInner) / 2
     addQuad(
       positions,
       normals,
       outerIndices,
       new THREE.Vector3(wallLocalX(wall, a.x, zOuter), localY(a.y, wall), zOuter),
       new THREE.Vector3(wallLocalX(wall, b.x, zOuter), localY(b.y, wall), zOuter),
-      new THREE.Vector3(wallLocalX(wall, b.x, zMid), localY(b.y, wall), zMid),
-      new THREE.Vector3(wallLocalX(wall, a.x, zMid), localY(a.y, wall), zMid),
+      new THREE.Vector3(wallLocalX(wall, b.x, zSplit), localY(b.y, wall), zSplit),
+      new THREE.Vector3(wallLocalX(wall, a.x, zSplit), localY(a.y, wall), zSplit),
     )
     addQuad(
       positions,
       normals,
       innerIndices,
-      new THREE.Vector3(wallLocalX(wall, a.x, zMid), localY(a.y, wall), zMid),
-      new THREE.Vector3(wallLocalX(wall, b.x, zMid), localY(b.y, wall), zMid),
+      new THREE.Vector3(wallLocalX(wall, a.x, zSplit), localY(a.y, wall), zSplit),
+      new THREE.Vector3(wallLocalX(wall, b.x, zSplit), localY(b.y, wall), zSplit),
       new THREE.Vector3(wallLocalX(wall, b.x, zInner), localY(b.y, wall), zInner),
       new THREE.Vector3(wallLocalX(wall, a.x, zInner), localY(a.y, wall), zInner),
     )

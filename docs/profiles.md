@@ -37,7 +37,7 @@ Silhouetten: `src/profiles/uploadedSilhouettes.ts` (PNG → Querschnitt, mm→cm
 - Verdachung: `Opening.pediment.profileId` — nicht der allgemeine Picker-Eintrag `fensterverdachung` (der bleibt Kanten-Sweep).
 - Custom: `FacadeState.customProfiles`; Auflösung nur über **`resolveProfile`**, nicht `getProfile`.
 
-Maße: `#profile-extent-out` / `#profile-extent-forward` überschreiben `#profile-scale` je Achse. Anker: `PROFILE_FACE_BIAS_CM` (1,5 cm vor Paneelfläche), Mindest-Forward `PROFILE_BACK_CLEARANCE_CM` (1,2 cm).
+Maße: `#profile-extent-out` / `#profile-extent-forward` überschreiben `#profile-scale` je Achse. Anker: `PROFILE_FACE_BIAS_CM` **0,2** cm; Öffnungsprofile `PROFILE_BACK_CLEARANCE_CM` **0,5** cm; Profilmaterial `polygonOffset` −1/−16 (v2.0.248, Distanz-Z-Fight). Nicht auf Separation 0 zurück — Offset −1 allein reicht beim Rauszoomen nicht.
 
 ## Dateien
 
@@ -53,3 +53,5 @@ Maße: `#profile-extent-out` / `#profile-extent-forward` überschreiben `#profil
 - Custom-IDs nur `resolveProfile`.
 - Gesims-Tiefe = `sectionScaleForward`, Sockel-Default-ID = `sockelprofil`.
 - Offene Bogen-Stürze ohne Stirnkappen; Laibung leicht hinter der Front (`REVEAL_OUTER_INSET_CM`).
+- **v2.0.252:** Gesims/Sockel/Zierband ohne Fortsetzung um die Ecke → `planMiter = 0` und **Stirnkappe** (`capStart`/`capEnd`) — kein Überstand, kein offenes Hohlprofil. Fortsetzung = Nachbar hat dasselbe Dekor.
+- **v2.0.253:** Sweep-Anker immer `studioProfileAnchorLocalZ` (Paneelfläche = `projectDepth`, ohne Trapez). Nicht `studioFacadeOutwardLocalZ` / Bossen-Spitze. Decor Paneele aus → Wandaußenkante.

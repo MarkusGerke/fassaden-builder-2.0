@@ -12,7 +12,6 @@ import {
   plinthProfileForwardBoost,
   plinthMiterEnds,
   corniceMiterEnds,
-  studioFacadeOutwardLocalZ,
   wallEndPoint,
   wallHasPanels,
   wallStartPoint,
@@ -42,6 +41,7 @@ import { isWindowTrimProfile } from '../profiles/windowTrim'
 import { trimSectionScales, profileSectionNativeExtents } from './profileSectionExtents'
 import { basementWindowEnabled } from '../studio/basementWindow'
 import { getAllWalls, getVisibleWalls } from './buildings'
+import { normalizeFacadeDecor } from '../studio/facadeDecor'
 
 export interface Vec2 {
   x: number
@@ -883,18 +883,11 @@ export function trimBandOpeningXHoles(
 }
 
 function trimBandMiterEnds(wall: Wall, walls: Wall[]): { start: boolean; end: boolean } {
-  const join = wall.panel?.cornerJoin ?? 'miter'
   const startAdj = findAdjacentWall(wall, 'start', walls)
   const endAdj = findAdjacentWall(wall, 'end', walls)
-  if (join === 'none') {
-    return {
-      start: Boolean(startAdj && wallHasTrimBands(startAdj)),
-      end: Boolean(endAdj && wallHasTrimBands(endAdj)),
-    }
-  }
   return {
-    start: Boolean(startAdj),
-    end: Boolean(endAdj),
+    start: Boolean(startAdj && wallHasTrimBands(startAdj)),
+    end: Boolean(endAdj && wallHasTrimBands(endAdj)),
   }
 }
 
@@ -1664,10 +1657,14 @@ function buildPlinthProfilePaths(state: FacadeState): ProfilePath[] {
     const halfW = wall.width / 2
     const miterEnds = plinthMiterEnds(wall, allWalls)
     const offsetForward = panel.plinthOffsetForward ?? 0
+    // Gehrung und Stirnkappe: nur bei fortgesetztem Sockel — sonst stumpf + geschlossen.
     const startAdj = miterEnds.start ? findAdjacentWall(wall, 'start', allWalls) : undefined
     const endAdj = miterEnds.end ? findAdjacentWall(wall, 'end', allWalls) : undefined
-    const startMiter = startAdj ? cornicePlanMiterTan(wall, startAdj, 'start') : 0
-    const endMiter = endAdj ? cornicePlanMiterTan(wall, endAdj, 'end') : 0
+    const startContinues =
+      Boolean(startAdj?.panel && studioPlinthActive(startAdj.panel))
+    const endContinues = Boolean(endAdj?.panel && studioPlinthActive(endAdj.panel))
+    const startMiter = startContinues && startAdj ? cornicePlanMiterTan(wall, startAdj, 'start') : 0
+    const endMiter = endContinues && endAdj ? cornicePlanMiterTan(wall, endAdj, 'end') : 0
     paths.push({
       profileId,
       wallId: wall.id,
@@ -1692,8 +1689,8 @@ function buildPlinthProfilePaths(state: FacadeState): ProfilePath[] {
       ],
       planMiterStart: pictureFramePlanMiter(startMiter, 'start'),
       planMiterEnd: pictureFramePlanMiter(endMiter, 'end'),
-      capStart: !startAdj,
-      capEnd: !endAdj,
+      capStart: !startContinues,
+      capEnd: !endContinues,
     })
   }
 
@@ -1719,6 +1716,10 @@ function buildSillOuterPaths(state: FacadeState): ProfilePath[] {
   for (const wall of getVisibleWalls(state)) {
     const studio = isStudioWall(wall)
     const forwardSign = studio ? (wall.panelFlip ? -1 : 1) : 1
+    const building = state.buildings.find((b) => b.id === wall.buildingId)
+    const treatAsBareWall =
+      !wallHasPanels(wall) ||
+      (building ? normalizeFacadeDecor(building.facadeDecor).panels === false : false)
     for (const opening of wall.openings) {
       if (opening.hidden) continue
       const sill = opening.sillOuter
@@ -1733,11 +1734,9 @@ function buildSillOuterPaths(state: FacadeState): ProfilePath[] {
       const x1 = studio ? layout.xRight - wall.width / 2 : wall.x + layout.xRight
       // Oberkante bündig mit Öffnungs-Unterkante — Profil hängt nach unten (outward −Y).
       const yTop = studio ? layout.yTop - wall.height / 2 : wall.y + layout.yTop
-      const facadeZ = studio ? studioFacadeOutwardLocalZ(wall) : wall.depth
-      // Profil sitzt an der Bankvorderkante (Tropfkante), nicht an der Paneelfassade.
-      const outerZ = studio ? ((wall.panelFlip ?? false) ? 0 : wall.depth) : wall.depth
-      const zFront = outerZ + forwardSign * layout.depth
-      const offsetForward = Math.abs(forwardSign) > 1e-6 ? (zFront - facadeZ) / forwardSign : 0
+      // Anker = Paneelfläche (bzw. Wand bei nackt); Versatz = Banktiefe bis zur Tropfkante.
+      // rebuildProfiles nutzt studioProfileAnchorLocalZ(offsetForward) — folgt projectDepth.
+      const offsetForward = layout.depth
       paths.push({
         profileId: normalized.profileId!,
         wallId: wall.id,
@@ -1753,6 +1752,7 @@ function buildSillOuterPaths(state: FacadeState): ProfilePath[] {
         flipOutward: normalized.flipOutward ?? false,
         flipForward: normalized.flipForward ?? false,
         offsetForward,
+        useWallOuterFace: treatAsBareWall,
         capStart: true,
         capEnd: true,
         role: 'sillOuter',

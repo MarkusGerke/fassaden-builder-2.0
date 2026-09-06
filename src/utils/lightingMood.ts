@@ -62,7 +62,7 @@ export function resolveLightingMood(
   const isDeepNight = celestial.activeLight === 'night'
 
   let skyIntensity = Math.max(
-    0.008,
+    0.005,
     (settings.ambient / contrast) * celestial.skyAmbientFactor,
   )
   if (isDeepNight) skyIntensity = Math.min(skyIntensity, 0.014)
@@ -151,12 +151,12 @@ export function resolveLightingMood(
     skyColor: palette.horizon.clone(),
     groundHemiColor: groundHemi,
     groundAmbientColor: groundAmbient,
-    // Schatten-Kontrast wirkt auch auf Boden-Umbra (Neutral sonst zu blass bei Max).
+    // Schatten-Kontrast wirkt auch auf Boden-Umbra (bis 10: mehr Dunkelheit möglich).
     shadowUmbraStrength: THREE.MathUtils.clamp(
       THREE.MathUtils.lerp(0.45, 0.92, density) *
-        THREE.MathUtils.clamp(0.75 + 0.2 * settings.shadowContrast, 0.85, 1.75),
+        THREE.MathUtils.clamp(0.7 + 0.22 * settings.shadowContrast, 0.85, 3.2),
       0.35,
-      0.99,
+      0.995,
     ),
     bounceDirection: bounceDir.clone(),
     bounceIntensity,

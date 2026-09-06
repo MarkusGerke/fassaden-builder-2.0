@@ -460,4 +460,37 @@ describe('baySegment', () => {
     const front = swapped.state.buildings[0]!.walls.find((w) => w.bayRole === 'front')!
     expect(front.width).toBeCloseTo(192, 5)
   })
+
+  it('swapBayPreset kann zwei Erker nacheinander tauschen', () => {
+    const presetA = bayPreset(192, 96)
+    const presetB = bayPreset(192, 144)
+    const wall: Wall = {
+      ...createStudioWall(0, 0),
+      id: createId(),
+      width: 960,
+      height: 512,
+      depth: WALL_DEPTH,
+      originX: 0,
+      originZ: 0,
+      x: 0,
+      yawDeg: 0,
+      panelFlip: true,
+      planLinked: true,
+    }
+    const first = insertBayAsWallSegment(stateWithWall(wall), wall.id, presetA, 192)!
+    const remnantRight = first.state.buildings[0]!.walls.find(
+      (w) => !w.bayWindow && !w.bayParentId && !w.bayRole && (w.originX ?? w.x) > 200,
+    )!
+    const second = insertBayAsWallSegment(first.state, remnantRight.id, presetA, remnantRight.width / 2)!
+    const hosts = second.state.buildings[0]!.walls.filter((w) => w.bayWindow)
+    expect(hosts).toHaveLength(2)
+    let next = second.state
+    for (const host of hosts) {
+      const swapped = swapBayPreset(next, host.id, presetB)!
+      next = swapped.state
+    }
+    const metas = next.buildings[0]!.walls.filter((w) => w.bayWindow).map((w) => w.bayWindow!)
+    expect(metas).toHaveLength(2)
+    expect(metas.every((m) => m.depthCm === 144 && m.frontWidthCm === 192)).toBe(true)
+  })
 })

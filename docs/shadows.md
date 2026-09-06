@@ -2,7 +2,7 @@
 
 Sonnenlicht in der 3D-Ansicht nutzt ein **Schichtenmodell** (Key + Himmel + Bodenreflex + Kontakt) — Details in [lighting-mood.md](lighting-mood.md). Key-Light: `DirectionalLight` plus `HemisphereLight`; zusätzlich `bounceDirLight` (ohne Schatten) und Kontakt-RT nur auf dem Boden. Schatten: Ortho-Shadow-Maps (**PCSS** auf `BasicShadowMap`, **4096**, Three.js MIT / Beispiel `webgl_shadowmap_pcss`). Die Map wird nur bei Sonne-/Geometrieänderung neu berechnet (`shadowMap.autoUpdate = false`), nicht beim Orbitieren. Die Szene ist in **Zentimetern**.
 
-**Kein CSM:** Cascaded Shadow Maps sind nicht eingebunden. Stattdessen eigene Frustum-Anpassung: die Shadow-Camera umfasst die Gebäude-AABB **und** die Schnittpunkte der Sonnenstrahlen mit dem Boden (`expandBoxByGroundShadow`), begrenzt auf `SHADOW_GROUND_MAX_LENGTH` (3200 cm), plus Texel-Rasterung der Ortho-Seiten.
+**Kein CSM:** Cascaded Shadow Maps sind nicht eingebunden. Stattdessen eigene Frustum-Anpassung: die Shadow-Camera umfasst die Gebäude-AABB **und** die Schnittpunkte der Sonnenstrahlen mit dem Boden (`expandBoxByGroundShadow`), begrenzt auf `SHADOW_GROUND_MAX_LENGTH` (**2400** cm, v2.0.257; zuvor 3200), plus Texel-Rasterung der Ortho-Seiten. **Render (v2.0.257):** Shadow-Map immer **8192²** (`shadowMapSizeForPresentation`); Entwurf/Vorschau weiter je Spanne (8192 bis 6400 cm, sonst 4096).
 
 Glas-EnvMap: **CubeCamera vor dem Baukörper** (auf der Kameraseite, nicht im Innenraum), PMREM aus der echten 3D-Szene (Nachbarflügel, Boden, Himmelssphäre) — **kein HDRI**, kein `RoomEnvironment`. `scene.environment` bleibt leer; die Karte hängt an Glas, Paneelen/Wänden (`forceExteriorEnv`), Laibungen (**v2.0.186**), Profilen, **Fensterrahmen (v2.0.187)** und Innenflächen. Bake bei Geometrie-/Sonnen-/Hintergrundänderung und wenn die Kamera um ~18° um das Haus wandert. Glas ist standardmäßig **transparent** (Durchsicht in den Raum) mit Fresnel-Spiegelung; physische Transmission nur wenn der Nutzer sie > 0,08 setzt.
 
@@ -52,9 +52,9 @@ Bloom und Gobo-Schatten: frühere Laub-Gobo-UI entfernt (v0.7.341). **Unreal Blo
 - **Datum + Tageszeit (Berlin):** realistischer Sonnenstand (`src/utils/solar.ts`, NOAA-Näherung, 52,52°N / 13,405°O). Setzt Azimut, Elevation, Intensität, Weichheit und Farbtemperatur neu (`syncSunSettingsFromSolar` mit `applySolarLook`). **v0.7.251:** Datum immer heute; Tageszeit fest 0–24 h; Sonnenwinkel wieder manuell — siehe [celestial-sky.md](celestial-sky.md).
 - Tageszeit-Slider **0:00–23:59** (Minutenschritte; auch Nacht und Dämmerung).
 - **Manuelle Overrides:** `#sun-azimuth` (0°=N, 90°=O), Intensität, Weichheit, Farbtemperatur — bleiben, bis Datum/Tageszeit wieder den Solar-Look schreibt. Elevation bleibt beim reinen Azimut-Drehen erhalten.
-- **Tageszyklus (v2.0.130):** kontinuierlich unter Szene → Animation; Dauer über `#anim-day-cycle-minutes` (`dayCycleRealMinutes`, Default 60). Einmaliger Tagesverlauf-Abspielen entfernt.
-- **Sonnenlicht** Default **3,9** (Slider `#sun-intensity` 0,3…**8**). Zusätzlich **Umgebungslicht** (`#sun-ambient`, Default **0,53**), **Schatten-Kontrast** (`#sun-shadow-contrast`, Default **1,40**, Bereich **0,5…5**, v2.0.207), **Schatten-Weichheit** (`#sun-softness`, Default **5,0**), **Farbtemperatur** (`#sun-color-temp`, Default **4500 K**), Tageszeit **13:15**, Sonnenwinkel **210°** und Schatten-Dunkelheit (`#sun-shadow-density`, Default 0,55). **v0.7.253:** Diese Slider steuern auch Umbra-Tönung, Kontaktschatten und Bodenreflex — siehe [lighting-mood.md](lighting-mood.md). **v2.0.207:** Contrast dimmt auch Hemi (`facadeShade`) und Boden-Umbra — Neutral bleibt bei Max nicht mehr blass.
-- **Sonnen-Slider (v0.7.341 / v2.0.148 / v2.0.182 / v2.0.201 / v2.0.202):** Azimut/Tageszeit/Intensität: Licht und Himmel **sofort** (max. 1×/Frame). **Scrub (v2.0.202):** Frustum fitten + Sonnen-Shadow **jedes Lighting-Frame** (Debounce ließ Schatten springen); Map-Größe und EnvMap erst beim Loslassen; keine Schedule-Actors während `input`. Tagzyklus weiter Debounce ~120–280 ms. **Nicht zurück zu v2.0.182** (kein Bake) oder reinem Debounce-Scrub (v2.0.201). Live kein EnvMap-Bake und keine Punktlicht-Cubes. Geometrie-Commit weiter `flushSunShadowMap({ sceneLights: true })`. **Weichheit (v2.0.1):** `#sun-softness` → PCSS-Lichtgröße 0,8…28 cm als Uniform `pcssLightSizeUv` (live). **Farbtemperatur (v2.0.1):** `#sun-color-temp` färbt das Key-Light.
+- **Tageszyklus (v2.0.130):** kontinuierlich unter Szene → Animation; Dauer über `#anim-day-cycle-minutes` (`dayCycleRealMinutes`, Default 60). **v2.0.254:** einmaliges Abspielen wieder da (Tagesverlauf Von/Bis oder Licht-/Bloom-Kanäle, `#sun-path-play`).
+- **Sonnenlicht** Default **3,9** (Slider `#sun-intensity` 0,3…**8**). Zusätzlich **Umgebungslicht** (`#sun-ambient`, Default **0,53**), **Schatten-Kontrast** (`#sun-shadow-contrast`, Default **1,40**, Bereich **0,5…10**, v2.0.256; zuvor …5), **Schatten-Weichheit** (`#sun-softness`, Default **5,0**), **Farbtemperatur** (`#sun-color-temp`, Default **4500 K**), Tageszeit **13:15**, Sonnenwinkel **210°** und Schatten-Dunkelheit (`#sun-shadow-density`, Default **0,70**, v2.0.258; zuvor 0,55). **v0.7.253:** Diese Slider steuern auch Umbra-Tönung, Kontaktschatten und Bodenreflex — siehe [lighting-mood.md](lighting-mood.md). **v2.0.207 / v2.0.256:** Contrast dimmt Hemi (`facadeShade`) und Boden-Umbra — hohe Werte liefern deutlich dunklere Schatten. **v2.0.258:** Density setzt zusätzlich `dirLight.shadow.intensity` (0,55…1).
+- **Sonnen-Slider (v0.7.341 / v2.0.148 / v2.0.182 / v2.0.201 / v2.0.202 / v2.0.255):** Azimut/Tageszeit/Intensität: Licht und Himmel **sofort** (max. 1×/Frame). **Scrub (v2.0.202):** Frustum fitten + Sonnen-Shadow **jedes Lighting-Frame** (Debounce ließ Schatten springen); Map-Größe und EnvMap erst beim Loslassen; keine Schedule-Actors während `input`. **Szene abspielen (v2.0.255):** gleicher Scrub-Pfad (`sunLiveScrubActive`), Hauptloop statt Extra-rAF. Tagzyklus weiter Debounce ~120–280 ms. **Nicht zurück zu v2.0.182** (kein Bake) oder reinem Debounce-Scrub (v2.0.201). Live kein EnvMap-Bake und keine Punktlicht-Cubes. Geometrie-Commit weiter `flushSunShadowMap({ sceneLights: true })`. **Weichheit (v2.0.1):** `#sun-softness` → PCSS-Lichtgröße 0,8…28 cm als Uniform `pcssLightSizeUv` (live). **Farbtemperatur (v2.0.1):** `#sun-color-temp` färbt das Key-Light.
 - **Fenster in 2D (v0.7.344):** Rahmen/Konsolen empfangen Werfschatten wenn Paneele empfangen (`syncOpeningReceiveShadows`, ohne Glas). **v2.0.9:** Teil-Rebuild muss `syncLabelShadowReceivers` rufen — sonst bleiben neue Rahmen ohne Empfang. **v2.0.12:** Erstes Shadow-Map-Bake nach `loadMeshes` (`bootstrapSceneLighting`) — ohne Reload-Workaround über Sonnenwinkel-Slider.
 
 ## Ein-Pass / Grundriss-Silhouette
@@ -103,7 +103,7 @@ planFacesWithHoles(plan)
 | `src/studio/floorPlan.ts` | `planFacesWithHoles`, `pointInPolygonXZ`, `polygonAreaXZ` |
 | `src/FacadeController.ts` | Indoor-Platten mit Holes, Decken casten |
 | `src/studio/roof.ts` | `topRoofFaceWorld`, Firstkappe mit Löchern |
-| `src/lighting/pcssShadows.ts` | PCSS-ShaderChunk (Blocker-Suche + variable Penumbra, `const`-Poisson-Disk + `mat2`-Rotation, entrollte Taps), Lichtgröße aus Weichheit; **kein** Orbit-1-Tap mehr (v2.0.197) |
+| `src/lighting/pcssShadows.ts` | PCSS-ShaderChunk (Blocker-Suche + variable Penumbra, `const`-Poisson-Disk + `mat2`-Rotation, entrollte Taps, **Receiver-Plane-Bias** v2.0.252, **Contact-Hardening** `min(hard, soft)` v2.0.258), Lichtgröße aus Weichheit; **kein** Orbit-1-Tap mehr (v2.0.197) |
 | `src/utils/sunLighting.ts` | Weichheit aus Elevation, Shadow-Camera, Kelvin |
 | `src/utils/lightingMood.ts` | Schichten-Intensitäten aus Sonne + Szenenfarben |
 | `src/lighting/groundMood.ts` | Boden-Fill (`ground-mood-v6`, Albedo × Sonnen-Ambient; Schatten nur Standard-PCSS) |
@@ -131,14 +131,16 @@ State-Änderung / Sonnen-Slider
 
 | Konstante | Wert | Bedeutung |
 |---|---|---|
-| Softness-Bereich | 0,5 … 8 | Slider → PCSS-Lichtfläche 0,8…28 cm / Frustum-Breite (`pcssLightSizeUv`-Uniform) |
+| Softness-Bereich | 0,5 … 8 | Slider → PCSS-Lichtfläche 0,8…28 cm / Frustum-Breite (`pcssLightSizeUv`-Uniform); Penumbra-Skala **10** (v2.0.257) |
 | Softness-Default | 2,5 | ruhiger Kontakt; Slider bis 8 weitet die Penumbra |
-| `PCSS_PENUMBRA_SCALE` | 8 | Ortho-Ausgleich statt Perspektiv-`NEAR/z` (sonst Slider tot) |
+| `PCSS_PENUMBRA_SCALE` | 8 | Ortho-Ausgleich statt Perspektiv-`NEAR/z` (sonst Slider tot); v2.0.258 wieder 8 (257: 10 wusch Kontakt) |
+| `PCSS_PLANE_SLOPE_MAX` | 6 | Receiver-Plane-Bias-Kappe (v2.0.258; zuvor 12) |
 | `PCSS_NEAR_PLANE` | 0,002 | Blocker-Suchradius (Shadow-Tiefenraum) |
 | `MIN_SUN_DISTANCE` | 900 cm | Untergrenze Licht→Ziel |
 | `SHADOW_MAP_SIZE` | 4096 | Shadow-Map (große Sites) |
 | `SHADOW_MAP_SIZE_HIGH` | 8192 | Shadow-Map wenn Site-Spanne ≤ 4800 cm (v2.0.114; früher 2200) |
 | `PCSS_NUM_SAMPLES` | 32 | PCSS-Filter-/Blocker-Taps (v0.7.346; vorher 17) |
+| `PCSS_PLANE_SLOPE_MAX` | 12 | Clamp der Empfänger-Tiefensteigung (v2.0.252; Silhouetten) |
 | `PCSS_LITE_SLOW_FRAME_MS` / `PCSS_LITE_SLOW_FRAMES` | — | Bis v2.0.150: adaptives 1-Tap beim Orbit. **v2.0.151:** ungenutzt; Orbit behält volles PCSS |
 | `INDOOR_SLAB_THICKNESS` | 8 cm | Extrusionsdicke Etagen-Trennfläche |
 | `INDOOR_SLAB_VISUAL_INSET_CM` | 1 cm | Sichtbare Platte hinter Innenwand (kein Z-Fight, v2.0.129) |
@@ -147,7 +149,7 @@ State-Änderung / Sonnen-Slider
 | `SHADOW_FRUSTUM_PAD` | 120 cm | Rand um den Shadow-Kasten |
 | `SHADOW_FRUSTUM_DEPTH_PAD` | 80 cm | Extra near/far |
 | `SHADOW_GROUND_Y` | −0,5 cm | Bodenebene der Projektion |
-| `SHADOW_GROUND_MAX_LENGTH` | 3200 cm | Cap der Boden-Schattenlänge (Texel) |
+| `SHADOW_GROUND_MAX_LENGTH` | 2400 cm | Cap der Boden-Schattenlänge (Texel); v2.0.257 |
 
 **Boden-Schatten:** Außenboden bei `y = −0,5` cm, neue `PlaneGeometry`, `polygonOffset`. Defaults: Hintergrund, Untergrund und Klar-Glas-Himmel `#555555` (Szene-Farben; einzeln oder über „Alle drei“).
 
@@ -162,7 +164,7 @@ Glas: dunkles Klarglas, CubeCamera-EnvMap der Szene von außerhalb. `transmissio
 - **Glas wirft Schatten:** füllt die Öffnung; Glas bleibt ohne Cast — Sonne nur durch Loch + Glas, nicht durch Rahmen.
 - **Etagenstreifen auf Fassade (v2.0.18 / v2.0.100):** Decken auf Layer 0 warfen horizontale Streifen. Sichtbare Platten bleiben Layer 1; Sonne blockiert ein unsichtbarer Okkluder an der Innenkante (Layer 0).
 - **Einheiten cm:** Bias-Werte aus Meter-Tutorials sind hier falsch skaliert.
-- **Sehr flache Sonne:** Schattenlänge über 3200 cm wird im Frustum gekappt (sonst zu grobe Texel). Der Boden in der 3D-Ansicht ist um dieselbe Reichweite vergrößert.
+- **Sehr flache Sonne:** Schattenlänge über 2400 cm wird im Frustum gekappt (sonst zu grobe Texel). Der Boden in der 3D-Ansicht ist um dieselbe Reichweite vergrößert.
 - **Entwurf / Vorschau:** PCSS aus, harte `BasicShadowMap` (kein Contact-Hardening) — absichtlich.
 - **Weichheit-Slider tot (v2.0.1 / v2.0.97):** `#define PCSS_LIGHT_SIZE_UV` cached nicht; Filter `× NEAR/z` mit Near 0,002 auf Ortho-NDC ist unsichtbar. Fix: Uniform + `PCSS_PENUMBRA_SCALE` 8 (**v2.0.98**). Softness-Default 2,5. Slider nur in **Render**.
 - **Weichheit-Slider träge (v0.7.335):** Pro Tick Shader-Neubau — jetzt Uniform `pcssLightSizeUv`, sofortiger Frame-Render. PCSS-Filter in Lit-Bereichen erzeugte zweiten Weichschatten. Jetzt ein Pfad: hart am Kontakt, Weichheit nur via min(hard, soft) in der Penumbra.
@@ -192,5 +194,7 @@ Glas: dunkles Klarglas, CubeCamera-EnvMap der Szene von außerhalb. `transmissio
 - **normalBias zu groß:** erzeugt helle Spalten an Laibung/Sockel (Peter-Panning); Max 0,22 cm (v2.0.117).
 - **Helle Rest-Steine an Öffnungen (v2.0.119):** Umriss-Reste (Bogen, Freiraum, Laibung, Keilstein, Bossen-First) wurden per Earcut immer CCW (+z, in die Wand) trianguliert, Feldsteine per `addQuad` −z. Mit `shadowSide: FrontSide` fielen diese Steine aus der Shadow-Map: kein Schattenwurf (Lichtkanten an der Laibung) und kein Selbstschatten — sie wirkten glatt und heller als das Feld, das das PCSS-/Hard-Shadow-Korn trägt. Fix: `triangulateOutlineRing(…, { front: true })` dreht Front-Dreiecke, Ringe werden vor Seitenquads CCW normiert (`panelGeometry.ts`, siehe [panel-geometry.md](panel-geometry.md)). Diagnose über Normalen-Karte je Sample (nz-Vorzeichen) — nicht Farbe/Material.
 - **Navigieren ruckelt im Render (v2.0.120):** ~4 Bilder/s beim Drehen/Schwenken (M1 Max) — der PCSS-Shader füllte pro Fragment ein globales `vec2[32]` (32 × sin/cos/pow) und indizierte es in nicht entrollten Schleifen dynamisch; auf Metal kostete das ~200 ms/Frame (1-Tap-Referenz 14 ms), unabhängig von der Map-Größe. Jetzt `const vec2 pcssDisk[32]` (Formel des Three.js-Beispiels, in JS berechnet), Zufallsrotation als `mat2`, Literal-Schleifen (`#pragma unroll_loop_start` entrollt nur Literale, keine `#define`s), `step()` statt `if`. Bild unverändert, volles PCSS im Orbit bei Vsync. Adaptives `pcssLite` (1 Tap) wurde in v2.0.151 entfernt, in v2.0.170 wieder eingebaut und in **v2.0.197 endgültig aus dem Shader entfernt** — Drehen/Zoomen behält denselben weichen Schatten; Details in [performance.md](performance.md). **Shader-Test-Fallstrick:** `disablePcssShadows()` + `needsUpdate` kompiliert **nicht** neu — der Programm-Cache-Key enthält den Chunk-Text nicht; zum Vergleich `customProgramCacheKey` ändern.
-- **Feld-Korn (offen):** Der planare Selbstschatten-Anteil (Blocker-Suche über Lichtgröße × `PCSS_PENUMBRA_SCALE` trifft die eigene, schräg beleuchtete Fläche) dunkelt große Frontflächen leicht und körnig ab; `normalBias`/`bias` (0,4-cm-Texel, ~0,7 cm Tiefen-Bias) reichen dafür nicht. Kandidat: Receiver-Plane-Depth-Bias in `pcssFindBlocker`/`pcssFilter`.
-- **Freiraum-Lichtkante (v2.0.117):** Freiraum-Kappe ohne `receiveShadow` blieb im Schatten hell; Sync filterte sie über `openingPart` aus. Jetzt `clearanceCap`-Flag + Empfang wie Paneele. Laibung nur Mini-Inset (0,12 cm) an der Freiraum-Front.
+- **Freiraum-Lichtkante / Erker-Schwarz (v2.0.117 / v2.0.256 / v2.0.257):** Freiraum-Kappe ohne `receiveShadow` blieb im Schatten hell. Empfang wie Paneele; `castShadow = false` gegen Selbstwurf der Stufen. **v2.0.257:** an Erker-Seiten pechschwarz durch Gegenlicht-Shade (Hemi mitgedimmt) → Cap `skipFacadeShade` wie Fensterrahmen.
+- **Gerasterte Schattenkanten (v2.0.257):** große Ortho + 4096 → sichtbare Texel-Treppen. Render: immer 8192; Frustum kürzer (Boden 2400 cm); Penumbra-Skala kurz 10, in **v2.0.258** wieder 8 + Contact-Hardening.
+- **Lücken unter Fensterbank / blasse Öffnungsschatten (v2.0.258):** Ohne `min(hard, soft)` und bei Slope-Max 12 fraß weiches PCSS den Kontakt dünner Caster. Fix: Hart-Tap + Soft-Min, Slope 6, Density→`shadow.intensity`.
+- **Licht durch Erker-Boden/Deckel (v2.0.258):** `baySoffit` castete nicht (nur Empfang) → Sonne durch Untersicht. Jetzt `castShadow = true` wie Geschossplatten-Okkluder.

@@ -11,7 +11,7 @@ import {
   DEFAULT_WALL_COLOR,
   defaultOpeningFrameColor,
 } from './constants/colorPalettes'
-import type { EditorState, FacadeState, Opening, OpeningRef, Wall, Building } from './types/facade'
+import type { EditorState, FacadeState, Opening, OpeningRef, Wall, Building, StudioPanelConfig } from './types/facade'
 import { cloneFacadeState, createDefaultEditorState } from './types/facade'
 import {
   buildingShowsBareWalls,
@@ -119,7 +119,7 @@ import {
 import { planFacesWithHoles } from './studio/floorPlan'
 import { notchSlabRingAtOpenings } from './studio/slabNotches'
 import { floorIndex, storeyFloorSurfaceY, storeyTopY } from './utils/layers'
-import { isStudioWall, leafOpenSignForWall, outerSillBoardPose, studioFacadeOutwardLocalZ, studioFacadeSelectionLocalZ, studioPanelFaceLocalZ, studioProfileAnchorLocalZ, studioWallOuterLocalZ, studioWallTransform, studioWindowOriginZ, wallEndPoint, wallHasPanels, wallStartPoint, windowDepthForwardSign } from './studio/walls'
+import { isStudioWall, leafOpenSignForWall, outerSillBoardPose, studioFacadeOutwardLocalZ, studioFacadeSelectionLocalZ, studioProfileAnchorLocalZ, studioWallTransform, studioWindowOriginZ, wallEndPoint, wallHasPanels, wallStartPoint, windowDepthForwardSign } from './studio/walls'
 import { buildMansardRoof } from './studio/roof'
 import {
   createWallLabelMeshSpec,
@@ -155,6 +155,8 @@ import { buildPointLightRoomOccluders } from './lighting/pointLightRoomOccluders
 const DEPTH_LAYER_TILE_UNITS = 1
 const DEPTH_LAYER_MORTAR_UNITS = 4
 const DEPTH_LAYER_WALL_SHELL_UNITS = 8
+/** Laibung: vor Stein-/Mörtel-Seitenflächen am Jamb (negativ = näher), Factor bleibt +1. */
+const REVEAL_DEPTH_UNITS = -6
 
 /** Nach `finish*`/`applyWorkModeSurfaceLook` aufrufen — die setzen Units auf 1 zurück. */
 function applyDepthLayerOffset(material: THREE.Material, units: number): void {
@@ -363,10 +365,11 @@ export class FacadeController {
       dithering: false,
       side: THREE.DoubleSide,
       shadowSide: THREE.FrontSide,
-      // Vor Paneelen (Factor +1): Bogenprofil-Fußplatte sonst Z-Fight im Zwickel.
+      // Vor Steinen (Factor/Units negativ): distanzunabhängiger Rang vs. DEPTH_LAYER_TILE (+1/+1).
+      // −1/−1 reichte beim Rauszoomen nicht (v2.0.248, profileSep 0 + depthEps).
       polygonOffset: true,
       polygonOffsetFactor: -1,
-      polygonOffsetUnits: -1,
+      polygonOffsetUnits: -16,
     })
 
     this.axes = new THREE.AxesHelper(80)
@@ -402,6 +405,32 @@ export class FacadeController {
   private buildingIsBare(buildingId: string | undefined | null): boolean {
     if (!buildingId) return false
     return buildingShowsBareWalls(this.state.buildings.find((b) => b.id === buildingId))
+  }
+
+  private wallTreatAsBare(wall: Wall): boolean {
+    const building = findBuildingForWall(this.state, wall.id)
+    return normalizeFacadeDecor(building?.facadeDecor).panels === false
+  }
+
+  /** Fassadenschmuck „Sockel“ aus: Geometrie wie ohne Sockel (Paneele bis Boden, keine Sockelzone). */
+  private wallPlinthDecorHidden(wall: Wall): boolean {
+    const building = findBuildingForWall(this.state, wall.id)
+    return normalizeFacadeDecor(building?.facadeDecor).plinth === false
+  }
+
+  /** Paneel-Config für Raster/Clip — Sockel-Decor aus → plinthEnabled false. */
+  private panelForCladdingGeometry(wall: Wall): StudioPanelConfig {
+    const panel = wall.panel ?? DEFAULT_STUDIO_PANEL
+    if (!this.wallPlinthDecorHidden(wall)) return panel
+    return { ...panel, plinthEnabled: false }
+  }
+
+  private createStudioWallBodyGeometry(wall: Wall, neighborWalls: Wall[]): THREE.BufferGeometry {
+    return createStudioWallGeometry(wall, neighborWalls, {
+      treatAsBareWall: this.wallTreatAsBare(wall),
+      // Sockel-Decor aus: kein barePlinth (sonst Wandband statt Paneele in der Sockelzone).
+      treatPlinthInactive: this.wallPlinthDecorHidden(wall),
+    })
   }
 
   private wallIsBare(wall: Wall): boolean {
@@ -668,12 +697,14 @@ export class FacadeController {
         continue
       }
       if (child.userData.kind === 'baySoffit') {
-        // Erker-Untersicht: außen sichtbar (Exterior-Sonne), wirft keinen Schatten, empfängt.
-        child.castShadow = false
+        // Erker-Boden/Deckel: lichtdicht für Sonne (sonst Licht durch Untersicht/Rückwand-Öffnung).
+        child.castShadow = true
         child.receiveShadow = true
         child.layers.set(SHADOW_LAYER_EXTERIOR)
         child.layers.enable(SHADOW_LAYER_INTERIOR)
-        if (child.customDistanceMaterial === this.shadowDistanceMaterial) {
+        if (enable) {
+          child.customDistanceMaterial = this.shadowDistanceMaterial
+        } else if (child.customDistanceMaterial === this.shadowDistanceMaterial) {
           child.customDistanceMaterial = undefined
         }
         continue
@@ -1139,6 +1170,52 @@ export class FacadeController {
     }
   }
 
+  /**
+   * Oranger Platzhalter beim Bibliothek-Drop (Fenster/Tür/Schrift) — gleiche Optik
+   * wie der Öffnungs-Ghost beim Verschieben.
+   */
+  setLibraryPlacementGhost(
+    wall: Wall,
+    rect: { x: number; y: number; width: number; height: number; type?: Opening['type'] },
+  ) {
+    this.clearOpeningDragGhosts()
+    if (rect.width < 1 || rect.height < 1) return
+    const synthetic: Opening = {
+      id: '__library_place__',
+      type: rect.type ?? 'window',
+      x: rect.x,
+      y: rect.y,
+      width: rect.width,
+      height: rect.height,
+    }
+    const localZ = openingDragFloatLocalZ(wall)
+    const group = new THREE.Group()
+    for (const part of createOpeningDragGhostParts(
+      wall,
+      synthetic,
+      localZ,
+      this.openingDragGhostFillMaterial,
+      this.selectionLineMaterial,
+    )) {
+      group.add(part)
+    }
+    if (group.children.length === 0) return
+    group.userData = {
+      kind: 'openingDragGhost',
+      wallId: wall.id,
+      openingId: synthetic.id,
+      libraryPlacement: true,
+    }
+    const transform = wallPlacement(wall)
+    group.position.set(transform.position.x, transform.position.y, transform.position.z)
+    group.rotation.y = transform.rotationY
+    this.openingDragGhostGroup.add(group)
+  }
+
+  clearLibraryPlacementGhost() {
+    this.clearOpeningDragGhosts()
+  }
+
   private createOpeningDragGhosts(refs: OpeningRef[]) {
     for (const ref of refs) {
       const wall = findWall(this.state, ref.wallId)
@@ -1207,7 +1284,7 @@ export class FacadeController {
       const neighborWalls = this.buildingWalls(wall)
       const bodyWall = this.wallForBodyMesh(wall)
       const geometry = isStudioWall(bodyWall)
-        ? createStudioWallGeometry(bodyWall, neighborWalls)
+        ? this.createStudioWallBodyGeometry(bodyWall, neighborWalls)
         : createWallGeometry(bodyWall, neighborWalls)
       const mesh = this.meshes.get(wall.id)
       if (!mesh) continue
@@ -1796,7 +1873,8 @@ export class FacadeController {
     /**
      * Untersicht (Soffit) unter einem Erker: schließt die Unterseite, damit man von
      * unten nicht durch den Erker sieht. Von außen sichtbar (Exterior-Layer), wirft
-     * keinen Schatten, empfängt Schatten. Y-Oberkante = Erker-Fuß (host.y).
+     * und empfängt Schatten (lichtdicht — sonst scheint die Sonne durch Boden/Deckel).
+     * Y-Oberkante = Erker-Fuß (host.y) bzw. Erker-Oberkante beim Deckel.
      */
     const addBaySoffit = (
       shape: THREE.Shape,
@@ -1813,7 +1891,7 @@ export class FacadeController {
       mesh.position.set(0, topY - slabThickness, 0)
       mesh.layers.set(SHADOW_LAYER_EXTERIOR)
       mesh.layers.enable(SHADOW_LAYER_INTERIOR)
-      mesh.castShadow = false
+      mesh.castShadow = true
       mesh.receiveShadow = true
       mesh.userData.kind = 'baySoffit'
       mesh.userData.buildingId = buildingId
@@ -2396,7 +2474,7 @@ export class FacadeController {
       const neighborWalls = this.buildingWalls(wall)
       const bodyWall = this.wallForBodyMesh(wall)
       const geometry = isStudioWall(bodyWall)
-        ? createStudioWallGeometry(bodyWall, neighborWalls)
+        ? this.createStudioWallBodyGeometry(bodyWall, neighborWalls)
         : createWallGeometry(bodyWall, neighborWalls)
       const mesh = this.meshes.get(wall.id)
       if (!mesh) continue
@@ -2905,14 +2983,14 @@ export class FacadeController {
     if (wallPart === 'plinth' || lodTier === 'plinth') return 'plinth'
     if (wallPart === 'cornice') return 'cornice'
     if (wallPart === 'trimBand') return 'trimBands'
-    // Öffnungs-Rahmenprofile / Profil-Bänke = „Profile“ (nicht Gesims/Zierband).
+    // Fensterbank außen (Brett oder Profil-Sweep) / Fensterbrett innen = eigener Schalter.
+    if (openingPart === 'sillOuter' || openingPart === 'sillInner') return 'sills'
+    // Öffnungs-Rahmenprofile = „Profile“ (nicht Gesims/Zierband).
     if (
       obj.userData.kind === 'profile' ||
       lodTier === 'profile' ||
       wallPart === 'profile' ||
-      openingPart === 'trim' ||
-      openingPart === 'sillOuter' ||
-      openingPart === 'sillInner'
+      openingPart === 'trim'
     ) {
       return 'profiles'
     }
@@ -3390,7 +3468,7 @@ export class FacadeController {
     const bodyWall = this.wallForBodyMesh(wall)
     const transform = wallPlacement(wall)
     const geometry = isStudioWall(bodyWall)
-      ? createStudioWallGeometry(bodyWall, neighborWalls)
+      ? this.createStudioWallBodyGeometry(bodyWall, neighborWalls)
       : createWallGeometry(bodyWall, neighborWalls)
     const wallMaterial = this.syncWallBodyMaterials(
       wall,
@@ -3468,10 +3546,15 @@ export class FacadeController {
       if (this.wallIsBare(wall)) continue
       if (this.isDraftPresentation()) continue
       if (!isStudioWall(wall)) continue
+      const building = findBuildingForWall(this.state, wall.id)
+      const treatAsBareWall = this.wallTreatAsBare(wall)
       for (const opening of wall.openings) {
         if (opening.hidden) continue
         if (!openingCutsWall(opening)) continue
-        const geometry = createStudioOpeningRevealGeometry(wall, opening)
+        const geometry = createStudioOpeningRevealGeometry(wall, opening, {
+          windowDepthOffset: building?.windowDepthOffset,
+          treatAsBareWall,
+        })
         if (!geometry) continue
         const exteriorColor =
           opening.revealExteriorColor ?? wall.wallColor ?? DEFAULT_WALL_COLOR
@@ -3518,14 +3601,16 @@ export class FacadeController {
         // Sonne + Punktlicht: Empfang wie Paneele (auch Nische/Konche).
         mesh.receiveShadow = this.revealShouldReceiveShadow(mesh)
         mesh.renderOrder = 2
-        // Leichter Offset gegen Z-Fight mit Freiraum/Paneel — starker Offset (−2)
-        // zog die Laibungskante vor und erzeugte helle Silhouetten.
+        // Tiefenrang Laibung vor Stein-Seitenflächen (Units), gleicher Factor wie Steine (+1):
+        // Factor −1 (v2.0.244/248) zog per Slope-Term eine Kante vor; Units +1 (= Steine)
+        // ließ die Ziegel bei Distanz gewinnen (v2.0.249, depthEps > Jamb-Inset). Units −6
+        // wirkt distanzunabhängig (ULPs), ohne Slope-Fringe. Siehe docs/facade-layers.md.
         exteriorMaterial.polygonOffset = true
-        exteriorMaterial.polygonOffsetFactor = -1
-        exteriorMaterial.polygonOffsetUnits = -1
+        exteriorMaterial.polygonOffsetFactor = 1
+        exteriorMaterial.polygonOffsetUnits = REVEAL_DEPTH_UNITS
         interiorMaterial.polygonOffset = true
-        interiorMaterial.polygonOffsetFactor = -1
-        interiorMaterial.polygonOffsetUnits = -1
+        interiorMaterial.polygonOffsetFactor = 1
+        interiorMaterial.polygonOffsetUnits = REVEAL_DEPTH_UNITS
         ensureShadowDepthMaterial(exteriorMaterial)
         if (geometry.groups.length >= 2) ensureShadowDepthMaterial(interiorMaterial)
         mesh.userData.originalMaterial = materials
@@ -3576,7 +3661,8 @@ export class FacadeController {
       return
     }
     const surfaceWall = this.wallForBodyMesh(wall)
-    const geometry = createStudioOpeningShadowTunnelGeometry(surfaceWall)
+    const treatAsBareWall = this.wallTreatAsBare(wall)
+    const geometry = createStudioOpeningShadowTunnelGeometry(surfaceWall, { treatAsBareWall })
     if (!geometry) {
       this.disposeOpeningShadowTunnel(wall.id)
       return
@@ -3894,7 +3980,7 @@ export class FacadeController {
       const buildingId = wall.buildingId ?? findBuildingForWall(this.state, wall.id)?.id
 
       if (isStudioWall(wall)) {
-        const panel = wall.panel ?? DEFAULT_STUDIO_PANEL
+        const panel = this.panelForCladdingGeometry(wall)
         const transform = wallPlacement(wall)
         if (!(panel.enabled === false || panel.pattern === 'none')) {
           try {
@@ -4160,8 +4246,13 @@ export class FacadeController {
           const capGeometry = createStudioClearanceCapGeometry(geomWall, opening, panel)
           if (!capGeometry) continue
           const capMaterial = createTintedMaterial(this.material, wallCapColor, wall.wallFinish)
+          // Gegenlicht-Shade dimmt flache Cap-Fronten (Hemisphere mit) — an Erker-Seiten
+          // (sonnenabgewandt) wirkt der Freiraum pechschwarz. Wie Fensterrahmen: Shade aus.
+          capMaterial.userData.skipFacadeShade = true
           const capMesh = new THREE.Mesh(capGeometry, capMaterial)
-          capMesh.castShadow = true
+          // Empfang an (Werfschatten von Paneel/Gesims); eigener Wurf aus —
+          // sonst verdunkeln Stufenleibung + Front die Vertiefung unverhältnismäßig.
+          capMesh.castShadow = false
           capMesh.userData.clearanceCap = true
           capMesh.receiveShadow = this.claddingMeshShouldReceiveShadow(capMesh)
           capMesh.userData.lodTier = 'high'
@@ -4449,6 +4540,8 @@ export class FacadeController {
       const wall = findWall(this.state, path.wallId)
       if (buildingId && wall?.buildingId !== buildingId) continue
       if (wall && this.wallIsBare(wall)) continue
+      // Fassadenschmuck Sockel aus: weder Box noch Profil-Sockel erzeugen.
+      if (path.role === 'plinthProfile' && wall && this.wallPlinthDecorHidden(wall)) continue
       const profileColor = path.color ?? wall?.profileColor ?? DEFAULT_PROFILE_COLOR
 
       let zBase: number
@@ -4456,21 +4549,18 @@ export class FacadeController {
 
       if (path.localSpace && wall && isStudioWall(wall)) {
         forwardSign = path.forwardSign ?? 1
+        const treatAsBareWall = this.wallTreatAsBare(wall)
         if (this.isPerfPresentation()) {
           // Balken auf Stein-Ebene (vor der Wand), flush.
           zBase = studioWorkModeTileLocalZ(wall)
           zBase += (path.offsetForward ?? 0) * forwardSign
-        } else if (path.role === 'sillOuter' || path.role === 'sillInner') {
-          zBase = studioFacadeOutwardLocalZ(wall)
-          zBase += (path.offsetForward ?? 0) * forwardSign
-        } else if (path.role === 'plinthProfile') {
-          zBase = studioPanelFaceLocalZ(wall)
-          zBase += (path.offsetForward ?? 0) * forwardSign
-        } else if (path.useWallOuterFace) {
-          zBase = studioWallOuterLocalZ(wall)
-          zBase += (path.offsetForward ?? 0) * forwardSign
         } else {
-          zBase = studioProfileAnchorLocalZ(wall, path.offsetForward ?? 0)
+          // Paneele an → Paneelfläche (projectDepth, ohne Bossen-Trapez);
+          // Paneele aus / Freistreifen (useWallOuterFace) → Wandaußenkante.
+          // Sockel, Gesims, Zierband, Rahmen, Sohlbank: derselbe Anker.
+          zBase = studioProfileAnchorLocalZ(wall, path.offsetForward ?? 0, {
+            treatAsBareWall: treatAsBareWall || Boolean(path.useWallOuterFace),
+          })
         }
       } else {
         forwardSign = 1
@@ -4645,6 +4735,7 @@ export class FacadeController {
     for (const wall of getVisibleWalls(this.state)) {
       if (buildingId && wall.buildingId !== buildingId) continue
       if (this.wallIsBare(wall)) continue
+      const treatAsBareWall = this.wallTreatAsBare(wall)
       for (const opening of wall.openings) {
         if (opening.hidden) continue
         const sill = opening.sillOuter
@@ -4659,7 +4750,7 @@ export class FacadeController {
         const color = normalized.color ?? wall.profileColor ?? DEFAULT_PROFILE_COLOR
         const geometry = new THREE.BoxGeometry(width, thickness, depth)
         const angleRad = ((layout.angleDeg ?? 0) * Math.PI) / 180
-        const board = outerSillBoardPose(wall, depth)
+        const board = outerSillBoardPose(wall, depth, { treatAsBareWall })
         // Pivot an der Oberkante (bündig mit Öffnungs-Unterkante), Neigung senkt nur die Tropfkante.
         geometry.translate(0, -thickness / 2, board.translateZ)
         const material = createTintedMaterial(
@@ -4705,6 +4796,7 @@ export class FacadeController {
           openingPart: 'sillOuter',
         })
         mesh.userData.wallId = wall.id
+        mesh.userData.buildingId = wall.buildingId
         this.profileGroup.add(mesh)
         this.outerSillMeshes.push(mesh)
       }
@@ -4736,9 +4828,11 @@ export class FacadeController {
         )
         this.finishExteriorMaterial(material)
         const transform = wallPlacement(wall)
+        const treatAsBareWall = this.wallTreatAsBare(wall)
 
         const sweep = createPedimentSweepGeometry(wall, opening, pediment, {
           simpleBar: this.isPerfPresentation(),
+          treatAsBareWall,
         })
         if (sweep) {
           const mesh = new THREE.Mesh(sweep, material)
@@ -4761,7 +4855,9 @@ export class FacadeController {
           this.pedimentMeshes.push(mesh)
         }
 
-        const sealed = createPedimentSealedBackGeometry(wall, opening, pediment)
+        const sealed = createPedimentSealedBackGeometry(wall, opening, pediment, {
+          treatAsBareWall,
+        })
         if (sealed) {
           const mesh = new THREE.Mesh(sealed, material)
           mesh.frustumCulled = false
@@ -4785,6 +4881,7 @@ export class FacadeController {
 
         for (const consoleGeo of createPedimentConsoleGeometries(wall, opening, pediment, {
           simpleBar: this.isPerfPresentation(),
+          treatAsBareWall,
         })) {
           const mesh = new THREE.Mesh(consoleGeo, material)
           mesh.frustumCulled = false

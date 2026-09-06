@@ -9,6 +9,13 @@ import {
   timeWhenSunAzimuth,
   todayMonthDay,
 } from './solar'
+import {
+  defaultSceneLightAnimChannels,
+  normalizeSceneAnimPlayMode,
+  normalizeSceneLightAnimChannels,
+  type SceneAnimPlayMode,
+  type SceneLightAnimChannels,
+} from './sceneLightAnim'
 
 export interface SunSettings {
   /** Anzeige / manuell: Solar-Azimut (0=N, 90=O, CW). */
@@ -43,6 +50,13 @@ export interface SunSettings {
   animToAzimuth: number
   /** Abspieldauer in Sekunden (5…120). */
   animDurationSec: number
+  /**
+   * Einmalige Szene-Animation: Tagesverlauf (Uhrzeit) oder Lichtparameter.
+   * Unabhängig vom kontinuierlichen Tageszyklus.
+   */
+  animPlayMode?: SceneAnimPlayMode
+  /** Von/Bis für Licht-/Bloom-Kanäle (wenn `animPlayMode === 'light'`). */
+  animLightChannels?: SceneLightAnimChannels
   /**
    * Kontinuierlicher Tageszyklus.
    * Unabhängig von manueller Uhrzeit-Steuerung.
@@ -86,7 +100,11 @@ export const DEFAULT_SUN_SHADOW_SOFTNESS = 2.5
 export const DEFAULT_SUN_COLOR_TEMP = 4500
 export const DEFAULT_SUN_AMBIENT = 0.53
 export const DEFAULT_SUN_SHADOW_CONTRAST = 1.4
-export const DEFAULT_SUN_SHADOW_DENSITY = 0.55
+/** Slider `#sun-shadow-contrast`: Minimum. */
+export const SUN_SHADOW_CONTRAST_MIN = 0.5
+/** Slider-Maximum — höher = deutlich dunklere Schatten (v2.0.256: 10, zuvor 5). */
+export const SUN_SHADOW_CONTRAST_MAX = 10
+export const DEFAULT_SUN_SHADOW_DENSITY = 0.7
 
 const today = todayMonthDay()
 /** Sonnenhöhe für Standard-Tageszeit (Berlin, heutiges Datum). */
@@ -114,6 +132,8 @@ export const DEFAULT_SUN_SETTINGS: SunSettings = {
   animFromAzimuth: 45,
   animToAzimuth: 180,
   animDurationSec: 20,
+  animPlayMode: 'time',
+  animLightChannels: defaultSceneLightAnimChannels(),
   dayCycleEnabled: true,
   dayCycleRealMinutes: 60,
   animationsPaused: false,
@@ -126,15 +146,25 @@ export const SHADOW_MAP_SIZE = 4096
 /** Kleine/mittlere Sites: feinere Texel → weniger Treppenstufen in der Penumbra. */
 export const SHADOW_MAP_SIZE_HIGH = 8192
 /**
- * Site-Spanne (max XZ, cm), bis zu der 8192 genutzt wird.
- * Darüber 4096 — bei Wachstum der Fassade muss Map-Größe **vor** Frustum-Fit
- * und mit Dispose gewechselt werden (`ensureDirectionalShadowMapSize`).
+ * Site-Spanne (max XZ, cm), bis zu der 8192 genutzt wird (Entwurf/Vorschau).
+ * Render nutzt immer 8192 (v2.0.257) — sonst grobe Treppenstufen in Schattenkanten.
  */
-export const SHADOW_MAP_HIGH_SPAN_CM = 4800
+export const SHADOW_MAP_HIGH_SPAN_CM = 6400
 
 /** Site-Spanne → Shadow-Map-Auflösung (4096 oder 8192). */
 export function shadowMapSizeForSiteSpan(span: number): number {
   return span <= SHADOW_MAP_HIGH_SPAN_CM ? SHADOW_MAP_SIZE_HIGH : SHADOW_MAP_SIZE
+}
+
+/**
+ * Render: immer 8192. Entwurf/Vorschau: je nach Site-Spanne (Performance).
+ */
+export function shadowMapSizeForPresentation(
+  span: number,
+  presentation: 'render' | 'preview' | 'draft' | string,
+): number {
+  if (presentation === 'render') return SHADOW_MAP_SIZE_HIGH
+  return shadowMapSizeForSiteSpan(span)
 }
 /** Innen-Sonne: kleinere Map reicht (nur Etagenplatten + Wände). */
 export const SHADOW_MAP_SIZE_INDOOR = 2048
@@ -153,8 +183,9 @@ export const SHADOW_GROUND_Y = -0.5
 /**
  * Maximale mitgenommene Schattenlänge auf dem Boden (cm).
  * Begrenzt die Texelgröße bei sehr flacher Sonne; typische Fassaden bis ~8° Elevation.
+ * v2.0.257: 2400 (zuvor 3200) — engere Ortho → feinere Schattenkanten an der Fassade.
  */
-export const SHADOW_GROUND_MAX_LENGTH = 3200
+export const SHADOW_GROUND_MAX_LENGTH = 2400
 /**
  * Layer-Trennung Außen vs. Innenböden/Decken.
  * Eine Shadow-Map kann nicht beides: Platten dichten den Innenraum ab,
@@ -313,6 +344,8 @@ export function syncSunSettingsFromSolar(
     animFromAzimuth: clampAnimYaw(settings.animFromAzimuth),
     animToAzimuth: clampAnimYaw(settings.animToAzimuth),
     animDurationSec: clampAnimDuration(settings.animDurationSec),
+    animPlayMode: normalizeSceneAnimPlayMode(settings.animPlayMode),
+    animLightChannels: normalizeSceneLightAnimChannels(settings.animLightChannels),
   }
   if (applySolarLook) {
     const elev = resolved.elevationRad
@@ -341,12 +374,13 @@ export function resolveAnimTimeRange(settings: SunSettings): {
   approxHint: boolean
 } {
   const doy = dayOfYearFromMonthDay(settings.month, settings.day)
-  const bounds = solarDayBounds(doy)
   let fromHours: number
   let toHours: number
   let approxHint = false
 
-  if (settings.animUseTime) {
+  const playMode = normalizeSceneAnimPlayMode(settings.animPlayMode)
+  // Tagesverlauf-Abspielen und animUseTime: immer explizite Von/Bis-Uhrzeit.
+  if (playMode === 'time' || settings.animUseTime) {
     fromHours = clampDayHours(settings.animFromTime)
     toHours = clampDayHours(settings.animToTime)
   } else {
@@ -357,9 +391,22 @@ export function resolveAnimTimeRange(settings: SunSettings): {
     approxHint = !a.exact || !b.exact
   }
 
+  // Tagesverlauf darf über Mitternacht laufen (z. B. 18→6): keine min/max-Klammer.
+  if (playMode === 'time' || settings.animUseTime) {
+    return { fromHours, toHours, approxHint }
+  }
   const t0 = Math.min(fromHours, toHours)
   const t1 = Math.max(fromHours, toHours)
   return { fromHours: t0, toHours: t1, approxHint }
+}
+
+/** Lineare Interpolation der Tageszeit; erlaubt Wrap über Mitternacht wenn Bis < Von. */
+export function lerpTimeOfDayHours(fromHours: number, toHours: number, t: number): number {
+  const a = clampDayHours(fromHours)
+  const b = clampDayHours(toHours)
+  let delta = b - a
+  if (b < a) delta = b + 24 - a
+  return clampDayHours(((a + delta * t) % 24 + 24) % 24)
 }
 
 function migrateLegacyAnim(value: Partial<SunSettings> & LegacySunAnim, base: SunSettings): Pick<
@@ -430,7 +477,7 @@ export function normalizeSunSettings(
         : base.ambient,
     shadowContrast:
       typeof value.shadowContrast === 'number'
-        ? THREE.MathUtils.clamp(value.shadowContrast, 0.5, 5)
+        ? THREE.MathUtils.clamp(value.shadowContrast, SUN_SHADOW_CONTRAST_MIN, SUN_SHADOW_CONTRAST_MAX)
         : base.shadowContrast,
     shadowDensity:
       typeof value.shadowDensity === 'number'
@@ -441,6 +488,12 @@ export function normalizeSunSettings(
     ...migrateLegacyAnim(value, base),
     animDurationSec:
       typeof value.animDurationSec === 'number' ? value.animDurationSec : base.animDurationSec,
+    animPlayMode: normalizeSceneAnimPlayMode(
+      value.animPlayMode !== undefined ? value.animPlayMode : base.animPlayMode,
+    ),
+    animLightChannels: normalizeSceneLightAnimChannels(
+      value.animLightChannels !== undefined ? value.animLightChannels : base.animLightChannels,
+    ),
     dayCycleEnabled:
       typeof value.dayCycleEnabled === 'boolean' ? value.dayCycleEnabled : base.dayCycleEnabled,
     dayCycleRealMinutes: clampDayCycleRealMinutes(
@@ -727,8 +780,8 @@ export function applySunSettings(
   sceneColors?: { sky: string; ground: string },
 ): void {
   applyDirectionalSun(settings, dirLight, target, distance)
-  const contrast = Math.max(0.5, settings.shadowContrast)
-  hemiLight.intensity = Math.max(0.04, settings.ambient / contrast)
+  const contrast = Math.max(SUN_SHADOW_CONTRAST_MIN, settings.shadowContrast)
+  hemiLight.intensity = Math.max(0.02, settings.ambient / contrast)
   const groundDark = THREE.MathUtils.clamp(settings.shadowDensity, 0, 1)
   if (sceneColors) {
     hemiLight.color.set(sceneColors.sky)

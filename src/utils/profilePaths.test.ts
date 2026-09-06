@@ -178,7 +178,8 @@ describe('Profil-Sweep Bilderrahmen-Gehrung', () => {
     const pos = geo.getAttribute('position') as { getZ(i: number): number; count: number }
     let minZ = Infinity
     for (let i = 0; i < pos.count; i += 1) minZ = Math.min(minZ, pos.getZ(i))
-    expect(minZ).toBeCloseTo(PROFILE_BACK_CLEARANCE_CM, 5)
+    // Öffnungsprofile: Mindest-Forward PROFILE_BACK_CLEARANCE_CM (kein koplanarer Z-Fight).
+    expect(minZ).toBeCloseTo(zBack + PROFILE_BACK_CLEARANCE_CM, 5)
   })
 
   it('90° rechts: Sockelprofil-Fronten treffen sich', () => {
@@ -277,6 +278,49 @@ describe('Profil-Sweep Bilderrahmen-Gehrung', () => {
     const pb = plinthEndFrontWorld(b, state, 'start')
     const gap = Math.hypot(pa.x - pb.x, pa.z - pb.z)
     expect(gap, `Sockellücke ${gap.toFixed(2)} cm ${JSON.stringify({ pa, pb, miter480: p480.planMiterEnd, miter384: p384.planMiterStart })}`).toBeLessThan(2)
+  })
+
+  it('Ecke ohne Sockel-Fortsetzung: stumpf, geschlossen, kein Plan-Miter', () => {
+    const source = {
+      ...createStudioWall(0, 0),
+      id: 'w',
+      width: 192,
+      originX: 0,
+      originZ: 0,
+      yawDeg: 0 as const,
+      buildingId: 'b1',
+      planLinked: true,
+      panel: { ...DEFAULT_STUDIO_PANEL, plinthHeight: 48, plinthProfileId: 'sockelprofil' },
+    }
+    let state = finalizeStudioGeometry(
+      attachAngledWallFromEnd(stateFromWall(source), 'w', 'end', 90, 96, 'branch'),
+    )
+    state = {
+      ...state,
+      buildings: state.buildings.map((building) => ({
+        ...building,
+        walls: building.walls.map((wall) =>
+          wall.id === 'branch'
+            ? {
+                ...wall,
+                panel: {
+                  ...wall.panel!,
+                  plinthHeight: 0,
+                  plinthProfileId: 'sockelStandard',
+                },
+              }
+            : wall,
+        ),
+      })),
+    }
+    state = finalizeStudioGeometry(state)
+    const a = state.buildings[0]!.walls.find((wall) => wall.id === 'w')!
+    expect(a, 'Quellwand').toBeTruthy()
+    expect(Math.abs(a.miterEnd ?? 0)).toBeGreaterThan(20)
+    const path = plinthPathForWall(state, 'w')
+    expect(path.planMiterEnd).toBeCloseTo(0, 5)
+    expect(path.capEnd).toBe(true)
+    expect(path.points[1]!.x).toBeCloseTo(a.width / 2, 5)
   })
 
   it('90° mit panelFlip false: Sockelprofil-Fronten treffen sich', () => {

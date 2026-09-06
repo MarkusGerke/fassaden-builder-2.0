@@ -9,6 +9,8 @@ export type FacadeDecorKind =
   | 'cornice'
   | 'trimBands'
   | 'profiles'
+  /** Fensterbänke außen + Fensterbretter innen — kein Profil-Schmuck, eigener Schalter. */
+  | 'sills'
   | 'labels'
 
 export type FacadeDecorVisibility = Record<FacadeDecorKind, boolean>
@@ -22,6 +24,7 @@ export const FACADE_DECOR_KINDS: ReadonlyArray<{
   { id: 'cornice', label: 'Gesimse' },
   { id: 'trimBands', label: 'Zierbänder' },
   { id: 'profiles', label: 'Profile' },
+  { id: 'sills', label: 'Fensterbänke / -bretter' },
   { id: 'labels', label: 'Schrift' },
 ]
 
@@ -31,6 +34,7 @@ export const DEFAULT_FACADE_DECOR: FacadeDecorVisibility = {
   cornice: true,
   trimBands: true,
   profiles: true,
+  sills: true,
   labels: true,
 }
 
@@ -43,6 +47,7 @@ export function normalizeFacadeDecor(
     cornice: raw?.cornice !== false,
     trimBands: raw?.trimBands !== false,
     profiles: raw?.profiles !== false,
+    sills: raw?.sills !== false,
     labels: raw?.labels !== false,
   }
 }
@@ -58,6 +63,7 @@ export function withAllFacadeDecor(visible: boolean): FacadeDecorVisibility {
     cornice: visible,
     trimBands: visible,
     profiles: visible,
+    sills: visible,
     labels: visible,
   }
 }

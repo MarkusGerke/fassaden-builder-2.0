@@ -2,6 +2,226 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Paneel-Defaults; Orbit ohne Shadow-Bake (2026-09-06) — v2.0.259
+
+**Nutzer:** Streifen / Läuferverband / Kopfverband und Sockel mit festen Standardmaßen; Orbitieren weniger stockig. Schatten-Look unverändert (Soll v2.0.258, Rule `schatten-qualitaet-soll.mdc`).
+
+**Muster-Defaults** (`studioPanelDefaultsForPattern`): beim Karten-/Bibliothek-Wechsel Maße setzen — Streifen 64×32 (+3 Reihen oben), Läufer 48×24 (Bossen 1/0,8), Kopf 24×8. Sockel-Default **64×8**. Dateien: `constants.ts`, `main.ts`, `index.html`.
+
+**Orbit:** Shadow-Map-Bake während der Geste unterdrücken (Timeout/Flush/Label-Dirty), nachholen am Ende; Pixelratio nur bei Cap-Wechsel; Maß-Labels und Laub während Orbit pausiert.
+
+**Docs:** [panel-geometry.md](panel-geometry.md), [wall-decor.md](wall-decor.md), [performance.md](performance.md), [camera.md](camera.md).
+
+### Kontakt-Schatten; Erker lichtdicht (2026-09-06) — v2.0.258
+
+**Symptom:** Schatten unter der Fensterbank lückenhaft (rechts hell); Schatten in Öffnungen blass; Licht scheint durch Erker-Boden bzw. Deckel.
+
+**Ursache Kontakt:** PCSS ohne Contact-Hardening (`min(hard, soft)` fehlte seit Receiver-Plane-Bias v2.0.252) + Penumbra-Skala 10 + hohe Slope-Kappe → dünne Caster (Sohlbank) verlieren Umbra. Ohne Blocker → früher immer hell.
+
+**Ursache Erker:** `baySoffit` hatte absichtlich `castShadow = false` (nur Empfang) — Sonne ging durch Untersicht/Deckel.
+
+**Nicht geholfen / verworfen:** Nur Freiraum-`castShadow` wieder an (macht Vertiefung zu schwarz, v2.0.256). Nur Map 8192 ohne Contact-Harden (Raster besser, Kontakt bleibt löchrig).
+
+**Fix:** PCSS Contact-Hardening + Slope-Max 6 + Penumbra wieder 8; Erker-Soffit wirft Schatten; `shadow.intensity` aus Schatten-Dunkelheit (Default 0,70).
+
+**Docs:** [shadows.md](shadows.md), [bay-windows.md](bay-windows.md), [opening-features.md](opening-features.md).
+
+### Schärfere Schatten; Erker-Freiraum hell (2026-09-06) — v2.0.257
+
+**Symptom:** Schattenkanten stark gerastert/treppig; Freiraum um Öffnungen an Erker-Seitenfenstern pechschwarz (Frontwände OK).
+
+**Ursache Freiraum:** Gegenlicht-Shader (`facadeShade`) dimmt flache Cap-Fronten inkl. Hemisphere — sonnenabgewandte Erker-Schenkel werden schwarz. **Nicht:** Extrude-Geometrie / `castShadow = false` (v2.0.256).
+
+**Fix Freiraum:** Cap-Material `skipFacadeShade` (wie Fensterrahmen).
+
+**Fix Raster:** Render immer Shadow-Map **8192**; Boden-Schattenlänge 2400 cm (enger Frustum); PCSS-Penumbra-Skala 10.
+
+**Docs:** [shadows.md](shadows.md), [opening-features.md](opening-features.md), [ux.md](ux.md).
+
+### Schatten-Kontrast bis 10; Freiraum weniger schwarz (2026-09-06) — v2.0.256
+
+**Nutzer:** Schatten-Kontrast (Licht) geht bis **10** für kräftigere Dunkelheit. Freiraum-Band um Öffnungen wirkt nicht mehr unverhältnismäßig schwarz.
+
+**Ursache Freiraum:** Freiraum-Kappe warf und empfing Schatten — Stufenleibung verdunkelte die Vertiefung zusätzlich zur Paneel-Umbra.
+
+**Fix:** Kappe empfängt weiter Werfschatten (Gesims/Paneel), `castShadow = false`. Kontrast-Clamp/Slider/Mood/facadeShade auf Max **10** skaliert.
+
+**Docs:** [shadows.md](shadows.md), [ux.md](ux.md), [lighting-mood.md](lighting-mood.md).
+
+### Szene-Animation flüssig (2026-09-06) — v2.0.255
+
+**Symptom:** Einmaliges Abspielen (Tagesverlauf/Licht) ruckelte / stotterte.
+
+**Ursache:** Schatten über Debounce (~120–280 ms) wie beim Tagzyklus; paralleler eigener `requestAnimationFrame`; DOM-Updates und Schedule-Actor-Crossings jedes Frame.
+
+**Fix:** Abspielen im Haupt-Renderloop; derselbe Scrub-Pfad wie Sonnen-Slider (`sunLiveScrubActive`: Box gecacht, Shadow jedes Frame, keine EnvMap); UI max. ~10 Hz; Actor-Schedules erst am Stop; Smoothstep auf den Fortschritt.
+
+**Docs:** [ux.md](ux.md), [shadows.md](shadows.md), [performance.md](performance.md).
+
+### Szene abspielen: Tagesverlauf oder Licht (2026-09-06) — v2.0.254
+
+**Nutzer:** Unter Szene → Animation wieder **Abspielen** mit Dauer. Modus **Tagesverlauf** (Von/Bis-Uhrzeit) oder **Licht** (Sonnenwinkel, Sonnenlicht, Umgebung, Schatten, Farbtemperatur, Bloom-Parameter mit Von/Bis).
+
+**Technik:** `animPlayMode` / `animLightChannels` in `SunSettings`; Playback in `main.ts` (`startSunPathAnimation`); Kanäle in `sceneLightAnim.ts`. Tageszyklus pausiert während einmaligem Abspielen.
+
+**Docs:** [ux.md](ux.md), [shadows.md](shadows.md).
+
+### Profile folgen Paneeltiefe (2026-09-06) — v2.0.253
+
+**Symptom:** Gesims, Sockel, Zierband oder Sohlbank schwebten vor der Bosse bzw. folgten nicht der Paneel-Tiefe (`projectDepth`).
+
+**Ursache:** Uneinheitliche Z-Anker — teils `studioVisibleOutwardLocalZ` (inkl. `taperDepth`), teils Wandaußenkante ohne `projectDepth`, Außenbank-Profil mit festem Outer.
+
+**Fix:** Alle wandmontierten Profile (Gesims, Sockel, Zierband, Rahmen, Außenbank-Profil, Verdachung/Konsolen) über `studioProfileAnchorLocalZ` → `studioPanelFaceLocalZ` (`projectDepth` ohne Trapez). Brett-Außenbank über dieselbe Paneelfläche. Nackte Wand / Decor Paneele aus / Freistreifen → Wandaußenkante.
+
+**Dateien:** `walls.ts`, `FacadeController.ts`, `profilePaths.ts`, `pedimentGeometry.ts`, Tests, Docs.
+
+**Docs:** [ux.md](ux.md), [wall-decor.md](wall-decor.md), [profiles.md](profiles.md).
+
+### Stumpfe Ecken ohne Fortsetzung; PCSS ohne Schraffur (2026-09-06) — v2.0.252
+
+**Ecken:** Fehlt die Fortsetzung derselben Schicht um die Ecke (kein Paneel/Mauerwerk, kein Sockel, kein Gesims, kein Zierband auf dem Nachbarn), enden Verkleidung und Profile **stumpf und bündig** an der Plan-Kante — kein Keil-Überstand. Profile bekommen eine **Stirnkappe** (geschlossen). Der Wandkörper gehrt weiter. Gehrung nur noch bei gleichem Dekor auf dem Nachbarn (`panelMiterEnds` / `plinthMiterEnds` / `corniceMiterEnds` / Zierband).
+
+**Schatten:** PCSS mit Receiver-Plane-Depth-Bias — diagonale Schraffur auf Gesims-Oberseite, Sockel und Tür (Selbstabschattung der Penumbra) entfällt.
+
+**Dateien:** `walls.ts`, `profilePaths.ts`, `pcssShadows.ts`, Tests, Docs.
+
+**Docs:** [panel-geometry.md](panel-geometry.md), [wall-decor.md](wall-decor.md), [profiles.md](profiles.md), [shadows.md](shadows.md).
+
+### Schärfere Kanten im Render; Orbit-Idle 1 s (2026-09-06) — v2.0.251
+
+**Verhalten:** Render-Modus nutzt Pixelratio bis **2** (vorher 1,5) gegen Treppchen — auch während Orbit (kein sichtbarer Qualitäts-Sprung). Entwurf/Vorschau bleiben Idle 1,5 / Orbit 1. Nach dem Loslassen bleibt Orbit-Lite **1 s** aktiv (`ORBIT_LITE_HOLD_MS`), bevor EnvMap-Bake und Gizmo-Updates wieder anlaufen.
+
+**Nicht:** DPR im Render während Orbit senken; Bloom-Composer-MSAA; SMAA auf den Default-Framebuffer (siehe `bloom-canvas-kasten.mdc`).
+
+**Docs:** [performance.md](performance.md), [camera.md](camera.md), Rule `orbit-visual-stability.mdc`.
+
+### Laibung: Tiefenrang vor Steinen (2026-09-06) — v2.0.250
+
+**Symptom:** Nach v2.0.249 aus der Distanz weiterhin gezackte Ziegel-Flecken auf der Laibung (linker Jamb).
+
+**Ursache:** Laibung und Stein-Seitenflächen am Jamb hatten denselben `polygonOffset` (+1/+1); nur die 0,25 cm Geometrie trennten sie — bei ~27 m ist `depthEps` ≈ 0,43 cm > 0,25 → Zufall entscheidet.
+
+**Nicht geholfen:** Inset 0,8 (rote Kante, v2.0.248); Factor −1 an der Laibung (Slope-Term zieht Kante vor, v2.0.244/248); Units +1 (Steine gewinnen bei Distanz).
+
+**Fix:** `REVEAL_DEPTH_UNITS = −6` bei **Factor +1** (wie Steine) — die Laibung gewinnt distanzunabhängig um 7 ULPs gegen Steine (+1), Mörtel (+4) und Schale (+8); kein Slope-Fringe, Jamb-Inset bleibt 0,25.
+
+**Docs:** [facade-layers.md](facade-layers.md), [panel-geometry.md](panel-geometry.md).
+
+### Rote Laibungs-Kante nach Distanz-Fix (2026-09-06) — v2.0.249
+
+**Symptom:** Nach v2.0.248 dünne rote Ziegelkante innen am Profil/Laibung (rechts und unten über der Bank).
+
+**Ursache:** `REVEAL_JAMB_INSET_CM = 0,8` ließ einen sichtbaren Steinrand zwischen Paneel-Loch und Laibung; Laibung `polygonOffset −1` verstärkte den Kanten-Effekt (wie früher der farbige Überstand).
+
+**Fix:** Inset zurück auf **0,25** cm; Laibung Offset wieder **+1/+1**. Distanzschutz bleibt: Profil Bias/Clearance 0,2/0,5 + `polygonOffsetUnits −16` (Logs: `profileSepBelowEps` war das Zoom-Problem, nicht fehlendes großes Inset).
+
+**Docs:** [ux.md](ux.md), [panel-geometry.md](panel-geometry.md), [facade-layers.md](facade-layers.md).
+
+### Distanz-Z-Fight Profile/Laibung beim Rauszoomen (2026-09-06) — v2.0.248
+
+**Symptom:** Nah ok (v2.0.247), beim weiteren Rauszoomen Ziegel wieder an Profilen/Laibung.
+
+**Laufzeit:** Kamera ~14–27 m; `depthEps` 0,12–0,43 cm. `profileSepCm: 0` → `profileSepBelowEps: true` immer. Ab ~27 m auch `insetBelowEps: true` (0,25 &lt; 0,43).
+
+**Fix:** `PROFILE_FACE_BIAS_CM` 0,2 + `PROFILE_BACK_CLEARANCE_CM` 0,5; Profil `polygonOffsetUnits` **−16**; `REVEAL_JAMB_INSET_CM` **0,8**; Laibung Offset **−1/−8** (vorher +1, Steine gewannen auf Distanz). Distanzunabhängig wie Fassaden-Schichten (`docs/facade-layers.md`).
+
+**Nicht geholfen:** Nur 0,25 cm Jamb-Inset (nah ok, Distanz nicht); Bias/Clearance 0 mit Offset −1.
+
+**Docs:** [facade-layers.md](facade-layers.md), [panel-geometry.md](panel-geometry.md), [profiles.md](profiles.md), [ux.md](ux.md).
+
+### Laibung↔Ziegel-Jamb Z-Fight (2026-09-06) — v2.0.247
+
+**Symptom:** Ziegeltextur flimmert auf der inneren Laibung (Nutzer: „durch die Fensterprofile“); weißes Profil selbst oft sauber.
+
+**Laufzeit:** Alle Öffnungen `coplanarJamb: true`, `leftJambGapCm/rightJambGapCm: 0`, `revealX === masonryX`, `PANEL_OPENING_CLEARANCE = 0`, Laibung `polygonOffset +1` (Steine gewinnen). Profil-Bias/Clearance (v2.0.246) half nicht und wurde zurückgenommen.
+
+**Fix:** `REVEAL_JAMB_INSET_CM = 0,25` — Laibungs-Polyline leicht kleiner als das Paneel-Loch (`openingMaskPolyline(…, -inset)`), damit Jambs nicht koplanar sind. Profil-Anker wieder Bias/Clearance **0**.
+
+**Docs:** [panel-geometry.md](panel-geometry.md), [ux.md](ux.md), [profiles.md](profiles.md).
+
+### Profil-Z-Fight: Ziegel durch Fensterprofile (2026-09-06) — v2.0.246
+
+**Symptom:** Ziegeltextur flimmert innen am Fensterrand (Nutzer: „durch die Profile“).
+
+**Laufzeit:** Profil-Fußplatte war koplanar (`coplanarBack: true`). Bias 0,15 / Clearance 0,35 + Offset −2/−4 trennten die Profil-Geometrie — **Sichtproblem blieb**. Screenshot zeigt Z-Fight auf der **Laibung**, nicht auf dem Profilkörper.
+
+**Nicht geholfen / zurückgenommen:** Profil-Bias/Clearance (v2.0.247 wieder 0). Nächster Ansatz: Laibungs-Jamb vs. Ziegel-Schnitt.
+
+### Sockel-Decor ohne Brauntönung; Profile bündig (2026-09-06) — v2.0.245
+
+**Symptom 1:** Fassadenschmuck „Sockel“ aus → in der Sockelzone eine braune/beige Fläche statt der Fassadenfarbe.
+
+**Ursache:** Paneele blieben oberhalb der Sockelhöhe abgeschnitten (`clipTilesAbovePlinth`), während der Sockelkörper nur unsichtbar war. Die freiliegende Wandfläche wirkte durch EnvMap/Beleuchtung und den Kontrast zu den Paneelen braun-beige (nicht Wandfarbe-Weiß).
+
+**Fix:** Bei Decor `plinth === false` Geometrie wie ohne Sockel: `panelForCladdingGeometry` setzt `plinthEnabled: false` (Paneele bis Boden), Wand ohne `barePlinth`, Sockel-Profil-Meshes werden nicht erzeugt.
+
+**Symptom 2:** Fenster-/Wandprofile schweben mit sichtbarem Luftspalt vor Paneel/Wand.
+
+**Ursache:** `PROFILE_FACE_BIAS_CM = 1,5` und `PROFILE_BACK_CLEARANCE_CM = 1,2` schoben den Sweep absichtlich vor die Fläche (historisch gegen Z-Fight).
+
+**Fix (teilweise zurückgenommen in v2.0.246):** Beide auf **0**; Z-Fight sollte über `polygonOffset` laufen — **reichte nicht** (Ziegel durch Profile).
+
+**Nebenbefund (Weiß-Töne):** Wand/Stein-Materiale `#ffffff` mit gleicher Roughness/Env; Fugen default `#c8c0b8` — wirken grau-beige, wenn die Fugenfarbe nicht auf Weiß gestellt ist.
+
+**Docs:** [ux.md](ux.md), [profiles.md](profiles.md), [views-and-state.md](views-and-state.md).
+
+### Laibung bündig bei ausgeblendeten Paneelen; Fensterbänke eigener Schmuck-Schalter (2026-09-06) — v2.0.244
+
+**Symptom (Nutzer):** „Die Laibung steht hervor, wenn keine Paneele ausgewählt sind“ — schmaler Absatz/Schattenrahmen um die Öffnung; nach erstem Fix „3D weg, aber als 2D-Schatten noch da“ und Fensterbänke fehlten.
+
+**Ursache (Laufzeit-Logs):** Fassadenschmuck **„Paneele/Mauerwerk aus“** blendet Paneele nur aus (`applyFacadeDecorVisibility`), die Geometrie rechnete aber weiter mit `wallHasPanels === true`:
+- Laibung endete an der unsichtbaren Paneelfront (`studioFacadeOutwardLocalZ` = −4 cm) → 4 cm Überstand vor der Wand (`protrudePastFacadeCm ≈ 4`).
+- Wandkörper-Außenfläche blieb 0,15 cm eingerückt (Z-Fight-Reserve für Steine) → Laibungskante lag vor der Wand.
+- Außenbank (`outerSillBoardPose`) und Bank-Profil-Sweep saßen ebenfalls auf −4 cm.
+- **Schatten-Tunnel** (`createStudioOpeningShadowTunnelGeometry`, um 2,5 cm aufgeweitet) startete bei −4 cm und warf einen **Schattenrahmen** auf die Wand — der „2D-Schatten“ des Überstands (`tunnelProtrudePastWallCm: 4` → nach Fix `0`).
+- Decor-Toggle lief nur über `refreshFacadeDecorVisibility` — kein Geometrie-Rebuild.
+
+**Nicht geholfen / verworfen:** `WINDOW_FRAME_OVERLAP_CM = 1,5` (Rahmen größer als Loch; Logs `frameW: 99`, Überstand blieb → zurück auf 0). Inset 0,6 → 0,12 cm (Absatz blieb). Blendrahmen-Bevel aus (kein Effekt, wieder an). `polygonOffset` −1 an der Laibung zog die Kante vor → jetzt **+1**.
+
+**Fix:**
+- `studioVisibleOutwardLocalZ(wall, { treatAsBareWall })` in `walls.ts` — sichtbare Front = Wandkante, wenn Paneele aus **oder** Decor `panels === false`. Genutzt von `studioOpeningRevealOuterZ`, `outerSillBoardPose`, `buildSillOuterPaths`, `createStudioOpeningShadowTunnelGeometry`.
+- `createStudioWallGeometry(wall, walls, { treatAsBareWall })`: bei Decor aus volle Außenkante (kein 0,15-Einzug). `FacadeController.wallTreatAsBare` / `createStudioWallBodyGeometry`.
+- `studioOpeningRevealOuterZ`: kein Profil-Zug nach außen ohne sichtbare Paneele; Clamp nie vor der sichtbaren Front. `REVEAL_OUTER_INSET_CM = 0` (bündig), Laibung `polygonOffset` **+1/+1**.
+- `main.ts` Decor-only-Pfad: Toggle **Paneele** (wie Sockel) → Geometrie-Rebuild des Hauses (`facade.setState({ rebuildBuildingIds })`).
+- **Fensterbänke / -bretter eigener Schmuck-Schalter:** neuer `FacadeDecorKind` `'sills'` („Fensterbänke / -bretter“). `sillOuter` (Brett und Profil-Sweep) und `sillInner` sind **nicht** mehr Teil von „Profile“ — 3D (`facadeDecorKindForObject`) und SVG (`role sillOuter/sillInner`, Innenbrett-Band).
+
+**Docs:** [ux.md](ux.md), [panel-geometry.md](panel-geometry.md), [views-and-state.md](views-and-state.md).
+
+### Laibung vor dem Fenster: dunkler Streifen (2026-09-06) — v2.0.243
+
+**Symptom:** Schmaler dunkelgrauer Streifen in der Laibung direkt vor dem Blendrahmen (oft an der seitlichen Leibung sichtbar).
+
+**Ursache:** Außen-/Innenfarbe der Laibung wurden am geometrischen Mittel der Wandtiefe getrennt. Die Fensterfront sitzt etwa bei 16 cm — die Innenfarben-Hälfte begann schon davor und wirkte im Schatten dunkelgrau.
+
+**Nicht geholfen / verworfen:** Frame-Überstand 1,5 cm (Doku veraltet, XY-Lücke sekundär) — Symptom war Farbwechsel vor dem Rahmen, kein reines Loch.
+
+**Fix:** `studioOpeningRevealColorSplitZ` — Trennung an Fensterfront + 2 cm nach innen (`REVEAL_COLOR_SPLIT_PAST_FRAME_CM`). Sichtbare Laibung vor dem Fenster bleibt Wand-/Laibungsfarbe.
+
+**Docs:** [ux.md](ux.md), [panel-geometry.md](panel-geometry.md).
+
+### Mehrere Erker per Bibliothek ersetzen (2026-09-06) — v2.0.242
+
+**Nutzerwunsch:** Mehrere Erker markieren → Bibliothek-Klick ersetzt alle.
+
+**Vorher:** `placeBayWindowFromLibrary` tauschte nur den ersten Host (`find`).
+
+**Fix:** Alle eindeutigen `bayHostWall`-Hosts der Auswahl nacheinander mit `swapBayPreset`; Auswahl bleibt auf allen neuen Erker-Wänden.
+
+**Docs:** [bay-windows.md](bay-windows.md).
+
+### Schrift & Öffnungen: Drop-Vorschau (2026-09-06) — v2.0.241
+
+**Nutzerwunsch:** Schrift wie Wandöffnungen — beliebig viele pro Wand, Drag&Drop mit orangener Vorschau; dasselbe für Türen.
+
+**Umsetzung:**
+
+- Bibliothek-Schrift: `placeLabelFromLibrary` / `addWallLabel`; Drag MIME `application/x-label-font` + `activeLibraryLabelFontId`.
+- Live-Ghost: `FacadeController.setLibraryPlacementGhost` (gleiche orange Fill/Outline wie Öffnungs-Verschieben) für Schrift, Fenster- und Tür-Presets/Vorlagen.
+- Preview folgt Cursor (X; bei Schrift auch Y; Tür fest y = 0), Raster 8 cm.
+
+**Docs:** [fonts.md](fonts.md), [ux.md](ux.md).
+
 ### Schrift-Ebene, Profile-Toggle, Sockel-Wandfarbe (2026-09-06) — v2.0.240
 
 **Symptom / Fix:**

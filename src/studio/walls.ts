@@ -22,6 +22,7 @@ import { getWall, rebuildBuildingNeighbors } from '../utils/walls'
 import {
   DEFAULT_PANEL_CLEARANCE_DEPTH_CM,
   PANEL_CLEARANCE_DEPTH_MAX,
+  effectiveOpeningDepthOffset,
   openingPanelClearance,
   openingPanelClearanceDepthCm,
 } from '../utils/openingGeometry'
@@ -1666,7 +1667,8 @@ export function studioFacadeOutwardDepth(wall: Wall): number {
 
 /**
  * Lokale Z-Koordinate der äußersten Fassadenfläche (Paneel + Trapez).
- * Anker für Fensterprofile, Gesims und weiteren Fassadenschmuck.
+ * Für Laibung/Schattentunnel — nicht für Gesims/Sockel/Profile (die nutzen
+ * `studioProfileAnchorLocalZ` / Paneelfläche ohne Bosse).
  */
 export function studioFacadeOutwardLocalZ(wall: Wall): number {
   const outward = studioFacadeOutwardDepth(wall)
@@ -1687,30 +1689,43 @@ export function studioPanelFaceLocalZ(wall: Wall): number {
 }
 
 /**
- * Sweep-Anker für Gesims/Fensterprofile: auf der äußeren Paneel-/Bossenfläche.
- * Negatives `offsetForward` (historisch −4) zieht nicht hinter diese Fläche.
- * Zusätzlich `PROFILE_FACE_BIAS_CM` nach vorn — sonst liegt die Profil-Rückseite
- * (forward = 0) koplanar auf den Paneelen und z-fightet (weiße Zacken im Mauerwerk).
- * 1,5 cm liegt klar über der Depth-Auflösung der Perspektivkamera.
+ * Sweep-Anker für Gesims/Sockel/Zierband/Fensterprofile: auf der Paneelfläche
+ * (`projectDepth`, ohne Bossen-Trapez). Bosse stehen davor; Profile liegen auf dem Stein.
+ * Negatives `offsetForward` zieht nicht hinter diese Fläche.
+ * Kleiner Bias gegen Tiefenpuffer-Z-Fight beim Rauszoomen.
  */
-export const PROFILE_FACE_BIAS_CM = 1.5
+export const PROFILE_FACE_BIAS_CM = 0.2
 
 /**
  * Mindest-Forward der Querschnitts-Fußplatte bei Öffnungsprofilen (cm).
- * Die SVG-Kante bei forward=0 wird angehoben — kein koplanares Blatt auf dem Stein.
+ * Zusammen mit FACE_BIAS und starkem polygonOffset (Units −16) distanzfest.
  */
-export const PROFILE_BACK_CLEARANCE_CM = 1.2
+export const PROFILE_BACK_CLEARANCE_CM = 0.5
 
-/** Laibung beginnt leicht hinter der Paneelfront — Steine besitzen die Lochkante. */
-export const REVEAL_OUTER_INSET_CM = 0.6
 /**
- * Mit Freiraum: nur Mini-Inset gegen Z-Fight mit der Freiraum-Front.
- * 0,6 cm ließ eine Lichtspalte zwischen Kappe und Laibung (helle Kante im Schatten).
+ * Laibungs-Polyline etwas kleiner als das Paneel-Loch (cm Richtung Öffnungsmittelpunkt).
+ * 0,25 cm: nah ohne sichtbare Ziegelkante (v2.0.247). 0,8 cm (v2.0.248) erzeugte eine
+ * sichtbare rote Stein-Kante zwischen Profil und Laibung — zu groß.
+ * Distanz-Z-Fight an Profilen: polygonOffset −16 + Bias/Clearance, nicht größeres Inset.
+ */
+export const REVEAL_JAMB_INSET_CM = 0.25
+
+/** Laibung bündig mit der Öffnungskante (kein Rücksprung → kein sichtbarer Absatz).
+ * polygonOffset +1: Lochkante/Steine gewinnen außen (sonst farbiger Überstand, v2.0.244). */
+export const REVEAL_OUTER_INSET_CM = 0
+/**
+ * Mit Freiraum: Mini-Inset gegen Z-Fight mit der Freiraum-Front.
+ * (Früher 0,6 cm ließ eine Lichtspalte.)
  */
 export const REVEAL_CLEARANCE_INSET_CM = 0.12
 
-export function studioProfileAnchorLocalZ(wall: Wall, offsetForward = 0): number {
-  const face = wallHasPanels(wall) ? studioPanelFaceLocalZ(wall) : studioWallOuterLocalZ(wall)
+export function studioProfileAnchorLocalZ(
+  wall: Wall,
+  offsetForward = 0,
+  opts?: { treatAsBareWall?: boolean },
+): number {
+  const bare = Boolean(opts?.treatAsBareWall) || !wallHasPanels(wall)
+  const face = bare ? studioWallOuterLocalZ(wall) : studioPanelFaceLocalZ(wall)
   const sign = studioWindowDepthForwardSign(wall)
   const extra = offsetForward * sign
   const clamped = sign >= 0 ? Math.max(face, face + extra) : Math.min(face, face + extra)
@@ -1744,28 +1759,36 @@ export function plinthProfileForwardBoost(_wall: Wall, _opening: Opening): numbe
  * WINDOW_RECESS (24 cm Fenstertiefe) bleibt unberührt — nur die Leibungswandung.
  * Mit Freiraum: bündig mit der Vertiefungskante (Vorstand vor der Wand, folgt „Tiefe“).
  */
-export function studioOpeningRevealOuterZ(wall: Wall, opening?: Opening): number {
+export function studioOpeningRevealOuterZ(
+  wall: Wall,
+  opening?: Opening,
+  opts?: { /** Paneele ausgeblendet (Decor) oder aus — Reveal an Wandaußenkante. */ treatAsBareWall?: boolean },
+): number {
   const flip = wall.panelFlip ?? true
-  const facadeZ = studioFacadeOutwardLocalZ(wall)
-  const recessZ = opening ? studioClearanceRecessZ(wall, opening) : null
+  const bare = Boolean(opts?.treatAsBareWall) || !wallHasPanels(wall)
+  // Sichtbare Front: Wandkörper wenn keine Paneele (auch Decor aus), sonst Paneelfront.
+  const facadeZ = studioVisibleOutwardLocalZ(wall, opts)
+  const recessZ = !bare && opening ? studioClearanceRecessZ(wall, opening) : null
   const sign = studioWindowDepthForwardSign(wall)
   if (recessZ != null) {
     // Freiraum-Front besitzt die Kante; nur Mini-Inset (keine Lichtspalte).
     return recessZ - sign * REVEAL_CLEARANCE_INSET_CM
   }
   if (!opening) return facadeZ
-  const hasOpeningProfile = wall.profiles.some((profile) => profile.openingId === opening.id)
+  // Ohne sichtbare Paneele: nie mit dem Öffnungsprofil nach außen ziehen —
+  // sonst steht die Laibung vor der Wandfläche (Überstand).
+  const hasOpeningProfile =
+    !bare && wall.profiles.some((profile) => profile.openingId === opening.id)
   let outer = facadeZ
   if (hasOpeningProfile) {
     const offset = opening.trim?.offsetForward ?? WINDOW_TRIM_DEFAULT_OFFSET_FORWARD
     const profileZ = facadeZ + offset * sign
     outer = flip ? Math.min(facadeZ, profileZ) : Math.max(facadeZ, profileZ)
   }
-  // Paneel besitzt die Frontkante; Laibung startet knapp dahinter (kein Z-Fight).
-  if (wallHasPanels(wall)) {
-    return outer - sign * REVEAL_OUTER_INSET_CM
-  }
-  return outer
+  // Laibung bündig mit der Öffnungskante (Paneel- oder Wandfront).
+  const result = outer - sign * REVEAL_OUTER_INSET_CM
+  // Clamp: nie vor der sichtbaren Front (Profil-Offset kann sonst überstehen).
+  return flip ? Math.max(result, facadeZ) : Math.min(result, facadeZ)
 }
 
 /** Wandkörper-Außenkante (ohne Paneel-Vorstand). */
@@ -1825,6 +1848,44 @@ export function studioOpeningRevealInnerZ(wall: Wall): number {
   return studioWallInnerLocalZ(wall)
 }
 
+/**
+ * Z-Trennung Außen-/Innenfarbe der Laibung.
+ * Bei Fenster/Tür: an der Fensterfront (+ kleiner Überstand nach innen), nicht am
+ * geometrischen Mittel — sonst liegt die Innenfarbe vor dem Blendrahmen und wirkt
+ * als dunkler Streifen in der sichtbaren Laibung.
+ *
+ * `buildingWindowDepthOffset` muss derselbe Wert sein wie beim Fenster-Pivot
+ * (`effectiveOpeningDepthOffset(opening, building.windowDepthOffset)`), sonst
+ * driftet der Split vor die echte Front (z. B. Building-Offset 0 vs. Default 8).
+ */
+export const REVEAL_COLOR_SPLIT_PAST_FRAME_CM = 2
+
+export function studioOpeningRevealColorSplitZ(
+  wall: Wall,
+  opening: Opening,
+  zOuter: number,
+  zInner: number,
+  buildingWindowDepthOffset?: number,
+): number {
+  const lo = Math.min(zOuter, zInner)
+  const hi = Math.max(zOuter, zInner)
+  const mid = (zOuter + zInner) / 2
+  if (opening.type !== 'window' && opening.type !== 'door') return mid
+
+  const flip = wall.panelFlip ?? true
+  const outerBody = flip ? 0 : wall.depth
+  const inward = flip ? 1 : -1
+  const depthOffset = effectiveOpeningDepthOffset(opening, buildingWindowDepthOffset)
+  const frontZ =
+    outerBody +
+    inward * WINDOW_RECESS +
+    depthOffset * studioWindowDepthForwardSign(wall)
+  const split = frontZ + inward * REVEAL_COLOR_SPLIT_PAST_FRAME_CM
+  // Genug Rest für beide Materialgruppen (kein degeneriertes Quad).
+  const pad = 0.5
+  return Math.min(hi - pad, Math.max(lo + pad, split))
+}
+
 /** Vorzeichen für Fenstertiefe: +depthOffset = zur Außenseite (−Z bei panelFlip, +Z sonst). */
 export function studioWindowDepthForwardSign(wall: Wall): number {
   return wall.panelFlip ?? true ? -1 : 1
@@ -1845,20 +1906,37 @@ export function leafOpenSignForWall(wall: Wall): number {
 }
 
 /**
- * Brett-Außenbank: Ursprung an der Wandaußenkante, Platte nach außen.
+ * Sichtbare Außenhaut für Laibung/Fensterbank: Wandkörper wenn Paneele aus
+ * (auch nur Decor ausgeblendet), sonst Paneelfront.
+ */
+export function studioVisibleOutwardLocalZ(
+  wall: Wall,
+  opts?: { treatAsBareWall?: boolean },
+): number {
+  const bare = Boolean(opts?.treatAsBareWall) || !wallHasPanels(wall)
+  return bare ? studioWallOuterLocalZ(wall) : studioFacadeOutwardLocalZ(wall)
+}
+
+/**
+ * Brett-Außenbank: Ursprung an der Paneelfläche (ohne Bossen-Trapez), Platte nach außen.
  * translateZ schiebt die Box-Geometrie, localZ ist der Mesh-Pivot (kein Schweben).
  */
-export function outerSillBoardPose(wall: Wall, depth: number): {
+export function outerSillBoardPose(
+  wall: Wall,
+  depth: number,
+  opts?: { treatAsBareWall?: boolean },
+): {
   translateZ: number
   localZ: number
   /** `rotateX(angleRad * tiltX)` senkt die Tropfkante. */
   tiltX: number
 } {
   const outward = isStudioWall(wall) ? windowDepthForwardSign(wall) : 1
+  const bare = Boolean(opts?.treatAsBareWall) || (isStudioWall(wall) && !wallHasPanels(wall))
   const outerWallZ = isStudioWall(wall)
-    ? wallHasPanels(wall)
-      ? studioFacadeOutwardLocalZ(wall)
-      : studioWallOuterLocalZ(wall)
+    ? bare
+      ? studioWallOuterLocalZ(wall)
+      : studioPanelFaceLocalZ(wall)
     : wall.depth
   return {
     translateZ: outward * (depth / 2),
@@ -2865,11 +2943,10 @@ export function linkStudioWalls(state: FacadeState, wallIds: string[]): FacadeSt
 }
 
 /**
- * Paneel-Gehrung: bei `miter` wie bisher (Ecke mit Paneelen oder gesetztem Miter).
- * Bei `none` nur stumpf an **freien** Enden — eine andockende Wand (auch ohne
- * eigenes Mauerwerk) bleibt geghert, sonst fehlt an 90°-Ecken die Wandstärke.
- * Gesetztes `miterStart`/`miterEnd` gilt auch ohne gefundenen Nachbarn (gleicher
- * Schnitt wie der Wandkörper).
+ * Paneel-/Mauerwerk-Gehrung nur bei **Fortsetzung derselben Schicht** um die Ecke.
+ * Ohne Paneele/Mauerwerk auf dem Nachbarn: stumpf und bündig an der Plan-Kante
+ * (kein Keil-Überstand). Der Wandkörper gehrt weiter über `miterStart`/`miterEnd`.
+ * `bond`: Verband-Ecke ohne Trapez-Gehrung.
  */
 export function panelMiterEnds(wall: Wall, walls: Wall[]): { start: boolean; end: boolean } {
   const join = wall.panel?.cornerJoin ?? 'miter'
@@ -2878,68 +2955,32 @@ export function panelMiterEnds(wall: Wall, walls: Wall[]): { start: boolean; end
   }
   const startTurn = turningAdjacentWalls(wall, 'start', walls)
   const endTurn = turningAdjacentWalls(wall, 'end', walls)
-  const storedStart = Math.abs(wall.miterStart ?? 0) > 0.05
-  const storedEnd = Math.abs(wall.miterEnd ?? 0) > 0.05
-  if (join === 'none') {
-    return {
-      start: startTurn.length > 0 || storedStart,
-      end: endTurn.length > 0 || storedEnd,
-    }
-  }
   return {
-    start: Boolean(
-      storedStart ||
-        (startTurn.length > 0 &&
-          (startTurn.some(wallHasPanels) || storedStart)),
-    ),
-    end: Boolean(
-      storedEnd ||
-        (endTurn.length > 0 && (endTurn.some(wallHasPanels) || storedEnd)),
-    ),
+    start: startTurn.some(wallHasPanels),
+    end: endTurn.some(wallHasPanels),
   }
 }
 
 /**
- * Sockel wie Paneele: `none` nur an freien Enden stumpf, anknüpfender Sockel bleibt geghert.
+ * Sockel-Gehrung nur bei fortgesetztem Sockel auf dem Nachbarn.
+ * Sonst stumpf an der Plan-Kante (keine Wandkörper-Gehrung „mitnehmen“).
  */
 export function plinthMiterEnds(wall: Wall, walls: Wall[]): { start: boolean; end: boolean } {
-  const join = wall.panel?.cornerJoin ?? 'miter'
   const startTurn = turningAdjacentWalls(wall, 'start', walls)
   const endTurn = turningAdjacentWalls(wall, 'end', walls)
   const neighborPlinth = (item: Wall) => Boolean(item.panel && studioPlinthActive(item.panel))
-  const storedStart = Math.abs(wall.miterStart ?? 0) > 0.05
-  const storedEnd = Math.abs(wall.miterEnd ?? 0) > 0.05
-  if (join === 'none') {
-    return {
-      start: startTurn.some(neighborPlinth) || storedStart,
-      end: endTurn.some(neighborPlinth) || storedEnd,
-    }
-  }
   return {
-    start: Boolean(
-      startTurn.length > 0 &&
-        (startTurn.some(neighborPlinth) || Math.abs(wall.miterStart ?? 0) > 0.05),
-    ),
-    end: Boolean(
-      endTurn.length > 0 &&
-        (endTurn.some(neighborPlinth) || Math.abs(wall.miterEnd ?? 0) > 0.05),
-    ),
+    start: startTurn.some(neighborPlinth),
+    end: endTurn.some(neighborPlinth),
   }
 }
 
-/** Gesims-Gehrung analog: `none` nur ohne anknüpfendes Gesims. */
+/** Gesims-Gehrung nur bei fortgesetztem Gesims auf dem Nachbarn. */
 export function corniceMiterEnds(wall: Wall, walls: Wall[]): { start: boolean; end: boolean } {
-  const join = wall.panel?.cornerJoin ?? 'miter'
   const startTurn = turningAdjacentWalls(wall, 'start', walls)
   const endTurn = turningAdjacentWalls(wall, 'end', walls)
-  if (join === 'none') {
-    return {
-      start: startTurn.some((item) => wallHasCornice(item)),
-      end: endTurn.some((item) => wallHasCornice(item)),
-    }
-  }
   return {
-    start: startTurn.length > 0,
-    end: endTurn.length > 0,
+    start: startTurn.some((item) => wallHasCornice(item)),
+    end: endTurn.some((item) => wallHasCornice(item)),
   }
 }

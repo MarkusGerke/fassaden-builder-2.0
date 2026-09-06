@@ -141,6 +141,8 @@ Diese Abstände sind kleiner als die Tiefenpuffer-Auflösung ab ~40–60 m Kamer
 
 | Schicht | Material | `polygonOffsetUnits` |
 |---|---|---|
+| Profile / Öffnungsprofile | `polygonOffsetFactor/Units` −1/−16 | vor Steinen (v2.0.248) |
+| Laibung (Reveal) | Factor +1, `REVEAL_DEPTH_UNITS` **−6** + `REVEAL_JAMB_INSET_CM` 0,25 | vor Stein-Seitenflächen am Jamb, distanzunabhängig (v2.0.250). Factor bleibt +1 — Factor −1 erzeugt Slope-Fringe („Kante“) |
 | Steine / Basis-Material | `DEPTH_LAYER_TILE_UNITS` | 1 |
 | Mörtel (Low- und High-LOD) | `DEPTH_LAYER_MORTAR_UNITS` | 4 |
 | Wandschale außen (`syncWallBodyMaterials`) | `DEPTH_LAYER_WALL_SHELL_UNITS` | 8 |

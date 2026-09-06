@@ -111,7 +111,24 @@ describe('pcssShadows', () => {
     enablePcssShadows()
     const chunk = THREE.ShaderChunk.shadowmap_pars_fragment
     expect(chunk).not.toContain('pcssLite')
-    expect(chunk).toContain('shadow = pcssGetShadow( shadowMap, shadowCoord );')
+    expect(chunk).toContain('shadow = pcssGetShadow( shadowMap, shadowCoord, pcssSlope );')
+    disablePcssShadows()
+  })
+
+  it('nutzt Receiver-Plane-Bias in Blocker-Suche und Filter (keine Selbstabschattung auf Gesims/Sockel)', () => {
+    enablePcssShadows()
+    const chunk = THREE.ShaderChunk.shadowmap_pars_fragment
+    // Steigung vor dem Frustum-Branch (uniformer Kontrollfluss für dFdx/dFdy).
+    const slopeAt = chunk.indexOf('vec2 pcssSlope = pcssReceiverPlaneSlope( shadowCoord.xy, shadowCoord.z );')
+    expect(slopeAt).toBeGreaterThan(0)
+    const branchAt = chunk.indexOf('if ( frustumTest )', slopeAt)
+    expect(branchAt).toBeGreaterThan(slopeAt)
+    expect(chunk.indexOf('pcssGetShadow( shadowMap, shadowCoord, pcssSlope )', branchAt)).toBeGreaterThan(branchAt)
+    expect(chunk).toContain('zPlane = zReceiver + dot( slope, offset );')
+    expect(chunk).toContain('step( zReceiver + dot( slope, offset ), depth )')
+    expect(chunk).toContain('#define PCSS_PLANE_SLOPE_MAX 6.0000')
+    expect(chunk).toContain('pcssHardShadow')
+    expect(chunk).toContain('min( hard, soft )')
     disablePcssShadows()
   })
 

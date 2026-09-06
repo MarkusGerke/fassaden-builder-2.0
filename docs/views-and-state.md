@@ -239,7 +239,7 @@ Dialog `#storey-copy-dialog` (Etagen-⋯ **Duplizieren**, Bibliothek **+ oben**)
 
 Die Ebenen-Liste in der Sidebar gruppiert alle Wände nach Etage.
 
-**v2.0.236:** Pro Haus Segment **Ebenen | Fassadenschmuck**. Fassadenschmuck steuert `Building.facadeDecor` (Defaults an = sichtbar): Paneele/Mauerwerk, Sockel, Gesimse, Zierbänder, Profile, Schrift — einzeln oder **Alle**. Nur Darstellung (`FacadeController.applyFacadeDecorVisibility` / SVG-Gates); Daten bleiben. Toggle-Pfad ohne Geometrie-Rebuild (`facadeStateDiffersOnlyByFacadeDecor` → `refreshFacadeDecorVisibility`).
+**v2.0.236:** Pro Haus Segment **Ebenen | Fassadenschmuck**. Fassadenschmuck steuert `Building.facadeDecor` (Defaults an = sichtbar): Paneele/Mauerwerk, Sockel, Gesimse, Zierbänder, Profile, **Fensterbänke / -bretter** (`sills`, v2.0.244), Schrift — einzeln oder **Alle**. Nur Darstellung (`FacadeController.applyFacadeDecorVisibility` / SVG-Gates); Daten bleiben. Toggle-Pfad ohne Geometrie-Rebuild (`facadeStateDiffersOnlyByFacadeDecor` → `refreshFacadeDecorVisibility`) — **Ausnahme Sockel und Paneele:** diese lösen einen Haus-Rebuild aus. **v2.0.245:** Sockel aus → Paneele bis Boden (kein freiliegendes Wandband); Paneele aus → Laibung/Bank/Schatten-Tunnel an der Wandkante.
 
 **v2.0.238 Fallstricke:** „Alle“ muss die Ebenenliste neu zeichnen (`skipLayerList` nicht bei `decorOnly`). Ausgeblendeter Schmuck: `visible` **und** `castShadow` aus, sonst dunkelgraue Wand bzw. bleibender Schrift-Schatten; danach Shadow-Map aktualisieren. „Profile“ blendet keine Fensterrahmen über bloßes `openingId` aus.
 

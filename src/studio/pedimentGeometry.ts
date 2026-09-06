@@ -153,7 +153,7 @@ export function createPedimentSweepGeometry(
   wall: Wall,
   opening: Opening,
   pediment: OpeningPediment,
-  opts?: { simpleBar?: boolean },
+  opts?: { simpleBar?: boolean; treatAsBareWall?: boolean },
 ): THREE.BufferGeometry | null {
   const paths = buildPedimentProfilePaths(wall, opening, pediment)
   if (paths.length === 0) return null
@@ -171,7 +171,9 @@ export function createPedimentSweepGeometry(
     const zBase = isStudioWall(wall)
       ? opts?.simpleBar
         ? studioWorkModeTileLocalZ(wall) + (path.offsetForward ?? 0) * forwardSign
-        : studioProfileAnchorLocalZ(wall, path.offsetForward ?? 0)
+        : studioProfileAnchorLocalZ(wall, path.offsetForward ?? 0, {
+            treatAsBareWall: opts?.treatAsBareWall,
+          })
       : wall.depth + (path.offsetForward ?? 0) * forwardSign
     parts.push(
       opts?.simpleBar
@@ -187,6 +189,7 @@ export function createPedimentSealedBackGeometry(
   wall: Wall,
   opening: Opening,
   pediment: OpeningPediment,
+  opts?: { treatAsBareWall?: boolean },
 ): THREE.BufferGeometry | null {
   if (!pediment.enabled || !pediment.sealedBack) return null
   if (!pedimentFormIsClosed(pediment.form)) return null
@@ -213,7 +216,9 @@ export function createPedimentSealedBackGeometry(
   // Platte knapp hinter dem Profil an der Wandfläche (kein Mauerwerk durchs Tympanon).
   const forwardSign = isStudioWall(wall) ? windowDepthForwardSign(wall) : 1
   const faceZ = isStudioWall(wall)
-    ? studioProfileAnchorLocalZ(wall, pediment.offsetForward ?? 0)
+    ? studioProfileAnchorLocalZ(wall, pediment.offsetForward ?? 0, {
+        treatAsBareWall: opts?.treatAsBareWall,
+      })
     : wall.depth
   // Extrude +Z: bei positivem Forward an der Fläche starten und nach innen; sonst spiegeln.
   if (forwardSign >= 0) {
@@ -263,7 +268,7 @@ export function createPedimentConsoleGeometries(
   wall: Wall,
   opening: Opening,
   pediment: OpeningPediment,
-  opts?: { simpleBar?: boolean },
+  opts?: { simpleBar?: boolean; treatAsBareWall?: boolean },
 ): THREE.BufferGeometry[] {
   const consoles = pediment.consoles
   if (!pediment.enabled || !consoles?.enabled || (opening.type !== 'window' && opening.type !== 'door')) {
@@ -287,7 +292,7 @@ export function createPedimentConsoleGeometries(
   const zBase = isStudioWall(wall)
     ? opts?.simpleBar
       ? studioWorkModeTileLocalZ(wall)
-      : studioProfileAnchorLocalZ(wall)
+      : studioProfileAnchorLocalZ(wall, 0, { treatAsBareWall: opts?.treatAsBareWall })
     : wall.depth
   const section = scaleProfileSectionAxes(profile.section, 1, 1)
   const yTop = yBase - wallOffset

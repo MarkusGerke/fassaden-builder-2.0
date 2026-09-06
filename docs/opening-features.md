@@ -22,7 +22,7 @@ Toolbar **Maße** (Auszug):
 | Fenstertiefe | UI **Frontlage (cm von Außenkante)** unter Maße; speichert `Opening.depthOffset` pro Öffnung (Gültigkeitsbereich). Fehlt → `Building.windowDepthOffset`. Standard **32 cm** (Laibung 24 cm + Offset 8, v2.0.188) |
 | Öffnungsart | Fenster/Tür: durchgehend · Wandfläche (bündig) · Nische. Cutout: Durchbruch oder Nische (+ Tiefe). Konche: immer Kalotte, Tiefe steuerbar. **v2.0.123:** Nische lichtdicht — Shadow-Tunnel-Kappen. **v2.0.127 / v2.0.130:** Nischenwände EnvMap wie Innenwand, kein Selbstwurf. **v2.0.133:** Bei Nischentiefe **größer als Wanddicke** Tunnel bis hinter die Rückwand (keine Mittelkappe an der Innenkante); Nischen empfangen wieder Sonne-/Punktlicht-Schatten |
 | In Wand eingebettet | `revealFrame.enabled` → kein Wandloch, kein Rahmen/Glas; Bänke/Profile/Bogen/Verdachung bleiben. Nicht bei Cutouts |
-| Freiraum | `panelClearance`: Abstand in ganzen cm, Tiefe +/−/0; optional `finish: 'taper'` nur mit Paneelen |
+| Freiraum | `panelClearance`: Abstand in ganzen cm, Tiefe +/−/0; optional `finish: 'taper'` nur mit Paneelen. **v2.0.256:** Freiraum-Kappe empfängt Werfschatten, wirft selbst keine. **v2.0.257:** kein Gegenlicht-Shade auf der Cap — Erker-Seitenfenster bleiben hell lesbar. **v2.0.258:** Kontakt-Schatten unter Fensterbänken wieder geschlossen (PCSS Contact-Hardening; unabhängig von Freiraum-Cast). |
 | Bogenform | Karten `#opening-arch-form-cards`: eckig, Rund, Spitz, Stich, Lanzett, Ellipse, Tudor. Legacy `basket` → Ellipse. Stichmaß `#opening-arch-rise-row` (8er-Raster, **Auto** löscht `riseCm`). Form/Stichmaß scoped über `editArchOpeningTargets` (Fenster **und** Türen) |
 | Keilstein-Ring | Nur Rundbogen; aus → Felder/Vorschau `hidden`. **Nicht** automatisch an beim Aktivieren von Rundbogen — Checkbox bleibt maßgeblich. Alt-Projekte ohne/`voussoirs: false` bleiben aus. Optional Schenkel bis Sohlbank |
 | Glasbogen | Folgt immer `Opening.arch.form` / `riseCm` — keine separate Checkbox (`glazingArch` Legacy, ignoriert) |
@@ -114,7 +114,7 @@ Dateien: `src/studio/basementWindow.ts`, FacadeController / SvgView / main / `in
 
 ## Rahmenprofil-Maße
 
-`#profile-extent-out` / `#profile-extent-forward` (cm) überschreiben `#profile-scale` je Achse. Anker vor Paneelfläche (`PROFILE_FACE_BIAS_CM` 1,5 cm); Mindest-Forward `PROFILE_BACK_CLEARANCE_CM` 1,2 cm. Siehe [profiles.md](profiles.md).
+`#profile-extent-out` / `#profile-extent-forward` (cm) überschreiben `#profile-scale` je Achse. Anker bündig (`PROFILE_FACE_BIAS_CM` / `PROFILE_BACK_CLEARANCE_CM` = 0). Siehe [profiles.md](profiles.md).
 
 ## Fallstricke
 

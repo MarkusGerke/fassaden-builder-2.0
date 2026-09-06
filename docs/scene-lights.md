@@ -147,4 +147,4 @@ Noch **nicht** umgesetzt — bei Bedarf separat planen:
 - **v2.0.125:** Bloom-Pixelratio stabil bei Orbit; Preset Blaulicht mit Doppelblitz-Animation.
 - **v2.0.126:** Blaulicht-Phasen versetzt; Ebenen-Namen nach Art; Lichtgruppen.
 - **v2.0.127:** Auto an/aus mit Sonne (`autoSceneLightsWithSun`); Master-Pause / Tageszyklus unter Szene → Animation.
-- **v2.0.130:** Tagesdauer einstellbar (`dayCycleRealMinutes`); einmaliger Tagesverlauf entfernt; Ebenen ohne Badge „Licht“, nur Typname; Nischen/Konchen ohne Selbstschatten.
+- **v2.0.130:** Tagesdauer einstellbar (`dayCycleRealMinutes`); **v2.0.254:** einmaliges Abspielen (Tagesverlauf/Licht) wieder unter Szene → Animation; Ebenen ohne Badge „Licht“, nur Typname; Nischen/Konchen ohne Selbstschatten.

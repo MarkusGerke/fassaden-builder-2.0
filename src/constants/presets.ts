@@ -59,6 +59,13 @@ export const WINDOW_HEIGHT = 192
 export const WINDOW_SILL_Y = 128
 export const WINDOW_RECESS = 24
 
+/**
+ * Blendrahmen größer als das Mauerloch (cm je Seite).
+ * v2.0.243 Versuch: Überstand an der Laibung — hat nicht geholfen, Fenster wieder lochbreit.
+ * Konstante bleibt für Doku/Tests; Runtime nutzt 0.
+ */
+export const WINDOW_FRAME_OVERLAP_CM = 0
+
 /** Fenster schwebt beim Verschieben auf Overlay-Tiefe (cm vor Außenfläche) — gleiche Ebene wie Hilfslinien. */
 export const OPENING_DRAG_FLOAT_CM = 4
 /** Standard-Vorstand aller Fensterprofile (cm, − = nach innen). */

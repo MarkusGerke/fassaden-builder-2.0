@@ -95,6 +95,7 @@ import type {
   Opening,
   ProfileAssignment,
   StudioCornerJoin,
+  StudioPanelConfig,
   StudioPanelPattern,
   StudioYawDeg,
   Wall,
@@ -374,13 +375,24 @@ import {
   BLOOM_LAYER,
   SHADOW_MAP_SIZE,
   SHADOW_MAP_SIZE_INDOOR,
-  shadowMapSizeForSiteSpan,
+  shadowMapSizeForPresentation,
   sunDistanceForBox,
   sunTargetFromBox,
   syncSunSettingsFromSolar,
+  resolveAnimTimeRange,
+  lerpTimeOfDayHours,
   type SunSettings,
 } from './utils/sunLighting'
-import { dateInputValue, parseDateInput, todayMonthDay } from './utils/solar'
+import {
+  SCENE_LIGHT_ANIM_CHANNELS,
+  lerpSceneLightAnimValue,
+  normalizeSceneAnimPlayMode,
+  normalizeSceneLightAnimChannels,
+  sceneLightAnimHasEnabledChannel,
+  type SceneLightAnimChannelId,
+  type SceneLightAnimChannels,
+} from './utils/sceneLightAnim'
+import { dateInputValue, parseDateInput, parseTimeInput, timeInputValue, todayMonthDay } from './utils/solar'
 import { createStudioWall, isStudioWall, stretchStudioFacade, studioWallTransform, studioWallsCollideIdentical, updateStudioPanel, wallAlongDelta, duplicateStudioWallAtGrid, rotateStudioWallAroundCenter, wallEndIsFree, buildEndPieceReturnWall, buildStandaloneEndPieceWalls, buildStudioWallAt, endPieceArmsCollide, endPieceGhostSegments, endPieceSideForHand, END_PIECE_DEFAULT_ANGLE_DEG, findAdjacentWall, findCollinearDockWall, isWallPlanLinked, linkStudioWalls, mergeCollinearDockedWalls, selectionLockedToUnselected, unlinkStudioWallsFromUnselected, unselectedLinkedNeighbors,   unselectedTouchingWalls,
   expandPlanLinkedWallIds,
   expandWallMoveIds,
@@ -527,6 +539,7 @@ import {
   MASONRY_KIND_PATTERNS,
   PANEL_KIND_PATTERNS,
   PATTERN_LABELS,
+  studioPanelDefaultsForPattern,
 } from './studio/constants'
 import {
   facadeHasRoofablePlan,
@@ -728,9 +741,15 @@ const renderer = new THREE.WebGLRenderer({
   antialias: true,
   preserveDrawingBuffer: true,
 })
-const MAX_PIXEL_RATIO = 1.5
-/** Nach letztem Zoom/Orbit: Lite halten (Mausrad feuert start+end im selben Tick). */
-const ORBIT_LITE_HOLD_MS = 320
+/** Entwurf/Vorschau im Idle — Orbit senkt auf 1. */
+const MAX_PIXEL_RATIO_WORK = 1.5
+/**
+ * Render-Modus: höhere Auflösung gegen Treppchen (vorher 1,5).
+ * Auch während Orbit — kein DPR-Drop (weiche Schatten sonst hart).
+ */
+const MAX_PIXEL_RATIO_RENDER = 2
+/** Nach letztem Zoom/Orbit: Lite halten; 1 s Pause vor EnvMap/Gizmo-Resume. */
+const ORBIT_LITE_HOLD_MS = 1000
 
 let viewportDirty = true
 /** Erst true nach Atmosphäre + erstem Mesh-Load — bis dahin kein Dirty-Skip in animate(). */
@@ -778,12 +797,26 @@ function keepFullPixelRatioDuringOrbit(): boolean {
 /** Licht-Modus: Transmission-Pass (physisches Glas) mit halber Auflösung — viertelt dessen Kosten. */
 const LIGHT_EDIT_TRANSMISSION_SCALE = 0.5
 
+/** Letzter gesetzter Cap — setPixelRatio/Composer nur bei echter Änderung (sonst Orbit-Hitch). */
+let appliedPixelRatioCap = -1
+
+function targetPixelRatioCap(): number {
+  if (lightEditMode) return 1
+  // Entwurf/Vorschau: während Orbit 1 (harte Schatten — sichtbarer Sprung ok).
+  if (orbitLite && !keepFullPixelRatioDuringOrbit()) return 1
+  if (presentationUsesWorkLikeShading(presentationMode)) return MAX_PIXEL_RATIO_WORK
+  return MAX_PIXEL_RATIO_RENDER
+}
+
 function applyRendererPixelRatio() {
-  // Licht-Modus: Pixel-Ratio 1 wie Orbit-Lite. Die Fragment-Kosten skalieren mit Lichtanzahl ×
-  // Pixelzahl (Glas-Transmission rendert die Szene zweimal); 1,5² = 2,25× weniger Fragmente.
-  const cap =
-    lightEditMode || (orbitLite && !keepFullPixelRatioDuringOrbit()) ? 1 : MAX_PIXEL_RATIO
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, cap))
+  // Fragment-Kosten skalieren mit Pixelzahl (Glas-Transmission rendert die Szene zweimal).
+  const cap = targetPixelRatioCap()
+  const next = Math.min(window.devicePixelRatio || 1, cap)
+  if (cap === appliedPixelRatioCap && Math.abs(renderer.getPixelRatio() - next) < 1e-6) {
+    return
+  }
+  appliedPixelRatioCap = cap
+  renderer.setPixelRatio(next)
   renderer.transmissionResolutionScale = lightEditMode ? LIGHT_EDIT_TRANSMISSION_SCALE : 1
   // Composer erst nach Init vorhanden; danach Ratio immer mitsynchronisieren (sonst Bloom-Pfad weich/pixelig).
   syncComposerPixelRatio?.()
@@ -924,6 +957,8 @@ function setOrbitLite(active: boolean) {
       orbitLite = true
       // Kein PCSS-Lite, kein DPR-Drop im Render: sonst wirken Schatten/Wand kurz hart bzw. umgefärbt.
       applyRendererPixelRatio()
+      // Laufende Shadow-Bakes abbrechen — sonst 8192²-Hänger mitten in der Geste.
+      suppressShadowBakeDuringOrbit()
     }
     markViewportDirty()
     return
@@ -933,7 +968,11 @@ function setOrbitLite(active: boolean) {
   orbitLite = false
   applyRendererPixelRatio()
   // EnvMap erst nach kurzer Pause — sonst 1‑s-Hänger direkt am Gestenende.
-  scheduleShadowMapUpdate({ reflections: true })
+  const deferred = takeDeferredOrbitShadowBake()
+  scheduleShadowMapUpdate({
+    reflections: true,
+    sun: deferred.sun || undefined,
+  })
   if (currentView === 'top') {
     updateGroundPlane()
     floorPlanView.syncGridToCamera(topCamera)
@@ -2969,7 +3008,13 @@ function applyPanelPresetFromLibrary(
     return
   }
   pendingSelectionToolbarTab = 'panels'
-  commitState(updateStudioPanel(state, ids, { pattern, enabled: pattern !== 'none' }))
+  commitState(
+    updateStudioPanel(state, ids, {
+      ...studioPanelDefaultsForPattern(pattern),
+      pattern,
+      enabled: pattern !== 'none',
+    }),
+  )
   rebuildStudioPatternCards()
   planStatus.textContent = `Paneel „${PATTERN_LABELS[pattern]}“ angewendet`
 }
@@ -5072,7 +5117,10 @@ const reflectionSiteBox = new THREE.Box3()
 let lastReflectionViewBucket = Number.NaN
 
 function renderLitSceneFrame(activeCamera: THREE.Camera) {
-  facade.updateMeasureLabelScales(activeCamera)
+  // Maß-Labels nur im Idle skalieren — während Orbit unnötig und spürbar bei vielen Labels.
+  if (!orbitLite && !orbitLitePointer) {
+    facade.updateMeasureLabelScales(activeCamera)
+  }
   dirLight.visible = true
   const roomOcclusion = sceneLightRoomOcclusionActive()
   dirLightIndoor.visible = roomOcclusion
@@ -5083,6 +5131,12 @@ function renderLitSceneFrame(activeCamera: THREE.Camera) {
   renderer.autoClear = true
   // Shadow-Map nur bei Geometrie/Licht-Änderung (scheduleSunShadowMapUpdate) —
   // nicht jeden Frame bei Punktlicht, sonst stottern Orbit und Verschieben.
+  // Während Orbit: Bake unterdrücken (v2.0.259) — 8192² mittendrin = stockig.
+  if ((orbitLite || orbitLitePointer) && renderer.shadowMap.needsUpdate) {
+    deferOrbitShadowBake({ sun: dirLight.shadow.needsUpdate })
+    renderer.shadowMap.needsUpdate = false
+    dirLight.shadow.needsUpdate = false
+  }
   const line = currentRenderStyle === 'line'
   atmosphereSky.setVisible(atmosphereSkyWanted(line))
   // Licht-Modus: kein EnvMap-Bake (6 Cube-Renders + PMREM nach jedem Orbit-Ende ≈ 1 s Hänger).
@@ -5252,6 +5306,152 @@ type LibraryAsset =
   | { kind: 'pediment-console'; id: string }
 
 let activeLibraryAssetDrag: LibraryAsset | null = null
+/** Öffnungs-Preset aus der Bibliothek (Fenster/Tür) — Live-Platzhalter beim Ziehen. */
+let activeLibraryOpeningPresetId: string | null = null
+/** Öffnungs-Vorlage aus der Bibliothek — Live-Platzhalter beim Ziehen. */
+let activeLibraryOpeningTemplateId: string | null = null
+/** Schriftart aus der Bibliothek — Live-Platzhalter beim Ziehen. */
+let activeLibraryLabelFontId: string | null = null
+
+function clearLibraryPlacementPreview() {
+  activeLibraryOpeningPresetId = null
+  activeLibraryOpeningTemplateId = null
+  activeLibraryLabelFontId = null
+  facade.clearLibraryPlacementGhost()
+}
+
+/** Geschätzte Textbreite für Platzhalter (wie Hilfslinien-Anker). */
+function libraryLabelGhostSize(heightCm: number, text = 'Text'): { width: number; height: number } {
+  const h = Math.max(16, heightCm)
+  return {
+    width: Math.max(h, Math.round(text.length * h * 0.55)),
+    height: h,
+  }
+}
+
+function updateLibraryPlacementPreview(clientX: number, clientY: number) {
+  const hit = pickWallAtClient(clientX, clientY)
+  if (!hit) {
+    facade.clearLibraryPlacementGhost()
+    return
+  }
+  const wall = getWall(state, hit.wallId)
+  if (!wall) {
+    facade.clearLibraryPlacementGhost()
+    return
+  }
+
+  if (activeLibraryOpeningPresetId) {
+    const preset = WALL_OPENING_PRESETS.find((item) => item.id === activeLibraryOpeningPresetId)
+    if (!preset) {
+      facade.clearLibraryPlacementGhost()
+      return
+    }
+    const width = preset.width
+    const height = preset.height
+    const x = Math.max(
+      0,
+      Math.min(wall.width - width, snapToGrid(hit.localX - width / 2, STUDIO_MASONRY)),
+    )
+    const y =
+      preset.type === 'door'
+        ? 0
+        : Math.max(0, Math.min(wall.height - height, preset.y ?? WINDOW_SILL_Y))
+    facade.setLibraryPlacementGhost(wall, { x, y, width, height, type: preset.type })
+    return
+  }
+
+  if (activeLibraryOpeningTemplateId) {
+    const template = openingTemplates.find((t) => t.id === activeLibraryOpeningTemplateId)
+    if (!template) {
+      facade.clearLibraryPlacementGhost()
+      return
+    }
+    const width = template.draft.width
+    const height = template.draft.height
+    const x = Math.max(
+      0,
+      Math.min(wall.width - width, snapToGrid(hit.localX - width / 2, STUDIO_MASONRY)),
+    )
+    const y =
+      template.draft.type === 'door'
+        ? 0
+        : Math.max(0, Math.min(wall.height - height, template.draft.y ?? WINDOW_SILL_Y))
+    facade.setLibraryPlacementGhost(wall, {
+      x,
+      y,
+      width,
+      height,
+      type: template.draft.type,
+    })
+    return
+  }
+
+  if (activeLibraryLabelFontId) {
+    const heightCm = clampStudioPanelSize(DEFAULT_WALL_LABEL.heightCm)
+    const { width, height } = libraryLabelGhostSize(heightCm)
+    const anchorX = Math.max(0, Math.min(wall.width, snapToGrid(hit.localX, STUDIO_MASONRY)))
+    const y = Math.max(
+      0,
+      Math.min(wall.height - height, snapToGrid(hit.localY - height / 2, STUDIO_MASONRY)),
+    )
+    const x = Math.max(0, Math.min(wall.width - width, anchorX - width / 2))
+    facade.setLibraryPlacementGhost(wall, { x, y, width, height, type: 'window' })
+    return
+  }
+
+  facade.clearLibraryPlacementGhost()
+}
+
+function placeLabelFromLibrary(
+  fontId: string,
+  options?: { wallId?: string; at?: { x: number; y: number } },
+) {
+  if (!canEditActiveBuildingNow()) return
+  const wallId =
+    options?.wallId ??
+    (editor.selectedWallIds.length === 1 ? editor.selectedWallIds[0] : undefined)
+  if (!wallId || !canEditWallNow(wallId)) {
+    planStatus.textContent = 'Schrift: Wand auswählen oder auf eine Wand ziehen'
+    return
+  }
+  const wall = getWall(state, wallId)
+  if (!wall) return
+  const heightCm = clampStudioPanelSize(DEFAULT_WALL_LABEL.heightCm)
+  const at = options?.at ?? defaultWallLabelAnchor(wall, heightCm)
+  const next = addWallLabel(
+    state,
+    wallId,
+    {
+      enabled: true,
+      text: 'Text',
+      fontId: resolveLabelFontId(fontId),
+      heightCm,
+      align: 'center',
+      depth: 'flat',
+      extrudeCm: DEFAULT_WALL_LABEL.extrudeCm,
+      offsetForward: DEFAULT_WALL_LABEL.offsetForward,
+    },
+    { at },
+  )
+  const added = wallLabels(getWall(next, wallId)!).at(-1)
+  expandedWalls.add(wall.groupId ?? wallId)
+  commitState(next, {
+    selectedWallIds: [wallId],
+    selectedOpenings: [],
+    selectedEdges: [],
+    selectedWallPart: 'label',
+    selectedLabelId: added?.id,
+    selectedOpeningPart: undefined,
+    selectedTrimBandId: undefined,
+    selectedRoofBuildingId: undefined,
+    selectedRoofPart: undefined,
+    selectedCeiling: undefined,
+    selectedBuildingId: undefined,
+  })
+  if (added) syncLabelControls(getWall(state, wallId) ?? wall)
+  planStatus.textContent = 'Schrift platziert'
+}
 
 type StyleClipboard = {
   panel?: Wall['panel']
@@ -5932,6 +6132,19 @@ const animPausedInput = document.querySelector<HTMLInputElement>('#anim-paused')
 const animDayCycleInput = document.querySelector<HTMLInputElement>('#anim-day-cycle')!
 const animDayCycleMinutesInput = document.querySelector<HTMLInputElement>('#anim-day-cycle-minutes')!
 const animAutoLightsInput = document.querySelector<HTMLInputElement>('#anim-auto-lights')!
+const sunAnimModeTimeInput = document.querySelector<HTMLInputElement>('#sun-anim-mode-time')!
+const sunAnimModeLightInput = document.querySelector<HTMLInputElement>('#sun-anim-mode-light')!
+const sunAnimTimeRow = document.querySelector<HTMLDivElement>('#sun-anim-time-row')!
+const sunAnimLightRow = document.querySelector<HTMLDivElement>('#sun-anim-light-row')!
+const sunAnimLightChannelsEl = document.querySelector<HTMLDivElement>('#sun-anim-light-channels')!
+const sunAnimFromTime = document.querySelector<HTMLInputElement>('#sun-anim-from-time')!
+const sunAnimToTime = document.querySelector<HTMLInputElement>('#sun-anim-to-time')!
+const sunAnimDuration = document.querySelector<HTMLInputElement>('#sun-anim-duration')!
+const sunAnimHint = document.querySelector<HTMLParagraphElement>('#sun-anim-hint')!
+const sunPathPlayButton = document.querySelector<HTMLButtonElement>('#sun-path-play')!
+const sunPathStopButton = document.querySelector<HTMLButtonElement>('#sun-path-stop')!
+const sunAnimLightFromCurrentBtn = document.querySelector<HTMLButtonElement>('#sun-anim-light-from-current')!
+const sunAnimLightToCurrentBtn = document.querySelector<HTMLButtonElement>('#sun-anim-light-to-current')!
 const sunIntensityInput = document.querySelector<HTMLInputElement>('#sun-intensity')!
 const sunSoftnessInput = document.querySelector<HTMLInputElement>('#sun-softness')!
 const sunColorTempInput = document.querySelector<HTMLInputElement>('#sun-color-temp')!
@@ -8644,10 +8857,14 @@ function initOpeningLibrary() {
       event.dataTransfer?.setData('text/plain', preset.id)
       if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy'
       card.classList.add('is-dragging')
+      activeLibraryOpeningPresetId = preset.id
+      activeLibraryOpeningTemplateId = null
+      activeLibraryLabelFontId = null
     })
     card.addEventListener('dragend', () => {
       card.classList.remove('is-dragging')
       viewport.classList.remove('library-drop-target')
+      clearLibraryPlacementPreview()
     })
     host.appendChild(card)
   }
@@ -8691,10 +8908,14 @@ function initOpeningLibrary() {
         event.dataTransfer?.setData('application/x-opening-template', template.id)
         if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy'
         card.classList.add('is-dragging')
+        activeLibraryOpeningTemplateId = template.id
+        activeLibraryOpeningPresetId = null
+        activeLibraryLabelFontId = null
       })
       card.addEventListener('dragend', () => {
         card.classList.remove('is-dragging')
         viewport.classList.remove('library-drop-target')
+        clearLibraryPlacementPreview()
       })
       host.appendChild(card)
     }
@@ -8846,7 +9067,7 @@ function initOpeningLibrary() {
       card.draggable = true
       card.dataset.bayPresetId = preset.id
       const frontWins = preset.frontWidthCm
-      card.title = `${preset.label} — Front ${frontWins} cm, Tiefe ${preset.depthCm} cm · Segment markieren = austauschen; sonst ablegen`
+      card.title = `${preset.label} — Front ${frontWins} cm, Tiefe ${preset.depthCm} cm · markierte Erker austauschen; sonst ablegen`
       const thumb = document.createElement('div')
       thumb.className = 'opening-library-thumb opening-library-thumb-wall'
       thumb.innerHTML = bayWindowPreviewSvg(preset)
@@ -9209,9 +9430,10 @@ function initOpeningLibrary() {
       const card = document.createElement('button')
       card.type = 'button'
       card.className = 'opening-library-card'
+      card.draggable = true
       if (wall && wallLabel(wall, editor.selectedLabelId).enabled && activeFont === font.id)
         card.classList.add('library-card-applied')
-      card.title = `${font.name} — Schrift auf ausgewählte Wand setzen`
+      card.title = `${font.name} — auf Wand ziehen oder klicken (weitere Schrift)`
       const thumb = document.createElement('div')
       thumb.className = 'opening-library-thumb'
       const preview = document.createElement('span')
@@ -9224,17 +9446,28 @@ function initOpeningLibrary() {
       label.textContent = font.name
       card.append(thumb, label)
       card.addEventListener('click', () => {
-        if (selectedWalls().length === 0) {
-          planStatus.textContent = 'Zuerst eine Wand auswählen'
+        if (card.dataset.didDrag === '1') {
+          delete card.dataset.didDrag
           return
         }
-        const patch: Partial<WallLabelConfig> = { enabled: true, fontId: font.id }
-        const anchor = selectedWalls()[0]
-        if (anchor && !(wallLabel(anchor, editor.selectedLabelId).text ?? '').trim()) {
-          patch.text = 'Text'
-        }
-        commitLabelPatch(patch)
+        placeLabelFromLibrary(font.id)
         initOpeningLibrary()
+      })
+      card.addEventListener('dragstart', (event) => {
+        card.dataset.didDrag = '1'
+        hideNativeDragImage(event)
+        event.dataTransfer?.setData('application/x-label-font', font.id)
+        event.dataTransfer?.setData('text/plain', font.id)
+        if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy'
+        card.classList.add('is-dragging')
+        activeLibraryLabelFontId = font.id
+        activeLibraryOpeningPresetId = null
+        activeLibraryOpeningTemplateId = null
+      })
+      card.addEventListener('dragend', () => {
+        card.classList.remove('is-dragging')
+        viewport.classList.remove('library-drop-target')
+        clearLibraryPlacementPreview()
       })
       host.appendChild(card)
     }
@@ -10139,6 +10372,32 @@ function syncSunUi() {
   animDayCycleInput.checked = sunSettings.dayCycleEnabled !== false
   animDayCycleMinutesInput.value = String(clampDayCycleRealMinutes(sunSettings.dayCycleRealMinutes))
   animAutoLightsInput.checked = sunSettings.autoSceneLightsWithSun !== false
+  syncSunAnimUi()
+}
+
+function syncSunAnimUi() {
+  const mode = normalizeSceneAnimPlayMode(sunSettings.animPlayMode)
+  sunAnimModeTimeInput.checked = mode === 'time'
+  sunAnimModeLightInput.checked = mode === 'light'
+  sunAnimTimeRow.hidden = mode !== 'time'
+  sunAnimLightRow.hidden = mode !== 'light'
+  sunAnimFromTime.value = timeInputValue(sunSettings.animFromTime)
+  sunAnimToTime.value = timeInputValue(sunSettings.animToTime)
+  sunAnimDuration.value = String(sunSettings.animDurationSec)
+  const channels = normalizeSceneLightAnimChannels(sunSettings.animLightChannels)
+  for (const meta of SCENE_LIGHT_ANIM_CHANNELS) {
+    const ch = channels[meta.id]
+    const enable = document.querySelector<HTMLInputElement>(`#sun-anim-ch-${meta.id}`)
+    const from = document.querySelector<HTMLInputElement>(`#sun-anim-from-${meta.id}`)
+    const to = document.querySelector<HTMLInputElement>(`#sun-anim-to-${meta.id}`)
+    const fields = document.querySelector<HTMLElement>(`#sun-anim-fields-${meta.id}`)
+    if (enable) enable.checked = ch.enabled
+    if (from) from.value = String(ch.from)
+    if (to) to.value = String(ch.to)
+    if (fields) fields.hidden = !ch.enabled
+  }
+  sunAnimHint.hidden = true
+  sunAnimHint.textContent = ''
 }
 
 function commitSunFromDateTime(applySolarLook = true) {
@@ -10203,19 +10462,78 @@ let sunShadowScheduleReflections = false
 let sunShadowScheduleSun = false
 let sunSliderPersistTimer = 0
 /**
+ * Während Orbit/Zoom kein Shadow-Bake — sonst stockt die Geste (8192² + Punktlicht-Cubes).
+ * Am Orbit-Ende mit `scheduleShadowMapUpdate` nachholen.
+ */
+let orbitShadowBakeDeferred = false
+let orbitShadowBakeWantSun = false
+
+function isOrbitNavigating(): boolean {
+  return orbitLite || orbitLitePointer || nav3d !== null
+}
+
+function deferOrbitShadowBake(opts?: { sun?: boolean }) {
+  orbitShadowBakeDeferred = true
+  if (opts?.sun) orbitShadowBakeWantSun = true
+}
+
+function takeDeferredOrbitShadowBake(): { sun: boolean } {
+  const sun = orbitShadowBakeWantSun
+  orbitShadowBakeDeferred = false
+  orbitShadowBakeWantSun = false
+  return { sun }
+}
+
+function suppressShadowBakeDuringOrbit() {
+  if (sunShadowMapTimer) {
+    window.clearTimeout(sunShadowMapTimer)
+    sunShadowMapTimer = 0
+  }
+  if (sunShadowMapQueued || renderer.shadowMap.needsUpdate || dirLight.shadow.needsUpdate) {
+    deferOrbitShadowBake({
+      sun: sunShadowScheduleSun || dirLight.shadow.needsUpdate,
+    })
+    if (sunShadowScheduleReflections) {
+      // Reflections bleiben über schedule am Orbit-Ende (setOrbitLite false).
+    }
+    sunShadowMapQueued = false
+    sunShadowFirstQueueMs = 0
+    sunShadowScheduleSun = false
+    sunShadowScheduleReflections = false
+    renderer.shadowMap.needsUpdate = false
+    dirLight.shadow.needsUpdate = false
+  }
+}
+
+/**
  * Sonnen-Slider wird gezogen/angeklickt: Box gecacht, Map-Größe fix,
  * Schedule-Actors erst beim `change`; Sonnen-Shadow pro Lighting-Frame (kein Debounce-Sprung).
+ * Gleicher Pfad für einmaliges Szene-Abspielen (`sunPathAnimating`).
  */
 let sunSliderScrubbing = false
 let sunScrubWorldBox: THREE.Box3 | null = null
+/** Einmaliges Szene-Abspielen (Tagesverlauf / Licht) — früh deklariert für Lighting-Pfad. */
+let sunPathAnimating = false
 /** Letzter Studio-Hintergrund (Live) — EnvMap nur bei spürbarer Änderung dirty. */
 let lastStudioLiveBgHex = ''
+
+/** Scrub-Slider oder einmaliges Abspielen — flüssige Schatten ohne Debounce-Sprünge. */
+function sunLiveScrubActive(): boolean {
+  return sunSliderScrubbing || sunPathAnimating
+}
 /** Env-Reflexion: Dirty nur bei spürbarem Tag/Nacht-/Mond-Wechsel. */
 let lastReflectionLightingKey = ''
 /** Hysterese für Key-Licht-Schatten (Sonne/Mond), vermeidet Shader-Flip an der Schwelle. */
 let keyCastShadowLatched = true
 
 function flushSunShadowMap(opts?: { reflections?: boolean; sceneLights?: boolean }) {
+  if (isOrbitNavigating()) {
+    deferOrbitShadowBake({ sun: true })
+    if (opts?.reflections !== false) {
+      // EnvMap erst nach Orbit — sonst zusätzlich Cube-Bake-Hitch.
+    }
+    return
+  }
   if (sunShadowMapTimer) {
     window.clearTimeout(sunShadowMapTimer)
     sunShadowMapTimer = 0
@@ -10234,6 +10552,10 @@ function flushSunShadowMap(opts?: { reflections?: boolean; sceneLights?: boolean
 
 /** Nur dirty Punktlicht-Shadows — ohne Sonne und ohne EnvMap-Bake. */
 function flushShadowMapsOnly() {
+  if (isOrbitNavigating()) {
+    deferOrbitShadowBake({ sun: false })
+    return
+  }
   if (sunShadowMapTimer) {
     window.clearTimeout(sunShadowMapTimer)
     sunShadowMapTimer = 0
@@ -10248,6 +10570,11 @@ function flushShadowMapsOnly() {
 }
 
 function scheduleShadowMapUpdate(opts?: { reflections?: boolean; sun?: boolean }) {
+  if (isOrbitNavigating()) {
+    deferOrbitShadowBake({ sun: opts?.sun === true })
+    // Reflections: setOrbitLite(false) plant sowieso reflections: true.
+    return
+  }
   const now = performance.now()
   if (!sunShadowMapQueued) sunShadowFirstQueueMs = now
   sunShadowMapQueued = true
@@ -10264,6 +10591,15 @@ function scheduleShadowMapUpdate(opts?: { reflections?: boolean; sun?: boolean }
   sunShadowMapTimer = window.setTimeout(() => {
     sunShadowMapTimer = 0
     if (!sunShadowMapQueued) return
+    // Geste gestartet während Debounce — Bake verschieben.
+    if (isOrbitNavigating()) {
+      deferOrbitShadowBake({ sun: sunShadowScheduleSun })
+      sunShadowMapQueued = false
+      sunShadowFirstQueueMs = 0
+      sunShadowScheduleReflections = false
+      sunShadowScheduleSun = false
+      return
+    }
     sunShadowMapQueued = false
     sunShadowFirstQueueMs = 0
     const reflections = sunShadowScheduleReflections
@@ -10652,13 +10988,13 @@ function applySunLighting(opts?: { updateShadowMap?: boolean; live?: boolean }) 
   syncCladdingReceiveShadows()
   const preCelestial = resolveCelestialState(sunSettings)
   const live = opts?.live === true
-  // Scrub: Gebäudebox nicht jedes Input neu berechnen (teuer bei vielen Wänden).
+  // Scrub / Abspielen: Gebäudebox nicht jedes Input neu berechnen (teuer bei vielen Wänden).
   let localBox: THREE.Box3
-  if (sunSliderScrubbing && sunScrubWorldBox) {
+  if (sunLiveScrubActive() && sunScrubWorldBox) {
     localBox = sunScrubWorldBox
   } else {
     localBox = buildingWorldBox(getAllWalls(state))
-    if (sunSliderScrubbing) sunScrubWorldBox = localBox.clone()
+    if (sunLiveScrubActive()) sunScrubWorldBox = localBox.clone()
   }
   const centroid = buildingCentroid(state) ?? { x: 0, z: 0 }
   const siteYaw = siteYawForView()
@@ -10755,11 +11091,11 @@ function applySunLighting(opts?: { updateShadowMap?: boolean; live?: boolean }) 
   }
   dirLightIndoor.castShadow = false
 
-  // Scrub: Map-Größe nicht wechseln (RT-Allokation); Frustum weiter fitten,
+  // Scrub / Abspielen: Map-Größe nicht wechseln (RT-Allokation); Frustum weiter fitten,
   // sonst bleiben Schatten beim Sonnenwinkel/Tageszeit-Ziehen stehen.
-  if (!sunSliderScrubbing) {
+  if (!sunLiveScrubActive()) {
     const siteSpan = Math.max(box.max.x - box.min.x, box.max.z - box.min.z, 400)
-    const shadowSize = shadowMapSizeForSiteSpan(siteSpan)
+    const shadowSize = shadowMapSizeForPresentation(siteSpan, presentationMode)
     ensureDirectionalShadowMapSize(dirLight, shadowSize)
   }
   dirLight.shadow.camera.layers.set(SHADOW_LAYER_EXTERIOR)
@@ -10776,6 +11112,12 @@ function applySunLighting(opts?: { updateShadowMap?: boolean; live?: boolean }) 
     dirLight.shadow.normalBias = SHADOW_NORMAL_BIAS_MIN
     dirLight.shadow.bias = SHADOW_BIAS
   }
+  // Schatten-Dunkelheit → Three.js shadow.intensity (0 = unsichtbar, 1 = volle Umbra).
+  dirLight.shadow.intensity = THREE.MathUtils.clamp(
+    0.55 + 0.45 * THREE.MathUtils.clamp(sunSettings.shadowDensity, 0, 1),
+    0.55,
+    1,
+  )
 
   if (studio && currentRenderStyle !== 'line') {
     const bgHex = sceneColors.background
@@ -10794,8 +11136,8 @@ function applySunLighting(opts?: { updateShadowMap?: boolean; live?: boolean }) 
   if (opts?.updateShadowMap === true) {
     flushSunShadowMap({ sceneLights: true })
   } else if (live) {
-    if (sunSliderScrubbing) {
-      // Sofort 1×/Frame (Lighting ist schon rAF-gedrosselt) — Debounce ließ Schatten springen.
+    if (sunLiveScrubActive()) {
+      // Sofort 1×/Frame — Debounce ließ Schatten beim Scrub/Abspielen springen.
       flushSunShadowMap({ reflections: false })
     } else {
       // Tagzyklus u. a.: weiter gedrosselt (~120–280 ms).
@@ -10905,22 +11247,21 @@ function applyState(nextState: FacadeState, nextEditor = editor) {
     facade.refreshWallLabels()
     applySunLighting({ updateShadowMap: true })
   } else if (decorOnly) {
-    // Sockel ein/aus: Wandaußenfläche braucht volle Tiefe in der Sockelzone (Wandfarbe).
-    const plinthRebuildIds: string[] = []
+    // Sockel/Paneele ein/aus: Geometrie (Wandtiefe / Laibungs-Z) muss mitgebaut werden.
+    const decorGeomRebuildIds: string[] = []
     for (let i = 0; i < state.buildings.length; i += 1) {
       const prevB = prevState.buildings[i]
       const nextB = state.buildings[i]
       if (!prevB || !nextB || prevB.id !== nextB.id) continue
-      if (
-        normalizeFacadeDecor(prevB.facadeDecor).plinth !==
-        normalizeFacadeDecor(nextB.facadeDecor).plinth
-      ) {
-        plinthRebuildIds.push(nextB.id)
+      const prevDecor = normalizeFacadeDecor(prevB.facadeDecor)
+      const nextDecor = normalizeFacadeDecor(nextB.facadeDecor)
+      if (prevDecor.plinth !== nextDecor.plinth || prevDecor.panels !== nextDecor.panels) {
+        decorGeomRebuildIds.push(nextB.id)
       }
     }
-    if (plinthRebuildIds.length > 0) {
+    if (decorGeomRebuildIds.length > 0) {
       geometryChanged = true
-      facade.setState(state, { rebuildBuildingIds: plinthRebuildIds })
+      facade.setState(state, { rebuildBuildingIds: decorGeomRebuildIds })
     } else {
       facade.setState(state, { rebuildBuildingIds: [] })
       facade.refreshFacadeDecorVisibility()
@@ -15483,19 +15824,43 @@ function placeBayWindowFromLibrary(presetId: string) {
   if (!canEditActiveBuildingNow()) return
   const preset = BAY_WINDOW_PRESETS.find((item) => item.id === presetId)
   if (!preset) return
-  // Markierter Erker → durch anderes Preset austauschen (Mundzentrum bleibt).
+  // Markierte Erker → alle durch anderes Preset austauschen (Mundzentren bleiben).
   if (bayPresetKind(preset) === 'bay' && editor.selectedWallIds.length > 0) {
-    const seed = editor.selectedWallIds.find((id) => bayHostWall(getAllWalls(state), id))
-    if (seed) {
-      const swapped = swapBayPreset(state, seed, preset)
-      if (swapped) {
-        commitState(swapped.state, {
-          selectedWallIds: swapped.bayWallIds,
+    const walls = getAllWalls(state)
+    const hostIds: string[] = []
+    const seenHosts = new Set<string>()
+    for (const id of editor.selectedWallIds) {
+      const host = bayHostWall(walls, id)
+      if (!host || seenHosts.has(host.id)) continue
+      seenHosts.add(host.id)
+      hostIds.push(host.id)
+    }
+    if (hostIds.length > 0) {
+      let next = state
+      const allBayWallIds: string[] = []
+      let swappedCount = 0
+      for (const hostId of hostIds) {
+        // Nach vorherigem Tausch noch vorhanden? (ID bleibt bis zum eigenen Swap)
+        if (!bayHostWall(getAllWalls(next), hostId)) continue
+        const swapped = swapBayPreset(next, hostId, preset)
+        if (!swapped) continue
+        next = swapped.state
+        allBayWallIds.push(...swapped.bayWallIds)
+        swappedCount += 1
+      }
+      if (swappedCount > 0) {
+        commitState(next, {
+          selectedWallIds: allBayWallIds,
           selectedOpenings: [],
           selectedEdges: [],
         })
         rebuildFloorPlanOverlay()
-        planStatus.textContent = `${preset.label} ausgetauscht`
+        planStatus.textContent =
+          swappedCount === 1
+            ? `${preset.label} ausgetauscht`
+            : swappedCount < hostIds.length
+              ? `${preset.label}: ${swappedCount} von ${hostIds.length} Erkern ausgetauscht`
+              : `${preset.label}: ${swappedCount} Erker ausgetauscht`
         return
       }
       planStatus.textContent = 'Erker-Tausch nicht möglich (Mundbreite / Reststücke)'
@@ -15813,7 +16178,11 @@ function rebuildStudioPatternCards() {
   const wall = anchorWall()
   const pattern = wall?.panel?.pattern ?? 'strip'
   const selectPattern = (next: StudioPanelPattern) => {
-    commitStudioPanelPatch({ pattern: next, enabled: next !== 'none' })
+    commitStudioPanelPatch({
+      ...studioPanelDefaultsForPattern(next),
+      pattern: next,
+      enabled: next !== 'none',
+    })
     refreshStudioPanelVisibility()
     rebuildStudioPatternCards()
   }
@@ -19152,17 +19521,7 @@ function commitOpeningSizePatch(patch: { width?: number; height?: number }) {
         stairs: syncStairsToDoorWidth(opening.stairs, { ...opening, width: patch.width }),
       }
     }
-    // #region agent log
-    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c6b426'},body:JSON.stringify({sessionId:'c6b426',runId:'post-fix',hypothesisId:'C',location:'main.ts:commitOpeningSizePatch',message:'size patch before update',data:{openingId:ref.openingId,prevW:opening.width,prevX:opening.x,patchW:patch.width,patchH:patch.height,grow:openingWidthGrow,anchoredX:openingPatch.x},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     next = updateOpening(next, ref.wallId, ref.openingId, openingPatch)
-    // #region agent log
-    {
-      const w2 = getWall(next, ref.wallId)
-      const o2 = w2?.openings.find((item) => item.id === ref.openingId)
-      fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c6b426'},body:JSON.stringify({sessionId:'c6b426',runId:'post-fix',hypothesisId:'C',location:'main.ts:commitOpeningSizePatch:after',message:'size patch after update',data:{openingId:ref.openingId,outW:o2?.width,outX:o2?.x,outH:o2?.height},timestamp:Date.now()})}).catch(()=>{});
-    }
-    // #endregion
   }
   commitState(next)
   syncOpeningPositionControls()
@@ -19171,9 +19530,6 @@ function commitOpeningSizePatch(patch: { width?: number; height?: number }) {
 
 openingWidthInput.addEventListener('change', () => {
   const width = snapToGrid(Number(openingWidthInput.value), STUDIO_MASONRY)
-  // #region agent log
-  fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c6b426'},body:JSON.stringify({sessionId:'c6b426',runId:'post-fix',hypothesisId:'C',location:'main.ts:openingWidth:change',message:'width input change',data:{raw:openingWidthInput.value,snapped:width,grow:openingWidthGrow},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   if (!Number.isFinite(width) || width < STUDIO_MASONRY) {
     syncOpeningPositionControls()
     return
@@ -22261,6 +22617,7 @@ function bindSunSlider(
 
   input.addEventListener('input', () => {
     beginScrub()
+    stopSunPathAnimation(false)
     const value = Number.parseFloat(input.value)
     apply(value)
     output.textContent = format(value)
@@ -22268,10 +22625,12 @@ function bindSunSlider(
     noteScheduleTimeOfDay(sunSettings.timeOfDay, false)
     queueLiveLighting()
     if (sunSliderPersistTimer) window.clearTimeout(sunSliderPersistTimer)
-    sunSliderPersistTimer = window.setTimeout(() => {
-      sunSliderPersistTimer = 0
-      persistApp()
-    }, 400)
+    if (!sunPathAnimating) {
+      sunSliderPersistTimer = window.setTimeout(() => {
+        sunSliderPersistTimer = 0
+        persistApp()
+      }, 400)
+    }
   })
 
   input.addEventListener('change', () => {
@@ -22296,7 +22655,7 @@ function bindSunSlider(
       window.clearTimeout(sunSliderPersistTimer)
       sunSliderPersistTimer = 0
     }
-    persistApp()
+    if (!sunPathAnimating) persistApp()
   })
 }
 
@@ -22408,6 +22767,7 @@ function syncAutoSceneLightsWithSun(
 
 function tickDayCycle(now: number, dtMs: number): boolean {
   if (lightEditMode) return false
+  if (sunPathAnimating) return false
   if (sunSettings.animationsPaused === true) return false
   if (sunSettings.dayCycleEnabled === false) return false
   if (dtMs <= 0) return false
@@ -22436,9 +22796,324 @@ function tickDayCycle(now: number, dtMs: number): boolean {
   return true
 }
 
-/** Früher: einmaliger Tagesverlauf — UI entfernt; Stub für verbleibende Aufrufe. */
+function currentSceneLightAnimValue(id: SceneLightAnimChannelId): number {
+  switch (id) {
+    case 'azimuth':
+      return sunSettings.azimuth
+    case 'intensity':
+      return sunSettings.intensity
+    case 'ambient':
+      return sunSettings.ambient
+    case 'shadowContrast':
+      return sunSettings.shadowContrast
+    case 'shadowSoftness':
+      return sunSettings.shadowSoftness
+    case 'colorTemperature':
+      return sunSettings.colorTemperature
+    case 'bloomThreshold':
+      return bloomSettings.threshold
+    case 'bloomStrength':
+      return bloomSettings.strength
+    case 'bloomRadius':
+      return bloomSettings.radius
+    case 'bloomExposure':
+      return bloomSettings.exposure
+  }
+}
+
+function readAnimLightChannelsFromDom(): SceneLightAnimChannels {
+  const base = normalizeSceneLightAnimChannels(sunSettings.animLightChannels)
+  for (const meta of SCENE_LIGHT_ANIM_CHANNELS) {
+    const enable = document.querySelector<HTMLInputElement>(`#sun-anim-ch-${meta.id}`)
+    const from = document.querySelector<HTMLInputElement>(`#sun-anim-from-${meta.id}`)
+    const to = document.querySelector<HTMLInputElement>(`#sun-anim-to-${meta.id}`)
+    base[meta.id] = {
+      enabled: enable?.checked === true,
+      from: from ? Number.parseFloat(from.value) : base[meta.id].from,
+      to: to ? Number.parseFloat(to.value) : base[meta.id].to,
+    }
+  }
+  return normalizeSceneLightAnimChannels(base)
+}
+
+function commitAnimLightChannelsFromDom() {
+  sunSettings = {
+    ...sunSettings,
+    animLightChannels: readAnimLightChannelsFromDom(),
+  }
+}
+
+function buildSunAnimLightChannelUi() {
+  sunAnimLightChannelsEl.replaceChildren()
+  for (const meta of SCENE_LIGHT_ANIM_CHANNELS) {
+    const wrap = document.createElement('div')
+    wrap.className = 'toolbar-group'
+    wrap.style.margin = '0 0 6px'
+
+    const check = document.createElement('label')
+    check.className = 'toolbar-check'
+    const enable = document.createElement('input')
+    enable.type = 'checkbox'
+    enable.id = `sun-anim-ch-${meta.id}`
+    check.append(enable, document.createTextNode(` ${meta.label}`))
+
+    const fields = document.createElement('div')
+    fields.id = `sun-anim-fields-${meta.id}`
+    fields.className = 'toolbar-row-2'
+    fields.hidden = true
+    fields.style.marginTop = '4px'
+
+    const fromLabel = document.createElement('label')
+    fromLabel.textContent = 'Von'
+    const from = document.createElement('input')
+    from.type = 'number'
+    from.id = `sun-anim-from-${meta.id}`
+    from.min = String(meta.min)
+    from.max = String(meta.max)
+    from.step = String(meta.step)
+    fromLabel.append(from)
+
+    const toLabel = document.createElement('label')
+    toLabel.textContent = 'Bis'
+    const to = document.createElement('input')
+    to.type = 'number'
+    to.id = `sun-anim-to-${meta.id}`
+    to.min = String(meta.min)
+    to.max = String(meta.max)
+    to.step = String(meta.step)
+    toLabel.append(to)
+
+    fields.append(fromLabel, toLabel)
+    wrap.append(check, fields)
+    sunAnimLightChannelsEl.append(wrap)
+
+    enable.addEventListener('change', () => {
+      fields.hidden = !enable.checked
+      if (enable.checked) {
+        const cur = currentSceneLightAnimValue(meta.id)
+        if (!Number.isFinite(Number.parseFloat(from.value))) from.value = String(cur)
+        if (!Number.isFinite(Number.parseFloat(to.value))) to.value = String(cur)
+        // Neu aktiviert: Von = aktuell, Bis unverändert lassen wenn schon gesetzt.
+        from.value = String(cur)
+      }
+      commitAnimLightChannelsFromDom()
+      persistApp()
+    })
+    const onNum = () => {
+      commitAnimLightChannelsFromDom()
+      persistApp()
+    }
+    from.addEventListener('change', onNum)
+    to.addEventListener('change', onNum)
+  }
+}
+
+type SunPathAnimRun = {
+  t0: number
+  durationMs: number
+  mode: 'time' | 'light'
+  fromHours: number
+  toHours: number
+  channels: SceneLightAnimChannels | null
+  scheduleFromTod: number
+  uiAccumMs: number
+}
+
+let sunPathAnimRun: SunPathAnimRun | null = null
+
+/** Smoothstep — weicher Anlauf/Auslauf ohne wahrnehmbare Sprünge an den Enden. */
+function smoothstep01(t: number): number {
+  const x = Math.min(1, Math.max(0, t))
+  return x * x * (3 - 2 * x)
+}
+
+function syncSunPathPlaybackUi() {
+  sunTimeInput.value = String(sunSettings.timeOfDay)
+  sunTimeValue.textContent = formatTimeOfDay(sunSettings.timeOfDay)
+  sunAzimuthInput.value = String(Math.round(sunSettings.azimuth))
+  sunAzimuthValue.textContent = `${Math.round(sunSettings.azimuth)}°`
+  sunColorTempInput.value = String(sunSettings.colorTemperature)
+  sunColorTempValue.textContent = `${Math.round(sunSettings.colorTemperature)} K`
+  sunSoftnessInput.value = String(sunSettings.shadowSoftness)
+  sunSoftnessValue.textContent = sunSettings.shadowSoftness.toFixed(1)
+  sunIntensityInput.value = String(sunSettings.intensity)
+  sunIntensityValue.textContent = sunSettings.intensity.toFixed(1)
+  sunAmbientInput.value = String(sunSettings.ambient)
+  sunAmbientValue.textContent = sunSettings.ambient.toFixed(2)
+  sunShadowContrastInput.value = String(sunSettings.shadowContrast)
+  sunShadowContrastValue.textContent = sunSettings.shadowContrast.toFixed(2)
+}
+
+function applySceneLightAnimAt(t: number, channels: SceneLightAnimChannels, opts?: { updateUi?: boolean }) {
+  const updateUi = opts?.updateUi === true
+  let sunTouched = false
+  let bloomTouched = false
+  for (const meta of SCENE_LIGHT_ANIM_CHANNELS) {
+    const ch = channels[meta.id]
+    if (!ch.enabled) continue
+    const value = lerpSceneLightAnimValue(meta.id, ch.from, ch.to, t)
+    switch (meta.id) {
+      case 'azimuth':
+        sunSettings.azimuth = value
+        sunTouched = true
+        break
+      case 'intensity':
+        sunSettings.intensity = value
+        sunTouched = true
+        break
+      case 'ambient':
+        sunSettings.ambient = value
+        sunTouched = true
+        break
+      case 'shadowContrast':
+        sunSettings.shadowContrast = value
+        sunTouched = true
+        break
+      case 'shadowSoftness':
+        sunSettings.shadowSoftness = value
+        sunTouched = true
+        break
+      case 'colorTemperature':
+        sunSettings.colorTemperature = value
+        sunTouched = true
+        break
+      case 'bloomThreshold':
+        bloomSettings = normalizeBloomSettings({ ...bloomSettings, threshold: value, enabled: true })
+        bloomTouched = true
+        break
+      case 'bloomStrength':
+        bloomSettings = normalizeBloomSettings({ ...bloomSettings, strength: value, enabled: true })
+        bloomTouched = true
+        break
+      case 'bloomRadius':
+        bloomSettings = normalizeBloomSettings({ ...bloomSettings, radius: value, enabled: true })
+        bloomTouched = true
+        break
+      case 'bloomExposure':
+        bloomSettings = normalizeBloomSettings({ ...bloomSettings, exposure: value, enabled: true })
+        bloomTouched = true
+        break
+    }
+  }
+  if (sunTouched) {
+    sunSettings = syncSunSettingsFromSolar(sunSettings, { applySolarLook: false })
+    if (updateUi) syncSunPathPlaybackUi()
+    applySunLighting({ live: true })
+    syncAutoSceneLightsWithSun(false, { updateLayerList: false })
+  }
+  if (bloomTouched) {
+    applyBloomRenderer()
+    if (updateUi) syncBloomUi()
+  }
+}
+
 function stopSunPathAnimation(persist = true) {
+  if (!sunPathAnimating && !sunPathAnimRun) {
+    if (persist) persistApp()
+    return
+  }
+  const fromTod = sunPathAnimRun?.scheduleFromTod
+  sunPathAnimRun = null
+  sunPathAnimating = false
+  sunScrubWorldBox = null
+  sunPathPlayButton.hidden = false
+  sunPathStopButton.hidden = true
+  syncSunPathPlaybackUi()
+  syncBloomUi()
+  applySunLighting({ live: true })
+  flushSunShadowMap({ reflections: true })
+  syncSceneLightRuntime()
+  syncAutoSceneLightsWithSun()
+  if (fromTod != null) tickActorDaySchedules(fromTod, sunSettings.timeOfDay)
+  lastScheduleTimeOfDay = sunSettings.timeOfDay
   if (persist) persistApp()
+  markViewportDirty()
+}
+
+function startSunPathAnimation() {
+  stopSunPathAnimation(false)
+  sunSettings = syncSunSettingsFromSolar(sunSettings, { applySolarLook: false })
+  const mode = normalizeSceneAnimPlayMode(sunSettings.animPlayMode)
+  const durationMs = Math.max(1, sunSettings.animDurationSec) * 1000
+
+  if (mode === 'light') {
+    const channels = normalizeSceneLightAnimChannels(sunSettings.animLightChannels)
+    if (!sceneLightAnimHasEnabledChannel(channels)) {
+      sunAnimHint.hidden = false
+      sunAnimHint.textContent = 'Mindestens einen Lichtkanal aktivieren.'
+      return
+    }
+    sunAnimHint.hidden = true
+    sunPathAnimating = true
+    sunScrubWorldBox = buildingWorldBox(getAllWalls(state)).clone()
+    sunPathPlayButton.hidden = true
+    sunPathStopButton.hidden = false
+    sunPathAnimRun = {
+      t0: performance.now(),
+      durationMs,
+      mode: 'light',
+      fromHours: 0,
+      toHours: 0,
+      channels,
+      scheduleFromTod: sunSettings.timeOfDay,
+      uiAccumMs: 0,
+    }
+    markViewportDirty()
+    return
+  }
+
+  const { fromHours, toHours } = resolveAnimTimeRange({
+    ...sunSettings,
+    animUseTime: true,
+    animPlayMode: 'time',
+  })
+  sunAnimHint.hidden = true
+  sunPathAnimating = true
+  sunScrubWorldBox = buildingWorldBox(getAllWalls(state)).clone()
+  sunPathPlayButton.hidden = true
+  sunPathStopButton.hidden = false
+  sunPathAnimRun = {
+    t0: performance.now(),
+    durationMs,
+    mode: 'time',
+    fromHours,
+    toHours,
+    channels: null,
+    scheduleFromTod: sunSettings.timeOfDay,
+    uiAccumMs: 0,
+  }
+  markViewportDirty()
+}
+
+/** Einmaliges Abspielen im Haupt-Renderloop — 1 Update pro Frame, Scrub-Schattenpfad. */
+function tickSunPathAnimation(now: number, dtMs: number): boolean {
+  const run = sunPathAnimRun
+  if (!run) return false
+  const rawT = Math.min(1, (now - run.t0) / run.durationMs)
+  const t = smoothstep01(rawT)
+
+  if (run.mode === 'light' && run.channels) {
+    applySceneLightAnimAt(t, run.channels, { updateUi: false })
+  } else {
+    sunSettings.timeOfDay = lerpTimeOfDayHours(run.fromHours, run.toHours, t)
+    sunSettings = syncSunSettingsFromSolar(sunSettings, { applySolarLook: true })
+    applySunLighting({ live: true })
+    syncAutoSceneLightsWithSun(false, { updateLayerList: false })
+    // Keine Actor-Crossings während Playback (Fenster/Rollläden würden hitchen).
+    noteScheduleTimeOfDay(sunSettings.timeOfDay, false)
+  }
+
+  run.uiAccumMs += dtMs
+  if (run.uiAccumMs >= 100 || rawT >= 1) {
+    run.uiAccumMs = 0
+    syncSunPathPlaybackUi()
+    if (run.mode === 'light') syncBloomUi()
+  }
+
+  if (rawT >= 1) {
+    stopSunPathAnimation(true)
+  }
+  return true
 }
 
 sunDateInput.addEventListener('change', () => {
@@ -22478,6 +23153,85 @@ animAutoLightsInput.addEventListener('change', () => {
   if (animAutoLightsInput.checked) syncAutoSceneLightsWithSun(true)
   persistApp()
 })
+
+function setSunAnimPlayMode(mode: 'time' | 'light') {
+  sunSettings = {
+    ...sunSettings,
+    animPlayMode: mode,
+    // Tagesverlauf nutzt explizite Uhrzeit (nicht Kompass-Fallback).
+    animUseTime: mode === 'time' ? true : sunSettings.animUseTime,
+  }
+  syncSunAnimUi()
+  persistApp()
+}
+
+sunAnimModeTimeInput.addEventListener('change', () => {
+  if (sunAnimModeTimeInput.checked) setSunAnimPlayMode('time')
+})
+sunAnimModeLightInput.addEventListener('change', () => {
+  if (sunAnimModeLightInput.checked) setSunAnimPlayMode('light')
+})
+
+sunAnimFromTime.addEventListener('change', () => {
+  const parsed = parseTimeInput(sunAnimFromTime.value)
+  if (parsed === null) return
+  sunSettings = { ...sunSettings, animFromTime: parsed, animUseTime: true }
+  syncSunAnimUi()
+  persistApp()
+})
+sunAnimToTime.addEventListener('change', () => {
+  const parsed = parseTimeInput(sunAnimToTime.value)
+  if (parsed === null) return
+  sunSettings = { ...sunSettings, animToTime: parsed, animUseTime: true }
+  syncSunAnimUi()
+  persistApp()
+})
+sunAnimDuration.addEventListener('change', () => {
+  sunSettings = syncSunSettingsFromSolar(
+    { ...sunSettings, animDurationSec: Number(sunAnimDuration.value) },
+    { applySolarLook: false },
+  )
+  syncSunAnimUi()
+  persistApp()
+})
+
+sunAnimLightFromCurrentBtn.addEventListener('click', () => {
+  const channels = readAnimLightChannelsFromDom()
+  for (const meta of SCENE_LIGHT_ANIM_CHANNELS) {
+    if (!channels[meta.id].enabled) continue
+    channels[meta.id] = {
+      ...channels[meta.id],
+      from: currentSceneLightAnimValue(meta.id),
+    }
+  }
+  sunSettings = { ...sunSettings, animLightChannels: normalizeSceneLightAnimChannels(channels) }
+  syncSunAnimUi()
+  persistApp()
+})
+sunAnimLightToCurrentBtn.addEventListener('click', () => {
+  const channels = readAnimLightChannelsFromDom()
+  for (const meta of SCENE_LIGHT_ANIM_CHANNELS) {
+    if (!channels[meta.id].enabled) continue
+    channels[meta.id] = {
+      ...channels[meta.id],
+      to: currentSceneLightAnimValue(meta.id),
+    }
+  }
+  sunSettings = { ...sunSettings, animLightChannels: normalizeSceneLightAnimChannels(channels) }
+  syncSunAnimUi()
+  persistApp()
+})
+
+sunPathPlayButton.addEventListener('click', () => {
+  if (normalizeSceneAnimPlayMode(sunSettings.animPlayMode) === 'light') {
+    commitAnimLightChannelsFromDom()
+  }
+  startSunPathAnimation()
+})
+sunPathStopButton.addEventListener('click', () => stopSunPathAnimation(true))
+
+buildSunAnimLightChannelUi()
+syncSunAnimUi()
 
 bindSunSlider(
   sunTimeInput,
@@ -23566,8 +24320,9 @@ function animate() {
     if (rollerShutterPlayback) tickRollerShutterPlayback(nowMs)
   }
 
-  const dayMoved = tickDayCycle(nowMs, dayDt)
-  if (dayMoved) viewportDirty = true
+  const pathMoved = tickSunPathAnimation(nowMs, dayDt)
+  const dayMoved = !pathMoved && tickDayCycle(nowMs, dayDt)
+  if (pathMoved || dayMoved) viewportDirty = true
   else if (!paused) {
     syncAutoSceneLightsWithSun(false, { updateLayerList: false })
     noteScheduleTimeOfDay(sunSettings.timeOfDay, false)
@@ -23583,18 +24338,24 @@ function animate() {
   if (sceneLightLive) viewportDirty = true
 
   const leafMoved =
-    !paused && leafRuntime.count() > 0 && leafRuntime.tick(dayDt, leafWind)
+    !paused &&
+    !orbitLite &&
+    !orbitLitePointer &&
+    leafRuntime.count() > 0 &&
+    leafRuntime.tick(dayDt, leafWind)
   if (leafMoved) {
     viewportDirty = true
     scheduleSoftPersistLeaves()
   }
   // Wind klingt ab, wenn Maus stillsteht / die Bühne verlässt.
-  if (!leafWind.active && leafRuntime.count() > 0) {
+  if (!leafWind.active && leafRuntime.count() > 0 && !orbitLite && !orbitLitePointer) {
     leafWind = { ...leafWind, vx: leafWind.vx * 0.9, vz: leafWind.vz * 0.9 }
   }
 
   const liveMotion =
+    pathMoved ||
     dayMoved ||
+    sunPathAnimating ||
     (!paused && Boolean(openingMotionPlayback)) ||
     (!paused && Boolean(rollerShutterPlayback)) ||
     sceneLightLive ||
@@ -23606,8 +24367,12 @@ function animate() {
   let perfRendered = false
   if (currentView === '3d') {
     if (facade.consumeWallLabelsShadowDirty()) {
-      renderer.shadowMap.needsUpdate = true
-      viewportDirty = true
+      if (orbitLite || orbitLitePointer) {
+        deferOrbitShadowBake({ sun: true })
+      } else {
+        renderer.shadowMap.needsUpdate = true
+        viewportDirty = true
+      }
     }
     if (sceneLightingReady && !viewportDirty && !perfOn && !liveMotion) {
       return
@@ -23750,21 +24515,12 @@ studioWallUnlinkButton.addEventListener('click', () => {
 })
 
 studioWallWidthInput.addEventListener('change', () => {
-  // #region agent log
-  fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c6b426'},body:JSON.stringify({sessionId:'c6b426',runId:'post-fix',hypothesisId:'F',location:'main.ts:studioWallWidth:change:enter',message:'wall width change enter',data:{raw:studioWallWidthInput.value,selectedCount:editor.selectedWallIds.length,selectedIds:editor.selectedWallIds.slice(0,5)},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   if (editor.selectedWallIds.length !== 1) {
-    // #region agent log
-    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c6b426'},body:JSON.stringify({sessionId:'c6b426',runId:'post-fix',hypothesisId:'H',location:'main.ts:studioWallWidth:change:abort',message:'abort not single wall',data:{selectedCount:editor.selectedWallIds.length},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     return
   }
   const wallId = editor.selectedWallIds[0]!
   const wall = getWall(state, wallId)
   if (!wall || !isStudioWall(wall)) {
-    // #region agent log
-    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c6b426'},body:JSON.stringify({sessionId:'c6b426',runId:'post-fix',hypothesisId:'H',location:'main.ts:studioWallWidth:change:abort',message:'abort not studio wall',data:{wallId,hasWall:Boolean(wall),isStudio:wall?isStudioWall(wall):false},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     return
   }
   // Strecken (Breite) darf bei planLinked — wie 3D-Greifer via stretchStudioFacade / translateStudioCorner.
@@ -23773,27 +24529,16 @@ studioWallWidthInput.addEventListener('change', () => {
   const nextWidth = snapWallWidthCm(Number(studioWallWidthInput.value), yaw)
   if (!Number.isFinite(nextWidth) || nextWidth < STUDIO_MIN_SIZE) {
     studioWallWidthInput.value = String(Math.round(wall.width))
-    // #region agent log
-    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c6b426'},body:JSON.stringify({sessionId:'c6b426',runId:'post-fix',hypothesisId:'G',location:'main.ts:studioWallWidth:change:invalid',message:'abort invalid snap',data:{raw:studioWallWidthInput.value,nextWidth,yaw,prevW:wall.width,step:wallWidthStepCm(yaw)},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     return
   }
   const delta = nextWidth - wall.width
   if (Math.abs(delta) < 0.5) {
-    // #region agent log
-    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c6b426'},body:JSON.stringify({sessionId:'c6b426',runId:'post-fix',hypothesisId:'G',location:'main.ts:studioWallWidth:change:nodelta',message:'abort zero delta',data:{raw:studioWallWidthInput.value,nextWidth,prevW:wall.width,yaw,step:wallWidthStepCm(yaw)},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     return
   }
   studioWallWidthInput.value = String(nextWidth)
-  const beforeW = wall.width
   const nextState = finalizeStudioGeometry(
     stretchStudioFacade(state, wallId, studioWallWidthGrowSide, delta),
   )
-  const afterW = getWall(nextState, wallId)?.width
-  // #region agent log
-  fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c6b426'},body:JSON.stringify({sessionId:'c6b426',runId:'post-fix',hypothesisId:'I',location:'main.ts:studioWallWidth:change:commit',message:'wall width stretch commit',data:{wallId,beforeW,delta,nextWidth,afterW,yaw,planLinked:wall.planLinked,side:studioWallWidthGrowSide},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   commitState(nextState)
 })
 
@@ -23814,9 +24559,6 @@ function stretchSelectedWall(side: 'start' | 'end', sign: 1 | -1) {
   if (!wall || !isStudioWall(wall)) return
   const yaw = wall.yawDeg ?? 0
   const delta = snapWallWidthDelta(wall.width, sign * wallWidthStepCm(yaw), yaw)
-  // #region agent log
-  fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c6b426'},body:JSON.stringify({sessionId:'c6b426',runId:'post-fix',hypothesisId:'I',location:'main.ts:stretchSelectedWall',message:'stretch button',data:{wallId,side,sign,prevW:wall.width,delta,yaw,planLinked:wall.planLinked},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   if (delta === 0) return
   commitState(finalizeStudioGeometry(stretchStudioFacade(state, wallId, side, delta)))
 }
@@ -24741,11 +25483,15 @@ viewport.addEventListener('dragover', (event) => {
   const types = [...(event.dataTransfer?.types ?? [])]
   if (
     !activeLibraryAssetDrag &&
+    !activeLibraryOpeningPresetId &&
+    !activeLibraryOpeningTemplateId &&
+    !activeLibraryLabelFontId &&
     !types.some(
       (t) =>
         t === 'application/x-library-asset' ||
         t === 'application/x-opening-preset' ||
         t === 'application/x-opening-template' ||
+        t === 'application/x-label-font' ||
         t === 'application/x-wall-preset' ||
         t === 'application/x-bay-preset' ||
         t === 'application/x-panel-preset' ||
@@ -24761,6 +25507,13 @@ viewport.addEventListener('dragover', (event) => {
   if (activeWallDragPresetId) {
     updateWallDockPreviewAtClient(event.clientX, event.clientY, activeWallDragPresetId)
   }
+  if (
+    activeLibraryOpeningPresetId ||
+    activeLibraryOpeningTemplateId ||
+    activeLibraryLabelFontId
+  ) {
+    updateLibraryPlacementPreview(event.clientX, event.clientY)
+  }
 })
 
 viewport.addEventListener('dragleave', (event) => {
@@ -24770,6 +25523,7 @@ viewport.addEventListener('dragleave', (event) => {
   if (viewport.contains(related)) return
   viewport.classList.remove('library-drop-target')
   clearWallDockPreview()
+  facade.clearLibraryPlacementGhost()
 })
 
 viewport.addEventListener('drop', (event) => {
@@ -24781,6 +25535,7 @@ viewport.addEventListener('drop', (event) => {
   lastWallDockClient = null
   const sceneLightDrag = event.dataTransfer?.getData('application/x-scene-light')
   if (sceneLightDrag) {
+    clearLibraryPlacementPreview()
     const presetId = SCENE_LIGHT_PRESETS.some((p) => p.id === sceneLightDrag)
       ? (sceneLightDrag as SceneLightPresetId)
       : undefined
@@ -24800,11 +25555,35 @@ viewport.addEventListener('drop', (event) => {
     }
   }
   if (libraryAsset) {
+    clearLibraryPlacementPreview()
     applyLibraryAsset(libraryAsset, libraryHitFromClient(event.clientX, event.clientY))
+    return
+  }
+  const labelFontId =
+    event.dataTransfer?.getData('application/x-label-font') || activeLibraryLabelFontId || ''
+  if (labelFontId && LABEL_FONTS.some((f) => f.id === labelFontId)) {
+    const hit = pickWallAtClient(event.clientX, event.clientY)
+    clearLibraryPlacementPreview()
+    if (!hit) {
+      planStatus.textContent = 'Schrift: auf eine Wand ablegen'
+      return
+    }
+    const wall = getWall(state, hit.wallId)
+    const heightCm = clampStudioPanelSize(DEFAULT_WALL_LABEL.heightCm)
+    const { height } = libraryLabelGhostSize(heightCm)
+    const maxY = Math.max(0, (wall?.height ?? hit.localY) - height)
+    placeLabelFromLibrary(labelFontId, {
+      wallId: hit.wallId,
+      at: {
+        x: Math.max(0, Math.min(wall?.width ?? hit.localX, snapToGrid(hit.localX, STUDIO_MASONRY))),
+        y: Math.max(0, Math.min(maxY, snapToGrid(hit.localY - height / 2, STUDIO_MASONRY))),
+      },
+    })
     return
   }
   const bayPresetId = event.dataTransfer?.getData('application/x-bay-preset') ?? ''
   if (bayPresetId && BAY_WINDOW_PRESETS.some((p) => p.id === bayPresetId)) {
+    clearLibraryPlacementPreview()
     placeBayWindowAtWall(bayPresetId, event.clientX, event.clientY)
     return
   }
@@ -24857,9 +25636,13 @@ viewport.addEventListener('drop', (event) => {
     addWallPresetAtPlan(wallPresetId, grid.gx, grid.gz)
     return
   }
-  const templateId = event.dataTransfer?.getData('application/x-opening-template')
+  const templateId =
+    event.dataTransfer?.getData('application/x-opening-template') ||
+    activeLibraryOpeningTemplateId ||
+    ''
   if (templateId) {
     const template = openingTemplates.find((t) => t.id === templateId)
+    clearLibraryPlacementPreview()
     if (!template) return
     const hit = pickWallAtClient(event.clientX, event.clientY)
     if (!hit) return
@@ -24874,9 +25657,14 @@ viewport.addEventListener('drop', (event) => {
   }
   const presetId =
     event.dataTransfer?.getData('application/x-opening-preset') ||
+    activeLibraryOpeningPresetId ||
     event.dataTransfer?.getData('text/plain')
-  if (!presetId) return
+  if (!presetId) {
+    clearLibraryPlacementPreview()
+    return
+  }
   const preset = WALL_OPENING_PRESETS.find((item) => item.id === presetId)
+  clearLibraryPlacementPreview()
   if (!preset) return
   const hit = pickWallAtClient(event.clientX, event.clientY)
   if (!hit) return

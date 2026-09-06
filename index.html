@@ -1066,7 +1066,7 @@
               <div id="studio-plinth-options">
                 <div class="toolbar-group">
                   <span class="toolbar-label">Höhe (cm, 8er-Raster)</span>
-                  <input id="studio-plinth-height" type="number" min="0" step="8" value="32" />
+                  <input id="studio-plinth-height" type="number" min="0" step="8" value="64" />
                 </div>
                 <div class="toolbar-group">
                   <span class="toolbar-label">Sockelfarbe</span>
@@ -2227,15 +2227,15 @@
                   <span>Schatten-Kontrast</span>
                   <output id="sun-shadow-contrast-value">1.40</output>
                 </label>
-                <input id="sun-shadow-contrast" type="range" min="0.5" max="5" step="0.05" value="1.4" />
-                <p class="toolbar-hint compact-hint">Wie stark Sonne und Schatten an Fassade und Himmel auseinanderliegen (Neutral: höher drehen für kräftigere Schatten).</p>
+                <input id="sun-shadow-contrast" type="range" min="0.5" max="10" step="0.05" value="1.4" />
+                <p class="toolbar-hint compact-hint">Wie stark Sonne und Schatten auseinanderliegen — höher = dunklere Schatten (bis 10).</p>
 
                 <div id="sun-shadow-density-block" hidden>
                 <label class="slider-label">
                   <span>Schatten-Dunkelheit</span>
-                  <output id="sun-shadow-density-value">0.55</output>
+                  <output id="sun-shadow-density-value">0.70</output>
                 </label>
-                <input id="sun-shadow-density" type="range" min="0" max="1" step="0.01" value="0.55" />
+                <input id="sun-shadow-density" type="range" min="0" max="1" step="0.01" value="0.7" />
                 <p class="toolbar-hint compact-hint">Legacy — wirkt noch auf gespeicherte Projekte; sichtbar über Schatten-Kontrast.</p>
                 </div>
 
@@ -2314,7 +2314,7 @@
                   </label>
                   <p class="toolbar-hint compact-hint">
                     Master-Stop: Blaulicht, Fenster/Türen, Rollläden — und den Tageszyklus, falls er an ist.
-                    Pause aus allein startet die Sonne nicht.
+                    Pause aus allein startet die Sonne nicht. Einmaliges Abspielen läuft trotzdem.
                   </p>
                 </div>
                 <div class="toolbar-group">
@@ -2338,6 +2338,48 @@
                     Lichter mit Sonne
                   </label>
                   <p class="toolbar-hint compact-hint">Bei Sonnenuntergang an, bei Sonnenaufgang aus.</p>
+                </div>
+
+                <div class="toolbar-group" style="margin-top: 12px">
+                  <span class="toolbar-label">Szene abspielen</span>
+                  <p class="toolbar-hint compact-hint">Einmalig: Tagesverlauf (Uhrzeit) oder Lichtparameter inkl. Bloom.</p>
+                  <div class="preset-group" style="margin: 4px 0 8px; gap: 6px" role="group" aria-label="Abspielmodus">
+                    <label class="toolbar-check">
+                      <input id="sun-anim-mode-time" type="radio" name="sun-anim-mode" value="time" checked />
+                      Tagesverlauf
+                    </label>
+                    <label class="toolbar-check">
+                      <input id="sun-anim-mode-light" type="radio" name="sun-anim-mode" value="light" />
+                      Licht
+                    </label>
+                  </div>
+                  <div class="toolbar-group" style="margin: 0 0 8px">
+                    <span class="toolbar-label">Dauer (s)</span>
+                    <input id="sun-anim-duration" type="number" min="5" max="120" step="1" value="20" />
+                  </div>
+                  <div id="sun-anim-time-row" class="toolbar-group" style="margin: 0 0 8px">
+                    <div class="toolbar-row-2">
+                      <label>Von (Uhrzeit)
+                        <input id="sun-anim-from-time" type="time" value="06:00" step="300" />
+                      </label>
+                      <label>Bis (Uhrzeit)
+                        <input id="sun-anim-to-time" type="time" value="20:00" step="300" />
+                      </label>
+                    </div>
+                  </div>
+                  <div id="sun-anim-light-row" class="toolbar-group" hidden style="margin: 0 0 8px">
+                    <p class="toolbar-hint compact-hint">Kanäle wählen und Von/Bis setzen. Inaktive Kanäle bleiben unverändert.</p>
+                    <div id="sun-anim-light-channels"></div>
+                    <div class="preset-group" style="margin: 8px 0 0; gap: 6px">
+                      <button id="sun-anim-light-from-current" class="preset-btn" type="button">Aktuell → Von</button>
+                      <button id="sun-anim-light-to-current" class="preset-btn" type="button">Aktuell → Bis</button>
+                    </div>
+                  </div>
+                  <p id="sun-anim-hint" class="toolbar-hint compact-hint" hidden></p>
+                  <div class="preset-group" style="margin: 6px 0 0; gap: 6px">
+                    <button id="sun-path-play" class="preset-btn" type="button">Abspielen</button>
+                    <button id="sun-path-stop" class="preset-btn" type="button" hidden>Stop</button>
+                  </div>
                 </div>
               </div>
 

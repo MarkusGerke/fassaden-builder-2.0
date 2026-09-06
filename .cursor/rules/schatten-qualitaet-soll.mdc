@@ -1,0 +1,30 @@
+---
+description: Aktuelle Schattenqualität (v2.0.258) ist Nutzer-Soll — nicht ohne Auftrag retunen
+alwaysApply: true
+---
+
+# Schatten: Sollzustand (v2.0.258)
+
+Nutzer-Feedback (2026-09-06): **Schatten so wie jetzt sind optimal.** Keine „Verbesserungen“ an Look/Weichheit/Dunkelheit ohne **explizite** neue Anweisung.
+
+## Beibehalten (nicht zurückdrehen)
+
+- PCSS Contact-Hardening: Hart-Tap + `min(hard, soft)` (`pcssShadows.ts`)
+- `PCSS_PENUMBRA_SCALE` **8**, `PCSS_PLANE_SLOPE_MAX` **6**
+- Render Shadow-Map **8192**, `SHADOW_GROUND_MAX_LENGTH` **2400**
+- Freiraum-Cap: `castShadow = false`, `skipFacadeShade`, Empfang an
+- Erker-Soffit: `castShadow = true` (lichtdicht)
+- `dirLight.shadow.intensity` aus Schatten-Dunkelheit; Default Density **0,70**
+
+## Verboten ohne Nutzerauftrag
+
+- Penumbra-/Slope-/Bias-/Density-/Contrast-Defaults „nochmal feinjustieren“
+- Contact-Hardening entfernen oder PCSS-Lite beim Orbit (siehe `orbit-visual-stability.mdc`)
+- Freiraum wieder casten lassen (zu schwarz) oder Soffit wieder ohne Cast (Lichtleck)
+
+## Erlaubt
+
+- Orbit/Performance **ohne** sichtbare Schatten-Änderung (Bake während Orbit defern, EnvMap pausieren, …)
+- Fixes für echte Regressionen (Lichtlecks, Abstürze) — dann Docs + Version
+
+Docs: `docs/shadows.md`, `docs/changelog.md` (v2.0.258).

@@ -116,7 +116,7 @@ describe('outerSillBoardPose', () => {
 })
 
 describe('studioProfileAnchorLocalZ', () => {
-  it('sitzt vor der Paneelfläche (kein Z-Fight der Profil-Rückseite)', () => {
+  it('liegt knapp vor der Paneelfläche (FACE_BIAS gegen Distanz-Z-Fight)', () => {
     const wall = studioWall({
       panelFlip: true,
       depth: 32,
@@ -124,8 +124,58 @@ describe('studioProfileAnchorLocalZ', () => {
     })
     const face = studioPanelFaceLocalZ(wall)
     const anchor = studioProfileAnchorLocalZ(wall, -4)
-    // panelFlip: außen = negativ; Bias weiter nach außen (kleineres Z)
-    expect(anchor).toBeLessThan(face - 1e-6)
     expect(face - anchor).toBeCloseTo(PROFILE_FACE_BIAS_CM, 5)
+  })
+
+  it('folgt projectDepth und ignoriert Bossen-Trapez (taperDepth)', () => {
+    const wall = studioWall({
+      panelFlip: true,
+      depth: 32,
+      panel: {
+        ...DEFAULT_STUDIO_PANEL,
+        projectDepth: 12,
+        taperDepth: 6,
+      },
+    })
+    const face = studioPanelFaceLocalZ(wall)
+    expect(face).toBe(-12)
+    const anchor = studioProfileAnchorLocalZ(wall)
+    expect(face - anchor).toBeCloseTo(PROFILE_FACE_BIAS_CM, 5)
+    // Nicht an der Bossen-Spitze (−18) verankern.
+    expect(anchor).toBeGreaterThan(-18 + PROFILE_FACE_BIAS_CM + 1)
+  })
+
+  it('bei treatAsBareWall / ohne Paneele: Wandaußenkante', () => {
+    const withPanels = studioWall({
+      panelFlip: true,
+      depth: 32,
+      panel: { ...DEFAULT_STUDIO_PANEL, projectDepth: 10 },
+    })
+    const bareAnchor = studioProfileAnchorLocalZ(withPanels, 0, { treatAsBareWall: true })
+    expect(0 - bareAnchor).toBeCloseTo(PROFILE_FACE_BIAS_CM, 5)
+
+    const noPanels = studioWall({
+      panelFlip: true,
+      depth: 32,
+      panel: { ...DEFAULT_STUDIO_PANEL, enabled: false },
+    })
+    const noPanelsAnchor = studioProfileAnchorLocalZ(noPanels)
+    expect(0 - noPanelsAnchor).toBeCloseTo(PROFILE_FACE_BIAS_CM, 5)
+  })
+})
+
+describe('outerSillBoardPose vs Paneeltiefe', () => {
+  it('folgt projectDepth ohne taperDepth', () => {
+    const wall = studioWall({
+      panelFlip: true,
+      depth: 32,
+      panel: {
+        ...DEFAULT_STUDIO_PANEL,
+        projectDepth: 14,
+        taperDepth: 8,
+      },
+    })
+    const pose = outerSillBoardPose(wall, 16)
+    expect(pose.localZ).toBe(-14)
   })
 })

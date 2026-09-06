@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.240'
+export const APP_VERSION = '2.0.259'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,183 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.259',
+    date: '2026-09-06',
+    title: 'Paneel-Defaults und flüssigeres Orbit',
+    changes: [
+      'Streifen, Läuferverband und Kopfverband setzen passende Standardmaße beim Auswählen',
+      'Sockel-Default: Höhe 64 cm, Tiefe 8 cm',
+      'Orbitieren ruckelt weniger — Shadow-Map-Bake und Nebenarbeit erst nach der Geste',
+    ],
+  },
+  {
+    version: '2.0.258',
+    date: '2026-09-06',
+    title: 'Kontakt-Schatten und dichter Erker',
+    changes: [
+      'Schatten unter Fensterbänken und in Öffnungen wieder durchgängig und kräftiger (Contact-Hardening)',
+      'Erker-Boden und -Deckel lichtdicht — kein Licht mehr durch Untersicht oder Deckel',
+      'Schatten-Dunkelheit steuert die Umbra-Stärke; Default etwas dunkler',
+    ],
+  },
+  {
+    version: '2.0.257',
+    date: '2026-09-06',
+    title: 'Schärfere Schatten, heller Erker-Freiraum',
+    changes: [
+      'Schattenkanten weniger gerastert (höhere Shadow-Map im Render, engere Frustum, weichere Penumbra)',
+      'Freiraum um Öffnungen an Erker-Seitenfenstern nicht mehr pechschwarz',
+    ],
+  },
+  {
+    version: '2.0.256',
+    date: '2026-09-06',
+    title: 'Schatten-Kontrast und Freiraum',
+    changes: [
+      'Schatten-Kontrast bis 10 — deutlich mehr Dunkelheit in den Schatten möglich',
+      'Freiraum um die Öffnung: Schatten wirken nicht mehr unverhältnismäßig schwarz',
+    ],
+  },
+  {
+    version: '2.0.255',
+    date: '2026-09-06',
+    title: 'Szene-Animation flüssig',
+    changes: [
+      'Abspielen von Tagesverlauf und Licht läuft weich ohne Ruckeln',
+      'Schatten folgen dem Licht jedes Frame (wie beim Slider), ohne Debounce-Sprünge',
+    ],
+  },
+  {
+    version: '2.0.254',
+    date: '2026-09-06',
+    title: 'Szene abspielen',
+    changes: [
+      'Unter Szene → Animation: einmalig abspielen mit einstellbarer Dauer',
+      'Modus Tagesverlauf: Start- und Enduhrzeit — Sonne folgt dem Tageslauf',
+      'Modus Licht: Sonnenwinkel, Sonnenlicht, Umgebung, Schatten, Farbtemperatur und Bloom Von→Bis animieren',
+    ],
+  },
+  {
+    version: '2.0.253',
+    date: '2026-09-06',
+    title: 'Profile sitzen auf der Paneelfläche',
+    changes: [
+      'Gesims, Sockel, Zierband, Rahmen, Sohlbank und Verdachung folgen automatisch der Paneeltiefe',
+      'Dekor liegt auf der Steinfläche (ohne Bossen-Trapez) — nicht schwebend vor der Bosse und nicht in der Wand',
+      'Ohne Paneele oder mit ausgeblendetem Paneel-Schmuck: Anker an der Wandaußenkante',
+    ],
+  },
+  {
+    version: '2.0.252',
+    date: '2026-09-06',
+    title: 'Stumpfe Ecken ohne Fortsetzung',
+    changes: [
+      'Ohne Fortsetzung von Paneelen, Mauerwerk, Sockel, Gesims oder Zierband um die Ecke: Abschluss stumpf und bündig an der Wandkante — kein Überstand',
+      'Profile an solchen Enden geschlossen (Stirnkappe), keine offenen Querschnitte',
+      'Weichere Schatten ohne Schraffur-Artefakte auf Gesims-, Sockel- und Türflächen',
+    ],
+  },
+  {
+    version: '2.0.251',
+    date: '2026-09-06',
+    title: 'Schärfere Kanten im Render',
+    changes: [
+      'Render-Modus: höhere Auflösung (Pixelratio bis 2) — weniger Treppchen an Profilen und Kanten',
+      'Nach dem Orbitieren: eine Sekunde Pause, bevor schwere Nacharbeiten (EnvMap/Gizmos) wieder laufen',
+    ],
+  },
+  {
+    version: '2.0.250',
+    date: '2026-09-06',
+    title: 'Laibung gewinnt gegen Ziegel — auch aus der Distanz',
+    changes: [
+      'Ziegel scheinen beim Rauszoomen nicht mehr auf der Fensterlaibung durch (fester Tiefenrang vor den Steinen)',
+      'Keine zusätzliche Kante — Laibungsabstand bleibt klein',
+    ],
+  },
+  {
+    version: '2.0.249',
+    date: '2026-09-06',
+    title: 'Keine rote Kante an der Laibung',
+    changes: [
+      'Laibungs-Inset wieder klein — keine sichtbare Ziegelkante zwischen Profil und Laibung',
+      'Distanzschutz gegen durchscheinende Ziegel bleibt über Profil-Tiefenrang (polygonOffset)',
+    ],
+  },
+  {
+    version: '2.0.248',
+    date: '2026-09-06',
+    title: 'Keine Ziegel an Profilen beim Zoomen',
+    changes: [
+      'Beim Rauszoomen bleiben Profile und Laibung frei von durchscheinenden Ziegeln',
+      'Tiefenrang per polygonOffset plus kleiner geometrischer Abstand (ohne großen Luftspalt)',
+    ],
+  },
+  {
+    version: '2.0.247',
+    date: '2026-09-06',
+    title: 'Keine Ziegel durch die Laibung',
+    changes: [
+      'Ziegel flimmern nicht mehr auf der Fensterlaibung (Laibung leicht innen von der Stein-Schnittkante)',
+      'Profil-Abstand aus v2.0.246 zurückgenommen — Profile wieder bündig auf der Wand',
+    ],
+  },
+  {
+    version: '2.0.246',
+    date: '2026-09-06',
+    title: 'Keine Ziegel durch Fensterprofile',
+    changes: [
+      'Öffnungsprofile ohne Z-Fighting mit dem Mauerwerk (Fußplatte leicht vor der Steinfront)',
+      'Profile bleiben optisch auf der Wand aufliegen — kein großer Luftspalt wie früher',
+    ],
+  },
+  {
+    version: '2.0.245',
+    date: '2026-09-06',
+    title: 'Sockel-Zone und Profil-Auflage',
+    changes: [
+      'Fassadenschmuck „Sockel“ aus: Paneele reichen bis zum Boden — kein braunes Band in der Sockelzone',
+      'Fenster- und Wandprofile liegen bündig auf Wand bzw. Mauerwerk (kein Luftspalt mehr)',
+    ],
+  },
+  {
+    version: '2.0.244',
+    date: '2026-09-06',
+    title: 'Laibung bündig, Fensterbänke eigener Schalter',
+    changes: [
+      'Laibung schließt bündig mit der Öffnung ab — auch bei ausgeblendeten Paneelen (kein Überstand, kein Schattenrahmen)',
+      'Fensterbänke und Fensterbretter folgen der sichtbaren Wandfront',
+      'Fassadenschmuck: neuer Schalter „Fensterbänke / -bretter“ — nicht mehr Teil von „Profile“',
+    ],
+  },
+  {
+    version: '2.0.243',
+    date: '2026-09-06',
+    title: 'Laibung vor dem Fenster in Wandfarbe',
+    changes: [
+      'Kein dunkler Innenfarben-Streifen mehr in der Laibung vor dem Blendrahmen',
+      'Außenlaibung reicht bis hinter die Fensterfront',
+    ],
+  },
+  {
+    version: '2.0.242',
+    date: '2026-09-06',
+    title: 'Mehrere Erker per Bibliothek ersetzen',
+    changes: [
+      'Mehrere markierte Erker: Bibliothek-Klick tauscht alle ausgewählten Gruppen gegen das neue Preset',
+    ],
+  },
+  {
+    version: '2.0.241',
+    date: '2026-09-06',
+    title: 'Schrift & Öffnungen: orangene Drop-Vorschau',
+    changes: [
+      'Schrift aus der Bibliothek wie Öffnungen: beliebig oft hinzufügen, per Drag&Drop platzieren',
+      'Beim Ziehen orangener Platzhalter auf der Wand (Schrift, Fenster und Türen)',
+      'Klick auf Schriftart legt eine weitere Schrift auf der markierten Wand an',
+    ],
+  },
   {
     version: '2.0.240',
     date: '2026-09-06',
