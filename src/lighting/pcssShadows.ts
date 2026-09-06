@@ -28,6 +28,21 @@ export const PCSS_PENUMBRA_SCALE = 8
  */
 export const PCSS_PLANE_SLOPE_MAX = 6
 
+/**
+ * Nähe-Gewichtung der Blocker-Suche (Shadow-Tiefe 0…1; Sonnen-Frustum near 1 / far 2000 cm →
+ * 0,01 ≈ 20 cm). Kleiner = nächster Caster dominiert stärker (härterer Kontakt), größer = Mittelwert.
+ */
+export const PCSS_BLOCKER_PROX = 0.01
+
+/**
+ * Kontakt-Blend (v2.0.260): Filterradius in Shadow-Texeln, unter dem der biasfreie Hart-Tap
+ * eingemischt wird. Innerhalb dieser Spanne sind hart und weich praktisch identisch — die
+ * Mischung ist unsichtbar, verhindert aber Peter-Panning durch den Slope-Bias am Kontakt.
+ * Nicht vergrößern: ab wenigen Texeln entsteht wieder der „harter Kern + weicher Halo“-Look.
+ */
+export const PCSS_CONTACT_TEXELS_MIN = 0.5
+export const PCSS_CONTACT_TEXELS_MAX = 2
+
 /** Mehr Samples = weniger sichtbares Poisson-Raster in der Penumbra (Three.js-Beispiel: 17). */
 export const PCSS_NUM_SAMPLES = 32
 export const PCSS_NUM_RINGS = 14
@@ -89,13 +104,20 @@ vec2 pcssReceiverPlaneSlope( const in vec2 uv, const in float z ) {
 	return clamp( slope, vec2( -PCSS_PLANE_SLOPE_MAX ), vec2( PCSS_PLANE_SLOPE_MAX ) );
 }
 
-float pcssFindBlocker( sampler2D shadowMap, const in vec2 uv, const in float zReceiver, const in mat2 rot, const in vec2 slope ) {
-	// Gleiche Skala wie der Filter — sonst weiche Umbra innen, harte Texel-Kante außen.
-	float searchRadius = pcssLightSizeUv * PCSS_PENUMBRA_SCALE * ( zReceiver - PCSS_NEAR_PLANE ) / zReceiver;
+/**
+ * Blocker-Suche. Rückgabe: x = nähegewichtete Blocker-Tiefe (−1 ohne Blocker), y = Anzahl Blocker.
+ * Gewichtung 1/(Δz + PCSS_BLOCKER_PROX): Blocker dicht am Empfänger (Sohlbank, Gesims) dominieren
+ * die Penumbra-Schätzung — der ungewichtete Mittelwert zog weit entfernte Caster (Dach, Erker)
+ * mit hinein und wusch Kontaktschatten aus (v2.0.257 „blass“). Physikalisch: die Kante des
+ * nächsten Casters ist die schärfste, die weiteren liegen bereits im Kernschatten.
+ */
+vec2 pcssFindBlocker( sampler2D shadowMap, const in vec2 uv, const in float zReceiver, const in float searchRadius, const in mat2 rot, const in vec2 slope ) {
 	float blockerDepthSum = 0.0;
+	float weightSum = 0.0;
 	float numBlockers = 0.0;
 	float depth;
 	float isBlocker;
+	float weight;
 	float zPlane;
 	vec2 offset;
 	#pragma unroll_loop_start
@@ -108,12 +130,14 @@ float pcssFindBlocker( sampler2D shadowMap, const in vec2 uv, const in float zRe
 		#else
 		isBlocker = 1.0 - step( zPlane, depth );
 		#endif
-		blockerDepthSum += depth * isBlocker;
+		weight = isBlocker / ( abs( zReceiver - depth ) + PCSS_BLOCKER_PROX );
+		blockerDepthSum += depth * weight;
+		weightSum += weight;
 		numBlockers += isBlocker;
 	}
 	#pragma unroll_loop_end
-	if ( numBlockers < 0.5 ) return -1.0;
-	return blockerDepthSum / numBlockers;
+	if ( numBlockers < 0.5 ) return vec2( -1.0, 0.0 );
+	return vec2( blockerDepthSum / weightSum, numBlockers );
 }
 
 float pcssFilter( sampler2D shadowMap, vec2 uv, float zReceiver, float filterRadius, const in mat2 rot, const in vec2 slope ) {
@@ -152,18 +176,31 @@ float pcssHardShadow( sampler2D shadowMap, const in vec2 uv, const in float zRec
 	#endif
 }
 
-float pcssGetShadow( sampler2D shadowMap, vec4 coords, const in vec2 slope ) {
+/**
+ * Ein Schatten, kontinuierlich: hart am Kontakt, weich mit wachsendem Caster-Abstand.
+ * v2.0.258 nahm min(hard, soft) — das ergab ZWEI Schatten (harter Kern + einseitiger weicher
+ * Halo), weil der Wert an der Texelkante von 0 auf ~0,5 springt. Jetzt: Hart-Tap nur dort
+ * mischen, wo der PCSS-Filterradius ohnehin unter ~2 Texel liegt (dort wären hart und weich
+ * identisch — der Hart-Tap ist nur frei von Slope-Bias, also lichtdicht am Kontakt).
+ * Performance: Voll lit / voll Umbra brechen nach der Blocker-Suche ab (33 statt 97 Taps) —
+ * nur die Penumbra zahlt den 64-Tap-Filter.
+ */
+float pcssGetShadow( sampler2D shadowMap, vec4 coords, const in float texelUv, const in vec2 slope ) {
 	vec2 uv = coords.xy;
 	float zReceiver = coords.z;
-	// Contact-Hardening: ohne min(hard, soft) wirken dünne Caster (Sohlbank) blass / lückenhaft.
 	float hard = pcssHardShadow( shadowMap, uv, zReceiver );
 	mat2 rot = pcssRotation( uv );
-	float avgBlockerDepth = pcssFindBlocker( shadowMap, uv, zReceiver, rot, slope );
-	if ( avgBlockerDepth == -1.0 ) return hard;
-	float penumbraRatio = pcssPenumbraSize( zReceiver, avgBlockerDepth );
+	// Gleiche Skala wie der Filter — sonst weiche Umbra innen, harte Texel-Kante außen.
+	float searchRadius = pcssLightSizeUv * PCSS_PENUMBRA_SCALE * ( zReceiver - PCSS_NEAR_PLANE ) / zReceiver;
+	vec2 blocker = pcssFindBlocker( shadowMap, uv, zReceiver, searchRadius, rot, slope );
+	if ( blocker.x == -1.0 ) return hard;
+	float penumbraRatio = pcssPenumbraSize( zReceiver, blocker.x );
 	float filterRadius = penumbraRatio * pcssLightSizeUv * PCSS_PENUMBRA_SCALE;
+	// Alle Such-Taps verdeckt und Filterscheibe innerhalb der Suchscheibe → Kernschatten, kein Filter.
+	if ( blocker.y > float( ${PCSS_NUM_SAMPLES_INTERNAL} ) - 0.5 && filterRadius <= searchRadius ) return 0.0;
 	float soft = pcssFilter( shadowMap, uv, zReceiver, filterRadius, rot, slope );
-	return min( hard, soft );
+	float contact = 1.0 - smoothstep( PCSS_CONTACT_TEXELS_MIN * texelUv, PCSS_CONTACT_TEXELS_MAX * texelUv, filterRadius );
+	return mix( soft, hard, contact );
 }
 `
 
@@ -182,7 +219,7 @@ const PCSS_BASIC_GET_SHADOW = `#else
 			bool frustumTest = inFrustum && shadowCoord.z <= 1.0;
 			if ( frustumTest ) {
 				// Immer volles PCSS — kein Orbit-1-Tap (wirkte als harter Schatten / Wandfarben-Flash).
-				shadow = pcssGetShadow( shadowMap, shadowCoord, pcssSlope );
+				shadow = pcssGetShadow( shadowMap, shadowCoord, 1.0 / shadowMapSize.x, pcssSlope );
 			}
 			return mix( 1.0, shadow, shadowIntensity );
 		}
@@ -248,6 +285,9 @@ uniform float pcssLightSizeUv;
 #define PCSS_NEAR_PLANE ${PCSS_NEAR_PLANE.toFixed(8)}
 #define PCSS_PENUMBRA_SCALE ${PCSS_PENUMBRA_SCALE.toFixed(4)}
 #define PCSS_PLANE_SLOPE_MAX ${PCSS_PLANE_SLOPE_MAX.toFixed(4)}
+#define PCSS_BLOCKER_PROX ${PCSS_BLOCKER_PROX.toFixed(6)}
+#define PCSS_CONTACT_TEXELS_MIN ${PCSS_CONTACT_TEXELS_MIN.toFixed(4)}
+#define PCSS_CONTACT_TEXELS_MAX ${PCSS_CONTACT_TEXELS_MAX.toFixed(4)}
 `
   let shader = base.replace('#ifdef USE_SHADOWMAP', `#ifdef USE_SHADOWMAP${defines}${PCSS_GLSL_HELPERS}`)
   if (!shader.includes(BASIC_GET_SHADOW_MARKER)) {

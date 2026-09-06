@@ -230,7 +230,7 @@ describe('sceneLightRuntime', () => {
     runtime.dispose()
   })
 
-  it('stableLightCount: Reserve-Lichter halten die Anzahl bei Hinzufügen/Löschen/aus konstant', () => {
+  it('stableLightCount + padSpareLights (Licht-Modus): Reserven halten die Anzahl bei Hinzufügen/Löschen/aus konstant', () => {
     const runtime = new SceneLightRuntime()
     const base = {
       color: '#ffd080',
@@ -239,7 +239,7 @@ describe('sceneLightRuntime', () => {
       castShadow: false,
       beamMode: 'omni' as const,
     }
-    const opts = { roomOcclusion: false, stableLightCount: true }
+    const opts = { roomOcclusion: false, stableLightCount: true, padSpareLights: true }
     runtime.sync([{ id: 'a', x: 0, y: 200, z: 0, ...base }], opts)
     const first = runtime.countedLights()
     // 1 echtes Licht → auf Schritt aufgerundet (mind. eine freie Reserve).
@@ -281,6 +281,49 @@ describe('sceneLightRuntime', () => {
     // Ohne Option: Reserven aus, nur echte aktive Lichter zählen.
     runtime.sync([{ id: 'b', x: 48, y: 200, z: 0, ...base }], { roomOcclusion: false })
     expect(runtime.countedLights()).toEqual({ points: 1, spots: 0 })
+    runtime.dispose()
+  })
+
+  it('stableLightCount ohne padSpareLights (Render): keine Vorrats-Lichter, Löschen hält die Anzahl (v2.0.260)', () => {
+    const runtime = new SceneLightRuntime()
+    const base = {
+      color: '#ffd080',
+      intensity: 12,
+      enabled: true,
+      castShadow: false,
+      beamMode: 'omni' as const,
+    }
+    const opts = { roomOcclusion: false, stableLightCount: true }
+    const a = { id: 'a', x: 0, y: 200, z: 0, ...base }
+    const b = { id: 'b', x: 48, y: 200, z: 0, ...base }
+    const c = { id: 'c', x: 96, y: 200, z: 0, ...base, beamMode: 'down' as const }
+    // Frischer Load: exakt die echten Lichter im Shader — kein Fragment-Overhead im Render.
+    runtime.sync([a, b, c], opts)
+    expect(runtime.countedLights()).toEqual({ points: 2, spots: 1 })
+
+    // Ausgeschaltet bleibt gezählt (Fade/„Alle aus“ ohne Programmwechsel).
+    runtime.sync([{ ...a, enabled: false }, b, c], opts)
+    runtime.snapFadesToEnabled(0)
+    expect(runtime.countedLights()).toEqual({ points: 2, spots: 1 })
+
+    // Löschen: Reserve springt ein — Anzahl bleibt, kein Rebuild.
+    runtime.sync([b, c], opts)
+    expect(runtime.countedLights()).toEqual({ points: 2, spots: 1 })
+
+    // Wieder hinzufügen: Reserve wird verbraucht, Anzahl bleibt.
+    runtime.sync([a, b, c], opts)
+    expect(runtime.countedLights()).toEqual({ points: 2, spots: 1 })
+
+    // Licht-Modus an: Ziel neu ab echter Anzahl, aufgerundet mit freier Reserve.
+    runtime.sync([a, b, c], { ...opts, padSpareLights: true })
+    const padded = runtime.countedLights()
+    expect(padded.points % STABLE_LIGHT_COUNT_STEP).toBe(0)
+    expect(padded.points).toBeGreaterThan(2)
+    expect(padded.spots).toBeGreaterThan(1)
+
+    // Licht-Modus aus: Reserven weg, Ziel wieder = echte Anzahl.
+    runtime.sync([a, b, c], opts)
+    expect(runtime.countedLights()).toEqual({ points: 2, spots: 1 })
     runtime.dispose()
   })
 

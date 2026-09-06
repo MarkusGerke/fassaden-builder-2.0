@@ -10719,6 +10719,9 @@ function syncSceneLightRuntime(opts?: { flushShadows?: boolean; scheduleShadows?
     bloomActive: bloomIsActive(),
     // Konstante Shader-Lichtanzahl: Fade/Blinken/„Alle an“ ohne Programmwechsel (auch außerhalb Licht-Modus).
     stableLightCount: lightEditMode || lights.length > 0,
+    // Vorrats-Reserven nur im Licht-Modus (DPR 1). Im Render kostet jedes gezählte Licht pro
+    // Fragment in Haupt- und Transmission-Pass — 4 Reserven ≈ 5–12 ms/Frame beim Orbit (v2.0.260).
+    padSpareLights: lightEditMode,
   })
   if (!facadeReady) return
   // Okkluder an Existenz der Lichter koppeln (nicht an enabled) — Dämmerung ohne Mesh-Rebuild.

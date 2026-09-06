@@ -103,7 +103,7 @@ planFacesWithHoles(plan)
 | `src/studio/floorPlan.ts` | `planFacesWithHoles`, `pointInPolygonXZ`, `polygonAreaXZ` |
 | `src/FacadeController.ts` | Indoor-Platten mit Holes, Decken casten |
 | `src/studio/roof.ts` | `topRoofFaceWorld`, Firstkappe mit Löchern |
-| `src/lighting/pcssShadows.ts` | PCSS-ShaderChunk (Blocker-Suche + variable Penumbra, `const`-Poisson-Disk + `mat2`-Rotation, entrollte Taps, **Receiver-Plane-Bias** v2.0.252, **Contact-Hardening** `min(hard, soft)` v2.0.258), Lichtgröße aus Weichheit; **kein** Orbit-1-Tap mehr (v2.0.197) |
+| `src/lighting/pcssShadows.ts` | PCSS-ShaderChunk (nähegewichtete Blocker-Suche + variable Penumbra, `const`-Poisson-Disk + `mat2`-Rotation, entrollte Taps, **Receiver-Plane-Bias** v2.0.252, **Kontakt-Blend** `mix(soft, hard, contact)` unter ~2 Texeln v2.0.260 — ersetzt `min(hard, soft)` v2.0.258; Early-Out für voll lit / volle Umbra), Lichtgröße aus Weichheit; **kein** Orbit-1-Tap mehr (v2.0.197) |
 | `src/utils/sunLighting.ts` | Weichheit aus Elevation, Shadow-Camera, Kelvin |
 | `src/utils/lightingMood.ts` | Schichten-Intensitäten aus Sonne + Szenenfarben |
 | `src/lighting/groundMood.ts` | Boden-Fill (`ground-mood-v6`, Albedo × Sonnen-Ambient; Schatten nur Standard-PCSS) |
@@ -135,6 +135,8 @@ State-Änderung / Sonnen-Slider
 | Softness-Default | 2,5 | ruhiger Kontakt; Slider bis 8 weitet die Penumbra |
 | `PCSS_PENUMBRA_SCALE` | 8 | Ortho-Ausgleich statt Perspektiv-`NEAR/z` (sonst Slider tot); v2.0.258 wieder 8 (257: 10 wusch Kontakt) |
 | `PCSS_PLANE_SLOPE_MAX` | 6 | Receiver-Plane-Bias-Kappe (v2.0.258; zuvor 12) |
+| `PCSS_BLOCKER_PROX` | 0,01 | Nähe-Gewichtung `1/(Δz + PROX)` der Blocker-Suche (v2.0.260) — nächster Caster dominiert die Penumbra-Schätzung (≈ 20 cm bei Frustum near 1 / far 2000) |
+| `PCSS_CONTACT_TEXELS_MIN/MAX` | 0,5 / 2 | Filterradius in Shadow-Texeln, unter dem der biasfreie Hart-Tap eingemischt wird (v2.0.260). **Nicht vergrößern** — sonst wieder harter Kern + weicher Halo |
 | `PCSS_NEAR_PLANE` | 0,002 | Blocker-Suchradius (Shadow-Tiefenraum) |
 | `MIN_SUN_DISTANCE` | 900 cm | Untergrenze Licht→Ziel |
 | `SHADOW_MAP_SIZE` | 4096 | Shadow-Map (große Sites) |
@@ -167,7 +169,7 @@ Glas: dunkles Klarglas, CubeCamera-EnvMap der Szene von außerhalb. `transmissio
 - **Sehr flache Sonne:** Schattenlänge über 2400 cm wird im Frustum gekappt (sonst zu grobe Texel). Der Boden in der 3D-Ansicht ist um dieselbe Reichweite vergrößert.
 - **Entwurf / Vorschau:** PCSS aus, harte `BasicShadowMap` (kein Contact-Hardening) — absichtlich.
 - **Weichheit-Slider tot (v2.0.1 / v2.0.97):** `#define PCSS_LIGHT_SIZE_UV` cached nicht; Filter `× NEAR/z` mit Near 0,002 auf Ortho-NDC ist unsichtbar. Fix: Uniform + `PCSS_PENUMBRA_SCALE` 8 (**v2.0.98**). Softness-Default 2,5. Slider nur in **Render**.
-- **Weichheit-Slider träge (v0.7.335):** Pro Tick Shader-Neubau — jetzt Uniform `pcssLightSizeUv`, sofortiger Frame-Render. PCSS-Filter in Lit-Bereichen erzeugte zweiten Weichschatten. Jetzt ein Pfad: hart am Kontakt, Weichheit nur via min(hard, soft) in der Penumbra.
+- **Weichheit-Slider träge (v0.7.335):** Pro Tick Shader-Neubau — jetzt Uniform `pcssLightSizeUv`, sofortiger Frame-Render. PCSS-Filter in Lit-Bereichen erzeugte zweiten Weichschatten. Damals: min(hard, soft) — das erzeugt aber selbst einen zweiten Look (harter Kern + Halo, wieder in v2.0.258 → behoben v2.0.260 durch Kontakt-Blend).
 - **Render + schwebender Schatten (v0.7.333):** Umbra am Kontakt hart; NormalBias 0; Cast-Shadow ohne polygonOffset (`customDepthMaterial`).
 - **Render + schwebender Schatten (v0.7.332):** Mindest-Filter und hoher NormalBias wirkten am Kontakt wie Peter-Panning. Contact-Hardening + PCSS-NormalBias ≤ 0,12 cm.
 - **Render + „gepunktet“ / pixelig (v0.7.346):** Zu wenige PCSS-Samples (17) ließen das Poisson-Muster sichtbar werden. Jetzt **32 Samples**; kleine Sites zusätzlich **8192** Shadow-Map. Weichheit-Slider unverändert (0,8…28 cm).
@@ -197,4 +199,5 @@ Glas: dunkles Klarglas, CubeCamera-EnvMap der Szene von außerhalb. `transmissio
 - **Freiraum-Lichtkante / Erker-Schwarz (v2.0.117 / v2.0.256 / v2.0.257):** Freiraum-Kappe ohne `receiveShadow` blieb im Schatten hell. Empfang wie Paneele; `castShadow = false` gegen Selbstwurf der Stufen. **v2.0.257:** an Erker-Seiten pechschwarz durch Gegenlicht-Shade (Hemi mitgedimmt) → Cap `skipFacadeShade` wie Fensterrahmen.
 - **Gerasterte Schattenkanten (v2.0.257):** große Ortho + 4096 → sichtbare Texel-Treppen. Render: immer 8192; Frustum kürzer (Boden 2400 cm); Penumbra-Skala kurz 10, in **v2.0.258** wieder 8 + Contact-Hardening.
 - **Lücken unter Fensterbank / blasse Öffnungsschatten (v2.0.258):** Ohne `min(hard, soft)` und bei Slope-Max 12 fraß weiches PCSS den Kontakt dünner Caster. Fix: Hart-Tap + Soft-Min, Slope 6, Density→`shadow.intensity`.
+- **Zwei Schatten — ein harter, ein weicher (v2.0.260):** Das `min(hard, soft)` aus v2.0.258 springt an der Texelkante des Hart-Taps von 0 auf ≈ 0,5 und fällt dann weich aus → harter Kern mit einseitigem weichem Halo (derselbe „doppelte Look“ wie v0.7.335). **Nicht geholfen:** PCSS-Taps halbieren (kein Effekt auf Look oder Frame-Zeit); `if (directLight.visible)` um `RE_Direct` (kein messbarer Gewinn). **Fix:** ein kontinuierlicher Pfad — `mix(soft, hard, contact)` mit `contact = 1 − smoothstep(0,5 … 2 Texel, filterRadius)`: nur wo hart und weich ohnehin identisch wären, wird der biasfreie Hart-Tap genommen (lichtdicht am Kontakt, kein Peter-Panning); darüber reines PCSS. Damit der Kontakt dabei nicht wieder blass wird: Blocker-Suche **nähegewichtet** (`1/(Δz + PCSS_BLOCKER_PROX)`) — die Sohlbank dominiert die Penumbra-Schätzung, nicht der Erker 3 m dahinter. Performance: nach der Blocker-Suche Early-Out für voll lit (`−1`) und volle Umbra (alle Such-Taps verdeckt ∧ Filterscheibe ⊆ Suchscheibe → 0) — nur die Penumbra zahlt den 64-Tap-Filter.
 - **Licht durch Erker-Boden/Deckel (v2.0.258):** `baySoffit` castete nicht (nur Empfang) → Sonne durch Untersicht. Jetzt `castShadow = true` wie Geschossplatten-Okkluder.

@@ -90,7 +90,29 @@ Gemessen (v2.0.163, M1 Max, 1260×917 @ DPR 1,5, 10 Lichter, 30 Glas-Materialien
 
 Ergebnis: Leerlauf, Orbit und Licht-Drag bei 60 FPS ohne Long-Tasks; Hinzufügen/Duplizieren/Löschen 20–40 ms; Ein-/Austritt 0,3–1,3 s hinter dem Overlay. `syncAutoSceneLightsWithSun` läuft im Modus nicht (alle Lichter erzwungen an).
 
-**Fallstricke:** `lightEditMode` ist früh deklariert (vor `applyRendererPixelRatio()` beim Modul-Start). Reserve-Lichter kosten wie echte Lichter — der Schritt 4 ist ein Kompromiss zwischen Rebuild-Häufigkeit und Frame-Kosten. Beim Verlassen setzt `syncSpareLights(false)` alle Reserven unsichtbar; `keepCounted` fällt zurück auf „nur aktive Lichter sichtbar“. Dev-Hook: `window.__fbDebug = { renderer, scene, camera, THREE }` (nur `import.meta.env.DEV`) für Konsolen-Diagnose.
+**Fallstricke:** `lightEditMode` ist früh deklariert (vor `applyRendererPixelRatio()` beim Modul-Start). Reserve-Lichter kosten wie echte Lichter — der Schritt 4 ist ein Kompromiss zwischen Rebuild-Häufigkeit und Frame-Kosten. Beim Verlassen setzt `syncSpareLights(false)` alle Reserven unsichtbar; `keepCounted` fällt zurück auf „nur aktive Lichter sichtbar“. Dev-Hook: `window.__fbDebug = { renderer, scene, camera, controls, THREE }` (nur `import.meta.env.DEV`) für Konsolen-Diagnose.
+
+**Reserven nur im Licht-Modus (v2.0.260, `padSpareLights`):** Außerhalb des Licht-Modus gilt `stableLightCount` weiter (inaktive Lichter bleiben gezählt, Löschen ersetzt das Licht durch eine Reserve → kein Rebuild), aber es werden **keine Vorrats-Lichter** mehr aufgefüllt (`padSpareLights: lightEditMode`). Vorher stand z. B. bei 1 Punkt- und 7 Spotlichtern der Shader auf 4 + 8 = 12 Lichtern (3 + 1 Reserven) — im Render bei DPR 2 gemessen ≈ 5–12 ms/Frame beim Orbit für Lichter mit Intensität 0. Beim Moduswechsel setzt `syncSpareLights` die Zielanzahl auf die echte Anzahl zurück (der Wechsel kompiliert ohnehin hinter dem Overlay). **Preis:** Hinzufügen/Duplizieren eines Lichts **außerhalb** des Licht-Modus erhöht die Lichtanzahl → einmaliger Shader-Rebuild (ohne Overlay, wie vor v2.0.163); im Licht-Modus weiter Schritt 4.
+
+## Orbit im Render: Wo die Frame-Zeit steckt (v2.0.260)
+
+Gemessen im Cursor-Browser (Electron, ANGLE Metal, M1 Max), Render-Modus, DPR 2 (2520×1836), 7 Szenenlichter (tagsüber Intensität 0), 178 Glas-/Transmission-Meshes, 1582 Draw-Calls, kontinuierliche Rotation (`controls.rotateLeft` + `update` pro rAF), Median der Frame-Zeit:
+
+| Konfiguration | ms/Frame | Aussage |
+| --- | --- | --- |
+| Basis (v2.0.259) | 32–42 | Orbit „stockig“ (≈ 25–30 FPS) |
+| PCSS-Taps 32 → 16 | 34–41 | **kein** Effekt — Schatten-Taps sind nicht der Engpass |
+| `if (directLight.visible)` um `RE_Direct` | 33–40 | kein messbarer Effekt |
+| 4 Reserve-Lichter aus (12 → 8) | 23–30 | −5…−12 ms → **umgesetzt** (`padSpareLights`) |
+| alle 12 Punkt-/Spotlichter aus | ≈ 17 (VSync-Cap) | Lichtanzahl ist ein Hauptfaktor |
+| alle Glas-/Transmission-Meshes aus | ≈ 17 (VSync-Cap) | Transmission-Pass (Szene 2× + MSAA-HalfFloat-RT + Mips) ist der andere |
+| `transmissionResolutionScale` 0,5 | ≈ 20 | großer Hebel, aber Glas-Durchsicht wird während der Geste weicher — **nicht** umgesetzt (sichtbarer Qualitätssprung, siehe `orbit-visual-stability.mdc`) |
+| Sonnenschatten aus | ≈ 17 (VSync-Cap) | Schatten × Lichter multiplizieren sich über beide Pässe |
+| Hälfte aller Meshes aus | 33 | Draw-Calls/Dreiecke sind **nicht** der Engpass |
+
+Fazit: Fragment-gebunden; Kosten ≈ (Lichter + PCSS) × (Haupt-Pass + Transmission-Pass) × Pixel (DPR 2). Ohne sichtbare Änderung bleiben nur Lichtanzahl (umgesetzt) und Shader-Early-Outs (umgesetzt, kleiner Gewinn). Weitere Hebel sind Produktentscheidungen: Transmission-Skalierung beim Orbit, DPR 1,5 im Render, einfaches Glas statt physikalischer Transmission.
+
+**Nicht geholfen / verworfen (v2.0.260):** GPU-Timer (`EXT_disjoint_timer_query_webgl2`) liefert im Electron-Browser unplausible, driftende Werte (67 → 125 ms bei identischer Konfiguration) — für Vergleiche rAF-Frame-Zeiten mit Warm-up und Median nutzen, VSync-Cap 16,7 ms beachten.
 
 ## Inkrementeller Rebuild
 

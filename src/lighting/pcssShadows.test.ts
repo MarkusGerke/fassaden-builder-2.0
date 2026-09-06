@@ -5,6 +5,7 @@ import {
   enablePcssShadows,
   getPcssLightSizeUv,
   isPcssShadowsEnabled,
+  PCSS_CONTACT_TEXELS_MAX,
   PCSS_NUM_SAMPLES,
   PCSS_PENUMBRA_SCALE,
   pcssLightSizeUvFromSoftness,
@@ -111,7 +112,9 @@ describe('pcssShadows', () => {
     enablePcssShadows()
     const chunk = THREE.ShaderChunk.shadowmap_pars_fragment
     expect(chunk).not.toContain('pcssLite')
-    expect(chunk).toContain('shadow = pcssGetShadow( shadowMap, shadowCoord, pcssSlope );')
+    expect(chunk).toContain(
+      'shadow = pcssGetShadow( shadowMap, shadowCoord, 1.0 / shadowMapSize.x, pcssSlope );',
+    )
     disablePcssShadows()
   })
 
@@ -123,12 +126,45 @@ describe('pcssShadows', () => {
     expect(slopeAt).toBeGreaterThan(0)
     const branchAt = chunk.indexOf('if ( frustumTest )', slopeAt)
     expect(branchAt).toBeGreaterThan(slopeAt)
-    expect(chunk.indexOf('pcssGetShadow( shadowMap, shadowCoord, pcssSlope )', branchAt)).toBeGreaterThan(branchAt)
+    expect(
+      chunk.indexOf('pcssGetShadow( shadowMap, shadowCoord, 1.0 / shadowMapSize.x, pcssSlope )', branchAt),
+    ).toBeGreaterThan(branchAt)
     expect(chunk).toContain('zPlane = zReceiver + dot( slope, offset );')
     expect(chunk).toContain('step( zReceiver + dot( slope, offset ), depth )')
     expect(chunk).toContain('#define PCSS_PLANE_SLOPE_MAX 6.0000')
     expect(chunk).toContain('pcssHardShadow')
-    expect(chunk).toContain('min( hard, soft )')
+    disablePcssShadows()
+  })
+
+  it('ein Schatten statt zwei: Hart-Tap nur unter ~2 Texeln eingemischt, kein min(hard, soft) (v2.0.260)', () => {
+    enablePcssShadows()
+    const chunk = THREE.ShaderChunk.shadowmap_pars_fragment
+    // v2.0.258: min(hard, soft) → harter Kern + einseitiger weicher Halo („zwei Schatten“).
+    expect(chunk).not.toContain('min( hard, soft )')
+    expect(chunk).toContain('return mix( soft, hard, contact );')
+    expect(chunk).toContain(
+      'smoothstep( PCSS_CONTACT_TEXELS_MIN * texelUv, PCSS_CONTACT_TEXELS_MAX * texelUv, filterRadius )',
+    )
+    expect(chunk).toContain('#define PCSS_CONTACT_TEXELS_MIN 0.5000')
+    expect(chunk).toContain('#define PCSS_CONTACT_TEXELS_MAX 2.0000')
+    // Texelgröße aus der echten Shadow-Map-Auflösung (8192 Render / 4096 Vorschau).
+    expect(chunk).toContain('pcssGetShadow( shadowMap, shadowCoord, 1.0 / shadowMapSize.x, pcssSlope )')
+    expect(PCSS_CONTACT_TEXELS_MAX).toBeLessThanOrEqual(3)
+    disablePcssShadows()
+  })
+
+  it('Blocker-Suche: nähegewichtet (Kontakt bleibt dunkel) + Early-Out für Lit und Umbra', () => {
+    enablePcssShadows()
+    const chunk = THREE.ShaderChunk.shadowmap_pars_fragment
+    expect(chunk).toContain('weight = isBlocker / ( abs( zReceiver - depth ) + PCSS_BLOCKER_PROX );')
+    expect(chunk).toContain('return vec2( blockerDepthSum / weightSum, numBlockers );')
+    expect(chunk).toContain('#define PCSS_BLOCKER_PROX 0.010000')
+    // Voll lit: ohne Blocker kein Filter.
+    expect(chunk).toContain('if ( blocker.x == -1.0 ) return hard;')
+    // Voll Umbra: alle Such-Taps verdeckt und Filterscheibe ⊆ Suchscheibe → 0 ohne 64-Tap-Filter.
+    expect(chunk).toContain(
+      `if ( blocker.y > float( ${PCSS_NUM_SAMPLES} ) - 0.5 && filterRadius <= searchRadius ) return 0.0;`,
+    )
     disablePcssShadows()
   })
 

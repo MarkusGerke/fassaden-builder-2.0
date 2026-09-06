@@ -457,7 +457,7 @@ Auswahl darf die Aufriss-Skala nicht springen lassen: bei gleichem `contentKey` 
 - Horizontales Bündig-Snap zu anderen Lichtern.
 - **Performance (v2.0.160):** im Licht-Modus keine Punktlicht-Cube-Shadows / Okkluder; Drag ohne Shadow-Bake und ohne Toolbar-DOM pro Frame — Orbit, Zoom und CRUD bleiben flüssig.
 - **Ladescreen (v2.0.163):** Ein-/Ausschalten zeigt ein Overlay über dem Viewport („Licht-Modus wird vorbereitet …“ / „… wird beendet …“, `#light-mode-loading`, Spinner per CSS-Animation). Dahinter werden die Shader-Programme neu kompiliert (Lichtanzahl und Sonnenschatten ändern die Programm-Varianten); `animate()` rendert währenddessen nicht. Details: [performance.md](performance.md#licht-modus).
-- **Rendering im Modus (v2.0.163):** Pixel-Ratio 1 (wie Orbit-Lite), Glas-Transmission halbe Auflösung, kein Sonnen-/Mondschatten, kein EnvMap-Bake. Hinzufügen, Duplizieren, Löschen, Blinken und Abstrahlrichtung lösen keine Shader-Neukompilierung aus (Reserve-Lichter halten die Lichtanzahl konstant); nur alle 4 neuen Lichter ein kurzer Hänger.
+- **Rendering im Modus (v2.0.163):** Pixel-Ratio 1 (wie Orbit-Lite), Glas-Transmission halbe Auflösung, kein Sonnen-/Mondschatten, kein EnvMap-Bake. Hinzufügen, Duplizieren, Löschen, Blinken und Abstrahlrichtung lösen keine Shader-Neukompilierung aus (Reserve-Lichter halten die Lichtanzahl konstant); nur alle 4 neuen Lichter ein kurzer Hänger. **v2.0.260:** Diese Vorrats-Reserven gibt es nur im Licht-Modus — außerhalb (Render) kosten sie Orbit-Frame-Zeit; dort hält eine Reserve nur gelöschte Lichter, Hinzufügen kompiliert einmal neu.
 - Außerhalb des Modus: keine Kreismarken.
 
 #### Laub-Modus (v2.0.168 / UI ausgeblendet v2.0.209)

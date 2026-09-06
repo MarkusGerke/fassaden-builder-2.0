@@ -1,15 +1,17 @@
 ---
-description: Aktuelle Schattenqualität (v2.0.258) ist Nutzer-Soll — nicht ohne Auftrag retunen
+description: Aktuelle Schattenqualität (v2.0.260) ist Nutzer-Soll — nicht ohne Auftrag retunen
 alwaysApply: true
 ---
 
-# Schatten: Sollzustand (v2.0.258)
+# Schatten: Sollzustand (v2.0.260)
 
-Nutzer-Feedback (2026-09-06): **Schatten so wie jetzt sind optimal.** Keine „Verbesserungen“ an Look/Weichheit/Dunkelheit ohne **explizite** neue Anweisung.
+Nutzer-Feedback (2026-09-06): **Schatten so wie jetzt sind optimal** — Ergänzung: **ein** Schatten, der kontinuierlich von hart am Kontakt zu weich mit Abstand läuft. Keine „Verbesserungen“ an Look/Weichheit/Dunkelheit ohne **explizite** neue Anweisung.
 
 ## Beibehalten (nicht zurückdrehen)
 
-- PCSS Contact-Hardening: Hart-Tap + `min(hard, soft)` (`pcssShadows.ts`)
+- PCSS ein Pfad: `mix(soft, hard, contact)`, `contact` nur unter `PCSS_CONTACT_TEXELS_MIN/MAX` (0,5…2 Texel) — **kein** `min(hard, soft)` (v2.0.258 → zwei Schatten: harter Kern + weicher Halo)
+- Blocker-Suche **nähegewichtet** (`PCSS_BLOCKER_PROX` 0,01) — nächster Caster bestimmt die Penumbra, Kontakt bleibt dunkel
+- Early-Out nach Blocker-Suche (voll lit / volle Umbra) — unsichtbar, Performance
 - `PCSS_PENUMBRA_SCALE` **8**, `PCSS_PLANE_SLOPE_MAX` **6**
 - Render Shadow-Map **8192**, `SHADOW_GROUND_MAX_LENGTH` **2400**
 - Freiraum-Cap: `castShadow = false`, `skipFacadeShade`, Empfang an
@@ -19,12 +21,14 @@ Nutzer-Feedback (2026-09-06): **Schatten so wie jetzt sind optimal.** Keine „V
 ## Verboten ohne Nutzerauftrag
 
 - Penumbra-/Slope-/Bias-/Density-/Contrast-Defaults „nochmal feinjustieren“
-- Contact-Hardening entfernen oder PCSS-Lite beim Orbit (siehe `orbit-visual-stability.mdc`)
+- `min(hard, soft)` wieder einbauen oder `PCSS_CONTACT_TEXELS_MAX` vergrößern (doppelter Look)
+- Kontakt-Blend entfernen (Peter-Panning / blasser Kontakt) oder PCSS-Lite beim Orbit (siehe `orbit-visual-stability.mdc`)
+- PCSS-Taps reduzieren „für Performance“ — gemessen kein Gewinn (v2.0.260), nur Raster
 - Freiraum wieder casten lassen (zu schwarz) oder Soffit wieder ohne Cast (Lichtleck)
 
 ## Erlaubt
 
-- Orbit/Performance **ohne** sichtbare Schatten-Änderung (Bake während Orbit defern, EnvMap pausieren, …)
+- Orbit/Performance **ohne** sichtbare Schatten-Änderung (Bake während Orbit defern, EnvMap pausieren, Lichtanzahl im Shader senken, …)
 - Fixes für echte Regressionen (Lichtlecks, Abstürze) — dann Docs + Version
 
-Docs: `docs/shadows.md`, `docs/changelog.md` (v2.0.258).
+Docs: `docs/shadows.md`, `docs/performance.md` (Orbit-Messreihe), `docs/changelog.md` (v2.0.258, v2.0.260).

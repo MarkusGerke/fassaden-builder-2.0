@@ -2,6 +2,20 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Ein Schatten statt zwei; Reserve-Lichter nur im Licht-Modus (2026-09-06) — v2.0.260
+
+**Symptom:** Zwei Schatten — ein sehr harter Kern und ein sehr weicher Halo; Orbit weiter stockig.
+
+**Ursache Schatten:** `min(hard, soft)` (v2.0.258) springt an der Texelkante des Hart-Taps von 0 auf ≈ 0,5 und läuft dann weich aus → harter Kern + einseitiger Halo (Wiederholung von v0.7.335).
+
+**Nicht geholfen:** PCSS-Taps halbieren (weder Look noch Frame-Zeit); `RE_Direct` per `directLight.visible` überspringen (kein Gewinn).
+
+**Fix Schatten:** kontinuierlich `mix(soft, hard, contact)` — Hart-Tap nur unter ~2 Shadow-Texeln Filterradius (dort identisch, aber biasfrei); nähegewichtete Blocker-Suche (`PCSS_BLOCKER_PROX`) hält den Kontakt dunkel; Early-Out für voll lit / volle Umbra (33 statt 97 Taps).
+
+**Fix Orbit:** Vorrats-Reserve-Lichter (`STABLE_LIGHT_COUNT_STEP`) nur noch im Licht-Modus (`padSpareLights`); im Render werden gelöschte Lichter weiter durch Reserven gehalten (kein Rebuild), aber nichts vorgehalten — 12 → 8 gezählte Lichter, −5…−12 ms/Frame bei DPR 2. Messreihe und verbleibende Hebel (Transmission-Pass, DPR) in [performance.md](performance.md#orbit-im-render-wo-die-frame-zeit-steckt-v20260).
+
+**Docs:** [shadows.md](shadows.md), [performance.md](performance.md), Rule `schatten-qualitaet-soll.mdc`.
+
 ### Paneel-Defaults; Orbit ohne Shadow-Bake (2026-09-06) — v2.0.259
 
 **Nutzer:** Streifen / Läuferverband / Kopfverband und Sockel mit festen Standardmaßen; Orbitieren weniger stockig. Schatten-Look unverändert (Soll v2.0.258, Rule `schatten-qualitaet-soll.mdc`).

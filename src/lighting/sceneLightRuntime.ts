@@ -125,6 +125,16 @@ export interface SceneLightRuntimeSyncOptions {
    * Shader-Neukompilierung aus. Ohne Option werden Reserven ausgeblendet.
    */
   stableLightCount?: boolean
+  /**
+   * Reserven **vorhalten** (Aufrunden auf `STABLE_LIGHT_COUNT_STEP`, mind. eine frei) — nur im
+   * Licht-Modus sinnvoll (dort DPR 1, Lichter werden hinzugefügt). Ohne diese Option hält
+   * `stableLightCount` die Anzahl nur **fest**: Löschen ersetzt das Licht durch eine Reserve
+   * (kein Rebuild), Hinzufügen darf die Anzahl erhöhen. Grund (v2.0.260): Jedes gezählte Licht
+   * kostet im Render pro Fragment (Haupt- **und** Transmission-Pass, DPR 2) — 4 Vorrats-Lichter
+   * ≈ 5–12 ms/Frame beim Orbit. Beim Wechsel false→true/true→false wird die Zielanzahl auf die
+   * echte Anzahl zurückgesetzt (der Licht-Modus-Wechsel kompiliert ohnehin hinter dem Overlay).
+   */
+  padSpareLights?: boolean
 }
 
 function configureShadowLayers(light: THREE.Light): void {
@@ -181,6 +191,8 @@ export class SceneLightRuntime {
   /** Ziel-Anzahl gezählter Lichter; wächst nur (Hysterese), Reset beim Verlassen des Modus. */
   private stablePointTarget = 0
   private stableSpotTarget = 0
+  /** Letzter `padSpareLights`-Zustand — beim Umschalten Zielanzahl auf echte Anzahl setzen. */
+  private lastPadSpares = false
 
   constructor() {
     this.root.name = 'sceneLightRuntime'
@@ -206,7 +218,7 @@ export class SceneLightRuntime {
       this.applySpec(entry, spec, options)
     }
     this.enforceShadowBudget()
-    this.syncSpareLights(options.stableLightCount === true)
+    this.syncSpareLights(options.stableLightCount === true, options.padSpareLights === true)
   }
 
   /**
@@ -248,13 +260,17 @@ export class SceneLightRuntime {
   }
 
   /**
-   * Reserve-Lichter so setzen, dass die gezählte Anzahl auf ein Vielfaches von
-   * `STABLE_LIGHT_COUNT_STEP` (mit mindestens einer freien Reserve) aufgefüllt ist.
+   * Reserve-Lichter setzen.
+   * - `pad` (Licht-Modus): gezählte Anzahl auf ein Vielfaches von `STABLE_LIGHT_COUNT_STEP`
+   *   (mit mindestens einer freien Reserve) auffüllen — Hinzufügen ohne Rebuild.
+   * - sonst: Anzahl nur halten (Ziel = max(bisher, echt)) — Löschen ohne Rebuild, aber keine
+   *   Vorrats-Lichter, die im Render jeden Frame Fragment-Kosten verursachen.
    */
-  private syncSpareLights(stable: boolean): void {
+  private syncSpareLights(stable: boolean, pad: boolean): void {
     if (!stable) {
       this.stablePointTarget = 0
       this.stableSpotTarget = 0
+      this.lastPadSpares = pad
       for (const spare of this.sparePoints) spare.visible = false
       for (const spare of this.spareSpots) spare.visible = false
       return
@@ -266,10 +282,21 @@ export class SceneLightRuntime {
       if (entry.spotDown.visible) spots += 1
       if (entry.spotUp.visible) spots += 1
     }
-    const step = STABLE_LIGHT_COUNT_STEP
-    const roundUp = (n: number) => Math.ceil((n + 1) / step) * step
-    this.stablePointTarget = Math.max(this.stablePointTarget, roundUp(points))
-    this.stableSpotTarget = Math.max(this.stableSpotTarget, roundUp(spots))
+    if (pad !== this.lastPadSpares) {
+      // Moduswechsel: Ziel neu von der echten Anzahl aus (Übergang kompiliert ohnehin).
+      this.stablePointTarget = 0
+      this.stableSpotTarget = 0
+      this.lastPadSpares = pad
+    }
+    if (pad) {
+      const step = STABLE_LIGHT_COUNT_STEP
+      const roundUp = (n: number) => Math.ceil((n + 1) / step) * step
+      this.stablePointTarget = Math.max(this.stablePointTarget, roundUp(points))
+      this.stableSpotTarget = Math.max(this.stableSpotTarget, roundUp(spots))
+    } else {
+      this.stablePointTarget = Math.max(this.stablePointTarget, points)
+      this.stableSpotTarget = Math.max(this.stableSpotTarget, spots)
+    }
 
     const needPoints = Math.max(0, this.stablePointTarget - points)
     while (this.sparePoints.length < needPoints) {

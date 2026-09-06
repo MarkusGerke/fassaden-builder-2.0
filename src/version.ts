@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.259'
+export const APP_VERSION = '2.0.260'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,16 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.260',
+    date: '2026-09-06',
+    title: 'Ein Schatten statt zwei, weniger Orbit-Last',
+    changes: [
+      'Schatten laufen kontinuierlich von hart am Kontakt zu weich mit Abstand — kein harter Kern mit weichem Halo mehr',
+      'Kontakt unter Fensterbänken und Gesimsen bleibt dunkel (nächster Caster bestimmt die Weichheit)',
+      'Orbit im Render leichter: keine Vorrats-Lichter im Shader außerhalb des Licht-Modus, Schatten-Shader mit Early-Out',
+    ],
+  },
   {
     version: '2.0.259',
     date: '2026-09-06',
