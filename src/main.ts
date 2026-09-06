@@ -744,10 +744,12 @@ const renderer = new THREE.WebGLRenderer({
 /** Entwurf/Vorschau im Idle — Orbit senkt auf 1. */
 const MAX_PIXEL_RATIO_WORK = 1.5
 /**
- * Render-Modus: höhere Auflösung gegen Treppchen (vorher 1,5).
- * Auch während Orbit — kein DPR-Drop (weiche Schatten sonst hart).
+ * Render-Modus idle: volle Auflösung gegen Treppchen.
+ * Während Orbit: `MAX_PIXEL_RATIO_RENDER_ORBIT` (v2.0.261) — DPR 1 wirkte PCSS hart;
+ * 1,5 behält weiche Schatten und spart ~44 % Fragmente gegenüber 2.
  */
 const MAX_PIXEL_RATIO_RENDER = 2
+const MAX_PIXEL_RATIO_RENDER_ORBIT = 1.5
 /** Nach letztem Zoom/Orbit: Lite halten; 1 s Pause vor EnvMap/Gizmo-Resume. */
 const ORBIT_LITE_HOLD_MS = 1000
 
@@ -762,7 +764,7 @@ let orbitLiteTimer: ReturnType<typeof setTimeout> | null = null
 let orbitLitePointer = false
 /**
  * Bloom an + „bei Bewegung aus“ nicht gesetzt → Pixelratio während Orbit nicht senken,
- * sonst ändert sich das Glühen sichtbar (Retina 2× → 1×).
+ * sonst ändert sich das Glühen sichtbar (Retina 2× → 1,5×).
  */
 let bloomKeepFullPixelRatioDuringOrbit = false
 /**
@@ -785,39 +787,57 @@ let leafWindLastZ = 0
 let leafWindLastMs = 0
 let leafPersistTimer = 0
 
-/**
- * Orbit darf weiche Schatten nicht „kurz hart“ wirken lassen.
- * Volle Pixelratio bei Bloom und im Render-Modus (PCSS bei DPR 1 wirkt hart).
- */
-function keepFullPixelRatioDuringOrbit(): boolean {
-  if (bloomKeepFullPixelRatioDuringOrbit) return true
-  return !presentationUsesWorkLikeShading(presentationMode)
-}
-
 /** Licht-Modus: Transmission-Pass (physisches Glas) mit halber Auflösung — viertelt dessen Kosten. */
 const LIGHT_EDIT_TRANSMISSION_SCALE = 0.5
+/**
+ * Orbit im Render: Transmission-Pass halb (v2.0.261). Gemessen ~39 → ~20 ms/Frame.
+ * Glas-Durchsicht wird während der Geste etwas weicher und schärft am Ende nach — akzeptiert
+ * gegen Orbit-Stocken; Idle bleibt Scale 1.
+ */
+const ORBIT_TRANSMISSION_SCALE = 0.5
 
 /** Letzter gesetzter Cap — setPixelRatio/Composer nur bei echter Änderung (sonst Orbit-Hitch). */
 let appliedPixelRatioCap = -1
+/** Letzte Transmission-Scale — gleicher Early-Out wie Pixelratio. */
+let appliedTransmissionScale = -1
 
 function targetPixelRatioCap(): number {
   if (lightEditMode) return 1
-  // Entwurf/Vorschau: während Orbit 1 (harte Schatten — sichtbarer Sprung ok).
-  if (orbitLite && !keepFullPixelRatioDuringOrbit()) return 1
-  if (presentationUsesWorkLikeShading(presentationMode)) return MAX_PIXEL_RATIO_WORK
+  if (presentationUsesWorkLikeShading(presentationMode)) {
+    // Entwurf/Vorschau: während Orbit 1 (harte Schatten — sichtbarer Sprung ok).
+    if (orbitLite) return 1
+    return MAX_PIXEL_RATIO_WORK
+  }
+  // Render: Bloom ohne „bei Bewegung aus“ → volle Ratio (sonst Glow-Sprung).
+  if (orbitLite && bloomKeepFullPixelRatioDuringOrbit) return MAX_PIXEL_RATIO_RENDER
+  // Render-Orbit: 1,5 statt 2 — weiche Schatten bleiben, weniger Fragmente (v2.0.261).
+  if (orbitLite) return MAX_PIXEL_RATIO_RENDER_ORBIT
   return MAX_PIXEL_RATIO_RENDER
+}
+
+function targetTransmissionScale(): number {
+  if (lightEditMode) return LIGHT_EDIT_TRANSMISSION_SCALE
+  // Auch Pointer-Flag: zwischen start und erstem setOrbitLite nicht 1 Frame voller Scale.
+  if (orbitLite || orbitLitePointer) return ORBIT_TRANSMISSION_SCALE
+  return 1
 }
 
 function applyRendererPixelRatio() {
   // Fragment-Kosten skalieren mit Pixelzahl (Glas-Transmission rendert die Szene zweimal).
   const cap = targetPixelRatioCap()
   const next = Math.min(window.devicePixelRatio || 1, cap)
-  if (cap === appliedPixelRatioCap && Math.abs(renderer.getPixelRatio() - next) < 1e-6) {
+  const transmission = targetTransmissionScale()
+  if (
+    cap === appliedPixelRatioCap &&
+    Math.abs(renderer.getPixelRatio() - next) < 1e-6 &&
+    Math.abs(appliedTransmissionScale - transmission) < 1e-6
+  ) {
     return
   }
   appliedPixelRatioCap = cap
+  appliedTransmissionScale = transmission
   renderer.setPixelRatio(next)
-  renderer.transmissionResolutionScale = lightEditMode ? LIGHT_EDIT_TRANSMISSION_SCALE : 1
+  renderer.transmissionResolutionScale = transmission
   // Composer erst nach Init vorhanden; danach Ratio immer mitsynchronisieren (sonst Bloom-Pfad weich/pixelig).
   syncComposerPixelRatio?.()
 }

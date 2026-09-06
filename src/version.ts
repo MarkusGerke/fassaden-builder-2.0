@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.260'
+export const APP_VERSION = '2.0.261'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,16 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.261',
+    date: '2026-09-06',
+    title: 'Flüssigeres Orbitieren im Render',
+    changes: [
+      'Beim Drehen/Zoomen etwas niedrigere Auflösung (1,5× statt 2×) — Schatten bleiben weich',
+      'Glas-Durchsicht während der Geste etwas weicher (halber Transmission-Pass), danach wieder scharf',
+      'Orbit stockt deutlich weniger bei vielen Fenstern und Lichtern',
+    ],
+  },
   {
     version: '2.0.260',
     date: '2026-09-06',

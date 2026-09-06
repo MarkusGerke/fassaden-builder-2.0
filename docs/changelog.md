@@ -2,6 +2,20 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Flüssigeres Orbit im Render (2026-09-06) — v2.0.261
+
+**Symptom:** Orbit im Render weiter ~25–30 FPS trotz Bake-Defer und ohne Reserve-Lichter (v2.0.260).
+
+**Ursache (Messreihe):** Fragment-gebunden — `(Lichter + PCSS) × (Haupt-Pass + Transmission) × DPR 2`. Siehe [performance.md](performance.md#orbit-im-render-wo-die-frame-zeit-steckt-v20260).
+
+**Fix (explizit angefordert):** Während `orbitLite`/`orbitLitePointer`:
+- `transmissionResolutionScale` **0,5** (Idle wieder 1) — Glas-Durchsicht kurz weicher.
+- Pixelratio-Cap **1,5** statt 2 (`MAX_PIXEL_RATIO_RENDER_ORBIT`); Bloom ohne „bei Bewegung aus“ bleibt bei **2**.
+
+**Nicht:** DPR 1 (PCSS wirkt hart), PCSS-Lite, Bloom aus.
+
+**Docs:** [performance.md](performance.md), [camera.md](camera.md), Rule `orbit-visual-stability.mdc`.
+
 ### Ein Schatten statt zwei; Reserve-Lichter nur im Licht-Modus (2026-09-06) — v2.0.260
 
 **Symptom:** Zwei Schatten — ein sehr harter Kern und ein sehr weicher Halo; Orbit weiter stockig.
