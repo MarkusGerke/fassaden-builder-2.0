@@ -74,10 +74,11 @@ Presets: `BAY_WINDOW_PRESETS` in `src/studio/bayWindow.ts` (Erker generiert aus 
 
 ## Fallstricke
 
-- **Licht durch Erker-Boden/Deckel (v2.0.239 → Fix v2.0.258).** Symptom: Sonne scheint durch die Untersicht oder den oberen Deckel in den Erker / die Rückwand-Öffnung.
-  - **Ursache:** `baySoffit` war nur Empfänger (`castShadow = false`), damit kein extra Bodenschatten unter dem Vorsprung — lichtdicht war das nicht.
-  - **Nicht:** Nur sichtbare Geschossplatte reicht (liegt oft hinter der Mundlinie / Layer 1).
-  - **Fix:** Soffit wirft wieder Schatten auf Layer 0+1.
+- **Licht durch Erker-Boden/Deckel (v2.0.239 → Fix v2.0.258 → Regression Fix v2.0.263).** Symptom: Sonne scheint durch die Untersicht oder den oberen Deckel in den Erker / die Rückwand-Öffnung — **oder** (v2.0.263) helle Flecken an der **Außenwand unter dem Erker**.
+  - **Ursache (258):** `baySoffit` war nur Empfänger (`castShadow = false`), damit kein extra Bodenschatten unter dem Vorsprung — lichtdicht war das nicht.
+  - **Ursache (263):** Tagsüber ohne Punktlicht-Okklusion setzte `applyIndoorShadowCasting` den Soffit nur auf den Innen-Layer — Sonne (Layer 0) ignorierte ihn.
+  - **Nicht:** Nur sichtbare Geschossplatte reicht (liegt oft hinter der Mundlinie / Layer 1). Bias/Dicke ändern half nicht (Cast war schon an).
+  - **Fix:** Soffit wirft Schatten auf Layer 0+1; `applyIndoorShadowCasting` lässt `baySoffit` unangetastet (wie `applyPointLightOccluders`).
 - Ohne korrekte `panelFlip` je Seite zeigen Paneele nach innen.
 - **Schenkel Paneele innen bei panelFlip=false (v2.0.226 → Fix v2.0.227).** Symptom: 90°- und 45°-Erker an Wänden mit `panelFlip: false` zeigten auf den Schenkeln Paneele/Sockel innen (Außenseite glatt/schwarz).
   - **Ursache:** Außennormale fest als CW-Drehung der Umlaufrichtung `(along.z, -along.x)` — das passt nur, wenn der Erker nach −Z (typisch `panelFlip: true`) vorsteht. Bei Vorsprung +Z zeigt CW nach innen.

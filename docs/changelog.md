@@ -2,6 +2,18 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Kein Licht durch Erkerboden (2026-09-06) — v2.0.263
+
+**Symptom:** An der Wand unter dem Erker helle Flecken — Sonne scheint durch den Erkerboden.
+
+**Ursache:** `baySoffit` war in `applyPointLightOccluders` korrekt auf Layer 0+1 mit `castShadow`. Tagsüber (Raum-Okklusion aus) überschrieb danach `applyIndoorShadowCasting` alle Platten auf nur Innen-Layer — die Sonne (Layer 0) sah den Soffit nicht mehr. Regression gegenüber dem Intent von v2.0.258.
+
+**Nicht geholfen / nicht nötig:** Soffit dicker machen, Bias ändern — Cast war schon an, Layer war falsch.
+
+**Fix:** `baySoffit` in `applyIndoorShadowCasting` wie bei Okklusion behandeln (Layer 0+1, immer casten); Sichtbarkeit explizit immer an.
+
+**Docs:** [bay-windows.md](bay-windows.md), [shadows.md](shadows.md).
+
 ### Orbit mit Bloom flüssiger (2026-09-06) — v2.0.262
 
 **Symptom:** Mit Bloom an stockte Orbit wieder; ohne Bloom flüssig (Nutzer-Feedback nach v2.0.261).

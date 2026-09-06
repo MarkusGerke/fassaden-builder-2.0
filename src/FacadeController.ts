@@ -2356,6 +2356,11 @@ export class FacadeController {
         child.visible = floor ? floor.showCeiling !== false && !floor.hidden : true
         continue
       }
+      if (child.userData.kind === 'baySoffit') {
+        // Immer sichtbar — kein floorIndex; darf nicht an Decken-Flag hängen.
+        child.visible = true
+        continue
+      }
       const buildingId = child.userData.buildingId as string | undefined
       const floorIndex = child.userData.floorIndex as number | undefined
       const building = buildingId
@@ -2376,6 +2381,8 @@ export class FacadeController {
    * Sichtbare Geschossplatten: cast + receive wenn sichtbar (lichtdicht für Punktlicht).
    * Layer nur Innen — keine Etagenstreifen auf der Außenfassade durch die Sonne.
    * Sonne: separate sunCeilingOccluder auf Layer 0 (Innenkante).
+   * Erker-Soffit: wie bei Punktlicht-Okklusion auf Layer 0+1 lassen (sonst scheint die Sonne
+   * durch den Erkerboden auf die Wand darunter — v2.0.263).
    */
   private applyIndoorShadowCasting() {
     for (const child of this.indoorFloorGroup.children) {
@@ -2384,6 +2391,13 @@ export class FacadeController {
         mesh.castShadow = mesh.visible
         mesh.receiveShadow = false
         mesh.layers.set(SHADOW_LAYER_EXTERIOR)
+        continue
+      }
+      if (mesh.userData.kind === 'baySoffit') {
+        mesh.castShadow = true
+        mesh.receiveShadow = true
+        mesh.layers.set(SHADOW_LAYER_EXTERIOR)
+        mesh.layers.enable(SHADOW_LAYER_INTERIOR)
         continue
       }
       mesh.castShadow = mesh.visible
