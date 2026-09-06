@@ -27,7 +27,7 @@ Bloom und Gobo-Schatten: frühere Laub-Gobo-UI entfernt (v0.7.341). **Unreal Blo
 
 ### Bloom (3D / 2D-Front)
 
-- **Bloom während Navigation (v2.0.124 / v2.0.125 / v2.0.172):** Default **an** auch bei Orbit-Lite; optional `#bloom-disable-during-motion`. **v2.0.172:** Szene direkt auf den Canvas, Bloom nur additiv (Composer nicht auf den Default-FB); Himmel ohne Depth-Test. **v2.0.125:** Bei Bloom an und „bei Bewegung aus“ nicht gesetzt bleibt die Pixelratio beim Orbit voll.
+- **Bloom während Navigation (v2.0.124 / v2.0.125 / v2.0.172 / v2.0.262):** Default **an** auch bei Orbit-Lite; optional `#bloom-disable-during-motion`. **v2.0.172:** Szene direkt auf den Canvas, Bloom nur additiv (Composer nicht auf den Default-FB); Himmel ohne Depth-Test. **v2.0.125:** Bei Bloom an blieb die Pixelratio beim Orbit voll — **v2.0.262:** wieder Orbit-DPR 1,5 (sonst stockig); leichter Glow-Unterschied akzeptiert.
 - **Öffnungs-Zug Commit (v2.0.173):** Nach `endOpeningDrag` kein `applySunLighting({ updateShadowMap: true })` — verzögert via `live` + `scheduleShadowMapUpdate` (sonst Profile kurz dunkelgrau durch Material-Invalidate + Map-Flush).
 - Checkbox, Schwelle / Stärke / Radius / Belichtung als Slider **und** Number. Defaults (v2.0.57 / v2.0.104): aus, Schwelle `0,72`, Stärke `0,28`, Radius `0,6`, Belichtung `1,116`. Bereiche: Schwelle `0…1,2`, Stärke `0…1,5`, Radius `0…1`, Belichtung `0,75…1,45`.
 - Bei an: `ACESFilmicToneMapping`, `toneMappingExposure = exposure ** 3` (OutputPass). Persistenz: `PersistedAppState.bloom`.

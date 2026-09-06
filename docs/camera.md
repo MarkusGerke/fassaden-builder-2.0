@@ -62,7 +62,7 @@ Mausschwenk mit ⌘/Ctrl+⇧ nutzt bewusst dieselbe Skala wie die Pfeiltasten �
 
 ## Performance (Orbit-Lite)
 
-Während Navigation (`nav3d`, OrbitControls `start`/`change`, Pfeiltasten): `orbitLite = true` → LOD pausiert, EnvMap-Bake pausiert (v2.0.100); **v2.0.259:** Shadow-Map-Bake während der Geste defern (nachholen am Ende). **Pixelratio:** Entwurf/Vorschau → 1; **Render idle** `MAX_PIXEL_RATIO_RENDER` = **2**; **Render Orbit** `MAX_PIXEL_RATIO_RENDER_ORBIT` = **1,5** (v2.0.261 — nicht DPR 1, sonst PCSS hart). Bloom ohne „bei Bewegung aus“ → volle Ratio 2. **Transmission:** während Orbit Scale **0,5** (Idle 1). Bloom bleibt an (v2.0.124), außer `#bloom-disable-during-motion`. Sonnenschatten immer volles PCSS (kein 1-Tap; v2.0.197). Nach Loslassen: `ORBIT_LITE_HOLD_MS` (**1000 ms**). Details: [performance.md](performance.md), Rule `orbit-visual-stability.mdc`.
+Während Navigation (`nav3d`, OrbitControls `start`/`change`, Pfeiltasten): `orbitLite = true` → LOD pausiert, EnvMap-Bake pausiert (v2.0.100); **v2.0.259:** Shadow-Map-Bake während der Geste defern (nachholen am Ende). **Pixelratio:** Entwurf/Vorschau → 1; **Render idle** `MAX_PIXEL_RATIO_RENDER` = **2**; **Render Orbit** `MAX_PIXEL_RATIO_RENDER_ORBIT` = **1,5** (v2.0.261/262 — nicht DPR 1, sonst PCSS hart; **auch mit Bloom**, v2.0.262). **Transmission:** während Orbit Scale **0,5** (Idle 1). Bloom bleibt an (v2.0.124), außer `#bloom-disable-during-motion`. Sonnenschatten immer volles PCSS (kein 1-Tap; v2.0.197). Nach Loslassen: `ORBIT_LITE_HOLD_MS` (**1000 ms**). Details: [performance.md](performance.md), Rule `orbit-visual-stability.mdc`.
 
 ---
 

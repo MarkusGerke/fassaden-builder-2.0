@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.261'
+export const APP_VERSION = '2.0.262'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,15 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.262',
+    date: '2026-09-06',
+    title: 'Orbit mit Bloom flüssiger',
+    changes: [
+      'Mit Bloom an bleibt beim Drehen/Zoomen die leichtere Orbit-Auflösung (1,5×) — stockt nicht mehr wie bei voller 2×',
+      'Bloom bleibt während der Navigation sichtbar; das Glühen kann dabei etwas weicher wirken',
+    ],
+  },
   {
     version: '2.0.261',
     date: '2026-09-06',

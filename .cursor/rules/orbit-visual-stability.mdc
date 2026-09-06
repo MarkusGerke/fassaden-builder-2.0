@@ -24,10 +24,11 @@ Während Navigation (`orbitLite`) darf sich die **sichtbare Licht-/Schattenquali
 ## Erlaubt / beibehalten
 
 - Orbit-Lite: EnvMap-Bake pausieren, Gizmos im Loop pausieren, Shadow-Bake defern, Hold `ORBIT_LITE_HOLD_MS` (1000 ms, v2.0.251).
-- Pixelratio: Entwurf/Vorschau → 1 während der Geste; **Render idle** `MAX_PIXEL_RATIO_RENDER` = 2; **Render Orbit** `MAX_PIXEL_RATIO_RENDER_ORBIT` = **1,5** (v2.0.261 — weiche Schatten bleiben, weniger Fragmente). Bloom ohne „bei Bewegung aus“ → volle Ratio 2.
+- Pixelratio: Entwurf/Vorschau → 1 während der Geste; **Render idle** `MAX_PIXEL_RATIO_RENDER` = 2; **Render Orbit** `MAX_PIXEL_RATIO_RENDER_ORBIT` = **1,5** (v2.0.261/262 — weiche Schatten bleiben). **Auch mit Bloom an** (v2.0.262) — früher erzwang Bloom DPR 2 und machte Orbit wieder stockig; leichter Glow-Unterschied 2→1,5 ist akzeptiert.
 - `transmissionResolutionScale` **0,5** während Orbit (v2.0.261) — Glas etwas weicher während der Geste, Idle wieder 1. Licht-Modus ebenfalls 0,5.
 - Volles PCSS während Orbit (kein Tap-Drop; Early-Out lit/Umbra ok, siehe `pcssShadows.ts`).
+- Bloom bleibt während Orbit sichtbar (Default; optional „bei Bewegung aus“).
 
 ## Docs
 
-- `docs/shadows.md`, `docs/performance.md`, `docs/camera.md`, `docs/changelog.md` (v2.0.151, v2.0.196, v2.0.197, v2.0.251, v2.0.261).
+- `docs/shadows.md`, `docs/performance.md`, `docs/camera.md`, `docs/changelog.md` (v2.0.151, v2.0.196, v2.0.197, v2.0.251, v2.0.261, v2.0.262).

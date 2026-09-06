@@ -2,6 +2,16 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Orbit mit Bloom flüssiger (2026-09-06) — v2.0.262
+
+**Symptom:** Mit Bloom an stockte Orbit wieder; ohne Bloom flüssig (Nutzer-Feedback nach v2.0.261).
+
+**Ursache:** `bloomKeepFullPixelRatioDuringOrbit` (v2.0.125) erzwang bei Bloom ohne „bei Bewegung aus“ weiterhin DPR **2** — die Orbit-Caps aus v2.0.261 griffen nicht.
+
+**Fix:** Orbit-DPR **1,5** und Transmission **0,5** auch mit Bloom; Bloom bleibt sichtbar (additiv). Leichter Glow-Unterschied 2→1,5 akzeptiert. `syncBloomOrbitPixelPolicy` entfernt.
+
+**Docs:** [performance.md](performance.md), [camera.md](camera.md), [shadows.md](shadows.md), [scene-lights.md](scene-lights.md), Rule `orbit-visual-stability.mdc`.
+
 ### Flüssigeres Orbit im Render (2026-09-06) — v2.0.261
 
 **Symptom:** Orbit im Render weiter ~25–30 FPS trotz Bake-Defer und ohne Reserve-Lichter (v2.0.260).

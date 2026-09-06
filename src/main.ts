@@ -763,11 +763,6 @@ let orbitLiteTimer: ReturnType<typeof setTimeout> | null = null
 /** true zwischen OrbitControls start und end (Mausrad: beides im selben Tick). */
 let orbitLitePointer = false
 /**
- * Bloom an + „bei Bewegung aus“ nicht gesetzt → Pixelratio während Orbit nicht senken,
- * sonst ändert sich das Glühen sichtbar (Retina 2× → 1,5×).
- */
-let bloomKeepFullPixelRatioDuringOrbit = false
-/**
  * UX v2.0.153: nur Lichter anwählbar; Marker + Hilfslinien.
  * Früh deklariert: `applyRendererPixelRatio()` liest den Wert beim Modul-Start.
  */
@@ -808,9 +803,8 @@ function targetPixelRatioCap(): number {
     if (orbitLite) return 1
     return MAX_PIXEL_RATIO_WORK
   }
-  // Render: Bloom ohne „bei Bewegung aus“ → volle Ratio (sonst Glow-Sprung).
-  if (orbitLite && bloomKeepFullPixelRatioDuringOrbit) return MAX_PIXEL_RATIO_RENDER
-  // Render-Orbit: 1,5 statt 2 — weiche Schatten bleiben, weniger Fragmente (v2.0.261).
+  // Render-Orbit: 1,5 statt 2 — auch mit Bloom (v2.0.262). Zuvor erzwang Bloom DPR 2 und
+  // machte Orbit wieder stockig; leichter Glow-Unterschied 2→1,5 ist akzeptiert.
   if (orbitLite) return MAX_PIXEL_RATIO_RENDER_ORBIT
   return MAX_PIXEL_RATIO_RENDER
 }
@@ -840,14 +834,6 @@ function applyRendererPixelRatio() {
   renderer.transmissionResolutionScale = transmission
   // Composer erst nach Init vorhanden; danach Ratio immer mitsynchronisieren (sonst Bloom-Pfad weich/pixelig).
   syncComposerPixelRatio?.()
-}
-
-function syncBloomOrbitPixelPolicy() {
-  const next =
-    bloomSettings.enabled === true && bloomSettings.disableDuringMotion !== true
-  if (next === bloomKeepFullPixelRatioDuringOrbit) return
-  bloomKeepFullPixelRatioDuringOrbit = next
-  applyRendererPixelRatio()
 }
 
 /** Wird nach EffectComposer-Erzeugung gesetzt. */
@@ -5006,7 +4992,8 @@ function applyBloomRenderer() {
     renderer.toneMapping = THREE.NoToneMapping
     renderer.toneMappingExposure = 1
   }
-  syncBloomOrbitPixelPolicy()
+  // Composer-RTs an aktuelle Pixelratio halten (Orbit-Cap gilt unabhängig von Bloom, v2.0.262).
+  syncComposerPixelRatio?.()
 }
 
 function disposeDirectionalShadowMap(light: THREE.DirectionalLight) {
