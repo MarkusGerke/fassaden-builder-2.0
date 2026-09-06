@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.228'
+export const APP_VERSION = '2.0.230'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,29 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.230',
+    date: '2026-09-06',
+    title: 'Defaults, Übersicht-Tab, Kompass',
+    changes: [
+      'Kompass: größere Trefferflächen, Klicks erreichen Canvas/Orbit nicht mehr',
+      'Bibliothek: Fenster und Türen zuerst, dann Fassade',
+      'Einsetzen: Türen Y=0, Fenster Y=128; 2+Oberlicht unten 2/3 / oben 1/3',
+      'Gesims an: erstes Bibliothek-Profil + 32 cm; Dropdown Geschossgesims/Dachgesims',
+      'Rechte Einstellungen: Tab Übersicht zuerst, bei jedem Objekt-Klick aktiv',
+      'Öffnung duplizieren: zuerst 96 cm Abstand, sonst kleiner; Erker/Balkon nur auf markierter Wand-Etage',
+    ],
+  },
+  {
+    version: '2.0.229',
+    date: '2026-09-06',
+    title: 'Erker gleiten ohne Lücken',
+    changes: [
+      'Segment-Erker verschieben: angrenzende Wandstücke wachsen/schrumpfen live mit — keine Lücken mehr zwischen Erker und Nachbarwand',
+      'Verschieben rastet in 24-cm-Schritten; Undo stellt den Ausgangszustand wieder her',
+      'Erker über mehrere Etagen (Stapel) gleiten gemeinsam',
+    ],
+  },
   {
     version: '2.0.228',
     date: '2026-09-06',

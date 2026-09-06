@@ -3,23 +3,24 @@ description: Rechte UI-Einstellungen immer Maße → Farbe → Rest
 alwaysApply: true
 ---
 
-# UI-Reihenfolge: Maße, dann Farbe, dann Rest
+# UI-Reihenfolge: Übersicht, dann Maße, dann Farbe, dann Rest
 
 Beim Anlegen oder Umsortieren von Einstellungen in der **rechten Toolbar** / Sektionen / Dialogen:
 
-1. **Maße** zuerst (Breite, Höhe, Tiefe, Position, Stärken, …)
+0. **Übersicht** zuerst (synthetischer Tab `all` — bei jedem Objekt-Klick aktiv)
+1. **Maße** danach (Breite, Höhe, Tiefe, Position, Stärken, …)
 2. **Farbe** danach (Flächen-, Rahmen-, Glas-, Fugenfarben, …)
 3. **Übliche Einstellungen** erst danach (Enable-Checkboxen, Profile, Muster, Orientierung, erweiterte Optionen, …)
 
 ## Gilt für
 
-- Reihenfolge der **Tabs** (`data-settings-order`): nach optionaler Übersicht → Maße → Farben → weitere Sektionen.
+- Reihenfolge der **Tabs** (`data-settings-order`): Übersicht → Maße → Farben → weitere Sektionen.
 - Reihenfolge der **Felder innerhalb** einer Sektion, wenn Maße und Farbe gemischt vorkommen würden — Maße-Blöcke vor Farb-Blöcken.
 - Neue Features: nicht Farbe oder Dekor vor den Maßen platzieren.
 
 ## Nicht
 
-- Übersicht/„Alle“-Tab kann vorne bleiben (Gesamtblick), aber **Maße vor Farben**.
+- Übersicht bleibt vorne (Gesamtblick) und wird bei Objekt-Klick immer gewählt.
 - Bestehende IDs/`hidden`-Logik nicht löschen — nur Reihenfolge und Sichtbarkeit.
 
 Docs: `docs/ux.md` (Tab-Reihenfolge rechts).

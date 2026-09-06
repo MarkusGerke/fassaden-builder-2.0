@@ -151,7 +151,7 @@ export const WINDOW_STYLE_PRESETS: Record<
     label: '1-Flügel',
     casements: 1,
     transom: false,
-    transomRatio: 0.26,
+    transomRatio: 1 / 3,
     bottomPanel: false,
     sashBarsH: 0,
   },
@@ -159,7 +159,7 @@ export const WINDOW_STYLE_PRESETS: Record<
     label: '2-Flügel',
     casements: 2,
     transom: false,
-    transomRatio: 0.26,
+    transomRatio: 1 / 3,
     bottomPanel: false,
     sashBarsH: 0,
   },
@@ -167,7 +167,7 @@ export const WINDOW_STYLE_PRESETS: Record<
     label: '2-Flügel + OL',
     casements: 2,
     transom: true,
-    transomRatio: 0.26,
+    transomRatio: 1 / 3,
     bottomPanel: false,
     sashBarsH: 0,
   },
@@ -175,7 +175,7 @@ export const WINDOW_STYLE_PRESETS: Record<
     label: 'Oberlicht',
     casements: 2,
     transom: true,
-    transomRatio: 0.42,
+    transomRatio: 1 / 3,
     bottomPanel: false,
     sashBarsH: 0,
   },
@@ -191,7 +191,7 @@ export const WINDOW_STYLE_PRESETS: Record<
     label: 'Balkon + OL',
     casements: 2,
     transom: true,
-    transomRatio: 0.22,
+    transomRatio: 1 / 3,
     bottomPanel: true,
     sashBarsH: 0,
   },
@@ -545,7 +545,7 @@ export function defaultGruenderzeitConfig(width: number, height: number, type: O
     // Kein Oberlicht/Mehrflügel-Raster mehr als Default — Nutzer schaltet über Teilung zu.
     // Kellerfenster bekommen ihr Stabgitter separat (`basementWindow`), nicht über Flügelteilung.
     transom: false,
-    transomRatio: 0.26,
+    transomRatio: 1 / 3,
     splitVCount: 1,
     splitVRatio: '1/1',
     splitHCount: 1,
@@ -745,7 +745,7 @@ export function windowAssemblyDepth(config: GruenderzeitWindowConfig): number {
 export function detectWindowPreset(config: GruenderzeitWindowConfig): GruenderzeitPresetId | '' {
   if (config.bottomPanel && config.transom && config.casements === 2) return 'balkon-ol'
   if (config.bottomPanel && !config.transom) return 'balkon'
-  if (!config.bottomPanel && config.transom && config.casements === 2 && config.transomRatio >= 0.36) return 'ol'
+  // 2-Flügel + Oberlicht (unten 2/3, oben 1/3) — Preset „ol“ teilt dieselbe Geometrie.
   if (!config.bottomPanel && config.transom && config.casements >= 2) return '2fl-ol'
   if (!config.bottomPanel && !config.transom && config.casements === 1) return '1fl'
   if (!config.bottomPanel && !config.transom && config.casements === 2) return '2fl'

@@ -32,12 +32,20 @@ export const PLAN_DIAGONAL_STEP = STUDIO_WALL_WIDTH_STEP * Math.SQRT2
 export const STUDIO_WALL_HEIGHT_STEP = 16
 /** Boden-Raster beim Wand-Greifer = Breiten-Schritt. */
 export const WALL_RESIZE_FLOOR_STEP = STUDIO_WALL_WIDTH_STEP
+/** Erker entlang der Fassade gleiten: Schrittweite (Reststücke tauschen Länge in 24er-Schritten). */
+export const BAY_SLIDE_STEP_CM = 24
 /** Mindest-Breite/Höhe einer Studio-Wand (cm) = ein Greifer-Schritt. */
 export const STUDIO_MIN_SIZE = STUDIO_WALL_WIDTH_STEP
-/** Abstand Kante-zu-Kante beim Duplizieren von Wänden/Öffnungen (absolut, nicht Plan-Zelle). */
+/** Abstand Kante-zu-Kante beim Duplizieren von Wänden (absolut, nicht Plan-Zelle). */
 export const DUPLICATE_GAP_CM = PLAN_GRID_LEGACY_CM
+/** Bevorzugter Kantenabstand beim Duplizieren von Öffnungen; darf kleiner werden, wenn kein Platz. */
+export const DUPLICATE_OPENING_GAP_CM = 96
 /** Andocken / Lücken schließen: Abstand in cm (≈ früheres 48-cm-Feld). */
 export const PLAN_CLOSE_GAP_CM = PLAN_GRID_LEGACY_CM
+/** Standard-Gesims-Höhe (Geschossgesims) in cm. */
+export const DEFAULT_CORNICE_HEIGHT_CM = 32
+/** Dachgesims-Höhe in cm. */
+export const ROOF_CORNICE_HEIGHT_CM = 48
 
 /** 45°/135°/225°/315° — schräge Plan-Richtung. */
 export function isDiagonalPlanYaw(yawDeg: number): boolean {

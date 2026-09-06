@@ -105,14 +105,16 @@ export interface WallStackSplitResult {
 }
 
 /**
- * Teilt `wallId` und alle Etagen mit gleichem Fußabdruck am selben Segment.
+ * Teilt `wallId` und optional alle Etagen mit gleichem Fußabdruck am selben Segment.
  * Etagen, in die das Segment nicht passt (schmalere Wand), bleiben unverändert.
  * `null`, wenn die Seed-Wand selbst nicht geteilt werden kann.
+ * `opts.singleFloor`: nur die Seed-Wand (keine anderen Etagen).
  */
 export function splitWallStackRange(
   state: FacadeState,
   wallId: string,
   range: WallSplitRange,
+  opts?: { singleFloor?: boolean },
 ): WallStackSplitResult | null {
   const building = findBuildingForWall(state, wallId)
   const seed = building?.walls.find((item) => item.id === wallId)
@@ -122,11 +124,13 @@ export function splitWallStackRange(
 
   const replacements = new Map<string, Wall[]>([[seed.id, seedSplit.parts]])
   const middleIds = [seedSplit.middleId]
-  for (const other of wallSplitStack(seed, building.walls, building.wallHeight).slice(1)) {
-    const split = splitStudioWallRange(other, range)
-    if (!split) continue
-    replacements.set(other.id, split.parts)
-    middleIds.push(split.middleId)
+  if (!opts?.singleFloor) {
+    for (const other of wallSplitStack(seed, building.walls, building.wallHeight).slice(1)) {
+      const split = splitStudioWallRange(other, range)
+      if (!split) continue
+      replacements.set(other.id, split.parts)
+      middleIds.push(split.middleId)
+    }
   }
 
   const next = updateBuilding(state, building.id, (b) => ({

@@ -318,18 +318,18 @@
         <div id="library-dock" aria-label="Element-Bibliothek">
           <div class="library-chrome">
             <div class="library-tabs" role="tablist" aria-label="Elemente">
-              <button type="button" class="library-tab active" role="tab" aria-selected="true" data-library-tab="walls" id="library-tab-walls" data-library-when="always">Wände</button>
+              <button type="button" class="library-tab active" role="tab" aria-selected="true" data-library-tab="windows" id="library-tab-windows" data-library-when="wall">Fenster</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="doors" id="library-tab-doors" data-library-when="wall">Türen</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="panels" id="library-tab-panels" data-library-when="wall">Fassade</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="walls" id="library-tab-walls" data-library-when="always">Wände</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="bay" id="library-tab-bay" data-library-when="always">Erker</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="balcony" id="library-tab-balcony" data-library-when="always">Balkone &amp; Loggia</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="loggia" id="library-tab-loggia" data-library-when="always" hidden>Loggia</button>
-              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="panels" id="library-tab-panels" data-library-when="wall">Fassade</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="cornice" id="library-tab-cornice" data-library-when="wall">Gesims</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="trimBands" id="library-tab-trim-bands" data-library-when="wall">Zierbänder</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="plinth" id="library-tab-plinth" data-library-when="wall">Sockel</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="label" id="library-tab-label" data-library-when="wall">Schrift</button>
-              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="windows" id="library-tab-windows" data-library-when="wall">Fenster</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="openingForm" id="library-tab-opening-form" data-library-when="opening">Fensterform</button>
-              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="doors" id="library-tab-doors" data-library-when="wall">Türen</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="niches" id="library-tab-niches" data-library-when="wall">Nischen</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="stairs" id="library-tab-stairs" data-library-when="stairs" hidden>Treppen</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="profiles" id="library-tab-profiles" data-library-when="opening">Profile</button>
@@ -807,6 +807,14 @@
                 </div>
               </div>
               <div class="toolbar-group">
+                <span class="toolbar-label">Vorlagengröße</span>
+                <select id="studio-cornice-size-preset" aria-label="Gesims-Vorlagengröße">
+                  <option value="32">Geschossgesims (Höhe 32 cm)</option>
+                  <option value="48">Dachgesims (Höhe 48 cm)</option>
+                  <option value="custom">Benutzerdefiniert</option>
+                </select>
+              </div>
+              <div class="toolbar-group">
                 <span class="toolbar-label">Höhe (cm, 8er-Raster)</span>
                 <input id="studio-cornice-scale" type="number" min="8" step="8" value="32" />
               </div>
@@ -1220,6 +1228,12 @@
                 <button id="wall-cornice-top" class="preset-btn" type="button">oben</button>
                 <button id="wall-cornice-bottom" class="preset-btn" type="button">unten</button>
               </div>
+              <span class="toolbar-label">Vorlagengröße</span>
+              <select id="wall-cornice-size-preset" aria-label="Gesims-Vorlagengröße">
+                <option value="32">Geschossgesims (Höhe 32 cm)</option>
+                <option value="48">Dachgesims (Höhe 48 cm)</option>
+                <option value="custom">Benutzerdefiniert</option>
+              </select>
               <span class="toolbar-label">Höhe (cm, 8er-Raster)</span>
               <input id="wall-cornice-scale" type="number" min="8" step="8" value="32" />
             </div>

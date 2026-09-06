@@ -210,11 +210,13 @@ Versteckte Gebäude (`building.hidden`), Wände (`wall.hidden`) und Öffnungen (
 
 Yaw-Konvention überall gleich: **0=N, 90=W, 180=S, 270=O** (gegen Uhrzeigersinn). `viewedFacadeYaw` rechnet Kamera-Heading (CW: 0=N, 90=O) mit `180 − heading` um — nicht `heading + 180` (sonst spiegeln O/W und S/O↔S/W).
 
-- **Cardinals N/O/S/W:** Klick setzt Yaw 0/270/180/90 (`data-yaw`). Text ist nicht markierbar (`user-select: none` auf Labels + `preventDefault`).
-- **Ring / Nadel:** Klick relativ zur SVG-Mitte → Winkel rastet auf **45°** (`yawFromCompassSvgPoint`, `snapYawTo45`) → `setCompassYaw` (gleiche Wirkung wie Cardinal).
+- **Cardinals N/O/S/W:** Klick/`pointerdown` setzt Yaw 0/270/180/90 (`data-yaw`). Größere Trefferfläche (unsichtbarer Stroke). Text ist nicht markierbar. Events stoppen Propagation (Canvas/Orbit greifen nicht).
+- **Ring / Nadel:** Klick relativ zur SVG-Mitte → Winkel rastet auf **45°** → `setCompassYaw`.
+- **Label unter dem Kompass:** Klick wechselt zur nächsten 90°-Richtung (N→O→S→W).
 - **2D:** … Fensterrahmen empfangen in 2D Werfschatten wie Paneele (v0.7.344). Details: [shadows.md](shadows.md).
 - **3D:** Kamera dreht um den bestehenden Orbit-Mittelpunkt (`orbitCameraToYaw`) — Abstand und Höhe bleiben, nur die Blickrichtung ändert sich. Erst bei fehlender Orbit-Position wird einmalig eingerahmt (`focusCameraOnYaw`).
 - Default-Ansicht: **N (0°)**. Nadel folgt der Kamera; aktives Cardinal nur bei exakt 0/90/180/270.
+- **z-index 40** (über Canvas), damit Klicks zuverlässig ankommen (v2.0.230).
 - **Neue Bibliothek-Wand in 3D:** Front zeigt zur Kamera (`viewedFacadeYaw`) — entgegengesetzt zur Blickrichtung. Blick S/W → Fassade N/O, Front auf der Nordseite einer Ost-West-Wand. Am Nachbar gilt weiter Front-Flush.
 
 ---
@@ -338,7 +340,7 @@ Tab **Schrift** (`data-settings-section="label"`): Checkbox, Textfeld mit **Spei
 
 - 3D: Raycast inkl. `claddingGroup` (Treppe) und `profileGroup`; Gesims-Meshes mit `wallPart: 'cornice'`, Sockel mit `plinth`, Paneele mit `cladding` (orange inkl. LOD-Kacheln).
 - Bei Teil-Fokus (`part !== 'group'`): rechte Toolbar zeigt **nur** den passenden Reiter (andere `.settings-section` per `hidden`; verschachtelte Sektionen zählen nur wenn kein Vorfahre ausgeblendet ist). Maße/Aktionen und irrelevante Farben ausgeblendet. **Ausnahme Paneele (`cladding`):** **v2.0.156** / v0.7.227 — **wie Wand ganz** (alle Bibliothek-Tabs und Studio-Reiter); nur 3D-Highlight bleibt auf dem Paneel.
-- **v0.7.176:** Anklicken in 3D behält Teil-Fokus für Profil, Bänke, Verdachung, Konsolen, Treppe, Gesims, Sockel, Paneele, Schrift. Rahmen/Glas → Ganz-Öffnung (`group`). **v2.0.208:** Markierung springt nicht mehr auf Farben — erster Tab (Maße) bzw. zuletzt vom Nutzer geöffneter Tab (`lastStickySelectionToolbarTab`), wenn der für das neue Objekt existiert. Teil-Klicks (Gesims, Verdachung, …) öffnen weiter den passenden Reiter. Rahmen-/Glasfarbe nur bei Öffnungsauswahl.
+- **v0.7.176:** Anklicken in 3D behält Teil-Fokus für Profil, Bänke, Verdachung, Konsolen, Treppe, Gesims, Sockel, Paneele, Schrift. Rahmen/Glas → Ganz-Öffnung (`group`). **v2.0.230:** Bei jedem Objekt-Klick startet rechts der Tab **Übersicht** (`selectionToolbarTab = 'all'`); alle Sektionen sichtbar. Nutzer kann danach in Maße/Farben/… wechseln (Sticky bleibt für denselben Toolbar-Typ).
 - 3D-Highlight: Treppe = Stufen-Meshes orange (kein flaches Overlay in der Sockelzone); Wand-Teil = markierte Meshes + Overlay. **v2.0.205 / v2.0.206:** Gesims/Sockel/Zierband und Öffnungs-Teil Profile/Bänke/Verdachung orange per unbeleuchtetem `#ff6600` (`selectedUnlitMaterial`, `toneMapped: false`) — Standard-Material wirkte unter Tone-Mapping dunkelrot. Öffnungs-Overlay folgt der Maske (`openingForShellCut` + `openingWallFaceMaskPolyline`).
 - **Verschieben (v2.0.156 / v2.0.171 / v2.0.173 / v2.0.174 / v2.0.175 / v2.0.177 / v2.0.187):** Ghost, Hilfslinien und Pick-Ebene auf derselben Fassadentiefe (`OPENING_DRAG_FLOAT_CM` = 4 cm) und derselben Maskenkontur — Orange = Linien = Loch nach Drop. **v2.0.171:** kein Shadow-Bake beim Zug-Start (Sockel/Gesims). **v2.0.173:** Shadow-Bake beim Loslassen verzögert. **v2.0.174:** Profile/Bänke sofort mit Außen-EnvMap. **v2.0.175 / v2.0.177:** matte Rahmen kurz ohne Env (gegen Grau). **v2.0.187:** Rahmen wieder mit Außen-EnvMap + Facade-Shade wie Wand/Laibung (sonst dumpferes Weiß).
 
@@ -398,8 +400,8 @@ UI-Felder und Konstanten: [profiles.md](profiles.md) / [opening-features.md](ope
 
 | Auswahl | Tabs | Preset-Sammlung (Muster) |
 |---|---|---|
-| Nichts | Wände · Erker · Balkone&Loggia · Licht | Platzieren |
-| Wand ganz | Fassade · Gesims · Zierbänder · Sockel · Schrift · Fenster · Türen · Nischen · Erker · Balkone (**ohne** Wände / Licht) | je Katalog **Keine/Keines** zuerst |
+| Nichts | Fenster · Türen · Fassade · Wände · Erker · Balkone&Loggia · Licht | Platzieren |
+| Wand ganz | Fenster · Türen · Fassade · Gesims · Zierbänder · Sockel · Schrift · Nischen · Erker · Balkone (**ohne** Wände / Licht) | je Katalog **Keine/Keines** zuerst |
 | Wand-Teil Fassade (`cladding`) | **wie Wand ganz** (Highlight bleibt auf Paneel) | Verbände + **Keine** |
 | Wand-Teil Gesims / Sockel / Zierband / Schrift | nur dieser Katalog | Profile/Fonts; Gesims/Sockel/Zierband **Keines** |
 | Fenster ganz | Fenster · Fensterform · Profile · Verdachung | Typen; Bogenformen; Rahmen+Bank; Verdachung |
@@ -470,19 +472,20 @@ Bei Wand-, Öffnungs-, Studio-, Dach- oder Decken-Auswahl:
 - Ohne Auswahl: rechts **immer** die Szeneneinstellungen (`#lighting-accordion`, Geschwister von `#selection-toolbar` unter `#ui-right` — nicht darin verschachtelt, sonst verschwindet die Szene mit `[hidden]` der Auswahl-Toolbar).
 - **`data-settings-inline-all`**: kein eigener Reiter, im aktiven rechten Panel mit sichtbar (Modell/Aktionen).
 - Tab-Wechsel filtert per CSS-Klasse `selection-tab-filtered-out` — bestehende `hidden`-Logik bleibt maßgeblich.
-- Wechsel der Auswahl setzt den Tab auf den **ersten** verfügbaren Reiter (Maße) bzw. den zuletzt genutzten Sticky-Tab (v2.0.208).
+- Wechsel der Auswahl setzt den Tab auf **Übersicht** (v2.0.230).
 - **Einfach/Komplex:** Sektionen mit `data-ui-level="advanced"` erscheinen nur im Modus Komplex auch als Reiter. **Bossensteine** stehen im Tab Paneele (unter Mauerwerk), auch im Modus Einfach.
 - **Keine Akkordeons** in den Auswahl-Panels; Navigation über rechte Register + Überschriften.
 
 ### Tab-Reihenfolge rechts (für alle Objekte)
 
-**Konvention (verbindlich):** **Maße → Farbe → übliche Einstellungen.** Cursor-Rule: `.cursor/rules/ui-reihenfolge-masse-farbe.mdc`.
+**Konvention (verbindlich):** **Übersicht → Maße → Farbe → übliche Einstellungen.** Cursor-Rule: `.cursor/rules/ui-reihenfolge-masse-farbe.mdc`.
 
 Gilt für die **rechten Einstellungs-Register** bei jeder Objektauswahl (Wand, Öffnung, Dach, Decke, Licht, …) und analog für die **Szene** ohne Auswahl. Nur Tabs, die für das aktuelle Objekt **sichtbar** sind (`hidden` / UI-Level / fehlende Features), erscheinen. Innerhalb einer Sektion: Maß-Felder vor Farb-Feldern, dann der Rest.
 
 | Position | Tab | Inhalt / Beispiele |
 |---|---|---|
-| **1.** | **Maße** / Größenangaben | Breite, Höhe, Tiefe, Position, Geschosshöhe, Wandstärke, … (`dimensions`, `measures`) — erster Auswahl-Tab (v2.0.208+) |
+| **0.** | **Übersicht** | Alle Sektionen untereinander (`selectionToolbarTab === 'all'`) — bei jedem Objekt-Klick aktiv (v2.0.230) |
+| **1.** | **Maße** / Größenangaben | Breite, Höhe, Tiefe, Position, Geschosshöhe, Wandstärke, … (`dimensions`, `measures`) |
 | **2.** | **Farben** | Flächen-, Rahmen-, Glas-, Paneele/Ziegel-Farben, … (`colors`) |
 | **3.** | **Formen** / Profile | Querschnitte, Profilwahl, Teilung/Stil wenn formgebend (`profile`, ggf. Dachform) |
 | **danach** | Dekor & Anbauteile **von oben nach unten** am Objekt | Reihenfolge wie an der Fassade gelesen |
@@ -497,15 +500,15 @@ Gilt für die **rechten Einstellungs-Register** bei jeder Objektauswahl (Wand, �
 6. Sockel (`plinth`) — unten; Profilvorschau und Drehung in den Einstellungen `hidden` (Bibliothek-Tab Sockel)
 7. Sonstiges (Animation, Modul, Debug, …) ans Ende
 
-**Technik:** Sichtbare Tabs aus `.settings-section[data-settings-section]` sortiert nach `data-settings-order` (aufsteigend). Neue Sektionen müssen Order und Label so setzen, dass die Tabelle oben gilt. Szene: synthetischer Tab **Übersicht** (`sceneToolbarTab === 'all'`). Auswahl: kein erzwungenes Übersicht — erster Tab = Maße.
+**Technik:** Synthetischer Tab **Übersicht** zuerst; übrige Tabs aus `.settings-section[data-settings-section]` sortiert nach `data-settings-order`. Szene: ebenfalls **Übersicht** (`sceneToolbarTab === 'all'`).
 
-**Tab nach Markierung (v2.0.208):** Standard = erster sichtbarer Tab (Maße). Wenn der Nutzer einen Reiter geklickt oder darin editiert hat, bleibt dieser Sticky bei neuer Auswahl (falls vorhanden). Klick auf Rahmen/Glas erzwingt nicht mehr „Farben“.
+**Tab nach Markierung (v2.0.230):** Standard = **Übersicht**. Innerhalb derselben Auswahl kann der Nutzer andere Reiter wählen (Sticky bis zum nächsten Objekt-Klick).
 
 **Nicht:** alphabetisch; nicht „was zufällig im HTML zuerst steht“, wenn Order fehlt — dann Order nachtragen.
 
 ### Keine Auswahl
 
-- **Unten:** Bibliothek mit Tabs Wände / Erker / Balkone & Loggia / Licht. Bei **Wandauswahl** entfallen Wände und Licht; dafür Fassade/Gesims/… (v2.0.210). Fenster/Türen/Nischen erst mit Wand-Auswahl (v2.0.153).
+- **Unten:** Bibliothek mit Tabs Fenster / Türen / Fassade / Wände / Erker / Balkone & Loggia / Licht (v2.0.230). Bei **Wandauswahl** entfallen Wände und Licht; Fenster/Türen bleiben vorne.
 - **Rechts:** Szeneneinstellungen (`#lighting-accordion`) immer sichtbar (Geschwister von `#selection-toolbar`), inkl. vertikaler Szene-Register (volle Höhe). Licht-Modus-Toggle außerhalb Vorschau/Render.
 
 ### Linke Spalte einklappbar (v0.7.54 / v0.7.133)

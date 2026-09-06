@@ -6,7 +6,7 @@ Horizontale Profile und Sockel an Studio-Wänden. Geometrie-Details (Gehrung, Cl
 
 | Element | Wo | Kurz |
 |---|---|---|
-| **Gesims** | Reiter Gesims | Nur an der **oberen** Wandkante; Höhe (8 cm) und Tiefe (4 cm); Profil, Farbe, Finish |
+| **Gesims** | Reiter Gesims | Nur an der **oberen** Wandkante; Höhe (8 cm) und Tiefe (4 cm); Profil, Farbe, Finish. **v2.0.230:** Einschalten setzt erstes Bibliothek-Profil (`traufgesims70x150`) und **32 cm** Höhe; Dropdown Geschossgesims (32) / Dachgesims (48) über dem Höhenfeld. |
 | **Sockel** | Reiter Sockel | Höhe 8 cm, Tiefe/Versatz 1 cm; Farbe setzt Körper + Profil; Profil `sockelprofil` ersetzt die Box |
 | **Zierbänder** | Reiter Zierbänder | Beliebige Höhe von unten; Band hinzufügen, Duplikat ±16 cm, in 3D vertikal ziehen (8 cm) |
 

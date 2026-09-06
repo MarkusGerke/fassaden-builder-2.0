@@ -2,6 +2,18 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Defaults & Bibliothek (2026-09-06) — v2.0.230
+
+**Nutzer:** Kompass reagiert zuverlässig; Bibliothek startet mit Fenster/Türen; Defaults für Einsetzen/Gesims/Oberlicht; Übersicht-Tab; Duplikat-Abstand 96 cm; Erker nur auf markierter Etage.
+
+**Umsetzung:** Kompass `pointerdown`+z-index; Library-Tab-Reihenfolge; `WINDOW_SILL_Y`/Tür-Y; `transomRatio = 1/3`; `enableCorniceWithDefaults` + Vorlagen-Dropdown; `selectionToolbarTab = 'all'`; `DUPLICATE_OPENING_GAP_CM`; `insertBayAsWallSegment({ singleFloor })`. Docs: [ux.md](ux.md), [bay-windows.md](bay-windows.md).
+
+### Erker gleiten ohne Lücken, 24-cm-Schritte (2026-09-06) — v2.0.229
+
+**Nutzer:** Segment-Erker verschieben rastet in 24-cm-Schritten; die angrenzenden Wandstücke wachsen/schrumpfen live mit (keine Lücken). Erker im Etagen-Stapel gleiten gemeinsam.
+
+**Umsetzung:** `slideBaySegmentAlong` mit `BAY_SLIDE_STEP_CM` und Stapel (`stackedBayHosts`); 3D-Drag über `previewLiveState` statt Mesh-Translate; Commit mit `startState` als Vorzustand (Rebuild + Undo). Docs: [bay-windows.md](bay-windows.md) (Fallstrick „Lücken beim Verschieben“).
+
 ### Erker-Bibliothek-Vorschau von außen (2026-09-06) — v2.0.228
 
 **Nutzer:** Erker-Karten zeigen eine lesbare Außenansicht schräg von oben (Front dem Betrachter, Schenkel zur Fassade), statt einer verzerrten Innen-/Draufsicht.

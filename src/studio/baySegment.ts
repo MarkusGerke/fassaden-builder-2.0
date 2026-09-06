@@ -5,7 +5,7 @@
 import type { FacadeState, Wall } from '../types/facade'
 import { createId } from '../utils/id'
 import { findBuildingForWall, updateBuilding } from '../utils/buildings'
-import { STUDIO_WALL_WIDTH_STEP } from './constants'
+import { BAY_SLIDE_STEP_CM, STUDIO_WALL_WIDTH_STEP } from './constants'
 import {
   bayMouthWidthCm,
   bayPresetKind,
@@ -154,6 +154,7 @@ export function insertBayAsWallSegment(
   wallId: string,
   preset: BayWindowPreset,
   localX: number,
+  opts?: { singleFloor?: boolean },
 ): { state: FacadeState; bayWallIds: string[]; range: WallSplitRange } | null {
   const building = findBuildingForWall(state, wallId)
   const wall = building?.walls.find((w) => w.id === wallId)
@@ -173,7 +174,9 @@ export function insertBayAsWallSegment(
 
   const range = wallSplitRangeAt(wall, localX, mouth)
   if (!range) return null
-  const split = splitWallStackRange(state, wallId, range)
+  const split = splitWallStackRange(state, wallId, range, {
+    singleFloor: opts?.singleFloor === true,
+  })
   if (!split) return null
 
   let next = split.state
@@ -263,18 +266,24 @@ export function slideBaySegmentAlong(
   if (Math.abs(deltaAlongCm) < 0.25) return state
   const building = findBuildingForWall(state, seedWallId)
   if (!building) return null
-  const ctx = resolveBaySlideContext(building.walls, seedWallId)
-  if (!ctx) return null
+  const seedCtx = resolveBaySlideContext(building.walls, seedWallId)
+  if (!seedCtx) return null
 
-  const left = building.walls.find((w) => w.id === ctx.leftRemnantId)
-  const right = building.walls.find((w) => w.id === ctx.rightRemnantId)
-  if (!left || !right || !isStudioWall(left) || !isStudioWall(right)) return null
+  // Etagen-Stapel: Erker anderer Etagen mit gleichem Mund (XZ) gleiten mit — sonst
+  // stehen Ober- und Untergeschoss versetzt und die Reststücke passen nicht mehr.
+  const contexts = [seedCtx]
+  for (const host of stackedBayHosts(building.walls, seedCtx)) {
+    const ctx = resolveBaySlideContext(building.walls, host.id)
+    if (ctx) contexts.push(ctx)
+  }
 
-  const step = STUDIO_WALL_WIDTH_STEP
+  const step = BAY_SLIDE_STEP_CM
+  const minRemnant = STUDIO_WALL_WIDTH_STEP
   let delta = Math.round(deltaAlongCm / step) * step
   if (delta === 0) return state
 
   const stretchAmountForDockMove = (
+    ctx: BaySlideContext,
     remnant: Wall,
     dockEnd: 'start' | 'end',
     worldAlong: number,
@@ -286,17 +295,36 @@ export function slideBaySegmentAlong(
     return dockEnd === 'end' ? worldAlong * align : -worldAlong * align
   }
 
-  // Delta so begrenzen, dass beide Reste ≥ Rasterschritt bleiben.
+  const remnantsOf = (ctx: BaySlideContext): { left: Wall; right: Wall } | null => {
+    const left = building.walls.find((w) => w.id === ctx.leftRemnantId)
+    const right = building.walls.find((w) => w.id === ctx.rightRemnantId)
+    if (!left || !right || !isStudioWall(left) || !isStudioWall(right)) return null
+    return { left, right }
+  }
+
+  // Delta so begrenzen, dass auf allen Etagen beide Reste ≥ Mindestbreite bleiben.
   for (let guard = 0; guard < 8; guard += 1) {
-    const leftAmt = stretchAmountForDockMove(left, ctx.leftStretchEnd, delta)
-    const rightAmt = stretchAmountForDockMove(right, ctx.rightStretchEnd, delta)
-    const leftOk = left.width + leftAmt >= step - EPS
-    const rightOk = right.width + rightAmt >= step - EPS
-    if (leftOk && rightOk) break
-    const maxLeft = leftOk ? Math.abs(delta) : Math.max(0, left.width - step)
-    const maxRight = rightOk ? Math.abs(delta) : Math.max(0, right.width - step)
-    const maxAbs = Math.min(maxLeft, maxRight, Math.abs(delta))
-    const next = Math.round((Math.sign(delta) * maxAbs) / step) * step
+    let maxAbs = Math.abs(delta)
+    let allOk = true
+    for (const ctx of contexts) {
+      const rem = remnantsOf(ctx)
+      if (!rem) return null
+      const leftAmt = stretchAmountForDockMove(ctx, rem.left, ctx.leftStretchEnd, delta)
+      const rightAmt = stretchAmountForDockMove(ctx, rem.right, ctx.rightStretchEnd, delta)
+      const leftOk = rem.left.width + leftAmt >= minRemnant - EPS
+      const rightOk = rem.right.width + rightAmt >= minRemnant - EPS
+      if (!leftOk) {
+        allOk = false
+        maxAbs = Math.min(maxAbs, Math.max(0, rem.left.width - minRemnant))
+      }
+      if (!rightOk) {
+        allOk = false
+        maxAbs = Math.min(maxAbs, Math.max(0, rem.right.width - minRemnant))
+      }
+    }
+    if (allOk) break
+    // Abrunden auf den Schritt (nicht runden) — sonst wird der Rest wieder zu klein.
+    const next = Math.sign(delta) * Math.floor((maxAbs + EPS) / step) * step
     if (next === delta || next === 0) {
       delta = next
       break
@@ -305,16 +333,32 @@ export function slideBaySegmentAlong(
   }
   if (delta === 0) return state
 
-  const leftAmt = stretchAmountForDockMove(left, ctx.leftStretchEnd, delta)
-  const rightAmt = stretchAmountForDockMove(right, ctx.rightStretchEnd, delta)
-  if (left.width + leftAmt < step - EPS || right.width + rightAmt < step - EPS) return state
+  const plans = contexts.map((ctx) => {
+    const rem = remnantsOf(ctx)!
+    const leftAmt = stretchAmountForDockMove(ctx, rem.left, ctx.leftStretchEnd, delta)
+    const rightAmt = stretchAmountForDockMove(ctx, rem.right, ctx.rightStretchEnd, delta)
+    return { ctx, rem, leftAmt, rightAmt, along: wallAlongDelta(ctx.facadeYaw, delta) }
+  })
+  if (
+    plans.some(
+      (p) =>
+        p.rem.left.width + p.leftAmt < minRemnant - EPS ||
+        p.rem.right.width + p.rightAmt < minRemnant - EPS,
+    )
+  ) {
+    return state
+  }
 
-  const along = wallAlongDelta(ctx.facadeYaw, delta)
-  const memberSet = new Set(ctx.memberIds)
   const nextWalls = building.walls.map((wall) => {
-    if (memberSet.has(wall.id)) return translateWallXZ(wall, along.x, along.z)
-    if (wall.id === left.id) return stretchSingleStudioWall(wall, ctx.leftStretchEnd, leftAmt)
-    if (wall.id === right.id) return stretchSingleStudioWall(wall, ctx.rightStretchEnd, rightAmt)
+    for (const p of plans) {
+      if (p.ctx.memberIds.includes(wall.id)) return translateWallXZ(wall, p.along.x, p.along.z)
+      if (wall.id === p.rem.left.id) {
+        return stretchSingleStudioWall(wall, p.ctx.leftStretchEnd, p.leftAmt)
+      }
+      if (wall.id === p.rem.right.id) {
+        return stretchSingleStudioWall(wall, p.ctx.rightStretchEnd, p.rightAmt)
+      }
+    }
     return cloneWall(wall)
   })
 
@@ -322,6 +366,38 @@ export function slideBaySegmentAlong(
   next = syncFloorPlansFromWalls(next)
   next = finalizeStudioGeometry(next)
   return next
+}
+
+/** Erker-Hosts anderer Etagen, deren linker Mundpunkt in XZ auf `ctx.leftAttach` liegt. */
+function stackedBayHosts(walls: Wall[], ctx: BaySlideContext): Wall[] {
+  const memberSet = new Set(ctx.memberIds)
+  const seedY = walls.find((w) => memberSet.has(w.id))?.y ?? 0
+  const out: Wall[] = []
+  for (const host of walls) {
+    if (!host.bayWindow?.wallIds?.length || memberSet.has(host.id)) continue
+    if (Math.abs((host.y ?? 0) - seedY) <= 1) continue
+    const sides = host.bayWindow.wallIds
+      .map((id) => walls.find((w) => w.id === id))
+      .filter((w): w is Wall => Boolean(w && w.bayRole === 'side'))
+    if (sides.length < 2) continue
+    if (distPoint(wallStartPoint(sides[0]!), ctx.leftAttach) > 2) continue
+    if (out.some((h) => h.id === host.id)) continue
+    out.push(host)
+  }
+  return out
+}
+
+/** Alle Erker-Wand-IDs des Etagen-Stapels (Seed-Etage zuerst). */
+export function bayStackWallIds(walls: Wall[], seedWallId: string): string[] | null {
+  const ctx = resolveBaySlideContext(walls, seedWallId)
+  if (!ctx) return bayWallSelectionIds(walls, seedWallId)
+  const ids = [...ctx.memberIds]
+  for (const host of stackedBayHosts(walls, ctx)) {
+    for (const id of bayWallSelectionIds(walls, host.id) ?? []) {
+      if (!ids.includes(id)) ids.push(id)
+    }
+  }
+  return ids
 }
 
 /** Ob die Auswahl eine eingebettete Erker-Gruppe mit Reststücken links/rechts ist. */

@@ -19,6 +19,11 @@ export const DEFAULT_WALL_CORNICE: Required<Omit<WallCorniceConfig, 'color' | 'f
   sectionScaleForward: 1,
 }
 
+/** Erste Bibliothek-Gesims-Vorlage (kein Legacy-/Dachziegel-Platzhalter). */
+export function defaultCorniceProfileId(): string {
+  return DEFAULT_CORNICE_PROFILE_ID
+}
+
 export const CORNICE_SCALE_MIN = 0.25
 /** Soft-Obergrenze — kein hartes Nutzer-Maximum. */
 export const CORNICE_SCALE_MAX = 10_000

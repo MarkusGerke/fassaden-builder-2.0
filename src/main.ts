@@ -23,7 +23,7 @@ import {
   saveStyleTemplates,
   type StyleTemplate,
 } from './utils/styleTemplates'
-import { ALL_EDGES, DEFAULT_WINDOW_DEPTH_OFFSET, GROUND_MARGIN, WALL_DEPTH, WALL_END_PIECE_PRESETS, WALL_LENGTH_PRESETS, WALL_WITH_OPENING_PRESETS, WALL_OPENING_PRESETS, WALL_HEIGHT, endPieceHandFromPresetId, type EndPieceHand, type WallOpeningPreset, type WallWithOpeningPreset} from './constants/presets'
+import { ALL_EDGES, DEFAULT_WINDOW_DEPTH_OFFSET, GROUND_MARGIN, WALL_DEPTH, WALL_END_PIECE_PRESETS, WALL_LENGTH_PRESETS, WALL_WITH_OPENING_PRESETS, WALL_OPENING_PRESETS, WALL_HEIGHT, WINDOW_SILL_Y, endPieceHandFromPresetId, type EndPieceHand, type WallOpeningPreset, type WallWithOpeningPreset} from './constants/presets'
 import {
   setGlassSkyReflectionColor,
   setGlassGroundReflectionColor,
@@ -180,6 +180,8 @@ import {
 } from './utils/archForms'
 import { scaleProfileSectionAxes, transformProfileSection, transformProfileSectionAnchored } from './utils/profilePaths'
 import {
+  corniceScaleFromHeightCm,
+  defaultCorniceProfileId,
   normalizeWallCornice,
   snapCorniceDepthCm,
   snapCorniceHeightCm,
@@ -403,6 +405,7 @@ import {
   insertBayAsWallSegment,
   bayPresetFittedToWallWidth,
   baySlideDeltaFromWorldMove,
+  bayStackWallIds,
   replaceWallWithBayPreset,
   slideBaySegmentAlong,
   swapBayPreset,
@@ -467,9 +470,11 @@ import { computeOpeningGuidesForRefs, computeOpeningDistanceLinesForRefs } from 
 import { panelCourseCount, visiblePanelRowRange } from './studio/panelLayout'
 import {
   DEFAULT_STUDIO_PANEL,
+  DEFAULT_CORNICE_HEIGHT_CM,
   DUPLICATE_GAP_CM,
   PLAN_CLOSE_GAP_CM,
   PLAN_GRID,
+  ROOF_CORNICE_HEIGHT_CM,
   STUDIO_DEFAULT_HEIGHT,
   STUDIO_MIN_SIZE,
   STUDIO_MASONRY,
@@ -1426,7 +1431,7 @@ function loadUiMode(): UiMode {
 }
 
 let uiMode: UiMode = loadUiMode()
-let libraryTab: LibraryTab = 'walls'
+let libraryTab: LibraryTab = 'windows'
 /** Bibliotheks-Wand, die nach Klick bei Wandauswahl links/rechts/oben gesetzt wird. */
 let armedLibraryWallPresetId: string | null = null
 /** Hover-Segment im Modus „Wandsegment herauslösen“ (Wände-Tab, Breite gewählt, nichts markiert). */
@@ -6061,10 +6066,12 @@ const moduleProfileFinishSelect = document.querySelector<HTMLSelectElement>('#mo
 const studioCorniceEnabled = document.querySelector<HTMLInputElement>('#studio-cornice-enabled')!
 const studioCorniceTop = document.querySelector<HTMLButtonElement>('#studio-cornice-top')!
 const studioCorniceBottom = document.querySelector<HTMLButtonElement>('#studio-cornice-bottom')!
+const studioCorniceSizePreset = document.querySelector<HTMLSelectElement>('#studio-cornice-size-preset')!
 const studioCorniceScale = document.querySelector<HTMLInputElement>('#studio-cornice-scale')!
 const wallCorniceEnabled = document.querySelector<HTMLInputElement>('#wall-cornice-enabled')!
 const wallCorniceTop = document.querySelector<HTMLButtonElement>('#wall-cornice-top')!
 const wallCorniceBottom = document.querySelector<HTMLButtonElement>('#wall-cornice-bottom')!
+const wallCorniceSizePreset = document.querySelector<HTMLSelectElement>('#wall-cornice-size-preset')!
 const wallCorniceScale = document.querySelector<HTMLInputElement>('#wall-cornice-scale')!
 const studioCorniceColorSwatches = document.querySelector<HTMLDivElement>('#studio-cornice-color-swatches')!
 const wallCorniceColorSwatches = document.querySelector<HTMLDivElement>('#wall-cornice-color-swatches')!
@@ -8010,7 +8017,8 @@ async function addOpeningPresetToSelection(
     const at = options?.at
       ? {
           x: options.at.x,
-          y: preset.type === 'door' ? 0 : (preset.y ?? options.at.y),
+          // Vertikal immer Standard: Tür 0, Fenster/Nische Preset bzw. 128 — nicht Klickhöhe.
+          y: preset.type === 'door' ? 0 : (preset.y ?? WINDOW_SILL_Y),
         }
       : undefined
     let opening = createOpening(preset.type, preset.width, preset.height, wall, at, {
@@ -9427,7 +9435,7 @@ async function addOpeningTemplateToSelection(
     const at = options?.at
       ? {
           x: options.at.x,
-          y: template.draft.type === 'door' ? 0 : (template.draft.y ?? options.at.y),
+          y: template.draft.type === 'door' ? 0 : (template.draft.y ?? WINDOW_SILL_Y),
         }
       : undefined
     let opening = createOpening(
@@ -11033,7 +11041,7 @@ function flushLiveGeometryPreview() {
   reapplyRollerShutterPlayback()
   // Während Wand-Greifer: Site-Ursprung nicht verschieben — sonst driftet grabFloor
   // (site-lokal) und die Wand wächst unkontrolliert.
-  if (!wallResizeDrag) syncSiteTransform()
+  if (!wallResizeDrag && !drag3dWallMove) syncSiteTransform()
   // Frustum an neue Wand-Ausdehnung anpassen — sonst fehlen Schatten an neuen Flügeln.
   applySunLighting({ live: true })
   updateWallLibraryGizmos()
@@ -14643,10 +14651,13 @@ function applyBayWindowOnWall(
   wall: Wall,
   mode: 'segment' | 'fit' | 'replace' | 'left' | 'right' | 'above',
   localX: number,
+  opts?: { singleFloor?: boolean },
 ) {
   if (!canEditActiveBuildingNow()) return
   const building = activeBuilding()
   const kind = bayPresetKind(preset)
+  // Explizit markierte Wand → nur diese Etage; ohne Auswahl → Etagen-Stapel.
+  const singleFloor = opts?.singleFloor ?? editor.selectedWallIds.length > 0
 
   // Erker: Segment in Vorlagenbreite (Default) oder an ganze Wandbreite anpassen.
   if (kind === 'bay' && (mode === 'segment' || mode === 'fit' || mode === 'replace')) {
@@ -14675,7 +14686,7 @@ function applyBayWindowOnWall(
       planStatus.textContent = `${preset.label}: braucht ${Math.round(mouth)} cm (Wand ${Math.round(wall.width)} cm) — oder „An Wandbreite“`
       return
     }
-    const inserted = insertBayAsWallSegment(state, wall.id, preset, localX)
+    const inserted = insertBayAsWallSegment(state, wall.id, preset, localX, { singleFloor })
     if (!inserted) {
       planStatus.textContent = 'Erker-Segment konnte hier nicht eingesetzt werden'
       return
@@ -14686,7 +14697,9 @@ function applyBayWindowOnWall(
       selectedEdges: [],
     })
     rebuildFloorPlanOverlay()
-    planStatus.textContent = `${preset.label} als Segment eingesetzt (${Math.round(mouth)} cm) — zum Verschieben Erker ziehen`
+    planStatus.textContent = singleFloor
+      ? `${preset.label} als Segment auf dieser Wand (${Math.round(mouth)} cm)`
+      : `${preset.label} als Segment auf allen Etagen (${Math.round(mouth)} cm)`
     return
   }
 
@@ -15846,6 +15859,8 @@ function applySelectionToolbarTabFilter(toolbar: HTMLElement | null) {
     let show: boolean
     if (section.dataset.settingsInlineAll !== undefined) {
       show = true
+    } else if (selectionToolbarTab === 'all') {
+      show = true
     } else {
       const id = section.dataset.settingsSection
       show = Boolean(id && selectionToolbarTab === id)
@@ -15885,8 +15900,8 @@ function syncSelectionToolbarTabs() {
   }
 
   const tabSections = collectSelectionTabSections(toolbar)
-  const orderedIds: string[] = []
-  const labels = new Map<string, string>()
+  const orderedIds: string[] = ['all']
+  const labels = new Map<string, string>([['all', 'Übersicht']])
   for (const section of tabSections) {
     const id = section.dataset.settingsSection!
     if (labels.has(id)) continue
@@ -15894,18 +15909,18 @@ function syncSelectionToolbarTabs() {
     orderedIds.push(id)
   }
 
-  if (orderedIds.length === 0) {
+  if (orderedIds.length <= 1 && tabSections.length === 0) {
     selectionToolbarTab = ''
     applySelectionToolbarTabFilter(toolbar)
     return
   }
 
-  // Sticky zuletzt genutzt, sonst erster Tab (Maße / …) — nie erzwungenes „Farben“.
+  // Nach Klick: Übersicht; sonst Sticky, falls noch gültig.
   if (!selectionToolbarTab || !labels.has(selectionToolbarTab)) {
     if (lastStickySelectionToolbarTab && labels.has(lastStickySelectionToolbarTab)) {
       selectionToolbarTab = lastStickySelectionToolbarTab
     } else {
-      selectionToolbarTab = orderedIds[0]!
+      selectionToolbarTab = 'all'
     }
   }
 
@@ -16905,16 +16920,10 @@ function openingPartToSettingsTab(part: OpeningPart): string | null {
   }
 }
 
-/** Teil-Objekt → eigener Tab; sonst Sticky/erster Tab (kein erzwungenes Farben). */
-function queueSelectionToolbarTab(preferredTab: string | null) {
+/** Bei jeder Auswahl: rechter Bereich startet auf „Übersicht“. */
+function queueSelectionToolbarTab(_preferredTab: string | null) {
   if (selectionToolbarTabLocked) return
-  if (preferredTab) {
-    // Nur für diese Markierung — Sticky bleibt der vom Nutzer gewählte Reiter.
-    pendingSelectionToolbarTab = preferredTab
-    return
-  }
-  // Ganz-Objekt: Sticky behalten, falls der Tab beim neuen Objekt existiert.
-  pendingSelectionToolbarTab = lastStickySelectionToolbarTab || null
+  pendingSelectionToolbarTab = 'all'
 }
 
 function selectWall(
@@ -17773,7 +17782,11 @@ for (const button of windowCasementButtons) {
 }
 
 windowTransomInput.addEventListener('change', () => {
-  commitGruenderzeitPatch({ transom: windowTransomInput.checked })
+  commitGruenderzeitPatch(
+    windowTransomInput.checked
+      ? { transom: true, transomRatio: 1 / 3 }
+      : { transom: false },
+  )
 })
 
 windowTransomRatioInput.addEventListener('input', () => {
@@ -19424,6 +19437,8 @@ let drag3dWallMove: {
   startClientY: number
   lastDgx: number
   lastDgz: number
+  /** Erker entlang der Fassade gegleitet (Reststücke gestreckt) → Commit mit Rebuild. */
+  baySlid?: boolean
 } | null = null
 let drag3dWallMoved = false
 
@@ -20260,23 +20275,19 @@ canvas.addEventListener('pointermove', (event) => {
       drag3dWallMove.lastDgx = dgx
       drag3dWallMove.lastDgz = dgz
       if (slid) {
-        const bayIds =
-          bayWallSelectionIds(slid.buildings.find((b) => b.id === slid.activeBuildingId)?.walls ?? [], seedId) ??
-          drag3dWallMove.seedWallIds
+        const slidWalls = slid.buildings.find((b) => b.id === slid.activeBuildingId)?.walls ?? []
+        const bayIds = bayStackWallIds(slidWalls, seedId) ?? drag3dWallMove.seedWallIds
         drag3dWallMove.lastWallIds = bayIds
-        previewMeshDrag(
-          slid,
-          {
-            ...editor,
-            selectedWallIds: bayIds,
-            selectedOpenings: [],
-          },
-          () => {
-            facade.applyLiveWallOffsets(drag3dWallMove!.startState, state, bayIds)
-          },
-        )
+        drag3dWallMove.baySlid = true
+        // Reststücke ändern ihre Länge → Geometrie-Rebuild nötig (kein reines Mesh-Translate,
+        // sonst bleiben die Nachbarwände alt und es entstehen Lücken).
+        previewLiveState(slid, {
+          ...editor,
+          selectedWallIds: bayIds,
+          selectedOpenings: [],
+        })
         updateWallMoveDockHighlight(bayIds)
-        planStatus.textContent = 'Erker entlang der Wand verschieben'
+        planStatus.textContent = 'Erker entlang der Wand verschieben (24-cm-Schritte)'
       }
       return
     }
@@ -20520,7 +20531,20 @@ canvas.addEventListener('pointerup', (event) => {
   }
 
   if (isSceneEditView() && drag3dWallMove) {
-    if (drag3dWallMoved) {
+    if (drag3dWallMoved && drag3dWallMove.baySlid) {
+      // Erker-Gleiten: `state` ist bereits der gegleitete Zustand. Für Undo-Snapshot und
+      // Rebuild-Diff (Reststücke!) den Startzustand als Vorzustand setzen.
+      const movedIds = [...drag3dWallMove.lastWallIds]
+      const slidState = state
+      state = drag3dWallMove.startState
+      commitState(slidState, {
+        ...editor,
+        selectedWallIds: movedIds,
+        selectedOpenings: [],
+      })
+      planStatus.textContent = 'Erker verschoben'
+      updateHistoryButtons()
+    } else if (drag3dWallMoved) {
       const movedIds = [...drag3dWallMove.lastWallIds]
       commitDragFromBase(
         wallMoveDragBase,
@@ -23633,11 +23657,68 @@ studioTrimBandAdd.addEventListener('click', () => {
 })
 
 studioCorniceEnabled.addEventListener('change', () => {
-  commitCornicePatch({ enabled: studioCorniceEnabled.checked })
+  if (studioCorniceEnabled.checked) {
+    enableCorniceWithDefaults()
+  } else {
+    commitCornicePatch({ enabled: false })
+  }
   refreshStudioPanelVisibility()
 })
 wallCorniceEnabled.addEventListener('change', () => {
-  commitCornicePatch({ enabled: wallCorniceEnabled.checked })
+  if (wallCorniceEnabled.checked) {
+    enableCorniceWithDefaults()
+  } else {
+    commitCornicePatch({ enabled: false })
+  }
+})
+
+/** Gesims an: erstes Bibliothek-Profil + Standardhöhe 32 cm (kein Legacy-Platzhalter). */
+function enableCorniceWithDefaults() {
+  const ids = corniceTargetWallIds()
+  if (ids.length === 0) return
+  const profileId = defaultCorniceProfileId()
+  const native = corniceNativeHeightCm(profileId)
+  const heightCm = DEFAULT_CORNICE_HEIGHT_CM
+  const scale = corniceScaleFromHeightCm(heightCm, native, STUDIO_MASONRY)
+  commitState(
+    updateWallCornice(state, ids, {
+      enabled: true,
+      edge: 'top',
+      profileId,
+      scale,
+    }),
+  )
+  syncCorniceSizePresetSelects(heightCm)
+}
+
+function syncCorniceSizePresetSelects(heightCm: number) {
+  const snapped = snapCorniceHeightCm(heightCm, STUDIO_MASONRY)
+  const value =
+    snapped === DEFAULT_CORNICE_HEIGHT_CM
+      ? '32'
+      : snapped === ROOF_CORNICE_HEIGHT_CM
+        ? '48'
+        : 'custom'
+  if (studioCorniceSizePreset) studioCorniceSizePreset.value = value
+  if (wallCorniceSizePreset) wallCorniceSizePreset.value = value
+}
+
+function applyCorniceSizePreset(raw: string) {
+  if (raw === 'custom') return
+  const heightCm = Number(raw)
+  if (!Number.isFinite(heightCm) || heightCm <= 0) return
+  studioCorniceScale.value = String(heightCm)
+  wallCorniceScale.value = String(heightCm)
+  commitCorniceScale(studioCorniceScale)
+  syncCorniceSizePresetSelects(heightCm)
+}
+
+studioCorniceSizePreset?.addEventListener('change', () => {
+  applyCorniceSizePreset(studioCorniceSizePreset.value)
+})
+wallCorniceSizePreset?.addEventListener('change', () => {
+  applyCorniceSizePreset(wallCorniceSizePreset.value)
+  if (studioCorniceSizePreset) studioCorniceSizePreset.value = wallCorniceSizePreset.value
 })
 
 studioCorniceTop.addEventListener('click', () => {
@@ -23678,7 +23759,7 @@ function cornicePanelStep(_wall?: Wall): number {
 }
 
 function syncCorniceHeightInputs(wall: Wall, cornice: WallCorniceConfig) {
-  const profileId = cornice.profileId ?? 'traufgesims70x150'
+  const profileId = cornice.profileId ?? defaultCorniceProfileId()
   const step = cornicePanelStep(wall)
   const native = corniceNativeHeightCm(profileId)
   const heightCm = snapCorniceHeightCm((cornice.scale ?? 1) * native, step)
@@ -23686,6 +23767,7 @@ function syncCorniceHeightInputs(wall: Wall, cornice: WallCorniceConfig) {
   wallCorniceScale.step = String(step)
   studioCorniceScale.value = String(heightCm)
   wallCorniceScale.value = String(heightCm)
+  syncCorniceSizePresetSelects(heightCm)
   const nativeFwd = corniceNativeForwardCm(profileId)
   const depthScale = cornice.sectionScaleForward ?? cornice.scale ?? 1
   const depthCm = snapCorniceDepthCm(depthScale * nativeFwd)
@@ -23700,6 +23782,7 @@ function commitCorniceScale(input: HTMLInputElement) {
   input.value = String(heightCm)
   studioCorniceScale.value = String(heightCm)
   wallCorniceScale.value = String(heightCm)
+  syncCorniceSizePresetSelects(heightCm)
   const ids = corniceTargetWallIds()
   if (ids.length === 0) return
   commitState(
@@ -24361,15 +24444,22 @@ initOpeningTemplateUi()
 initOpeningLibrary()
 rebuildFloorPlanOverlay()
 
+viewCompass.addEventListener('pointerdown', (event) => {
+  // Nicht an Canvas/OrbitControls durchreichen.
+  event.preventDefault()
+  event.stopPropagation()
+})
 viewCompass.querySelectorAll<SVGTextElement>('.view-compass-cardinal').forEach((el) => {
   const activate = () => setCompassYaw(Number(el.dataset.yaw))
-  el.addEventListener('click', (event) => {
+  el.addEventListener('pointerdown', (event) => {
     event.preventDefault()
     event.stopPropagation()
     activate()
   })
-  el.addEventListener('mousedown', (event) => {
+  el.addEventListener('click', (event) => {
     event.preventDefault()
+    event.stopPropagation()
+    activate()
   })
   el.addEventListener('keydown', (event) => {
     if (event.key === 'Enter' || event.key === ' ') {
@@ -24390,17 +24480,36 @@ function yawFromCompassPointer(event: MouseEvent): number | null {
   const local = pt.matrixTransform(ctm.inverse())
   return yawFromCompassSvgPoint(local.x, local.y)
 }
-viewCompassSvg.addEventListener('click', (event) => {
+function activateCompassFromPointer(event: MouseEvent) {
   const target = event.target as Element | null
   if (target?.classList.contains('view-compass-cardinal')) return
-  event.preventDefault()
-  event.stopPropagation()
   const yaw = yawFromCompassPointer(event)
   if (yaw === null) return
   setCompassYaw(yaw)
-})
-viewCompassSvg.addEventListener('mousedown', (event) => {
+}
+viewCompassSvg.addEventListener('pointerdown', (event) => {
   event.preventDefault()
+  event.stopPropagation()
+  activateCompassFromPointer(event)
+})
+viewCompassSvg.addEventListener('click', (event) => {
+  event.preventDefault()
+  event.stopPropagation()
+  activateCompassFromPointer(event)
+})
+viewCompassLabel.addEventListener('pointerdown', (event) => {
+  event.preventDefault()
+  event.stopPropagation()
+  // Label: nächste 90°-Richtung (N→O→S→W).
+  const order = [0, 270, 180, 90]
+  const cur =
+    currentElevation.kind === 'yaw' ? currentElevation.yaw : order[0]!
+  const idx = order.findIndex((y) => y === snapYawTo45(cur))
+  setCompassYaw(order[(idx + 1) % order.length]!)
+})
+viewCompassLabel.addEventListener('click', (event) => {
+  event.preventDefault()
+  event.stopPropagation()
 })
 
 editScopeElement.addEventListener('click', () => setEditScope('element'))

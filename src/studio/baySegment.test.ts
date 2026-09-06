@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   bayPresetFittedToWallWidth,
+  bayStackWallIds,
   flattenBayToFlatWall,
   insertBayAsWallSegment,
   replaceWallWithBayPreset,
@@ -9,7 +10,7 @@ import {
   swapBayPreset,
 } from './baySegment'
 import { BAY_WINDOW_PRESETS, bayMouthWidthCm } from './bayWindow'
-import { createStudioWall, wallStartPoint } from './walls'
+import { createStudioWall, wallEndPoint, wallStartPoint } from './walls'
 import { WALL_DEPTH } from '../constants/presets'
 import { emptyNeighbors, type FacadeState, type Wall } from '../types/facade'
 import { createId } from '../utils/id'
@@ -38,6 +39,35 @@ function stateWithWall(wall: Wall): FacadeState {
 }
 
 describe('baySegment', () => {
+  it('insertBayAsWallSegment singleFloor teilt nur die Seed-Etage', () => {
+    const preset = bayPreset(192, 96)
+    const base: Wall = {
+      ...createStudioWall(0, 0),
+      id: createId(),
+      width: 576,
+      height: 448,
+      depth: WALL_DEPTH,
+      originX: 0,
+      originZ: 0,
+      x: 0,
+      yawDeg: 0,
+      panelFlip: true,
+      planLinked: true,
+    }
+    const upper: Wall = { ...base, id: createId(), y: 448 }
+    const state = stateWithWall(base)
+    state.buildings[0]!.walls.push(upper)
+    state.buildings[0]!.wallHeight = 448
+
+    const onlyLower = insertBayAsWallSegment(state, base.id, preset, 288, { singleFloor: true })!
+    const walls = onlyLower.state.buildings[0]!.walls
+    expect(walls.filter((w) => w.bayWindow).length).toBe(1)
+    expect(walls.some((w) => w.id === upper.id && !w.bayRole)).toBe(true)
+
+    const both = insertBayAsWallSegment(state, base.id, preset, 288)!
+    expect(both.state.buildings[0]!.walls.filter((w) => w.bayWindow).length).toBe(2)
+  })
+
   it('bayPresetFittedToWallWidth dehnt 90°-Front auf die Wand', () => {
     const preset = bayPreset(192, 96)
     const fitted = bayPresetFittedToWallWidth(preset, 384)!
@@ -134,6 +164,108 @@ describe('baySegment', () => {
     expect(rightAfter.width).toBeCloseTo(rightBefore.width - 48, 5)
     const frontStartAfter = wallStartPoint(frontAfter)
     expect(frontStartAfter.x - frontStart.x).toBeCloseTo(48, 5)
+  })
+
+  it('slideBaySegmentAlong rastet auf 24-cm-Schritte', () => {
+    const preset = bayPreset(192, 96)
+    const wall: Wall = {
+      ...createStudioWall(0, 0),
+      id: createId(),
+      width: 576,
+      height: 512,
+      depth: WALL_DEPTH,
+      originX: 0,
+      originZ: 0,
+      x: 0,
+      yawDeg: 0,
+      panelFlip: true,
+      planLinked: true,
+    }
+    const inserted = insertBayAsWallSegment(stateWithWall(wall), wall.id, preset, 288)!
+    const host = inserted.state.buildings[0]!.walls.find((w) => w.bayWindow)!
+    const frontBefore = inserted.state.buildings[0]!.walls.find((w) => w.bayRole === 'front')!
+    const x0 = wallStartPoint(frontBefore).x
+
+    // 30 → 24, 8 → 0 (kein Schritt), 40 → 48
+    const s30 = slideBaySegmentAlong(inserted.state, host.id, 30)!
+    expect(wallStartPoint(s30.buildings[0]!.walls.find((w) => w.id === frontBefore.id)!).x - x0).toBeCloseTo(24, 5)
+    const s8 = slideBaySegmentAlong(inserted.state, host.id, 8)!
+    expect(wallStartPoint(s8.buildings[0]!.walls.find((w) => w.id === frontBefore.id)!).x - x0).toBeCloseTo(0, 5)
+    const s40 = slideBaySegmentAlong(inserted.state, host.id, 40)!
+    expect(wallStartPoint(s40.buildings[0]!.walls.find((w) => w.id === frontBefore.id)!).x - x0).toBeCloseTo(48, 5)
+  })
+
+  it('slideBaySegmentAlong lässt keine Lücken: Reststücke enden am Erker-Mund', () => {
+    const preset = bayPreset(192, 96)
+    const wall: Wall = {
+      ...createStudioWall(0, 0),
+      id: createId(),
+      width: 576,
+      height: 512,
+      depth: WALL_DEPTH,
+      originX: 0,
+      originZ: 0,
+      x: 0,
+      yawDeg: 0,
+      panelFlip: true,
+      planLinked: true,
+    }
+    const inserted = insertBayAsWallSegment(stateWithWall(wall), wall.id, preset, 288)!
+    const host = inserted.state.buildings[0]!.walls.find((w) => w.bayWindow)!
+    const slid = slideBaySegmentAlong(inserted.state, host.id, -72)!
+    const walls = slid.buildings[0]!.walls
+    const sides = walls.filter((w) => w.bayRole === 'side')
+    const remnants = walls.filter((w) => !w.bayRole && !w.bayWindow)
+    expect(sides.length).toBe(2)
+    expect(remnants.length).toBe(2)
+    const total = remnants.reduce((s, w) => s + w.width, 0)
+    expect(total + bayMouthWidthCm(preset)).toBeCloseTo(576, 0)
+    // Jeder Mundpunkt der Schenkel trifft ein Rest-Ende
+    const attachPts = [wallStartPoint(sides[0]!), wallEndPoint(sides[1]!)]
+    for (const pt of attachPts) {
+      const hit = remnants.some((r) => {
+        const s = wallStartPoint(r)
+        const e = wallEndPoint(r)
+        return Math.hypot(s.x - pt.x, s.z - pt.z) < 1 || Math.hypot(e.x - pt.x, e.z - pt.z) < 1
+      })
+      expect(hit).toBe(true)
+    }
+  })
+
+  it('slideBaySegmentAlong nimmt Erker anderer Etagen im Stapel mit', () => {
+    const preset = bayPreset(192, 96)
+    const base: Wall = {
+      ...createStudioWall(0, 0),
+      id: createId(),
+      width: 576,
+      height: 512,
+      depth: WALL_DEPTH,
+      originX: 0,
+      originZ: 0,
+      x: 0,
+      yawDeg: 0,
+      panelFlip: true,
+      planLinked: true,
+    }
+    const upper: Wall = { ...base, id: createId(), y: 512 }
+    const state = stateWithWall(base)
+    state.buildings[0]!.walls.push(upper)
+    const inserted = insertBayAsWallSegment(state, base.id, preset, 288)!
+    const walls = inserted.state.buildings[0]!.walls
+    const hosts = walls.filter((w) => w.bayWindow)
+    expect(hosts.length).toBe(2)
+    const lowerHost = hosts.find((h) => Math.abs(h.y ?? 0) < 1)!
+    const fronts = walls.filter((w) => w.bayRole === 'front')
+    expect(fronts.length).toBe(2)
+    const xBefore = fronts.map((f) => wallStartPoint(f).x)
+
+    const slid = slideBaySegmentAlong(inserted.state, lowerHost.id, 48)!
+    const after = slid.buildings[0]!.walls
+    fronts.forEach((f, i) => {
+      const moved = after.find((w) => w.id === f.id)!
+      expect(wallStartPoint(moved).x - xBefore[i]!).toBeCloseTo(48, 5)
+    })
+    expect(bayStackWallIds(after, lowerHost.id)?.length).toBe(6)
   })
 
   it('flattenBayToFlatWall entfernt Erker und verschmilzt Reststücke', () => {

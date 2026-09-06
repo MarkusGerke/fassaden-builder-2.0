@@ -1810,7 +1810,7 @@ button:hover {
 
 .view-compass {
   position: absolute;
-  z-index: 24;
+  z-index: 40;
   left: 12px;
   bottom: 12px;
   display: flex;
@@ -1824,6 +1824,7 @@ button:hover {
   pointer-events: auto;
   user-select: none;
   -webkit-user-select: none;
+  cursor: pointer;
 }
 
 .view-compass svg {
@@ -1865,6 +1866,10 @@ button:hover {
   pointer-events: auto;
   user-select: none;
   -webkit-user-select: none;
+  /* Größere Trefferfläche um die Buchstaben */
+  paint-order: stroke fill;
+  stroke: transparent;
+  stroke-width: 14;
 }
 
 .view-compass-cardinal:hover,
@@ -1885,6 +1890,8 @@ button:hover {
 }
 
 #view-compass-label {
+  cursor: pointer;
+  pointer-events: auto;
   font-size: 0.8rem;
   font-weight: 700;
   letter-spacing: 0.04em;

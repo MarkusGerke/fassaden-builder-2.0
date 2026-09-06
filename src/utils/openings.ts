@@ -27,7 +27,7 @@ import {
 import { createId } from './id'
 import { DEFAULT_NICHE_DEPTH_CM } from './openingGeometry'
 import { GRID_SIZE, WALL_HEIGHT, WALL_DEPTH, WINDOW_SILL_Y, WINDOW_TRIM_DEFAULT_OFFSET_FORWARD } from '../constants/presets'
-import { DUPLICATE_GAP_CM, STUDIO_MASONRY } from '../studio/constants'
+import { DUPLICATE_GAP_CM, DUPLICATE_OPENING_GAP_CM, STUDIO_MASONRY } from '../studio/constants'
 import { viewerSideToAlongSign } from '../studio/walls'
 import { defaultOpeningStairs, normalizeOpeningStairs, stairTopY } from '../studio/stairs'
 import { normalizeOpeningPediment } from '../studio/pediment'
@@ -726,18 +726,27 @@ export function duplicateOpenings(
       const nextId = createId()
       const snappedWidth = snapToGrid(opening.width, grid)
       const wallWithAdditions = { ...wall, openings: [...wall.openings, ...additions] }
-      const gap = snappedWidth + DUPLICATE_GAP_CM
 
       let duplicate: Opening | null = null
       let issue: OpeningInsertIssue | null = { kind: 'invalid', message: 'pending' }
 
-      for (const side of sideOrder) {
-        const vr = opts?.viewerRight ?? { x: -1, z: 0 }
-        const sign = viewerSideToAlongSign(wall, side, vr.x, vr.z)
-        const x = sign > 0 ? opening.x + gap : opening.x - gap
-        duplicate = clampOpeningToWall({ ...opening, id: nextId, x }, wall, grid)
-        issue = assessOpeningInsert(wallWithAdditions, duplicate)
-        if (!issue) break
+      // Zuerst 96 cm Kantenabstand, dann schrittweise kleiner (bis Raster), wenn kein Platz.
+      const gapCandidates: number[] = []
+      for (let g = DUPLICATE_OPENING_GAP_CM; g >= STUDIO_MASONRY; g -= STUDIO_MASONRY) {
+        gapCandidates.push(g)
+      }
+      if (!gapCandidates.includes(DUPLICATE_GAP_CM)) gapCandidates.push(DUPLICATE_GAP_CM)
+
+      outer: for (const edgeGap of gapCandidates) {
+        const gap = snappedWidth + edgeGap
+        for (const side of sideOrder) {
+          const vr = opts?.viewerRight ?? { x: -1, z: 0 }
+          const sign = viewerSideToAlongSign(wall, side, vr.x, vr.z)
+          const x = sign > 0 ? opening.x + gap : opening.x - gap
+          duplicate = clampOpeningToWall({ ...opening, id: nextId, x }, wall, grid)
+          issue = assessOpeningInsert(wallWithAdditions, duplicate)
+          if (!issue) break outer
+        }
       }
 
       // Fallback: findOpeningSlot
