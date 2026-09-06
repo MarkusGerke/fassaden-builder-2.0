@@ -15,7 +15,7 @@ Nutzer-Feedback (2026-09-06): **Schatten so wie jetzt sind optimal** — Ergänz
 - `PCSS_PENUMBRA_SCALE` **8**, `PCSS_PLANE_SLOPE_MAX` **6**
 - Render Shadow-Map **8192**, `SHADOW_GROUND_MAX_LENGTH` **2400**
 - Freiraum-Cap: `castShadow = false`, `skipFacadeShade`, Empfang an
-- Erker-Soffit: `castShadow = true` (lichtdicht)
+- Erker-Soffit: `castShadow = true`, Layer Außen+Innen — auch ohne Punktlicht-Okklusion (`applyIndoorShadowCasting` darf den Layer nicht auf Innen allein setzen, v2.0.263)
 - `dirLight.shadow.intensity` aus Schatten-Dunkelheit; Default Density **0,70**
 
 ## Verboten ohne Nutzerauftrag
