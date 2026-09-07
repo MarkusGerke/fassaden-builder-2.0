@@ -189,7 +189,8 @@ export function editOpeningTargets(
         refs.push({ wallId: wall.id, openingId: opening.id })
       }
     }
-    return filterOpeningRefsByBasementParity(state, refs, editor)
+    // Fassade = alle Öffnungen (inkl. Keller + Türen); Parität nur bei Etage/Typ/Auswahl.
+    return refs
   }
   if (scope === 'floor') {
     const floors = selectedFloorIndices(state, editor)
@@ -286,7 +287,7 @@ export function editArchOpeningTargets(
     )) {
       pushDoorWindow(wall, refs)
     }
-    return filterOpeningRefsByBasementParity(state, refs, editor)
+    return refs
   }
   if (scope === 'floor') {
     const floors = selectedFloorIndices(state, editor)

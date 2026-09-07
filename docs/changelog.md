@@ -2,6 +2,62 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Einstellungs-Fächer oben und unten (2026-09-07) — v2.0.271
+
+**UI:** Symptom — Sticky oben passte fast, aber noch nicht erreichte Register stapelten nicht unten (und CSS-`sticky` mit `--stick-top`/`--stick-bottom` zieht Köpfe unter dem Fold nicht in die Spalte). Fix: `parkSettingsSectionHeads` clamp’t jeden Kopf per `translateY` in `[index·h … viewH − (n−index)·h]` — oben Stapel der gescrollten, unten der ausstehenden; Inhalte bleiben kompakt (kein per-Sektion-`min-height`). Kein `position:fixed` (v2.0.269). Dateien: `main.ts`, `style.css`. Docs: [ux.md](ux.md).
+
+### Fächer-Tabs, Schatten ohne Raster (2026-09-07) — v2.0.270
+
+**UI (Fehlersuche):** Symptom — rechte Spalte war in Inhalt + untere Tab-Leiste geteilt; Tabs wirkten wie eine zweite Liste statt wie ein Fächer. Erster Versuch: Köpfe mit steigendem `--stick-top` (Stapel) + `min-height` pro Abschnitt → aktiver Kopf hing mit Abstand unter den vorigen Köpfen und kurze Abschnitte hinterließen riesigen Weißraum (verworfen). Fix: `.settings-tab-rail-bottom` entfernt; eine Scroll-Spalte (`#selection-toolbar-panels`); **alle** Köpfe `sticky; top: 0` — der aktive klebt ohne Abstand oben, bis sein Abschnitt durch ist, dann schiebt der nächste Kopf ihn heraus; keine `min-height`, kein `margin-top` zwischen Sektionen; aktiver Kopf (`.settings-section-head-active`) orange markiert (Scroll-Listener). Klick auf Kopf scrollt zur Sektion.
+
+**Schatten / Fehlersuche:** Symptom — Rasterungen/graue Flecken auf Steinen, Glas, Profilen und Sockel, vor allem beim Rauszoomen. (1) v2.0.269: `softDrive` + Umbra-Early-Out ohne `filterRadius <= searchRadius` → Poisson-Korn; zurückgenommen (Sollzustand v2.0.260). (2) Distanz-Ursache (Runtime-Screenshots, Render vs. Vorschau-Vergleich): Receiver-Plane-Bias aus `dFdx/dFdy` — deckt ein Pixel mehrere Shadow-Texel ab, laufen die Ableitungen über Stein-/Fugen-/Profilkanten, die „Ebene“ ist Unsinn (Slope-Clamp ±6) und Blocker-Suche/Filter färben ganze Steine halbgrau. Fix in `pcssShadows.ts`: Steigung × `clamp(texelUv / footprint)` (nah unverändert, fern begrenzt) und Such-/Filterradius ≥ `footprint × PCSS_FOOTPRINT_SCALE` (0,5 — Filter mindestens pixelgroß, Distanz-AA). Weichheit/Bias/Kontakt-Blend-Defaults unverändert. Softness-Normalize (v2.0.268) bleibt.
+
+**Dateien:** `main.ts`, `style.css`, `pcssShadows.ts`. Docs: [ux.md](ux.md), [shadows.md](shadows.md).
+
+### Sticky-Tabs sichtbar, Farb-Overlay, Schatten-Umbra (2026-09-07) — v2.0.269
+
+**Tabs (Fehlersuche):** Symptom — keine Register in der rechten Leiste. Ursache: `position: fixed` auf Sektionsköpfen mit Viewport-`left` landete oft weit rechts außerhalb der Spalte (Köpfe unsichtbar, Inhalt ohne Tab-Zeile). Fix: wieder CSS-`sticky` mit `--stick-top`/`--stick-bottom` und `min-height` der ersten Sektion für unteren Stapel; Fixed-Styles entfernt.
+
+**Farbe:** `hideFinishSelectHost` hatte fälschlich ganze `.toolbar-group`s (z. B. `#window-sill-section`) versteckt bzw. Select blieb sichtbar. Jetzt nur Select + „Oberfläche“-Label. RGB/Finish liegen in `.color-picker-overlay` unter dem Swatch.
+
+**Schatten:** Symptom — Weichheit trifft nur Penumbra; Überlagerung hellt auf. Versuche/Fix: Early-Out volle Umbra ohne `filterRadius <= searchRadius` (Soft-Filter hellte Kernschatten auf); Kontakt-Blend skaliert mit `pcssLightSizeUv` zurück (`softDrive`), damit der Weichheit-Slider auch Kontaktregionen erfasst. Kontakt-Blend-Pfad und `PCSS_CONTACT_TEXELS_*` unverändert.
+
+**Dateien:** `main.ts`, `style.css`, `pcssShadows.ts`. Docs: [ux.md](ux.md), [shadows.md](shadows.md).
+
+### Sticky-Köpfe ohne Tab-Leiste, Schatten-Weichheit (2026-09-07) — v2.0.268
+
+**UI:** `#selection-right-tabs` und `#scene-toolbar-tabs` entfernt. Navigation nur über `.settings-section-head` — volle Spaltenbreite; JS-Parking (`parkSettingsSectionHeads`) stapelt Köpfe sticky am oberen bzw. unteren Rand der Scroll-Spalte (CSS-`sticky` allein zieht noch nicht erreichte Köpfe nicht nach oben). Klick auf Kopf scrollt zur Sektion.
+
+**Look / Fehlersuche:** Symptom „Geflackere“ und düstere Fassade. Persistierte `shadowSoftness: 8` (Slider-Maximum) trotz Sonnenhöhe ~49° (erwartet ~2) → sehr großer PCSS-Radius, Rauschen beim Orbit. Intensität war solar-gekoppelt niedrig (11:00 → 2,4). Fix: `normalizeSunSettings` korrigiert Soft≥7,5 wenn elevSoft&lt;4; Env-Bind nutzt gespeicherte `baseEnvMapIntensity`. Nicht geändert: PCSS-Kontakt-Blend / Density-Defaults (Sollzustand).
+
+**Dateien:** `index.html`, `src/main.ts`, `src/style.css`, `src/utils/sunLighting.ts`, `src/utils/threeColors.ts`. Docs: [ux.md](ux.md), [shadows.md](shadows.md).
+
+### Rechte Leiste, Schrift, Sticky-Register (2026-09-07) — v2.0.267
+
+**Regression:** `#lighting-accordion` hing in `#selection-toolbar` (fehlendes `</div>` nach `#studio-panel-options`) — bei ausgeblendeter Auswahl war die ganze rechte Spalte leer. Fix in `index.html`.
+
+**Schrift:** Bibliothek markiert die aktive Font bei Label-Fokus; Klick → `selectLabelFont` statt `placeLabelFromLibrary`. Auswahl: kein solides Orange mehr auf dem Glyph (Textur bleibt), Kontur-Overlay nur für `selectedLabelId`.
+
+**Register:** horizontal oben in der Leiste; alle Sektionen im Scroll; Sticky-Köpfe mit `--stick-top` / `--stick-bottom`.
+
+### Fassaden-Scope, Oberflächen-Mix, Farb-Overlay (2026-09-07) — v2.0.266
+
+**Scope Fassade:** `editOpeningTargets` / `editArchOpeningTargets` wenden `filterOpeningRefsByBasementParity` bei `scope === 'facade'` nicht mehr an — Kellerfenster und Türen gehören zur Fassade. Etage/Typ/Auswahl behalten Parität.
+
+**Oberfläche:** `SurfaceFinish` ist Mix `{ matte, glossy, metal }` 0–100; Legacy-Strings beim Hydrate/Normalize. `applySurfaceFinish` lerpt Presets; `applyRenderExteriorSurfaceLook` cappt Metalness finish-bewusst (Metall nicht mehr auf 0,06 geklemmt).
+
+**Farb-UI:** HEX neben Swatch; Overlay RGB + drei Finish-Slider; schließen nur Außenklick. Finish-Selects bleiben (`hidden`).
+
+**Dateien:** `editScope.ts`, `surfaceFinish.ts`, `threeColors.ts`, `hydrate.ts`, Normalizer, `main.ts`, `style.css`. Docs: [ux.md](ux.md), [architecture.md](architecture.md), [migration.md](migration.md).
+
+### Toolbar-Aufräumen (2026-09-07) — v2.0.265
+
+**Entfernt (explizit):** Studio-Gesims Querschnitt/Orientierung; Reiter **Ecken** (End-Boss-UI, Datenfelder bleiben); Öffnungs-**Fenstermodell**-Dropdown (Wechsel weiter über Bibliothek); Öffnungs-Pfeile ←→↑↓; Profil-**Querschnitt**/Orientierung an der Öffnung; Wandbreite **Links ± / Rechts ±** (ersetzt durch −/Zahl/+ mit Richtung „nach links/rechts“).
+
+**Angepasst:** Schrift-Reiter nur bei vorhandener Schrift bzw. Fokus; Stein-Kontrast als −/Zahl/+ mit mehr Abstand; Holzmaße und Scharnier als eingeklappte `<details class="toolbar-accordion">`.
+
+**Dateien:** `index.html`, `main.ts`, `style.css`. Docs: [ux.md](ux.md), [fonts.md](fonts.md), [wall-decor.md](wall-decor.md).
+
 ### Erker-Mundblende gegen helle Flecken unter dem Erker (2026-09-06) — v2.0.264
 
 **Symptom:** Nach v2.0.263 „besser, aber immer noch“: zwei weiche helle Flecken direkt unter der Erker-Untersicht (einer je Frontfenster), nach unten auslaufend.

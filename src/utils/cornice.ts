@@ -3,6 +3,7 @@ import { cloneWall } from '../types/facade'
 import { mapAllWalls } from './buildings'
 import { canonicalProfileId } from '../profiles/registry'
 import { DEFAULT_CORNICE_PROFILE_ID } from '../profiles/windowTrim'
+import { optionalSurfaceFinish } from './surfaceFinish'
 
 export const DEFAULT_WALL_CORNICE: Required<Omit<WallCorniceConfig, 'color' | 'finish'>> & {
   color?: string
@@ -71,10 +72,7 @@ export function normalizeWallCornice(raw?: WallCorniceConfig): WallCorniceConfig
     scale: clampCorniceScale(raw?.scale ?? DEFAULT_WALL_CORNICE.scale),
     profileId: canonicalProfileId(raw?.profileId || DEFAULT_WALL_CORNICE.profileId),
     color: raw?.color,
-    finish:
-      raw?.finish === 'glossy' || raw?.finish === 'metal' || raw?.finish === 'matte'
-        ? raw.finish
-        : undefined,
+    finish: optionalSurfaceFinish(raw?.finish),
     rotationDeg: clampRotationDeg(raw?.rotationDeg ?? 0),
     flipOutward: Boolean(raw?.flipOutward),
     flipForward: Boolean(raw?.flipForward),

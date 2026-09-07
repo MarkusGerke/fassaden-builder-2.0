@@ -5043,20 +5043,17 @@ export class FacadeController {
       const meshPart = mesh.userData.wallPart as string | undefined
       const meshLabelId = mesh.userData.labelId as string | undefined
       const base = (mesh.userData.originalMaterial as THREE.Material | undefined) ?? this.material
-      const labelKeepTexture =
-        meshPart === 'label' &&
-        (wallPart !== 'label' ||
-          (Boolean(this.editor.selectedLabelId) && meshLabelId !== this.editor.selectedLabelId))
+      // Schrift: Textur bleibt sichtbar — Auswahl nur über Kontur-Overlay, nie solides Orange.
+      if (meshPart === 'label') {
+        mesh.material = base
+        continue
+      }
       const selected =
-        !labelKeepTexture &&
         this.editor.selectedWallIds.includes(wallId ?? '') &&
         this.editor.selectedOpenings.length === 0 &&
         (wallPart === 'group' ||
           wallPart === meshPart ||
-          (wallPart === 'cladding' && meshPart === 'cladding')) &&
-        (meshPart !== 'label' ||
-          !this.editor.selectedLabelId ||
-          meshLabelId === this.editor.selectedLabelId)
+          (wallPart === 'cladding' && meshPart === 'cladding'))
       mesh.material = !this.suppressSelectionHighlight && selected ? this.selectedMaterial : base
     }
 
@@ -5228,6 +5225,28 @@ export class FacadeController {
       const localX = (left + right) / 2 - wall.width / 2
       const localY = (bottom + top) / 2 - wall.height / 2
       addOverlay(wall, right - left, top - bottom, localX, localY, 4)
+    }
+
+    // Schrift: orangene Kontur der gewählten Instanz (Textur bleibt).
+    if (
+      wallPart === 'label' &&
+      this.editor.selectedLabelId &&
+      this.editor.selectedOpenings.length === 0
+    ) {
+      for (const mesh of this.wallLabelMeshes) {
+        if (mesh.userData.labelId !== this.editor.selectedLabelId) continue
+        if (!this.editor.selectedWallIds.includes(mesh.userData.wallId as string)) continue
+        const edgesGeo = new THREE.EdgesGeometry(mesh.geometry)
+        const lines = isLine
+          ? this.createFatLineSegments(edgesGeo)
+          : new THREE.LineSegments(edgesGeo, overlayMat)
+        lines.position.copy(mesh.position)
+        lines.rotation.copy(mesh.rotation)
+        lines.scale.copy(mesh.scale)
+        mesh.updateWorldMatrix(true, false)
+        lines.renderOrder = 40
+        this.selectionGroup.add(lines)
+      }
     }
 
     const selCeiling = this.editor.selectedCeiling

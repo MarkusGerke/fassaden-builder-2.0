@@ -12,6 +12,13 @@ import {
 } from './threeColors'
 
 describe('render surface looks', () => {
+  it('lässt Metall-Finish im Render-Look hohe Metalness behalten', () => {
+    const exterior = new THREE.MeshStandardMaterial()
+    applySurfaceFinish(exterior, 'metal')
+    applyRenderExteriorSurfaceLook(exterior)
+    expect(exterior.metalness).toBeGreaterThan(0.5)
+  })
+
   it('markiert Außenmaterial und senkt Rauheit', () => {
     const mat = new THREE.MeshStandardMaterial({ roughness: 0.92 })
     applyRenderExteriorSurfaceLook(mat)

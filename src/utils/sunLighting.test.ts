@@ -5,6 +5,7 @@ import {
   expandBoxByGroundShadow,
   formatTimeOfDay,
   intensityFromElevation,
+  normalizeSunSettings,
   shadowMapSizeForPresentation,
   shadowMapSizeForSiteSpan,
   SHADOW_MAP_SIZE,
@@ -113,6 +114,28 @@ describe('syncSunSettingsFromSolar', () => {
     expect(solar.intensity).toBe(intensityFromElevation(solar.elevationRad))
     expect(solar.shadowSoftness).toBe(shadowSoftnessFromElevation(solar.elevationRad))
     expect(solar.elevationRad).toBeGreaterThan(0.2)
+  })
+})
+
+describe('normalizeSunSettings', () => {
+  it('korrigiert Weichheit am Maximum bei hoher Sonne (v2.0.268)', () => {
+    const fixed = normalizeSunSettings({
+      ...DEFAULT_SUN_SETTINGS,
+      elevationRad: 0.86,
+      shadowSoftness: 8,
+      intensity: 2.4,
+    })
+    expect(fixed.shadowSoftness).toBeCloseTo(shadowSoftnessFromElevation(0.86), 5)
+    expect(fixed.shadowSoftness).toBeLessThan(4)
+  })
+
+  it('lässt hohe Weichheit bei tiefer Sonne unangetastet', () => {
+    const kept = normalizeSunSettings({
+      ...DEFAULT_SUN_SETTINGS,
+      elevationRad: 0.05,
+      shadowSoftness: 8,
+    })
+    expect(kept.shadowSoftness).toBe(8)
   })
 })
 

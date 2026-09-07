@@ -110,7 +110,7 @@ Dateien: `src/studio/basementWindow.ts`, FacadeController / SvgView / main / `in
 
 ## Oberflächen-Finish
 
-`SurfaceFinish`: stumpf / glänzend / metallisch an Rahmen, Trim, Bänken, Verdachung, Treppe, … — Mapping und UI-IDs in [ux.md](ux.md) (Abschnitt Farben / Finish). Glas bleibt Tint/physisch.
+`SurfaceFinish`: Mix `{ matte, glossy, metal }` 0–100 % an Rahmen, Trim, Bänken, Verdachung, Treppe, … — Mapping und UI in [ux.md](ux.md) (Abschnitt Farben / Finish). Glas bleibt Tint/physisch.
 
 ## Rahmenprofil-Maße
 

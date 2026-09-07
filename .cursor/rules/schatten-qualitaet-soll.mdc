@@ -18,6 +18,7 @@ Nutzer-Feedback (2026-09-06): **Schatten so wie jetzt sind optimal** — Ergänz
 - Erker-Soffit: `castShadow = true`, Layer Außen+Innen — auch ohne Punktlicht-Okklusion (`applyIndoorShadowCasting` darf den Layer nicht auf Innen allein setzen, v2.0.263)
 - Erker-Mundblende `bayMouthSunOccluder` (v2.0.264): unsichtbar, volle Geschosshöhe, nur Layer Außen — schließt die Glas-„Löcher“ der Sonnen-Map hinter dem Erker. Nicht auf Brüstungshöhe kürzen (78 cm reichten nicht), nicht durch Shader-Lochfilter ersetzen (Look-Änderung, verworfen)
 - `dirLight.shadow.intensity` aus Schatten-Dunkelheit; Default Density **0,70**
+- Distanz-AA (v2.0.270): Such-/Filterradius ≥ Pixel-Footprint × `PCSS_FOOTPRINT_SCALE` (0,5) und Receiver-Plane-Steigung × `clamp(texelUv/footprint)` — nah unverändert, fern keine grauen Steine/punktierten Fugen. Nicht entfernen; `softDrive` (v2.0.269) nicht wieder einbauen
 
 ## Verboten ohne Nutzerauftrag
 

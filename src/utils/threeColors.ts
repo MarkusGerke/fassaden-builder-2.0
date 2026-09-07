@@ -7,7 +7,7 @@ import {
   resolveGlassConfig,
   type OpeningGlassConfig,
 } from './glassConfig'
-import { surfaceFinishParams, normalizeSurfaceFinish } from './surfaceFinish'
+import { surfaceFinishParams, normalizeSurfaceFinish, surfaceFinishUsesEnv, surfaceFinishWeights, type SurfaceFinishPreset } from './surfaceFinish'
 
 function isGlassLike(material: THREE.Material): boolean {
   const name = material.name.toLowerCase()
@@ -98,14 +98,16 @@ export function bindMaterialsToGlassEnv(root: THREE.Object3D) {
 
       // Ohne forceExteriorEnv: matte Rahmen ohne Env (Legacy). Mit Außen-Finish
       // (finishOpeningFrameTree) teilen Rahmen die CubeCamera mit Wand/Laibung.
-      const finish = material.userData.surfaceFinish as string | undefined
+      const finish = material.userData.surfaceFinish as SurfaceFinish | SurfaceFinishPreset | string | undefined
+      const finishUsesEnv = surfaceFinishUsesEnv(
+        finish === 'glossy' || finish === 'metal' || finish === 'matte' || (finish != null && typeof finish === 'object')
+          ? finish
+          : undefined,
+      )
       const matteWithoutExteriorEnv =
         material.userData.forceExteriorEnv !== true &&
         !isGlassLike(material) &&
-        (finish === 'matte' ||
-          (material.userData.windowFrameSurface === true &&
-            finish !== 'glossy' &&
-            finish !== 'metal'))
+        !finishUsesEnv
       if (matteWithoutExteriorEnv) {
         if (material.envMap) {
           material.envMap = null
@@ -139,7 +141,15 @@ export function bindMaterialsToGlassEnv(root: THREE.Object3D) {
       } else if (material.userData.interiorWallSurface === true) {
         assignEnv(0.55, { minIntensity: true })
       } else if (material.userData.forceExteriorEnv === true) {
-        assignEnv(material.metalness > 0.08 ? 0.75 : 0.58)
+        // Finish-bewusste Basis aus applyRenderExteriorSurfaceLook bevorzugen.
+        const storedBase = material.userData.baseEnvMapIntensity
+        const base =
+          typeof storedBase === 'number'
+            ? storedBase
+            : material.metalness > 0.08
+              ? 0.75
+              : 0.58
+        assignEnv(base)
       } else if (material.envMap || material.envMapIntensity > 0.2) {
         // Glänzend / Metall ohne forceExteriorEnv
         if (material.envMap !== glassEnvMap) {
@@ -357,7 +367,7 @@ export function applyWorkModeSurfaceLook(material: THREE.MeshStandardMaterial): 
 
 export function applySurfaceFinish(
   material: THREE.MeshStandardMaterial,
-  finish?: SurfaceFinish | null,
+  finish?: SurfaceFinish | SurfaceFinishPreset | null,
 ): void {
   const normalized = normalizeSurfaceFinish(finish)
   const params = surfaceFinishParams(normalized)
@@ -385,7 +395,10 @@ export function applyRenderExteriorSurfaceLook(material: THREE.MeshStandardMater
   // Explizit gewünscht (Paneel/Profil) — nicht nur Facade-Shade-Flag.
   material.userData.forceExteriorEnv = true
   const env = getGlassEnvironment()
-  const base = material.metalness > 0.08 ? 0.75 : 0.58
+  const weights = surfaceFinishWeights(
+    material.userData.surfaceFinish as SurfaceFinish | SurfaceFinishPreset | undefined,
+  )
+  const base = 0.58 + weights.glossy * 0.17 + weights.metal * 0.35
   if (env) {
     material.envMap = env
     material.envMapIntensity = rememberBaseEnvIntensity(material, base)
@@ -393,8 +406,11 @@ export function applyRenderExteriorSurfaceLook(material: THREE.MeshStandardMater
     material.userData.baseEnvMapIntensity = base
     material.envMapIntensity = scaledEnvIntensity(base)
   }
-  material.roughness = Math.min(material.roughness, 0.78)
-  material.metalness = Math.min(material.metalness, 0.06)
+  // Matte Flächen bleiben etwas rauer; Metall darf volle Metalness behalten.
+  const roughnessFloor = 0.78 - weights.glossy * 0.4 - weights.metal * 0.35
+  material.roughness = Math.min(material.roughness, Math.max(0.12, roughnessFloor))
+  const metalCap = 0.06 + weights.glossy * 0.2 + weights.metal * 0.94
+  material.metalness = Math.min(material.metalness, metalCap)
   material.needsUpdate = true
 }
 

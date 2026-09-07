@@ -65,7 +65,7 @@ Zentrale Wand-Datenstruktur. Jede Wand ist entweder ein Blender-Modul (`kind: 'm
 | `planLinked` | `boolean?` | Grundriss-Verknüpfung; `false` = frei. Fehlt → verknüpft |
 | `wallColor` / `interiorColor` | `string?` | Außen / Innen (Default Weiß) |
 | `claddingColor` / `profileColor` | `string?` | Paneele / Profile |
-| `*Finish` | `SurfaceFinish?` | Wand / Paneel / Profil |
+| `*Finish` | `SurfaceFinish` (`{ matte, glossy, metal }` 0–100) | Wand / Paneel / Profil / Element |
 | `cornice` | `WallCorniceConfig?` | Gesims oben |
 | `trimBands` | `WallTrimBand[]?` | horizontale Zierbänder |
 | `label` | `WallLabelConfig?` | Fassadenbeschriftung |

@@ -127,6 +127,10 @@ Alte `hdri*`-Felder in `PersistedAppState.scene` werden ignoriert (HDRI entfernt
 
 - `SceneLight.fadeInMs` / `fadeOutMs` / `schedule`, `Opening.schedule`, `OpeningRollerShutter.schedule`: Defaults beim Normalize/Hydrate (leere Zeiten, Fade 800/1200 ms). Kein `FACADE_SCHEMA_VERSION`-Bump.
 
+### Hydrate ohne Schema-Step (v2.0.266) — Oberflächen-Mix
+
+- `SurfaceFinish`: Objekt `{ matte, glossy, metal }` (0–100). Alte Strings `'matte'|'glossy'|'metal'` → 100 % auf der jeweiligen Achse in `normalizeSurfaceFinish` / Hydrate-Wall/Opening. Kein Schema-Bump.
+
 ## 2.0.153 — UX-Totlegungen
 
 Beim Laden (`hydrateWall` / `normalizeStudioPanel`):

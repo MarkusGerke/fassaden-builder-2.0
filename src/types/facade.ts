@@ -8,7 +8,8 @@ import { createId } from '../utils/id'
 import { migrateOpeningPanelFan } from '../utils/openingGeometry'
 import type { DaySchedule } from '../utils/daySchedule'
 import type { GroundLeaf } from '../scene/groundLeaves'
-export type { FloorPlan, DaySchedule, GroundLeaf }
+import type { SurfaceFinish } from '../utils/surfaceFinish'
+export type { FloorPlan, DaySchedule, GroundLeaf, SurfaceFinish }
 
 /** Berliner Mansarddach auf dem obersten Grundriss-Ring. */
 export interface RoofConfig {
@@ -107,9 +108,6 @@ export interface WallTrimBand {
 
 /** Flach (Textur) oder extrudiert (3D-Buchstaben). */
 export type WallLabelDepth = 'flat' | 'extruded'
-
-/** Oberflächen-Reflexion: stumpf, glänzend oder metallisch. */
-export type SurfaceFinish = 'matte' | 'glossy' | 'metal'
 
 /** Beschriftung / Inschrift auf der Fassadenfläche. */
 export interface WallLabelConfig {

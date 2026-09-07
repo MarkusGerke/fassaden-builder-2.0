@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import type { MotionCurve, Opening, OpeningRollerShutter, SurfaceFinish } from '../types/facade'
 import { openingMaskXRangesAtY } from '../utils/openingGeometry'
 import { normalizeMotionCurve, LINEAR_MOTION } from '../utils/openingMotion'
+import { normalizeSurfaceFinish } from '../utils/surfaceFinish'
 import { EMPTY_DAY_SCHEDULE, normalizeDaySchedule } from '../utils/daySchedule'
 
 /** Default: geschlossenheit 0 = oben, 1 = unten. */
@@ -60,7 +61,7 @@ export function defaultOpeningRollerShutter(): OpeningRollerShutter {
     enabled: false,
     drop: DEFAULT_ROLLER_SHUTTER_DROP,
     color: DEFAULT_ROLLER_COLOR,
-    finish: 'matte',
+    finish: { matte: 100, glossy: 0, metal: 0 },
     slatHeightCm: DEFAULT_ROLLER_SLAT_HEIGHT_CM,
     gapCm: DEFAULT_ROLLER_GAP_CM,
     motion: defaultRollerShutterMotion(),
@@ -90,10 +91,7 @@ export function normalizeOpeningRollerShutter(
     enabled: Boolean(raw?.enabled),
     drop,
     color: typeof raw?.color === 'string' ? raw.color : base.color,
-    finish:
-      raw?.finish === 'glossy' || raw?.finish === 'metal' || raw?.finish === 'matte'
-        ? raw.finish
-        : base.finish,
+    finish: normalizeSurfaceFinish(raw?.finish ?? base.finish),
     slatHeightCm,
     gapCm,
     motion: {
@@ -392,7 +390,7 @@ export function rollerShutterMotionPreset(
 }
 
 export function rollerShutterFinish(shutter: OpeningRollerShutter): SurfaceFinish {
-  return shutter.finish === 'glossy' || shutter.finish === 'metal' ? shutter.finish : 'matte'
+  return normalizeSurfaceFinish(shutter.finish)
 }
 
 export function rollerShutterFromOpening(opening: Opening): OpeningRollerShutter {

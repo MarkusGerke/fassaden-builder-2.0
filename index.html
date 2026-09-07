@@ -448,7 +448,6 @@
         </details>
 
         <div id="selection-toolbar" class="right-selection-toolbar" hidden>
-          <nav id="selection-right-tabs" class="selection-toolbar-tabs" role="tablist" aria-label="Einstellungsbereiche"></nav>
           <div id="selection-toolbar-panels" class="selection-toolbar-panels">
           <div id="toolbar-ceiling" hidden>
             <div class="settings-section" data-settings-section="ceiling" data-settings-label="Decke / Boden">
@@ -692,11 +691,9 @@
                   <button id="studio-wall-width-dir-right" class="preset-btn active" type="button" aria-pressed="true">nach rechts</button>
                 </div>
                 <div class="preset-group">
-                  <button id="studio-stretch-start-minus" class="preset-btn" type="button">Links −</button>
-                  <button id="studio-stretch-start-plus" class="preset-btn" type="button">Links +</button>
+                  <button id="studio-width-minus" class="preset-btn" type="button">−</button>
                   <input id="studio-wall-width" type="number" min="8" step="8" value="192" aria-label="Wandbreite in cm" />
-                  <button id="studio-stretch-end-minus" class="preset-btn" type="button">Rechts −</button>
-                  <button id="studio-stretch-end-plus" class="preset-btn" type="button">Rechts +</button>
+                  <button id="studio-width-plus" class="preset-btn" type="button">+</button>
                 </div>
               </div>
               <div class="toolbar-group">
@@ -761,11 +758,12 @@
               </div>
               <div id="studio-tile-color-section">
               <div class="toolbar-group" id="studio-tile-variance-row">
-                <label class="slider-label" for="studio-tile-variance">
-                  <span>Stein-Kontrast</span>
-                  <output id="studio-tile-variance-value">0</output>
-                </label>
-                <input id="studio-tile-variance" type="range" min="0" max="100" step="1" value="0" />
+                <span class="toolbar-label">Stein-Kontrast</span>
+                <div class="preset-group">
+                  <button id="studio-tile-variance-minus" class="preset-btn" type="button">−</button>
+                  <input id="studio-tile-variance" type="number" min="0" max="100" step="1" value="0" aria-label="Stein-Kontrast 0–100" />
+                  <button id="studio-tile-variance-plus" class="preset-btn" type="button">+</button>
+                </div>
                 <p class="toolbar-hint compact-hint">Hell- und Dunkeltöne um die Paneelfarbe (Paneele und Ziegel). 0 = alle Steine gleich.</p>
               </div>
               <div class="toolbar-group" id="studio-tile-variety-row" hidden>
@@ -845,19 +843,6 @@
                   <option value="glossy">Glänzend</option>
                   <option value="metal">Metallisch</option>
                 </select>
-              </div>
-              <div class="toolbar-group">
-                <span class="toolbar-label">Querschnitt / Traufgesims</span>
-                <p class="toolbar-hint compact-hint">Profil in der Bibliothek (Tab Profile) wählen oder auf die Wand ziehen.</p>
-                <div id="studio-cornice-profile-cards" class="tpl-card-row profile-picker-row sidebar-library-picker" role="listbox" aria-label="Gesimsprofil"></div>
-                <svg id="studio-cornice-preview" class="profile-section-preview" viewBox="-2 -2 18 18" aria-label="Gesimsquerschnitt"></svg>
-                <div class="preset-group profile-orient-group" data-ui-level="advanced">
-                  <button id="studio-cornice-rotate-ccw" class="preset-btn" type="button">90° links</button>
-                  <button id="studio-cornice-rotate-cw" class="preset-btn" type="button">90° rechts</button>
-                  <button id="studio-cornice-flip-outward" class="preset-btn" type="button">Spiegeln oben/unten</button>
-                  <button id="studio-cornice-flip-forward" class="preset-btn" type="button">Spiegeln vorne/hinten</button>
-                </div>
-                <p class="toolbar-hint">Oben = Wandkante, links = Wand. Das Gesims hängt nach unten. Drehen und spiegeln, bis die Dekorseite stimmt.</p>
               </div>
               <div class="toolbar-group">
                 <span class="toolbar-label">Tiefe (cm, 4er-Schritte)</span>
@@ -1021,40 +1006,6 @@
               </div>
 
 </div>
-<div class="settings-section" data-settings-section="corners" data-settings-label="Ecken" data-settings-order="45">
-              <p class="toolbar-hint compact-hint">Bossen und Endstücke an Wandenden. Freie Enden sind stumpf; fortlaufende Nachbarwände docken weiter an.</p>
-              <div id="studio-end-boss-section" class="toolbar-group" data-ui-level="advanced">
-                <p class="settings-subheading settings-subheading-nested">Bossen an Wandenden</p>
-                <div id="studio-end-boss-start-row" class="toolbar-group" hidden>
-                  <span class="toolbar-label">Start (links)</span>
-                  <select id="studio-end-boss-start">
-                    <option value="off">Aus</option>
-                    <option value="full">1/1</option>
-                    <option value="half">0,5/0,5</option>
-                    <option value="alternate">Abwechselnd 1/0,5</option>
-                  </select>
-                  <select id="studio-end-boss-start-join" hidden>
-                    <option value="">Stoß (auto)</option>
-                    <option value="flush">Bündig</option>
-                    <option value="miter">Gehrung</option>
-                  </select>
-                </div>
-                <div id="studio-end-boss-end-row" class="toolbar-group" hidden>
-                  <span class="toolbar-label">Ende (rechts)</span>
-                  <select id="studio-end-boss-end">
-                    <option value="off">Aus</option>
-                    <option value="full">1/1</option>
-                    <option value="half">0,5/0,5</option>
-                    <option value="alternate">Abwechselnd 1/0,5</option>
-                  </select>
-                  <select id="studio-end-boss-end-join" hidden>
-                    <option value="">Stoß (auto)</option>
-                    <option value="flush">Bündig</option>
-                    <option value="miter">Gehrung</option>
-                  </select>
-                </div>
-              </div>
-              </div>
 </div>
 <div class="settings-section" data-settings-section="plinth" data-settings-label="Sockel">
               <div class="toolbar-group">
@@ -1299,11 +1250,6 @@
           </div>
 
           <div id="toolbar-opening" hidden>
-            <div id="opening-model-section" class="settings-section toolbar-group" data-settings-inline-all data-settings-label="Modell">
-              <span class="toolbar-label">Fenstermodell</span>
-              <select id="opening-model-select"></select>
-            </div>
-
             <div id="opening-measures-section" class="settings-section toolbar-group" data-settings-section="measures" data-settings-label="Maße" data-settings-order="10">
               <div id="opening-size-section" class="toolbar-group">
                 <span class="toolbar-label">Breite (cm)</span>
@@ -1322,12 +1268,6 @@
                 <p id="opening-window-depth-hint" class="toolbar-hint compact-hint">Pro Öffnung. Standard-Frontlage 32 cm (Laibung 24 cm + Offset 8 cm).</p>
               </div>
               <div id="opening-position-section" class="toolbar-group">
-                <div class="preset-group" title="Verschieben in 8-cm-Schritten. Numpad-Ziffer 1–9 halten = Vielfaches (z. B. 3 → 24 cm).">
-                  <button id="opening-nudge-left" class="preset-btn" type="button" title="Nach links (8 cm; Numpad = Vielfaches)">←</button>
-                  <button id="opening-nudge-right" class="preset-btn" type="button" title="Nach rechts (8 cm; Numpad = Vielfaches)">→</button>
-                  <button id="opening-nudge-up" class="preset-btn" type="button" title="Nach oben (8 cm; Numpad = Vielfaches)">↑</button>
-                  <button id="opening-nudge-down" class="preset-btn" type="button" title="Nach unten (8 cm; Numpad = Vielfaches)">↓</button>
-                </div>
                 <span class="toolbar-label">Horizontal (cm, 8er-Raster)</span>
                 <input id="opening-pos-x" type="number" step="8" min="0" value="0" title="Position in 8-cm-Schritten" />
                 <span class="toolbar-label">Vertikal (cm, 8er-Raster)</span>
@@ -1485,8 +1425,8 @@
                 <input id="window-hardware" type="checkbox" />
                 Beschläge (Olive + Bänder)
               </label>
-              <div id="window-timber-section" class="toolbar-group">
-                <span class="toolbar-label">Holzmaße (cm)</span>
+              <details id="window-timber-section" class="toolbar-group toolbar-accordion">
+                <summary class="toolbar-label">Holzmaße (cm)</summary>
                 <div class="toolbar-row-2">
                   <label>Blend <input id="window-timber-blend" type="number" min="2" max="16" step="0.2" value="5.2" /></label>
                   <label>Flügel <input id="window-timber-sash" type="number" min="2" max="14" step="0.2" value="4.4" /></label>
@@ -1496,11 +1436,11 @@
                   <label>Kämpfer <input id="window-timber-kaempfer" type="number" min="3" max="20" step="0.2" value="7.2" /></label>
                 </div>
                 <label>Stulp <input id="window-timber-stulp" type="number" min="0.8" max="8" step="0.2" value="2.2" /></label>
-              </div>
-              <div id="window-hinge-section" class="toolbar-group">
-                <span class="toolbar-label">Scharnier / Öffnungsart</span>
+              </details>
+              <details id="window-hinge-section" class="toolbar-group toolbar-accordion">
+                <summary class="toolbar-label">Scharnier / Öffnungsart</summary>
                 <div id="window-hinge-mode-list" class="window-hinge-mode-list"></div>
-              </div>
+              </details>
               <div id="window-guard-section" class="toolbar-group">
                 <label class="toolbar-check">
                   <input id="window-guard-enabled" type="checkbox" />
@@ -1827,17 +1767,6 @@
                     <option value="miter">Gehrung (Bilderrahmen)</option>
                     <option value="none">Kantig</option>
                   </select>
-                </div>
-                <div class="toolbar-group">
-                  <span class="toolbar-label">Querschnitt</span>
-                  <svg id="profile-section-preview" class="profile-section-preview" viewBox="-2 -2 18 18" aria-label="Profilquerschnitt"></svg>
-                  <div class="preset-group profile-orient-group" data-ui-level="advanced">
-                    <button id="profile-rotate-ccw" class="preset-btn" type="button">90° links</button>
-                    <button id="profile-rotate-cw" class="preset-btn" type="button">90° rechts</button>
-                    <button id="profile-flip-outward" class="preset-btn" type="button">Spiegeln innen/außen</button>
-                    <button id="profile-flip-forward" class="preset-btn" type="button">Spiegeln vorne/hinten</button>
-                  </div>
-                  <p class="toolbar-hint">Unten = Öffnung, links = Wand. Drehen und spiegeln, bis die Dekorseite stimmt.</p>
                 </div>
                 <div class="toolbar-group" data-ui-level="advanced">
                   <span class="toolbar-label">Verschieben X (cm)</span>
@@ -2186,7 +2115,6 @@
 
         <div id="lighting-accordion" class="sidebar-accordion scene-sidebar-accordion">
           <div id="scene-toolbar" class="right-selection-toolbar scene-toolbar">
-            <nav id="scene-toolbar-tabs" class="selection-toolbar-tabs" aria-label="Szenenbereiche"></nav>
             <div id="scene-toolbar-panels" class="selection-toolbar-panels">
               <div class="settings-section" data-settings-section="sun" data-settings-label="Licht" data-settings-order="10">
                 <label class="slider-label">

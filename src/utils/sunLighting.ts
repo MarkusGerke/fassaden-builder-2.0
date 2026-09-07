@@ -524,6 +524,12 @@ export function normalizeSunSettings(
   if (typeof value.elevationRad !== 'number') {
     merged.elevationRad = resolveSunFromDate(merged).elevationRad
   }
+  // v2.0.268: Weichheit am Slider-Maximum bei hoher Sonne → rauschendes PCSS / „Geflackere“.
+  // Bei tiefer Sonne ist elevSoft ebenfalls hoch — absichtliche Weichheit bleibt.
+  const elevSoft = shadowSoftnessFromElevation(Math.max(0, merged.elevationRad))
+  if (merged.shadowSoftness >= 7.5 && elevSoft < 4) {
+    merged.shadowSoftness = elevSoft
+  }
   return syncSunSettingsFromSolar(merged, { applySolarLook: false })
 }
 

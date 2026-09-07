@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import type { OpeningGuard, OpeningInteriorShade, SurfaceFinish } from '../types/facade'
 import { applySurfaceFinish } from '../utils/threeColors'
+import { optionalSurfaceFinish } from '../utils/surfaceFinish'
 
 export function normalizeOpeningGuard(raw?: OpeningGuard | null): OpeningGuard {
   return {
@@ -9,10 +10,7 @@ export function normalizeOpeningGuard(raw?: OpeningGuard | null): OpeningGuard {
     barSpacingCm: Math.min(40, Math.max(6, raw?.barSpacingCm ?? 12)),
     heightCm: Math.min(160, Math.max(48, raw?.heightCm ?? 96)),
     color: typeof raw?.color === 'string' && raw.color.trim() ? raw.color.trim() : undefined,
-    finish:
-      raw?.finish === 'glossy' || raw?.finish === 'metal' || raw?.finish === 'matte'
-        ? raw.finish
-        : undefined,
+    finish: optionalSurfaceFinish(raw?.finish),
   }
 }
 

@@ -601,7 +601,7 @@ body {
 #ui-right > #lighting-accordion > .scene-toolbar,
 #lighting-accordion .scene-toolbar.right-selection-toolbar {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   align-items: stretch;
   gap: 0;
   padding: 0;
@@ -610,29 +610,12 @@ body {
   height: 100%;
 }
 
-#lighting-accordion .scene-toolbar .selection-toolbar-tabs,
-#ui-right #scene-toolbar-tabs {
-  flex: 0 0 2.35rem;
-  align-self: stretch;
-  max-height: none;
-  height: auto;
-  min-height: 100%;
-}
-
 #ui-right #selection-toolbar.right-selection-toolbar {
   flex: 1 1 auto;
   min-height: 0;
   max-height: none;
   height: 100%;
   align-self: stretch;
-}
-
-#ui-right #selection-right-tabs {
-  flex: 0 0 2.35rem;
-  align-self: stretch;
-  min-height: 100%;
-  height: auto;
-  max-height: none;
 }
 
 #lighting-accordion .scene-toolbar .selection-toolbar-panels .settings-section .toolbar-group:first-child {
@@ -649,7 +632,7 @@ body {
 
 #selection-toolbar.right-selection-toolbar {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   align-items: stretch;
   gap: 0;
   padding: 0;
@@ -661,20 +644,25 @@ body {
 
 .selection-toolbar-tabs {
   display: flex;
-  flex-direction: column;
-  flex: 0 0 2.35rem;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  flex: 0 0 auto;
   gap: 0;
   padding: 0;
   margin: 0;
   background: #e4e4e4;
-  border-right: 1px solid #c8c8c8;
+  border-right: none;
+  border-bottom: 1px solid #c8c8c8;
   position: sticky;
   top: 0;
+  z-index: 40;
   align-self: stretch;
   height: auto;
-  min-height: 100%;
+  min-height: 0;
   max-height: none;
-  overflow-y: auto;
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .selection-toolbar-tabs[hidden] {
@@ -685,26 +673,29 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 100%;
-  padding: 0.55rem 0.15rem;
+  width: auto;
+  flex: 0 0 auto;
+  padding: 0.45rem 0.7rem;
   border: none;
-  border-bottom: 1px solid #c8c8c8;
+  border-right: 1px solid #c8c8c8;
+  border-bottom: none;
   border-radius: 0;
   background: transparent;
   font: inherit;
-  font-size: 0.68rem;
+  font-size: 0.72rem;
   line-height: 1.2;
   text-align: center;
   color: #555;
   cursor: pointer;
   word-break: normal;
-  writing-mode: vertical-rl;
+  writing-mode: horizontal-tb;
   text-orientation: mixed;
-  min-height: 3rem;
-  flex: 0 0 auto;
+  min-height: 2.1rem;
+  white-space: nowrap;
 }
 
 .selection-tab-btn:last-child {
+  border-right: none;
   border-bottom: none;
 }
 
@@ -717,7 +708,7 @@ body {
   background: #fff;
   color: #111;
   font-weight: 700;
-  box-shadow: inset 3px 0 0 #333;
+  box-shadow: inset 0 -3px 0 #333;
 }
 
 .selection-toolbar-panels {
@@ -729,8 +720,79 @@ body {
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
-  padding: 0.75rem 1.2rem 1rem 0.85rem;
+  padding: 0;
   background: #fff;
+}
+
+.selection-toolbar-panels .settings-section {
+  margin: 0;
+  padding: 0 0 0.75rem;
+}
+
+.selection-toolbar-panels .settings-section > .settings-section-head {
+  position: relative;
+  top: auto;
+  bottom: auto;
+  z-index: 5;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 2.15rem;
+  margin: 0;
+  padding: 0.45rem 0.85rem;
+  background: #e4e4e4;
+  border: none;
+  border-top: 1px solid #c8c8c8;
+  border-bottom: 1px solid #c8c8c8;
+  border-radius: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #1a1a1a;
+  letter-spacing: 0.01em;
+  display: flex;
+  align-items: center;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
+  cursor: pointer;
+  user-select: none;
+}
+
+.selection-toolbar-panels .settings-section > .settings-section-head.settings-section-head-parked {
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.06), 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.selection-toolbar-panels .settings-section > .settings-section-head:hover {
+  background: #d8d8d8;
+}
+
+.selection-toolbar-panels .settings-section > .settings-section-head.settings-section-head-active {
+  background: #fff;
+  box-shadow: inset 0 2px 0 #e67e22, inset 0 -2px 0 #e67e22;
+}
+
+.selection-toolbar-panels .settings-section > :not(.settings-section-head) {
+  padding-left: 0.85rem;
+  padding-right: 1.2rem;
+}
+
+.settings-section-head {
+  position: sticky;
+  top: var(--stick-top, 0rem);
+  bottom: var(--stick-bottom, 0rem);
+  z-index: 5;
+  margin: 0 0 0.65rem;
+  padding: 0.4rem 0.55rem;
+  background: #ececec;
+  border: 1px solid #d0d0d0;
+  border-radius: 0.3rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #1a1a1a;
+  letter-spacing: 0.01em;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
+}
+
+.selection-toolbar-panels .settings-section:has(> .settings-section-head)::before {
+  content: none !important;
+  display: none !important;
 }
 
 #perf-overlay {
@@ -793,7 +855,7 @@ body {
 }
 
 .selection-toolbar-panels .settings-section {
-  margin-top: 1.5rem;
+  margin-top: 0;
   margin-bottom: 0;
   padding-bottom: 0;
   border-bottom: none;
@@ -1402,7 +1464,7 @@ body {
 }
 
 #selection-toolbar {
-  /* Richtung kommt von #selection-toolbar.right-selection-toolbar (row: Tabs | Panels) */
+  /* Richtung: Spalte — horizontale Tabs oben, Panels darunter */
   gap: 0;
   padding: 0;
 }
@@ -1456,6 +1518,43 @@ body {
 
 .toolbar-group:first-child {
   margin-top: 0;
+}
+
+#studio-tile-variance-row {
+  margin-top: 2rem;
+}
+
+/* Kompakte Akkordeons in der rechten Toolbar (Holzmaße, Scharnier …) */
+.toolbar-group.toolbar-accordion {
+  gap: 6px;
+}
+.toolbar-accordion > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.toolbar-accordion > summary.toolbar-label {
+  margin: 0;
+}
+.toolbar-accordion > summary::before {
+  content: '▸';
+  font-size: 11px;
+  line-height: 1;
+  color: #888;
+  transition: transform 0.15s;
+  flex-shrink: 0;
+}
+.toolbar-accordion[open] > summary::before {
+  transform: rotate(90deg);
+}
+.toolbar-accordion > summary::-webkit-details-marker {
+  display: none;
+}
+.toolbar-accordion > :not(summary) {
+  margin-top: 2px;
 }
 
 /* Verschachtelte Blöcke (Fugen, Paneele, Sockel …): erstes Kind ist nicht Sektionsstart —
@@ -3575,6 +3674,7 @@ input:disabled {
 }
 
 .color-picker-row {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -3598,13 +3698,40 @@ input:disabled {
   cursor: pointer;
 }
 
-/* RGB/HSL/HEX nur nach Klick auf den Farbswatch (color-picker-expanded). */
-.color-picker-row .color-channel-row {
+/* RGB / Oberfläche nur nach Klick auf den Farbswatch — als Overlay über der Leiste. */
+.color-picker-row .color-channel-row,
+.color-picker-row .color-finish-panel {
   display: none;
 }
 
-.color-picker-row.color-picker-expanded .color-channel-row {
+.color-picker-row.color-picker-expanded .color-picker-overlay {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 0.25rem);
+  z-index: 80;
+  padding: 0.55rem 0.6rem 0.65rem;
+  background: #fff;
+  border: 1px solid #c8c8c8;
+  border-radius: 0.35rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+.color-picker-row.color-picker-expanded .color-channel-row[data-space='rgb'],
+.color-picker-row.color-picker-expanded .color-finish-panel:not([hidden]) {
   display: grid;
+}
+
+.color-picker-overlay {
+  display: none;
+}
+
+.color-picker-row .color-channel-row[data-space='hsl'],
+.color-picker-row .color-channel-row[data-space='hex'] {
+  display: none !important;
 }
 
 .color-channel-row {
@@ -3634,6 +3761,36 @@ input:disabled {
   padding: 0.22rem 0.35rem;
   border: 1px solid #ccc;
   border-radius: 0.35rem;
+}
+
+.color-picker-top input.color-hex-input {
+  width: 6.5rem;
+  flex: 0 0 auto;
+}
+
+.color-finish-panel {
+  grid-template-columns: 1fr;
+  gap: 0.35rem;
+  padding-top: 0.15rem;
+}
+
+.color-finish-row {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr) 2.2rem;
+  gap: 0.35rem;
+  align-items: center;
+  font-size: 0.72rem;
+  color: #444;
+}
+
+.color-finish-row input[type='range'] {
+  width: 100%;
+}
+
+.color-finish-row output {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: #666;
 }
 
 .opening-library-title {
@@ -3978,7 +4135,7 @@ html[data-ui-mode='simple'] [data-ui-level='advanced'] {
 }
 
 
-/* Rechte Auswahl-Toolbar: Tabs links (vertikal), Panels rechts — siehe .right-selection-toolbar */
+/* Rechte Auswahl-Toolbar: horizontale Tabs oben, Panels darunter — siehe .right-selection-toolbar */
 #selection-toolbar {
   min-height: 0;
 }

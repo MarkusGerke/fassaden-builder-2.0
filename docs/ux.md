@@ -141,7 +141,7 @@ Unter **Bibliothek** (sticky unten, Tabs Wände/Fenster/Türen): bei Fenster/Tü
 
 ## Paneel-Zufallsfarben
 
-Unter **Farben → Paneele / Ziegel** (wenn Paneele/Mauerwerk aktiv): **Stein-Kontrast** und **Stein-Häufigkeit** (0–100 %) — für **alle** Muster (Streifen, Ziegel, Klinker …), nicht nur Mauerwerk. Kontrast steuert Hell/Dunkel um die Paneelfarbe (`claddingColor`, HSL). Häufigkeit mappt auf 1…8 Farbstufen, zufällig auf die Steine verteilt. Bei Kontrast 0 ist Häufigkeit ausgeblendet; der erste Kontrast > 0 setzt Häufigkeit auf 40, falls sie noch 0 war. Beim Laden setzt `normalizeStudioPanel` Häufigkeit ebenfalls auf 40, wenn Kontrast > 0 aber Häufigkeit 0 ist. Seed pro Wand-ID + Config + **Rasterposition (x/y)** → stabile Zuordnung auch nach Jamb-Siegel; eine Mesh-Gruppe pro Stufe (`tileColors.ts`, `createStudioPanelGeometriesByColorIndex`). **v0.7.248:** Kontrast wirkt auch in der Gesamtansicht (Medium-LOD baut mehrfarbige Low-Meshes). Felder gehören zum Edit-Scope „Typ“ (`panelConfigKey`).
+Unter **Farben → Paneele / Ziegel** (wenn Paneele/Mauerwerk aktiv): **Stein-Kontrast** und **Stein-Häufigkeit** (0–100 %) — für **alle** Muster (Streifen, Ziegel, Klinker …), nicht nur Mauerwerk. **v2.0.265:** Kontrast als −/Zahl/+ (`#studio-tile-variance`), mehr Abstand zur Farbe darüber; Häufigkeit bleibt Slider. Kontrast steuert Hell/Dunkel um die Paneelfarbe (`claddingColor`, HSL). Häufigkeit mappt auf 1…8 Farbstufen, zufällig auf die Steine verteilt. Bei Kontrast 0 ist Häufigkeit ausgeblendet; der erste Kontrast > 0 setzt Häufigkeit auf 40, falls sie noch 0 war. Beim Laden setzt `normalizeStudioPanel` Häufigkeit ebenfalls auf 40, wenn Kontrast > 0 aber Häufigkeit 0 ist. Seed pro Wand-ID + Config + **Rasterposition (x/y)** → stabile Zuordnung auch nach Jamb-Siegel; eine Mesh-Gruppe pro Stufe (`tileColors.ts`, `createStudioPanelGeometriesByColorIndex`). **v0.7.248:** Kontrast wirkt auch in der Gesamtansicht (Medium-LOD baut mehrfarbige Low-Meshes). Felder gehören zum Edit-Scope „Typ“ (`panelConfigKey`).
 
 **3D-Steine (v2.0.25):** Reststeine an Öffnungen (Outline nach Clip) nutzen Ear-Clipping-Triangulation — keine Fächer-Diagonalen in der Fensterecke.
 
@@ -239,7 +239,7 @@ Yaw-Konvention überall gleich: **0=N, 90=W, 180=S, 270=O** (gegen Uhrzeigersinn
 | Auswahl | nur markierte Studio-Wände | nur markierte |
 | Typ | Studio: alle Wände im **aktiven Gebäude** mit gleicher Paneel-Konfiguration (`panelConfigKey`); Modul-Wände: gleiches `claddingId` + `moduleName` | gleicher **Typ** und gleiche **Maße** (Breite×Höhe) wie die Auswahl — z. B. nur 96×192-Fenster, oder bei Mehrfachauswahl 96er und 192er jeweils ihre Gruppe (**v2.0.194**) |
 | Etage | alle Studio-Wände aller `floorIndex`-Werte der Auswahl (Multi-Etagen) | alle Öffnungen dieser Etagen |
-| Fassade | alle Studio-Wände **desselben Hauses** (0°/45°/90°, jede Etage); optional gefiltert auf gewählte Himmelsrichtungen (`#edit-scope-facade-yaws`) | **alle** Öffnungen auf diesen Wänden (gleicher Yaw-Filter) |
+| Fassade | alle Studio-Wände **desselben Hauses** (0°/45°/90°, jede Etage); optional gefiltert auf gewählte Himmelsrichtungen (`#edit-scope-facade-yaws`) | **alle** Öffnungen auf diesen Wänden (gleicher Yaw-Filter), **inkl. Kellerfenster und Türen** (**v2.0.266** — kein Keller-Paritätsfilter mehr bei Fassade; Etage/Typ/Auswahl behalten Parität) |
 
 Wenn **Fassade** aktiv ist: Chip-Leiste daneben mit **Alle** plus den im Haus vorhandenen Richtungen (`wallCompassLabel`). Kein Chip / Alle = gesamtes Haus. Mehrfachauswahl möglich. Persistenz: `editFacadeYawFilter` neben `editScope`.
 
@@ -334,7 +334,7 @@ Unter **Höhe** im Tab Paneele: **Reihen unten ausblenden** / **Reihen oben ausb
 
 ### Wandbeschriftung (v0.7.109)
 
-Tab **Schrift** (`data-settings-section="label"`): Checkbox, Textfeld mit **Speichern** (`#studio-label-text-save`) bzw. Enter, Höhe, Position X/Y (cm von links/unten), Ausrichtung, Farbe, **Flach** vs. **Mit Tiefe** (Extrusion in cm). **Versatz (cm, + außen / − innen)** (`#studio-label-offset-forward`) verschiebt die Schrift senkrecht zur Fassade. Schriftarten in der **unteren Bibliothek** (Tab Schrift) — siehe [fonts.md](fonts.md). Klick auf die Schrift in 3D öffnet den Tab; Schrift per Drag auf der Fassade verschiebbar (**8-cm-Raster**, `STUDIO_MASONRY`). **v2.0.241:** Bibliothek-Schrift wie Öffnungen — Klick = weitere Instanz, Drag&Drop mit orangem Platzhalter. **v2.0.234:** Bei Teil-Fokus Schrift keine Wand-Skalierungs-Greifer. **v2.0.233:** Beim Ziehen Hilfslinien/Abstände wie bei Öffnungen (`labelAsGuideOpening`); Schatten der extrudierten Schrift folgt live (`wallLabelsNeedShadowUpdate`). Beim Wand-Strecken bleibt die Schrift ortsfest in Welt-X (wie Öffnungen). **v0.7.180:** Schrift-Vorstand auch negativ (nach hinten, −80…80 cm). **v0.7.227:** Versatz-Feld standardmäßig sichtbar (nicht nur im Komplex-Modus). **v0.7.244:** Schriftwahl mit Live-Vorschau. **v0.7.252 / v0.7.254:** In der 3D-Ansicht folgt die Schrift dem Fassadenschatten (Schattenseite und Gebäudeschatten dunkler; Wand-Bounce-Fill gilt nicht für Schrift). **v0.7.288:** Gesims und Zierband werfen wieder Schatten auf den Freistreifen unter der Schrift.
+Tab **Schrift** (`data-settings-section="label"`): Checkbox, Textfeld mit **Speichern** (`#studio-label-text-save`) bzw. Enter, Höhe, Position X/Y (cm von links/unten), Ausrichtung, Farbe, **Flach** vs. **Mit Tiefe** (Extrusion in cm). **Versatz (cm, + außen / − innen)** (`#studio-label-offset-forward`) verschiebt die Schrift senkrecht zur Fassade. Schriftarten in der **unteren Bibliothek** (Tab Schrift) — siehe [fonts.md](fonts.md). **v2.0.265:** Der Reiter erscheint erst, wenn die Wand mindestens eine Schrift-Instanz hat (`wallLabels`) oder die Schrift in 3D fokussiert ist — Anlegen weiter über die Bibliothek. Klick auf die Schrift in 3D öffnet den Tab; Schrift per Drag auf der Fassade verschiebbar (**8-cm-Raster**, `STUDIO_MASONRY`). **v2.0.241/267:** Bibliothek — ohne Fokus Klick = neue Instanz; mit Schrift-Fokus Klick = Schriftart tauschen (aktive Font markiert). Drag&Drop mit orangem Platzhalter. **v2.0.234:** Bei Teil-Fokus Schrift keine Wand-Skalierungs-Greifer. **v2.0.233:** Beim Ziehen Hilfslinien/Abstände wie bei Öffnungen (`labelAsGuideOpening`); Schatten der extrudierten Schrift folgt live (`wallLabelsNeedShadowUpdate`). Beim Wand-Strecken bleibt die Schrift ortsfest in Welt-X (wie Öffnungen). **v0.7.180:** Schrift-Vorstand auch negativ (nach hinten, −80…80 cm). **v0.7.227:** Versatz-Feld standardmäßig sichtbar (nicht nur im Komplex-Modus). **v0.7.244:** Schriftwahl mit Live-Vorschau. **v0.7.252 / v0.7.254:** In der 3D-Ansicht folgt die Schrift dem Fassadenschatten (Schattenseite und Gebäudeschatten dunkler; Wand-Bounce-Fill gilt nicht für Schrift). **v0.7.288:** Gesims und Zierband werfen wieder Schatten auf den Freistreifen unter der Schrift.
 
 ## Teil-Selektion von Öffnungen und Wand-Teilen (v0.5.0)
 
@@ -358,11 +358,13 @@ Tab **Schrift** (`data-settings-section="label"`): Checkbox, Textfeld mit **Spei
 
 UI: `#opening-pediment-section`, `#opening-consoles-section` (nicht unter Fensterbänken). Feldkatalog und Maße: [opening-features.md](opening-features.md#verdachung-openingpediment).
 
-### Oberflächen-Reflexion (v0.7.134 / v0.7.135 / v0.7.176 / v2.0.186)
+### Oberflächen-Reflexion (v0.7.134 / v0.7.135 / v0.7.176 / v2.0.186 / v2.0.266)
 
-**Stumpf** / **Glänzend** / **Metallisch** (`SurfaceFinish`) pro Element:
+**Stumpf** / **Glänzend** / **Metallisch** als Mix `{ matte, glossy, metal }` jeweils **0–100 %** (`SurfaceFinish` in `src/utils/surfaceFinish.ts`). Materialwerte = gewichtete Mittel der drei Presets. Legacy-Strings (`'matte'|'glossy'|'metal'`) werden beim Hydrate zu 100 %/0/0 umgeschrieben.
 
-| Element | Farbe | Finish-Feld / UI |
+**UI (v2.0.266):** Farbe + HEX immer sichtbar; Overlay (Klick auf Swatch, schließen nur Außenklick) zeigt RGB und die drei Oberflächen-Slider. Die Selects (`#studio-wall-finish` usw.) bleiben im DOM, sind ausgeblendet und werden vom Overlay synchronisiert.
+
+| Element | Farbe | Finish-Feld / Select-ID (hidden) |
 |---|---|---|
 | Wand | `wallColor` / `#wall-color-swatches-studio` | `wallFinish` / `#studio-wall-finish` |
 | Paneele | `claddingColor` / `#cladding-color-swatches-studio` | `claddingFinish` / `#studio-cladding-finish` |
@@ -375,7 +377,7 @@ UI: `#opening-pediment-section`, `#opening-consoles-section` (nicht unter Fenste
 | Verdachung | `pediment.color` | `pediment.finish` / `#pediment-finish` |
 | Treppe | `stairs.color` | `stairs.finish` / `#stairs-finish` |
 
-Fehlendes Element-Finish fällt auf die passende Wand-Oberfläche zurück (`wallFinish` / `profileFinish`). Im Render-Modus teilen sich **Paneele, Wandaußenfläche, Laibung (v2.0.186), Fensterrahmen (v2.0.187), Profile und Glas** dieselbe CubeCamera-EnvMap (`finishExteriorMaterial` / Glas-Look) — Licht und Farben der Umgebung einheitlich. Glas bleibt eigenes System (Tint / physisch, höhere Intensity).
+Fehlendes Element-Finish fällt auf die passende Wand-Oberfläche zurück (`wallFinish` / `profileFinish`). Im Render-Modus teilen sich **Paneele, Wandaußenfläche, Laibung (v2.0.186), Fensterrahmen (v2.0.187), Profile und Glas** dieselbe CubeCamera-EnvMap — Metalness-Cap ist finish-bewusst (Metall-Anteil darf reflektieren). Glas bleibt eigenes System (Tint / physisch, höhere Intensity).
 
 ### Rahmenprofil-Maße
 
@@ -391,7 +393,7 @@ UI-Felder und Konstanten: [profiles.md](profiles.md) / [opening-features.md](ope
 2. **Katalog-Tabs folgen der Auswahl** (Kontext), nicht einer festen Alles-Liste.
 3. **Inaktive Parameter ausblenden** (Toggle aus → Felder weg).
 4. **Funktionen nicht still löschen** — außer explizit freigegeben.
-5. **Farben:** feste Palette + global gleiches **Eigene-Farbe-Overlay** (HEX/RGB/HSL) überall.
+5. **Farben:** Swatch + HEX dauerhaft; Overlay mit RGB und Oberflächen-Mix (schließen nur Außenklick).
 6. **Lesereihenfolge** am Objekt von oben nach unten (Gesims → Zierband → Schrift → Fassade → … → Sockel).
 
 #### Objekt-Affinitäts-Matrix (v2.0.154–156)
@@ -438,7 +440,7 @@ Auswahl darf die Aufriss-Skala nicht springen lassen: bei gleichem `contentKey` 
 
 | Auswahl | Sektionen |
 |---|---|
-| Wand ganz / Fassade (`cladding`) | Maße · Farben · Fassade · Ecken · Gesims/Sockel/… (Hide-when-off; **keine** Verbände-Karten) |
+| Wand ganz / Fassade (`cladding`) | Maße · Farben · Fassade · Gesims/Sockel/… (Hide-when-off; **keine** Verbände-Karten; Schrift-Reiter nur bei vorhandener Schrift) |
 | Wand-Teil Gesims/Sockel/… | nur der passende Reiter (+ Farbe wenn sinnvoll); **keine** Profilkarten |
 | Öffnung ganz | Maße · Farben · Profil · Verdachung · Rollladen · Treppe (Tür) · … — Form/Profil-Karten hidden |
 | Teil Treppe | **nur** Treppen-Parameter (Stufen/Maße/Farbe) — **kein** Rollladen/Verdachung |
@@ -472,13 +474,13 @@ Auswahl darf die Aufriss-Skala nicht springen lassen: bei gleichem `contentKey` 
 Bei Wand-, Öffnungs-, Studio-, Dach- oder Decken-Auswahl:
 
 - **Unten** (`#library-dock` / `#opening-library` / `#library-mode`): **kontextuelle** Element-Bibliothek (siehe Grundgesetz). Tabs horizontal **oberhalb** der Kartenleiste (`#library-dock > .library-chrome`), Text **waagerecht** lesbar; kein Titel „Bibliothek“.
-- **Rechts** (`#selection-toolbar`): Werte, Farben, ±, Löschen. Register (`#selection-right-tabs` / `.selection-toolbar-tabs`) **vertikal** gestapelt mit `writing-mode: vertical-rl`; Toolbar `flex-direction: row`. **v0.7.56:** Szene- und Auswahl-Tab-Leiste strecken sich über die volle rechte Spaltenhöhe bis zum unteren Fensterrand (`#ui-right` / `#lighting-accordion` mit `flex: 1`). **v2.0.65:** Auswahl-Toolbar ohne Höhen-Deckel (früher `max-height: min(52vh, 520px)`); `#selection-toolbar-panels` füllt die Restfläche und scrollt vertikal.
+- **Rechts** (`#selection-toolbar`): Werte, Farben, ±, Löschen. **Eine** Scroll-Spalte (`.selection-toolbar-panels`): Sektionsköpfe volle Breite als vertikaler Fächer — **gescrollte** Köpfe stapeln oben, **noch nicht erreichte** unten (`parkSettingsSectionHeads` per `translateY` in Band `[i·h … viewH−(n−i)·h]`; reines CSS-sticky reicht nicht unter dem Fold). Inhalte bleiben kompakt (kein `min-height`-Weißraum, kein `margin-top`); aktiver Kopf `.settings-section-head-active`. Keine separate untere Tab-Leiste (**v2.0.271** / Rail v2.0.269 entfernt). Kein `position:fixed` (v2.0.269: lag außerhalb). Analog Szene. **v2.0.65/267:** Paneele + Licht-Leiste Geschwister.
 - Ohne Auswahl: rechts **immer** die Szeneneinstellungen (`#lighting-accordion`, Geschwister von `#selection-toolbar` unter `#ui-right` — nicht darin verschachtelt, sonst verschwindet die Szene mit `[hidden]` der Auswahl-Toolbar).
 - **`data-settings-inline-all`**: kein eigener Reiter, im aktiven rechten Panel mit sichtbar (Modell/Aktionen).
 - Tab-Wechsel filtert per CSS-Klasse `selection-tab-filtered-out` — bestehende `hidden`-Logik bleibt maßgeblich.
 - Wechsel der Auswahl setzt den Tab auf **Übersicht** (v2.0.230).
 - **Einfach/Komplex:** Sektionen mit `data-ui-level="advanced"` erscheinen nur im Modus Komplex auch als Reiter. **Bossensteine** stehen im Tab Paneele (unter Mauerwerk), auch im Modus Einfach.
-- **Keine Akkordeons** in den Auswahl-Panels; Navigation über rechte Register + Überschriften.
+- **Keine Akkordeons** in den Auswahl-Panels; Navigation über sticky Sektionsköpfe (volle Breite).
 
 ### Tab-Reihenfolge rechts (für alle Objekte)
 
@@ -513,7 +515,7 @@ Gilt für die **rechten Einstellungs-Register** bei jeder Objektauswahl (Wand, �
 ### Keine Auswahl
 
 - **Unten:** Bibliothek mit Tabs Fenster / Türen / Fassade / Wände / Erker / Balkone & Loggia / Licht (v2.0.230). Bei **Wandauswahl** entfallen Wände und Licht; Fenster/Türen bleiben vorne.
-- **Rechts:** Szeneneinstellungen (`#lighting-accordion`) immer sichtbar (Geschwister von `#selection-toolbar`), inkl. vertikaler Szene-Register (volle Höhe). Licht-Modus-Toggle außerhalb Vorschau/Render.
+- **Rechts:** Szeneneinstellungen (`#lighting-accordion`) immer sichtbar (Geschwister von `#selection-toolbar`), sticky Sektionsköpfe in der Spalte (keine Tab-Leiste mehr, v2.0.268). Licht-Modus-Toggle außerhalb Vorschau/Render.
 
 ### Linke Spalte einklappbar (v0.7.54 / v0.7.133)
 
@@ -557,7 +559,7 @@ Bei Öffnungs-Auswahl unter Glasfarbe: Checkbox **Physisches Glas (3D)** + IOR, 
 
 ### Bossen an Wandenden (v0.7.59)
 
-Tab **Paneele** (nur bei Bossen-Vorstand > 0): Muster je sichtbarem Ende — aus, 1/1, 0,5/0,5, abwechselnd. Mit Nachbarwand: Stoß **bündig** oder **Gehrung** (`endBossStartJoin` / `endBossEndJoin`). Layout: `layoutPanelTiles`; Geometrie: `extrudeFrustum` / `shouldSuppressBossChamferAtEnd`. Zugeschnittene Steine an Öffnungen: ein Diamant (rastergleiche Front wenn sie noch im Stein liegt) — nicht zwei Erhebungen in einem L-Stein und nichts im Loch. **v0.7.175:** An der Dock-Fuge behalten 1+1 jeweils das volle Bossen-Trapez; 0,5+0,5 glätten nur die Innenseiten (Chamfer 0) und bleiben in ihrer Wand — kein Überstand über Öffnungen.
+Datenfelder bleiben (`endBossStart` / `endBossEnd` …). **v2.0.265:** Der rechte Reiter **Ecken** (UI) entfällt — Muster weiter über bestehende Saves/API; freie Enden sind stumpf, fortlaufende Nachbarn docken weiter. Layout: `layoutPanelTiles`; Geometrie: `extrudeFrustum` / `shouldSuppressBossChamferAtEnd`. Zugeschnittene Steine an Öffnungen: ein Diamant (rastergleiche Front wenn sie noch im Stein liegt) — nicht zwei Erhebungen in einem L-Stein und nichts im Loch. **v0.7.175:** An der Dock-Fuge behalten 1+1 jeweils das volle Bossen-Trapez; 0,5+0,5 glätten nur die Innenseiten (Chamfer 0) und bleiben in ihrer Wand — kein Überstand über Öffnungen.
 
 ### Wand-Vorschau Bibliothek (v0.7.58)
 
@@ -594,7 +596,7 @@ Tabs in `#opening-library`: **Wände** | **Fenster** | **Fensterform** | **Türe
 | Wände | `WALL_LENGTH_PRESETS` (**v2.0.142:** 48 / 96 / 144 / 192 / 288 / 384 / 576 cm); erste Kachel **Keines** (**v2.0.223:** Endstücke und Wand+Öffnung entfernt) | Drag (`application/x-wall-preset`) in die Bühne. **Mit Wandauswahl:** +/− links/rechts/oben an der Wand (folgen der Wand beim Orbit). + links/rechts/oben: bei gefüllter Wand-Zwischenablage **Einfügen** in diese Richtung, sonst **Duplizieren** (bzw. Etage darüber). **Ohne Auswahl (v2.0.142):** Breite anklicken → über eine bestehende Wand fahren zeigt ein **oranges Segment** (alle Etagen), Klick löst es als eigene Wand heraus — siehe [Wandsegment herauslösen](#wandsegment-herauslösen-srcstudiowallsplitts-v20142). |
 | Fenster | Fenster-Presets (`WALL_OPENING_PRESETS`: u. a. 48×96, 48×192, 96×128/192/264, 144×192, 192×192, 396×196, Keller 48×64) + Vorlagen + „Neue Vorlage“ | auf Wand droppen / bei Wandauswahl klicken; **v2.0.241:** orangener Platzhalter beim Ziehen (`setLibraryPlacementGhost`) |
 | Türen | Tür-Presets (96/144/288/480×320) + Vorlagen + „Neue Vorlage“ | wie Fenster (Platzhalter bei y = 0) |
-| Schrift | `LABEL_FONTS` | **v2.0.241:** Klick = weitere Schrift; Drag&Drop mit orangem Platzhalter (`application/x-label-font`) |
+| Schrift | `LABEL_FONTS` | **v2.0.267:** bei Schrift-Fokus Klick = Schriftart tauschen; sonst neue Instanz; Drag&Drop mit Platzhalter |
 | Nischen | Cutout-Presets (eckig/rund, Regenrohr, Durchbruch) plus **Konche** (Kalotte, Presets 96×128 / 64×96) | auf Wand droppen / bei Wandauswahl klicken; kein Glas, kein Blendrahmen; Konche: Rundbogen-Loch + Halbzylinder/Viertelkugel |
 | Paneele | Muster-Karten | auf Wand droppen (`application/x-panel-preset`) |
 | Profile | Rahmen, Gesims, Sockel, Fensterbank | Drag (`application/x-library-asset`) auf Fenster/Tür bzw. Wand; Klick nutzt die Auswahl |
@@ -777,7 +779,7 @@ Neue Elemente: Wand, Paneele, Profile, Rahmen, Türen → `#ffffff`. Neue Fenste
 
 ## Fenster verschieben
 
-Studio-Öffnungen: rastet an **Fuge**, **Stein-/Paneelmitte** oder **Wandmitte** (`openingPlacementCandidateXs`) — Raster ist das **Verbandmodul** (Läufer: halbe Steinlänge), kein festes 8-cm-Schrittmaß. **Ziehen (v2.0.82):** nur Fugen-bündig + Wandmitte, **immer** der nächste Kandidat (kein Freilauf mehr); Breite so, dass **beide** Laibungen auf Fugen liegen. **Pfeile / Tastatur (v2.0.89):** Standard **8 cm**; Numpad- oder Zifferntaste **1–9 halten** = Vielfaches (3 → 24 cm). Auf Modulverband so viele Kandidaten weiter, bis die Strecke ≥ dem Schritt ist. 45°-Wände: Wandmitte mit Magnet ±8 cm. Streifen/ohne Modul: 8 cm. Abstand **zwischen** Öffnungen 32 cm. Beim Laden älterer Projekte rückt Schema 14 vorhandene Öffnungen einmalig auf dieses Raster.
+Studio-Öffnungen: rastet an **Fuge**, **Stein-/Paneelmitte** oder **Wandmitte** (`openingPlacementCandidateXs`) — Raster ist das **Verbandmodul** (Läufer: halbe Steinlänge), kein festes 8-cm-Schrittmaß. **Ziehen (v2.0.82):** nur Fugen-bündig + Wandmitte, **immer** der nächste Kandidat (kein Freilauf mehr); Breite so, dass **beide** Laibungen auf Fugen liegen. **Pfeile / Tastatur (v2.0.89 / v2.0.265):** Standard **8 cm**; Numpad- oder Zifferntaste **1–9 halten** = Vielfaches (3 → 24 cm). **v2.0.265:** Die Toolbar-Pfeile ←→↑↓ entfallen — Position über die Zahlenfelder und Tastatur. Auf Modulverband so viele Kandidaten weiter, bis die Strecke ≥ dem Schritt ist. 45°-Wände: Wandmitte mit Magnet ±8 cm. Streifen/ohne Modul: 8 cm. Abstand **zwischen** Öffnungen 32 cm. Beim Laden älterer Projekte rückt Schema 14 vorhandene Öffnungen einmalig auf dieses Raster.
 
 ---
 

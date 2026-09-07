@@ -43,6 +43,15 @@ export const PCSS_BLOCKER_PROX = 0.01
 export const PCSS_CONTACT_TEXELS_MIN = 0.5
 export const PCSS_CONTACT_TEXELS_MAX = 2
 
+/**
+ * Distanz-Anti-Aliasing (v2.0.270): Deckt ein Bildschirmpixel mehrere Shadow-Texel ab
+ * (Rauszoomen), wird mindestens über diese Pixel-Fläche gefiltert — Radius = Footprint × Faktor
+ * (0,5 → Filterdurchmesser = ein Pixel). Nah (Footprint < Texel) bleibt der Look unverändert;
+ * auf Distanz verschwinden die punktierten Stein-/Fugen-/Glas-Raster (feine 4-cm-Selbstschatten,
+ * die sonst pro Pixel zufällig getroffen werden). Kein Bias-/Weichheits-Tuning.
+ */
+export const PCSS_FOOTPRINT_SCALE = 0.5
+
 /** Mehr Samples = weniger sichtbares Poisson-Raster in der Penumbra (Three.js-Beispiel: 17). */
 export const PCSS_NUM_SAMPLES = 32
 export const PCSS_NUM_RINGS = 14
@@ -92,7 +101,7 @@ float pcssPenumbraSize( const in float zReceiver, const in float zBlocker ) {
  * nicht gegen die Tiefe des Fragmentmittelpunkts — sonst Selbstabschattung (Schraffur)
  * auf horizontalen/schräg beleuchteten Flächen (Gesims-Oberseite, Sockel, Schwelle).
  */
-vec2 pcssReceiverPlaneSlope( const in vec2 uv, const in float z ) {
+vec2 pcssReceiverPlaneSlope( const in vec2 uv, const in float z, const in float texelUv ) {
 	vec2 duvdx = dFdx( uv );
 	vec2 duvdy = dFdy( uv );
 	float dzdx = dFdx( z );
@@ -101,7 +110,18 @@ vec2 pcssReceiverPlaneSlope( const in vec2 uv, const in float z ) {
 	if ( abs( det ) < 1e-14 ) return vec2( 0.0 );
 	vec2 slope = vec2( dzdx * duvdy.y - dzdy * duvdx.y, dzdy * duvdx.x - dzdx * duvdy.x ) / det;
 	// Silhouetten (Ableitung über zwei Flächen) begrenzen — sonst Lichtlecks an Kanten.
-	return clamp( slope, vec2( -PCSS_PLANE_SLOPE_MAX ), vec2( PCSS_PLANE_SLOPE_MAX ) );
+	slope = clamp( slope, vec2( -PCSS_PLANE_SLOPE_MAX ), vec2( PCSS_PLANE_SLOPE_MAX ) );
+	// Distanz: deckt ein Pixel mehrere Shadow-Texel ab, laufen die Ableitungen über Stein-/Fugen-
+	// und Profilkanten — die „Ebene“ ist dann Unsinn und färbt ganze Steine grau (Raster beim
+	// Rauszoomen, v2.0.270). Steigung mit Texel/Footprint dämpfen: nah (Footprint ≤ Texel)
+	// unverändert, fern begrenzt das den Plane-Bias am AA-Radius auf wenige Texel Tiefe.
+	float footprint = max( length( duvdx ), length( duvdy ) );
+	return slope * clamp( texelUv / max( footprint, 1e-8 ), 0.0, 1.0 );
+}
+
+/** Shadow-UV-Ausdehnung eines Bildschirmpixels (Distanz-AA, siehe PCSS_FOOTPRINT_SCALE). */
+float pcssUvFootprint( const in vec2 uv ) {
+	return max( length( dFdx( uv ) ), length( dFdy( uv ) ) );
 }
 
 /**
@@ -185,17 +205,19 @@ float pcssHardShadow( sampler2D shadowMap, const in vec2 uv, const in float zRec
  * Performance: Voll lit / voll Umbra brechen nach der Blocker-Suche ab (33 statt 97 Taps) —
  * nur die Penumbra zahlt den 64-Tap-Filter.
  */
-float pcssGetShadow( sampler2D shadowMap, vec4 coords, const in float texelUv, const in vec2 slope ) {
+float pcssGetShadow( sampler2D shadowMap, vec4 coords, const in float texelUv, const in vec2 slope, const in float footprint ) {
 	vec2 uv = coords.xy;
 	float zReceiver = coords.z;
 	float hard = pcssHardShadow( shadowMap, uv, zReceiver );
 	mat2 rot = pcssRotation( uv );
+	// Distanz-AA: mindestens über die Pixel-Fläche filtern (nah: Footprint < Texel → wirkungslos).
+	float aaRadius = footprint * PCSS_FOOTPRINT_SCALE;
 	// Gleiche Skala wie der Filter — sonst weiche Umbra innen, harte Texel-Kante außen.
-	float searchRadius = pcssLightSizeUv * PCSS_PENUMBRA_SCALE * ( zReceiver - PCSS_NEAR_PLANE ) / zReceiver;
+	float searchRadius = max( pcssLightSizeUv * PCSS_PENUMBRA_SCALE * ( zReceiver - PCSS_NEAR_PLANE ) / zReceiver, aaRadius );
 	vec2 blocker = pcssFindBlocker( shadowMap, uv, zReceiver, searchRadius, rot, slope );
 	if ( blocker.x == -1.0 ) return hard;
 	float penumbraRatio = pcssPenumbraSize( zReceiver, blocker.x );
-	float filterRadius = penumbraRatio * pcssLightSizeUv * PCSS_PENUMBRA_SCALE;
+	float filterRadius = max( penumbraRatio * pcssLightSizeUv * PCSS_PENUMBRA_SCALE, aaRadius );
 	// Alle Such-Taps verdeckt und Filterscheibe innerhalb der Suchscheibe → Kernschatten, kein Filter.
 	if ( blocker.y > float( ${PCSS_NUM_SAMPLES_INTERNAL} ) - 0.5 && filterRadius <= searchRadius ) return 0.0;
 	float soft = pcssFilter( shadowMap, uv, zReceiver, filterRadius, rot, slope );
@@ -214,12 +236,13 @@ const PCSS_BASIC_GET_SHADOW = `#else
 				shadowCoord.z += shadowBias;
 			#endif
 			// Ableitungen vor dem Branch (uniformer Kontrollfluss für dFdx/dFdy).
-			vec2 pcssSlope = pcssReceiverPlaneSlope( shadowCoord.xy, shadowCoord.z );
+			vec2 pcssSlope = pcssReceiverPlaneSlope( shadowCoord.xy, shadowCoord.z, 1.0 / shadowMapSize.x );
+			float pcssFootprint = pcssUvFootprint( shadowCoord.xy );
 			bool inFrustum = shadowCoord.x >= 0.0 && shadowCoord.x <= 1.0 && shadowCoord.y >= 0.0 && shadowCoord.y <= 1.0;
 			bool frustumTest = inFrustum && shadowCoord.z <= 1.0;
 			if ( frustumTest ) {
 				// Immer volles PCSS — kein Orbit-1-Tap (wirkte als harter Schatten / Wandfarben-Flash).
-				shadow = pcssGetShadow( shadowMap, shadowCoord, 1.0 / shadowMapSize.x, pcssSlope );
+				shadow = pcssGetShadow( shadowMap, shadowCoord, 1.0 / shadowMapSize.x, pcssSlope, pcssFootprint );
 			}
 			return mix( 1.0, shadow, shadowIntensity );
 		}
@@ -288,6 +311,7 @@ uniform float pcssLightSizeUv;
 #define PCSS_BLOCKER_PROX ${PCSS_BLOCKER_PROX.toFixed(6)}
 #define PCSS_CONTACT_TEXELS_MIN ${PCSS_CONTACT_TEXELS_MIN.toFixed(4)}
 #define PCSS_CONTACT_TEXELS_MAX ${PCSS_CONTACT_TEXELS_MAX.toFixed(4)}
+#define PCSS_FOOTPRINT_SCALE ${PCSS_FOOTPRINT_SCALE.toFixed(4)}
 `
   let shader = base.replace('#ifdef USE_SHADOWMAP', `#ifdef USE_SHADOWMAP${defines}${PCSS_GLSL_HELPERS}`)
   if (!shader.includes(BASIC_GET_SHADOW_MARKER)) {

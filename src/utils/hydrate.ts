@@ -19,6 +19,7 @@ import {
   DEFAULT_INTERIOR_COLOR,
   defaultOpeningFrameColor,
 } from '../constants/colorPalettes'
+import { normalizeSurfaceFinish } from './surfaceFinish'
 import {
   DEFAULT_NICHE_DEPTH_CM,
   normalizeOpeningArch,
@@ -229,8 +230,7 @@ export function hydrateOpening(
     PREVIOUS_FRAME_COLOR_DEFAULTS,
     defaultOpeningFrameColor(next.type),
   )
-  next.frameFinish =
-    next.frameFinish === 'glossy' || next.frameFinish === 'metal' ? next.frameFinish : 'matte'
+  next.frameFinish = normalizeSurfaceFinish(next.frameFinish)
   next.glassColor = next.glassColor ?? DEFAULT_GLASS_COLOR
   const glass = openingGlassConfig(next)
   next.glassMode = next.glassMode === 'physical' ? 'physical' : 'tint'
@@ -380,15 +380,9 @@ export function hydrateWall(wall: Wall): Wall {
     yawDeg: cloned.yawDeg ?? 0,
     miterStart: cloned.miterStart ?? 0,
     miterEnd: cloned.miterEnd ?? 0,
-    wallFinish: cloned.wallFinish === 'glossy' || cloned.wallFinish === 'metal' ? cloned.wallFinish : 'matte',
-    claddingFinish:
-      cloned.claddingFinish === 'glossy' || cloned.claddingFinish === 'metal'
-        ? cloned.claddingFinish
-        : 'matte',
-    profileFinish:
-      cloned.profileFinish === 'glossy' || cloned.profileFinish === 'metal'
-        ? cloned.profileFinish
-        : 'matte',
+    wallFinish: normalizeSurfaceFinish(cloned.wallFinish),
+    claddingFinish: normalizeSurfaceFinish(cloned.claddingFinish),
+    profileFinish: normalizeSurfaceFinish(cloned.profileFinish),
     panel,
     cornice,
     trimBands: cloned.trimBands?.map((band) => normalizeWallTrimBand(band)),

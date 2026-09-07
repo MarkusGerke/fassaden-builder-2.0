@@ -59,6 +59,7 @@ import {
   openingsTooClose,
   validateOpeningPlacement,
 } from './validation'
+import { optionalSurfaceFinish } from './surfaceFinish'
 
 /** Sucht von links nach rechts die erste freie X-Position für eine Öffnung. */
 export function findOpeningSlot(
@@ -281,6 +282,7 @@ export function normalizeOpeningSillInner(raw?: Partial<OpeningSillInner> | null
     depth: Math.max(1, raw?.depth ?? 16),
     thickness: Math.max(0.5, raw?.thickness ?? 4),
     color: '#ffffff',
+    finish: optionalSurfaceFinish(raw?.finish),
     profileId: raw?.profileId,
     scale: raw?.scale,
     rotationDeg: raw?.rotationDeg,
@@ -303,10 +305,7 @@ export function normalizeOpeningSillOuter(
     mode: resolvedMode,
     profileId: resolvedMode === 'profile' && hasProfile ? profileId : undefined,
     color: raw?.color,
-    finish:
-      raw?.finish === 'glossy' || raw?.finish === 'metal' || raw?.finish === 'matte'
-        ? raw.finish
-        : undefined,
+    finish: optionalSurfaceFinish(raw?.finish),
     scale: raw?.scale ?? 1,
     flipForward: raw?.flipForward ?? false,
     rotationDeg: raw?.rotationDeg ?? 0,

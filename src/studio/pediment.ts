@@ -15,6 +15,7 @@ import {
   isPedimentProfile,
 } from '../profiles/windowTrim'
 import { STUDIO_MASONRY } from './constants'
+import { optionalSurfaceFinish } from '../utils/surfaceFinish'
 
 const OVERHANG_MAX = 96
 const GABLE_MAX = 96
@@ -170,10 +171,7 @@ export function normalizeOpeningPediment(
         ? Math.min(96, Math.max(1, raw!.extentForwardCm!))
         : undefined,
     color: raw?.color,
-    finish:
-      raw?.finish === 'glossy' || raw?.finish === 'metal' || raw?.finish === 'matte'
-        ? raw.finish
-        : undefined,
+    finish: optionalSurfaceFinish(raw?.finish),
     offsetUp: snapPedimentMeasure(raw?.offsetUp ?? 0, -OVERHANG_MAX, OVERHANG_MAX),
     offsetForward: Number.isFinite(raw?.offsetForward) ? Number(raw!.offsetForward) : 0,
     consoles: {

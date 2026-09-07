@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.264'
+export const APP_VERSION = '2.0.271'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,77 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.271',
+    date: '2026-09-07',
+    title: 'Einstellungs-Fächer oben und unten',
+    changes: [
+      'Rechte Einstellungen: gescrollte Register stapeln oben, noch nicht erreichte unten — ohne Weißraum und ohne untere Tab-Leiste',
+    ],
+  },
+  {
+    version: '2.0.270',
+    date: '2026-09-07',
+    title: 'Fächer-Tabs, Schatten ohne Raster',
+    changes: [
+      'Rechte Einstellungen: eine Scroll-Spalte — aktiver Kopf klebt ohne Abstand oben, bis der Abschnitt durch ist, dann schiebt der nächste nach; kurze Abschnitte folgen direkt untereinander',
+      'Untere Tab-Leiste in der Spalte entfernt',
+      'Schatten: softDrive und geänderter Umbra-Early-Out zurückgenommen (v2.0.269)',
+      'Schatten beim Rauszoomen: keine grauen Flecken/Raster mehr auf Steinen, Fenstern, Profilen und Sockel — Filter mindestens pixelgroß, Flächen-Bias auf Distanz gedämpft; Nahbereich unverändert',
+    ],
+  },
+  {
+    version: '2.0.269',
+    date: '2026-09-07',
+    title: 'Sticky-Tabs sichtbar, Farb-Overlay, Schatten-Umbra',
+    changes: [
+      'Einstellungs-Köpfe wieder in der rechten Spalte (CSS-sticky) plus Registerleiste unten in der Spalte',
+      'Farbe: RGB und Oberfläche in einem Overlay unter dem Swatch; Finish-Selects/Labels werden ausgeblendet',
+      'Schatten: volle Umbra bleibt dunkel bei Überlagerung; Weichheit-Slider wirkt stärker auch am Kontakt',
+    ],
+  },
+  {
+    version: '2.0.268',
+    date: '2026-09-07',
+    title: 'Sticky-Köpfe ohne Tab-Leiste, Schatten-Weichheit',
+    changes: [
+      'Obere horizontale Register (`#selection-right-tabs` / Szene) entfernt — Navigation nur noch über volle sticky Sektionsköpfe in der Spalte',
+      'Sektionsköpfe volle Breite; aktiver Block in der Mitte, weitere Köpfe unten gestapelt, beim Scrollen wandern sie nach oben',
+      'Schattenweichheit am Slider-Maximum bei hoher Sonne wird beim Laden korrigiert (weniger PCSS-Rauschen / Geflackere)',
+    ],
+  },
+  {
+    version: '2.0.267',
+    date: '2026-09-07',
+    title: 'Rechte Leiste, Schrift-Auswahl, Sticky-Register',
+    changes: [
+      'Rechte Einstellungen wieder sichtbar (HTML-Verschachtelung der Licht-Leiste repariert)',
+      'Schrift: aktive Schriftart in der Bibliothek markiert; Klick tauscht die Schrift statt neu hinzuzufügen',
+      'Schrift-Auswahl: nur die gewählte Instanz markiert, Text bleibt sichtbar',
+      'Einstellungs-Register horizontal oben in der Leiste; Sektionsköpfe sticky gestapelt beim Scrollen',
+    ],
+  },
+  {
+    version: '2.0.266',
+    date: '2026-09-07',
+    title: 'Fassaden-Scope, Oberflächen-Mix, Farb-Overlay',
+    changes: [
+      'Scope Fassade gilt wieder für alle Öffnungen des Hauses — Kellerfenster und Türen werden nicht mehr ausgelassen',
+      'Oberfläche: Stumpf, Glänzend und Metallisch als drei Regler 0–100 % mischbar; Metall wirkt auch im Render-Modus',
+      'Farbe: HEX immer neben dem Swatch; Overlay mit RGB und Oberflächen-Reglern schließt nur bei Klick außerhalb',
+    ],
+  },
+  {
+    version: '2.0.265',
+    date: '2026-09-07',
+    title: 'Rechte Toolbar aufgeräumt',
+    changes: [
+      'Gesims- und Profil-Querschnitt mit Drehen/Spiegeln entfernt — Profile weiter über die Bibliothek',
+      'Reiter Ecken und Fenstermodell-Dropdown entfernt; Öffnungs-Pfeile ←→↑↓ weg (Position über Zahlenfelder/Tastatur)',
+      'Wandbreite: −/Zahl/+ statt Links/Rechts-Buttons; Stein-Kontrast ebenfalls als −/Zahl/+',
+      'Schrift-Reiter nur noch sichtbar, wenn Schrift vorhanden; Holzmaße und Scharnier einklappbar',
+    ],
+  },
   {
     version: '2.0.264',
     date: '2026-09-06',

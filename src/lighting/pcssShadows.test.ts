@@ -113,7 +113,7 @@ describe('pcssShadows', () => {
     const chunk = THREE.ShaderChunk.shadowmap_pars_fragment
     expect(chunk).not.toContain('pcssLite')
     expect(chunk).toContain(
-      'shadow = pcssGetShadow( shadowMap, shadowCoord, 1.0 / shadowMapSize.x, pcssSlope );',
+      'shadow = pcssGetShadow( shadowMap, shadowCoord, 1.0 / shadowMapSize.x, pcssSlope, pcssFootprint );',
     )
     disablePcssShadows()
   })
@@ -122,12 +122,14 @@ describe('pcssShadows', () => {
     enablePcssShadows()
     const chunk = THREE.ShaderChunk.shadowmap_pars_fragment
     // Steigung vor dem Frustum-Branch (uniformer Kontrollfluss für dFdx/dFdy).
-    const slopeAt = chunk.indexOf('vec2 pcssSlope = pcssReceiverPlaneSlope( shadowCoord.xy, shadowCoord.z );')
+    const slopeAt = chunk.indexOf(
+      'vec2 pcssSlope = pcssReceiverPlaneSlope( shadowCoord.xy, shadowCoord.z, 1.0 / shadowMapSize.x );',
+    )
     expect(slopeAt).toBeGreaterThan(0)
     const branchAt = chunk.indexOf('if ( frustumTest )', slopeAt)
     expect(branchAt).toBeGreaterThan(slopeAt)
     expect(
-      chunk.indexOf('pcssGetShadow( shadowMap, shadowCoord, 1.0 / shadowMapSize.x, pcssSlope )', branchAt),
+      chunk.indexOf('pcssGetShadow( shadowMap, shadowCoord, 1.0 / shadowMapSize.x, pcssSlope, pcssFootprint )', branchAt),
     ).toBeGreaterThan(branchAt)
     expect(chunk).toContain('zPlane = zReceiver + dot( slope, offset );')
     expect(chunk).toContain('step( zReceiver + dot( slope, offset ), depth )')
@@ -148,7 +150,7 @@ describe('pcssShadows', () => {
     expect(chunk).toContain('#define PCSS_CONTACT_TEXELS_MIN 0.5000')
     expect(chunk).toContain('#define PCSS_CONTACT_TEXELS_MAX 2.0000')
     // Texelgröße aus der echten Shadow-Map-Auflösung (8192 Render / 4096 Vorschau).
-    expect(chunk).toContain('pcssGetShadow( shadowMap, shadowCoord, 1.0 / shadowMapSize.x, pcssSlope )')
+    expect(chunk).toContain('pcssGetShadow( shadowMap, shadowCoord, 1.0 / shadowMapSize.x, pcssSlope, pcssFootprint )')
     expect(PCSS_CONTACT_TEXELS_MAX).toBeLessThanOrEqual(3)
     disablePcssShadows()
   })
@@ -165,6 +167,21 @@ describe('pcssShadows', () => {
     expect(chunk).toContain(
       `if ( blocker.y > float( ${PCSS_NUM_SAMPLES} ) - 0.5 && filterRadius <= searchRadius ) return 0.0;`,
     )
+    expect(chunk).not.toContain('softDrive')
+    disablePcssShadows()
+  })
+
+  it('Distanz-AA: Filter mindestens über die Pixel-Fläche (v2.0.270, Raster beim Rauszoomen)', () => {
+    enablePcssShadows()
+    const chunk = THREE.ShaderChunk.shadowmap_pars_fragment
+    expect(chunk).toContain('float pcssFootprint = pcssUvFootprint( shadowCoord.xy );')
+    expect(chunk).toContain('float aaRadius = footprint * PCSS_FOOTPRINT_SCALE;')
+    expect(chunk).toContain('filterRadius = max( penumbraRatio * pcssLightSizeUv * PCSS_PENUMBRA_SCALE, aaRadius );')
+    expect(chunk).toContain('#define PCSS_FOOTPRINT_SCALE 0.5000')
+    // Plane-Steigung auf Distanz dämpfen (Ableitung über Steinkanten → graue Steine).
+    expect(chunk).toContain('return slope * clamp( texelUv / max( footprint, 1e-8 ), 0.0, 1.0 );')
+    // Footprint vor dem Branch (uniformer Kontrollfluss für dFdx/dFdy).
+    expect(chunk.indexOf('pcssUvFootprint( shadowCoord.xy )')).toBeLessThan(chunk.indexOf('if ( frustumTest )', chunk.indexOf('pcssUvFootprint( shadowCoord.xy )')))
     disablePcssShadows()
   })
 

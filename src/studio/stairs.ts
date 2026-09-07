@@ -6,6 +6,7 @@ import {
   studioWallInnerLocalZ,
   studioWindowDepthForwardSign,
 } from './walls'
+import { optionalSurfaceFinish } from '../utils/surfaceFinish'
 
 const STEP_MIN = 1
 const STEP_MAX = 16
@@ -72,10 +73,7 @@ export function syncStairsToDoorWidth(
       LANDING_DEPTH_MAX,
     ),
     color: typeof raw?.color === 'string' ? raw.color : undefined,
-    finish:
-      raw?.finish === 'glossy' || raw?.finish === 'metal' || raw?.finish === 'matte'
-        ? raw.finish
-        : undefined,
+    finish: optionalSurfaceFinish(raw?.finish),
   }
 }
 

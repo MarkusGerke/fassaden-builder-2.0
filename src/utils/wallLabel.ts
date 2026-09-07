@@ -6,6 +6,7 @@ import { snapToGrid } from './grid'
 import { normalizeWallTrimBand } from './trimBands'
 import { resolveLabelFontId } from '../studio/labelFonts'
 import { createId } from './id'
+import { normalizeSurfaceFinish } from './surfaceFinish'
 
 export type WallLabelAlign = 'left' | 'center' | 'right'
 
@@ -152,10 +153,7 @@ export function normalizeWallLabel(raw?: WallLabelConfig, wall?: Wall): WallLabe
     y,
     heightCm,
     color: typeof raw?.color === 'string' ? raw.color : undefined,
-    finish:
-      raw?.finish === 'glossy' || raw?.finish === 'metal' || raw?.finish === 'matte'
-        ? raw.finish
-        : 'matte',
+    finish: normalizeSurfaceFinish(raw?.finish),
     depth: clampDepth(raw?.depth),
     extrudeCm: clampExtrudeCm(raw?.extrudeCm),
     offsetForward: clampOffsetForward(raw?.offsetForward),

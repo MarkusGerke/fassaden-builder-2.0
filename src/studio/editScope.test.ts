@@ -135,7 +135,7 @@ describe('editOpeningTargets', () => {
     expect(ids).toEqual(['north-1:u1', 'north:n1', 'north:n2', 'north:nd'])
   })
 
-  it('Kellerfenster Fassade: nur Kellerfenster, keine normalen Fenster', () => {
+  it('Kellerfenster Fassade: alle Öffnungen inkl. Normalfenster und Türen', () => {
     const basement = {
       ...opening('b1', 'window', 32, 64, 0),
       basementWindow: { enabled: true, grilleHeight: 0.5 },
@@ -152,7 +152,8 @@ describe('editOpeningTargets', () => {
       editorWith({ wallId: 'north', openingId: 'b1' }),
       'facade',
     )
-    expect(refs).toEqual([{ wallId: 'north', openingId: 'b1' }])
+    const ids = refs.map((r) => `${r.wallId}:${r.openingId}`).sort()
+    expect(ids).toEqual(['east:e1', 'north-1:u1', 'north:b1', 'north:n3', 'north:nd'])
   })
 })
 

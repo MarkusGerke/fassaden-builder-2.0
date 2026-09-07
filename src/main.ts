@@ -64,7 +64,6 @@ import {
   type ColorPalette,
 } from './constants/colorPalettes'
 import { applyWallModule, BLENDER_WALL_MODULES } from './blender/wallModules'
-import { BLENDER_WINDOW_MODELS } from './blender/windowModels'
 import { FacadeController } from './FacadeController'
 import { FacadeSvgView } from './FacadeSvgView'
 import { isFrameProfile, isWindowTrimProfile, WINDOW_TRIM_PROFILE_IDS, PEDIMENT_PROFILE_IDS, PEDIMENT_CONSOLE_IDS, FRAME_PROFILE_IDS, SILL_OUTER_PROFILE_IDS, CORNICE_PROFILE_IDS, PLINTH_PROFILE_IDS, DEFAULT_PLINTH_PROFILE_ID } from './profiles/windowTrim'
@@ -80,8 +79,6 @@ import {
 import type {
   Building,
   EditorState,
-  EndBossJoin,
-  EndBossPattern,
   FacadeState,
   GruenderzeitPresetId,
   GruenderzeitTransomBars,
@@ -106,6 +103,7 @@ import type {
   WallSide,
   PedimentForm,
   SceneLight,
+  SurfaceFinish,
 } from './types/facade'
 import {
   addOpening,
@@ -120,7 +118,6 @@ import {
   openingProfileEdges,
   removeOpening,
   removeProfilesFromOpenings,
-  centeredOpeningX,
   anchoredOpeningX,
   replaceOpeningsWithPreset,
   normalizeOpeningSillOuter,
@@ -487,6 +484,12 @@ import {
 } from './studio/scopePropagate'
 import { clonePatternPreviewSvg } from './studio/patternPreview'
 import { snapToGrid } from './utils/grid'
+import {
+  normalizeSurfaceFinish,
+  surfaceFinishFromPreset,
+  surfaceFinishPresetId,
+  type SurfaceFinishPreset,
+} from './utils/surfaceFinish'
 import { openingPreviewSvg, openingSizePreviewSvg } from './studio/openingPreview'
 import {
   appendGruenderzeitSvg,
@@ -5796,12 +5799,10 @@ function elementPasteMenuItems(opts?: {
   ]
 }
 
-const selectionRightTabs = document.querySelector<HTMLElement>('#selection-right-tabs')!
 const libraryModeEl = document.querySelector<HTMLElement>('#library-mode')!
 const openingLibraryEl = document.querySelector<HTMLElement>('#opening-library')!
-const sceneToolbarTabs = document.querySelector<HTMLElement>('#scene-toolbar-tabs')!
 const sceneToolbarPanels = document.querySelector<HTMLElement>('#scene-toolbar-panels')!
-/** Aktiver Options-Reiter der Auswahl (kein „Alles“ — Tabs sitzen oben rechts). */
+/** Aktiver Options-Reiter der Auswahl (Scroll-Ziel / Sticky-Kontext). */
 let selectionToolbarTab = ''
 /** Zuletzt vom Nutzer gewählter/bearbeiteter Auswahl-Tab — bleibt bei neuer Markierung, falls verfügbar. */
 let lastStickySelectionToolbarTab = ''
@@ -5927,10 +5928,6 @@ const openingArchThetaEnd = document.querySelector<HTMLInputElement>('#opening-a
 const openingArchSpandrel = document.querySelector<HTMLSelectElement>('#opening-arch-spandrel')!
 const openingPosX = document.querySelector<HTMLInputElement>('#opening-pos-x')!
 const openingPosY = document.querySelector<HTMLInputElement>('#opening-pos-y')!
-const openingNudgeLeft = document.querySelector<HTMLButtonElement>('#opening-nudge-left')!
-const openingNudgeRight = document.querySelector<HTMLButtonElement>('#opening-nudge-right')!
-const openingNudgeUp = document.querySelector<HTMLButtonElement>('#opening-nudge-up')!
-const openingNudgeDown = document.querySelector<HTMLButtonElement>('#opening-nudge-down')!
 const doorStairsSection = document.querySelector<HTMLDivElement>('#door-stairs-section')!
 const openingRollerShutterSection = document.querySelector<HTMLDivElement>('#opening-roller-shutter-section')!
 const rollerShutterEnabled = document.querySelector<HTMLInputElement>('#roller-shutter-enabled')!
@@ -5964,11 +5961,6 @@ const profileOffsetYInput = document.querySelector<HTMLInputElement>('#profile-o
 const profileOffsetForwardInput = document.querySelector<HTMLInputElement>('#profile-offset-forward')!
 const profileExtentOutInput = document.querySelector<HTMLInputElement>('#profile-extent-out')!
 const profileExtentForwardInput = document.querySelector<HTMLInputElement>('#profile-extent-forward')!
-const profileSectionPreview = document.querySelector<SVGSVGElement>('#profile-section-preview')!
-const profileRotateCcwButton = document.querySelector<HTMLButtonElement>('#profile-rotate-ccw')!
-const profileRotateCwButton = document.querySelector<HTMLButtonElement>('#profile-rotate-cw')!
-const profileFlipOutwardButton = document.querySelector<HTMLButtonElement>('#profile-flip-outward')!
-const profileFlipForwardButton = document.querySelector<HTMLButtonElement>('#profile-flip-forward')!
 const trimColorSwatches = document.querySelector<HTMLDivElement>('#trim-color-swatches')!
 const trimColorSwatchesHub = document.querySelector<HTMLDivElement>('#trim-color-swatches-hub')!
 const trimColorHubSection = document.querySelector<HTMLDivElement>('#trim-color-hub-section')!
@@ -5981,7 +5973,6 @@ const duplicateWallButton = document.querySelector<HTMLButtonElement>('#duplicat
 const deleteOpeningButton = document.querySelector<HTMLButtonElement>('#delete-opening')!
 const duplicateOpeningButton = document.querySelector<HTMLButtonElement>('#duplicate-opening')!
 const resetOpeningButton = document.querySelector<HTMLButtonElement>('#reset-opening')!
-const openingModelSelect = document.querySelector<HTMLSelectElement>('#opening-model-select')!
 const windowStyleSection = document.querySelector<HTMLDivElement>('#window-style-section')!
 const windowStylePreview = document.querySelector<SVGSVGElement>('#window-style-preview')!
 const windowTransomInput = document.querySelector<HTMLInputElement>('#window-transom')!
@@ -6311,10 +6302,8 @@ const fogDensity = document.querySelector<HTMLInputElement>('#fog-density')!
 const fogDensityNum = document.querySelector<HTMLInputElement>('#fog-density-num')!
 const fogDensityValue = document.querySelector<HTMLOutputElement>('#fog-density-value')!
 const studioOpeningJoinMiter = document.querySelector<HTMLInputElement>('#studio-opening-join-miter')!
-const studioStretchStartMinus = document.querySelector<HTMLButtonElement>('#studio-stretch-start-minus')!
-const studioStretchStartPlus = document.querySelector<HTMLButtonElement>('#studio-stretch-start-plus')!
-const studioStretchEndMinus = document.querySelector<HTMLButtonElement>('#studio-stretch-end-minus')!
-const studioStretchEndPlus = document.querySelector<HTMLButtonElement>('#studio-stretch-end-plus')!
+const studioWidthMinus = document.querySelector<HTMLButtonElement>('#studio-width-minus')!
+const studioWidthPlus = document.querySelector<HTMLButtonElement>('#studio-width-plus')!
 const studioWallWidthInput = document.querySelector<HTMLInputElement>('#studio-wall-width')!
 const studioWallWidthDirLeft = document.querySelector<HTMLButtonElement>('#studio-wall-width-dir-left')!
 const studioWallWidthDirRight = document.querySelector<HTMLButtonElement>('#studio-wall-width-dir-right')!
@@ -6338,13 +6327,6 @@ const studioPatternPanelCards = document.querySelector<HTMLDivElement>('#studio-
 const studioPatternMasonryCards = document.querySelector<HTMLDivElement>('#studio-pattern-masonry-cards')!
 const roofTilePatternCards = document.querySelector<HTMLDivElement>('#roof-tile-pattern-cards')!
 const studioCornerJoinSelect = document.querySelector<HTMLSelectElement>('#studio-corner-join')!
-const studioEndBossSection = document.querySelector<HTMLDivElement>('#studio-end-boss-section')!
-const studioEndBossStartRow = document.querySelector<HTMLDivElement>('#studio-end-boss-start-row')!
-const studioEndBossEndRow = document.querySelector<HTMLDivElement>('#studio-end-boss-end-row')!
-const studioEndBossStart = document.querySelector<HTMLSelectElement>('#studio-end-boss-start')!
-const studioEndBossEnd = document.querySelector<HTMLSelectElement>('#studio-end-boss-end')!
-const studioEndBossStartJoin = document.querySelector<HTMLSelectElement>('#studio-end-boss-start-join')!
-const studioEndBossEndJoin = document.querySelector<HTMLSelectElement>('#studio-end-boss-end-join')!
 const studioJointsEnabled = document.querySelector<HTMLInputElement>('#studio-joints-enabled')!
 const studioJointsOptions = document.querySelector<HTMLDivElement>('#studio-joints-options')!
 const studioJointInput = document.querySelector<HTMLInputElement>('#studio-joint')!
@@ -6361,7 +6343,8 @@ const studioHideRowsTopInput = document.querySelector<HTMLInputElement>('#studio
 const studioProjectDepthInput = document.querySelector<HTMLInputElement>('#studio-project-depth')!
 const studioTileColorSection = document.querySelector<HTMLDivElement>('#studio-tile-color-section')!
 const studioTileVariance = document.querySelector<HTMLInputElement>('#studio-tile-variance')!
-const studioTileVarianceValue = document.querySelector<HTMLOutputElement>('#studio-tile-variance-value')!
+const studioTileVarianceMinus = document.querySelector<HTMLButtonElement>('#studio-tile-variance-minus')!
+const studioTileVariancePlus = document.querySelector<HTMLButtonElement>('#studio-tile-variance-plus')!
 const studioTileVariety = document.querySelector<HTMLInputElement>('#studio-tile-variety')!
 const studioTileVarietyValue = document.querySelector<HTMLOutputElement>('#studio-tile-variety-value')!
 const studioTileVarietyRow = document.querySelector<HTMLDivElement>('#studio-tile-variety-row')!
@@ -6427,14 +6410,8 @@ const wallCorniceSizePreset = document.querySelector<HTMLSelectElement>('#wall-c
 const wallCorniceScale = document.querySelector<HTMLInputElement>('#wall-cornice-scale')!
 const studioCorniceColorSwatches = document.querySelector<HTMLDivElement>('#studio-cornice-color-swatches')!
 const wallCorniceColorSwatches = document.querySelector<HTMLDivElement>('#wall-cornice-color-swatches')!
-const studioCorniceProfileCards = document.querySelector<HTMLDivElement>('#studio-cornice-profile-cards')!
 const wallCorniceProfileCards = document.querySelector<HTMLDivElement>('#wall-cornice-profile-cards')!
-const studioCornicePreview = document.querySelector<SVGSVGElement>('#studio-cornice-preview')!
 const wallCornicePreview = document.querySelector<SVGSVGElement>('#wall-cornice-preview')!
-const studioCorniceRotateCcw = document.querySelector<HTMLButtonElement>('#studio-cornice-rotate-ccw')!
-const studioCorniceRotateCw = document.querySelector<HTMLButtonElement>('#studio-cornice-rotate-cw')!
-const studioCorniceFlipOutward = document.querySelector<HTMLButtonElement>('#studio-cornice-flip-outward')!
-const studioCorniceFlipForward = document.querySelector<HTMLButtonElement>('#studio-cornice-flip-forward')!
 const wallCorniceRotateCcw = document.querySelector<HTMLButtonElement>('#wall-cornice-rotate-ccw')!
 const wallCorniceRotateCw = document.querySelector<HTMLButtonElement>('#wall-cornice-rotate-cw')!
 const wallCorniceFlipOutward = document.querySelector<HTMLButtonElement>('#wall-cornice-flip-outward')!
@@ -7765,8 +7742,6 @@ function syncStudioPanelVisibility(
   studioTileColorSection.hidden = !panelsOn
   studioTileVarietyRow.hidden = !panelsOn || (panel.tileColorVariance ?? 0) <= 0
   studioPanelWidthRow.hidden = !panelsOn
-  // Ecken-Reiter: End-Boss sichtbar bei Wand + Paneelen
-  if (studioEndBossSection) studioEndBossSection.hidden = !panelsOn
 }
 
 function syncStudioToolbar(wall: Wall) {
@@ -7805,7 +7780,6 @@ function syncStudioToolbar(wall: Wall) {
   studioWallYawInput.value = String(Math.round(wall.yawDeg ?? 0))
   syncEndPieceControls(wall)
   syncBayDropControls(wall)
-  syncEndBossControls(wall, activeBuilding().walls)
   studioJointDepthInput.value = String(panel.jointDepth ?? 0)
   studioTaperInput.value = String(panel.taper)
   studioTaperDepthInput.value = String(panel.taperDepth ?? 0)
@@ -7823,7 +7797,6 @@ function syncStudioToolbar(wall: Wall) {
   const layer2TaperDepth = panel.recessedTaperDepth ?? 0
   studioLayer2Taper.disabled = layer2TaperDepth <= 0
   studioTileVariance.value = String(panel.tileColorVariance ?? 0)
-  studioTileVarianceValue.textContent = String(panel.tileColorVariance ?? 0)
   studioTileVariety.value = String(panel.tileColorVariety ?? 0)
   studioTileVarietyValue.textContent = String(panel.tileColorVariety ?? 0)
   const taperDepth = panel.taperDepth ?? 0
@@ -7948,9 +7921,12 @@ function syncLabelControls(wall: Wall) {
     previewSelectionColor((next) =>
       updateWallLabel(state, scopedWallIds(), { color: next }, editor.selectedLabelId),
     ),
+    {
+      value: normalizeSurfaceFinish(label.finish),
+      select: studioLabelFinishSelect,
+      onChange: (finish) => commitLabelPatch({ finish }),
+    },
   )
-  studioLabelFinishSelect.value =
-    label.finish === 'glossy' || label.finish === 'metal' ? label.finish : 'matte'
   syncLabelFontCards(label.fontId)
 }
 
@@ -8149,28 +8125,25 @@ function syncCorniceControls(wall: Wall) {
   studioCorniceBottom.classList.toggle('active', edge === 'bottom')
   syncCorniceHeightInputs(wall, cornice)
   rebuildCorniceProfileCards(
-    studioCorniceProfileCards,
-    profileId,
-    cornice.color ?? wall.profileColor ?? DEFAULT_PROFILE_COLOR,
-    (id) =>
-      commitCornicePatch(id ? { enabled: true, profileId: id } : { enabled: false }),
-  )
-  studioCorniceFlipOutward.classList.toggle('active', Boolean(cornice.flipOutward))
-  studioCorniceFlipForward.classList.toggle('active', Boolean(cornice.flipForward))
-  wallCorniceEnabled.checked = Boolean(cornice.enabled)
-  wallCorniceTop.classList.toggle('active', edge === 'top')
-  wallCorniceBottom.classList.toggle('active', edge === 'bottom')
-  rebuildCorniceProfileCards(
     wallCorniceProfileCards,
     profileId,
     cornice.color ?? wall.profileColor ?? DEFAULT_PROFILE_COLOR,
     (id) =>
       commitCornicePatch(id ? { enabled: true, profileId: id } : { enabled: false }),
   )
+  wallCorniceEnabled.checked = Boolean(cornice.enabled)
+  wallCorniceTop.classList.toggle('active', edge === 'top')
+  wallCorniceBottom.classList.toggle('active', edge === 'bottom')
   wallCorniceOffsetForward.value = String(cornice.offsetForward ?? 0)
   wallCorniceFlipOutward.classList.toggle('active', Boolean(cornice.flipOutward))
   wallCorniceFlipForward.classList.toggle('active', Boolean(cornice.flipForward))
   const color = activeCorniceColor()
+  const corniceFinish = normalizeSurfaceFinish(cornice.finish ?? wall.profileFinish)
+  const corniceFinishOpt = {
+    value: corniceFinish,
+    select: studioCorniceFinishSelect,
+    onChange: (finish: SurfaceFinish) => commitCornicePatch({ finish }),
+  }
   renderColorSwatches(
     studioCorniceColorSwatches,
     'profile',
@@ -8179,6 +8152,7 @@ function syncCorniceControls(wall: Wall) {
       commitCornicePatch({ color: next })
     },
     previewSelectionColor((next) => updateWallCornice(state, corniceTargetWallIds(), { color: next })),
+    corniceFinishOpt,
   )
   renderColorSwatches(
     wallCorniceColorSwatches,
@@ -8188,17 +8162,8 @@ function syncCorniceControls(wall: Wall) {
       commitCornicePatch({ color: next })
     },
     previewSelectionColor((next) => updateWallCornice(state, corniceTargetWallIds(), { color: next })),
+    { ...corniceFinishOpt, select: wallCorniceFinishSelect },
   )
-  const corniceFinish =
-    cornice.finish === 'glossy' || cornice.finish === 'metal'
-      ? cornice.finish
-      : cornice.finish === 'matte'
-        ? 'matte'
-        : wall.profileFinish === 'glossy' || wall.profileFinish === 'metal'
-          ? wall.profileFinish
-          : 'matte'
-  studioCorniceFinishSelect.value = corniceFinish
-  wallCorniceFinishSelect.value = corniceFinish
   drawCorniceSectionPreview()
 }
 
@@ -9432,15 +9397,25 @@ function initOpeningLibrary() {
 
   if (libraryTab === 'label') {
     const wall = selectedWalls()[0]
-    const activeFont = wall ? wallLabel(wall, editor.selectedLabelId).fontId : undefined
+    const labelFocused =
+      Boolean(wall) &&
+      editor.selectedWallPart === 'label' &&
+      Boolean(editor.selectedLabelId) &&
+      wallLabels(wall!).some((item) => item.id === editor.selectedLabelId)
+    const activeFont = labelFocused
+      ? wallLabel(wall!, editor.selectedLabelId).fontId
+      : wall
+        ? wallLabel(wall, editor.selectedLabelId).fontId
+        : undefined
     for (const font of LABEL_FONTS) {
       const card = document.createElement('button')
       card.type = 'button'
       card.className = 'opening-library-card'
       card.draggable = true
-      if (wall && wallLabel(wall, editor.selectedLabelId).enabled && activeFont === font.id)
-        card.classList.add('library-card-applied')
-      card.title = `${font.name} — auf Wand ziehen oder klicken (weitere Schrift)`
+      if (labelFocused && activeFont === font.id) card.classList.add('library-card-applied')
+      card.title = labelFocused
+        ? `${font.name} — Schriftart der Auswahl tauschen`
+        : `${font.name} — auf Wand ziehen oder klicken (weitere Schrift)`
       const thumb = document.createElement('div')
       thumb.className = 'opening-library-thumb'
       const preview = document.createElement('span')
@@ -9455,6 +9430,11 @@ function initOpeningLibrary() {
       card.addEventListener('click', () => {
         if (card.dataset.didDrag === '1') {
           delete card.dataset.didDrag
+          return
+        }
+        if (labelFocused) {
+          selectLabelFont(font.id)
+          initOpeningLibrary()
           return
         }
         placeLabelFromLibrary(font.id)
@@ -11855,25 +11835,6 @@ function renderUi(opts?: { skipLayerList?: boolean }) {
   toolbarSceneLight.hidden = !hasSceneLight
   syncWindowDepthControls()
 
-  // Dropdown befüllen (nur einmalig) — nur Fenstermodelle, keine Türen
-  if (openingModelSelect.options.length === 0) {
-    for (const model of BLENDER_WINDOW_MODELS) {
-      const opt = document.createElement('option')
-      opt.value = model.name
-      opt.textContent = `Fenster ${model.width}×${model.height}`
-      openingModelSelect.appendChild(opt)
-    }
-  }
-
-  if (editor.selectedOpenings.length === 1) {
-    const ref = editor.selectedOpenings[0]
-    const selWall = getWall(state, ref.wallId)
-    const selOpening = selWall?.openings.find((o) => o.id === ref.openingId)
-    if (selOpening?.windowModel) {
-      openingModelSelect.value = selOpening.windowModel
-    }
-  }
-
   if (hasOpening) {
     fillAllProfileSelects()
     syncProfileSelect()
@@ -11945,8 +11906,12 @@ function renderUi(opts?: { skipLayerList?: boolean }) {
         let next = updateWallColors(state, ids, color, 'wallColor')
         return updateWallColors(next, ids, color, 'claddingColor')
       }),
+      {
+        value: normalizeSurfaceFinish(wall.wallFinish),
+        select: studioWallFinishSelect,
+        onChange: (finish) => commitState(updateWallFinishes(state, scopedWallIds(), finish, 'wallFinish')),
+      },
     )
-    studioWallFinishSelect.value = wall.wallFinish === 'glossy' || wall.wallFinish === 'metal' ? wall.wallFinish : 'matte'
     renderColorSwatches(
       interiorColorSwatchesStudio,
       'wall',
@@ -11973,9 +11938,13 @@ function renderUi(opts?: { skipLayerList?: boolean }) {
         commitState(updateWallColors(state, scopedWallIds(), color, 'claddingColor'))
       },
       previewSelectionColor((color) => updateWallColors(state, scopedWallIds(), color, 'claddingColor')),
+      {
+        value: normalizeSurfaceFinish(wall.claddingFinish),
+        select: studioCladdingFinishSelect,
+        onChange: (finish) =>
+          commitState(updateWallFinishes(state, scopedWallIds(), finish, 'claddingFinish')),
+      },
     )
-    studioCladdingFinishSelect.value =
-      wall.claddingFinish === 'glossy' || wall.claddingFinish === 'metal' ? wall.claddingFinish : 'matte'
     renderColorSwatches(
       profileColorSwatchesStudio,
       'profile',
@@ -11984,9 +11953,13 @@ function renderUi(opts?: { skipLayerList?: boolean }) {
         commitState(updateWallColors(state, scopedWallIds(), color, 'profileColor'))
       },
       previewSelectionColor((color) => updateWallColors(state, scopedWallIds(), color, 'profileColor')),
+      {
+        value: normalizeSurfaceFinish(wall.profileFinish),
+        select: studioProfileFinishSelect,
+        onChange: (finish) =>
+          commitState(updateWallFinishes(state, scopedWallIds(), finish, 'profileFinish')),
+      },
     )
-    studioProfileFinishSelect.value =
-      wall.profileFinish === 'glossy' || wall.profileFinish === 'metal' ? wall.profileFinish : 'matte'
     renderColorSwatches(
       jointColorSwatchesStudio,
       'wall',
@@ -14431,18 +14404,51 @@ function makeColorNumberInput(min: number, max: number, step: number): HTMLInput
   return el
 }
 
+
+function hideFinishSelectHost(select: HTMLSelectElement) {
+  select.hidden = true
+  const prev = select.previousElementSibling
+  if (
+    prev instanceof HTMLElement &&
+    (prev.classList.contains('toolbar-label') || prev.tagName === 'SPAN') &&
+    /oberfläche|reflexion|finish/i.test(prev.textContent ?? '')
+  ) {
+    prev.hidden = true
+  }
+}
+
+function syncFinishSelect(select: HTMLSelectElement, finish: SurfaceFinish | SurfaceFinishPreset | null | undefined) {
+  select.value = surfaceFinishPresetId(finish)
+  hideFinishSelectHost(select)
+}
+
+function finishFromSelect(select: HTMLSelectElement): SurfaceFinish {
+  const raw = select.value
+  const preset: SurfaceFinishPreset =
+    raw === 'glossy' || raw === 'metal' || raw === 'matte' ? raw : 'matte'
+  return surfaceFinishFromPreset(preset)
+}
+
 function renderColorControl(
   container: HTMLElement,
   active: string,
   onPick: (color: string) => void,
   onPreview?: (color: string | null) => void,
-  options?: { allowTransparent?: boolean },
+  options?: {
+    allowTransparent?: boolean
+    finish?: {
+      value: SurfaceFinish
+      onChange: (next: SurfaceFinish) => void
+      select?: HTMLSelectElement
+    }
+  },
 ) {
   if (isColorPickerSessionActive()) return
 
   type ColorHost = HTMLElement & {
     __colorPick?: (color: string) => void
     __colorPreview?: (color: string | null) => void
+    __colorFinishChange?: (next: SurfaceFinish) => void
     __colorPicking?: boolean
     __colorExpanded?: boolean
     __colorOutsideBound?: boolean
@@ -14450,6 +14456,7 @@ function renderColorControl(
   const host = container as ColorHost
   host.__colorPick = onPick
   host.__colorPreview = onPreview
+  host.__colorFinishChange = options?.finish?.onChange
   host.classList.add('color-picker-row')
 
   const isTransparent = active === TRANSPARENT_GLASS
@@ -14459,11 +14466,14 @@ function renderColorControl(
     host.__colorExpanded = on
     host.classList.toggle('color-picker-expanded', on)
   }
-  const beginPick = () => {
+  const beginSession = () => {
     if (!host.__colorPicking) {
       host.__colorPicking = true
       activeColorPickerCount += 1
     }
+  }
+  const openOverlay = () => {
+    beginSession()
     setExpanded(true)
   }
   const endPick = () => {
@@ -14496,14 +14506,21 @@ function renderColorControl(
     host.insertBefore(top, host.firstChild)
   }
 
+  let overlay = host.querySelector<HTMLDivElement>('.color-picker-overlay')
+  if (!overlay) {
+    overlay = document.createElement('div')
+    overlay.className = 'color-picker-overlay'
+    host.appendChild(overlay)
+  }
+
   let input = host.querySelector<HTMLInputElement>('input[type="color"]')
   let hexInput = host.querySelector<HTMLInputElement>('input.color-hex-input')
   let rgbR = host.querySelector<HTMLInputElement>('input.color-rgb-r')
   let rgbG = host.querySelector<HTMLInputElement>('input.color-rgb-g')
   let rgbB = host.querySelector<HTMLInputElement>('input.color-rgb-b')
-  let hslH = host.querySelector<HTMLInputElement>('input.color-hsl-h')
-  let hslS = host.querySelector<HTMLInputElement>('input.color-hsl-s')
-  let hslL = host.querySelector<HTMLInputElement>('input.color-hsl-l')
+  // Legacy HSL-Zeile ausblenden (HEX/RGB reichen).
+  host.querySelector<HTMLDivElement>('.color-channel-row[data-space="hsl"]')?.setAttribute('hidden', '')
+  host.querySelector<HTMLDivElement>('.color-channel-row[data-space="hex"]')?.setAttribute('hidden', '')
 
   const applyHex = (nextHex: string, preview: boolean) => {
     const value = nextHex.toUpperCase()
@@ -14513,10 +14530,6 @@ function renderColorControl(
     rgbR!.value = String(rgb.r)
     rgbG!.value = String(rgb.g)
     rgbB!.value = String(rgb.b)
-    const hsl = rgbToHslChannels(rgb.r, rgb.g, rgb.b)
-    hslH!.value = String(Math.round(hsl.h * 360))
-    hslS!.value = String(Math.round(hsl.s * 100))
-    hslL!.value = String(Math.round(hsl.l * 100))
     if (preview) host.__colorPreview?.(value)
     else {
       host.__colorPreview?.(null)
@@ -14533,19 +14546,13 @@ function renderColorControl(
   }
   if (!input.dataset.colorControlBound) {
     input.dataset.colorControlBound = '1'
-    input.addEventListener('pointerdown', beginPick)
+    input.addEventListener('pointerdown', openOverlay)
     input.addEventListener('input', () => {
-      beginPick()
+      openOverlay()
       applyHex(input!.value, true)
     })
     input.addEventListener('change', () => {
-      endPick()
       applyHex(input!.value, false)
-    })
-    input.addEventListener('blur', () => {
-      if (!host.__colorPicking) return
-      endPick()
-      host.__colorPreview?.(null)
     })
   }
 
@@ -14559,31 +14566,29 @@ function renderColorControl(
       tag.className = 'color-channel-label'
       tag.textContent = label
       row.appendChild(tag)
-      host.appendChild(row)
+      overlay!.appendChild(row)
+    } else if (row.parentElement !== overlay) {
+      overlay!.appendChild(row)
     }
+    row.hidden = false
     return row
   }
 
   const rgbRow = ensureRow('rgb', 'RGB')
-  const hslRow = ensureRow('hsl', 'HSL')
-  const hexRow = ensureRow('hex', 'HEX')
 
   const bindChannelCommit = (el: HTMLInputElement, readHex: () => string | null) => {
-    el.addEventListener('focus', beginPick)
+    if (el.dataset.colorChannelBound) return
+    el.dataset.colorChannelBound = '1'
+    el.addEventListener('focus', openOverlay)
     el.addEventListener('input', () => {
-      beginPick()
+      openOverlay()
       const next = readHex()
       if (next) applyHex(next, true)
     })
     el.addEventListener('change', () => {
       const next = readHex()
-      endPick()
       if (next) applyHex(next, false)
       else host.__colorPreview?.(null)
-    })
-    el.addEventListener('blur', () => {
-      endPick()
-      host.__colorPreview?.(null)
     })
   }
 
@@ -14595,32 +14600,12 @@ function renderColorControl(
     rgbB = makeColorNumberInput(0, 255, 1)
     rgbB.classList.add('color-rgb-b')
     rgbRow.append(rgbR, rgbG, rgbB)
-    const readRgb = () =>
-      rgbChannelsToHex(Number(rgbR!.value), Number(rgbG!.value), Number(rgbB!.value))
-    bindChannelCommit(rgbR, readRgb)
-    bindChannelCommit(rgbG, readRgb)
-    bindChannelCommit(rgbB, readRgb)
   }
-
-  if (!hslH || !hslS || !hslL) {
-    hslH = makeColorNumberInput(0, 360, 1)
-    hslH.classList.add('color-hsl-h')
-    hslS = makeColorNumberInput(0, 100, 1)
-    hslS.classList.add('color-hsl-s')
-    hslL = makeColorNumberInput(0, 100, 1)
-    hslL.classList.add('color-hsl-l')
-    hslRow.append(hslH, hslS, hslL)
-    const readHsl = () => {
-      const h = ((Number(hslH!.value) % 360) + 360) % 360 / 360
-      const s = Math.max(0, Math.min(100, Number(hslS!.value))) / 100
-      const l = Math.max(0, Math.min(100, Number(hslL!.value))) / 100
-      const rgb = hslToRgbChannels(h, s, l)
-      return rgbChannelsToHex(rgb.r, rgb.g, rgb.b)
-    }
-    bindChannelCommit(hslH, readHsl)
-    bindChannelCommit(hslS, readHsl)
-    bindChannelCommit(hslL, readHsl)
-  }
+  const readRgb = () =>
+    rgbChannelsToHex(Number(rgbR!.value), Number(rgbG!.value), Number(rgbB!.value))
+  bindChannelCommit(rgbR, readRgb)
+  bindChannelCommit(rgbG, readRgb)
+  bindChannelCommit(rgbB, readRgb)
 
   if (!hexInput) {
     hexInput = document.createElement('input')
@@ -14628,28 +14613,23 @@ function renderColorControl(
     hexInput.className = 'color-hex-input'
     hexInput.spellcheck = false
     hexInput.maxLength = 7
-    hexInput.addEventListener('focus', beginPick)
+    hexInput.addEventListener('focus', beginSession)
     hexInput.addEventListener('input', () => {
-      beginPick()
+      beginSession()
       const raw = hexInput!.value.trim()
       if (/^#[0-9a-fA-F]{6}$/.test(raw)) applyHex(raw, true)
     })
     hexInput.addEventListener('change', () => {
       const raw = hexInput!.value.trim()
-      endPick()
       if (/^#[0-9a-fA-F]{6}$/.test(raw)) applyHex(raw, false)
       else host.__colorPreview?.(null)
     })
-    hexInput.addEventListener('blur', () => {
-      endPick()
-      host.__colorPreview?.(null)
-    })
-    hexRow.appendChild(hexInput)
-  } else if (hexInput.parentElement !== hexRow) {
-    hexRow.appendChild(hexInput)
+    top.appendChild(hexInput)
+  } else if (hexInput.parentElement !== top) {
+    top.appendChild(hexInput)
   }
 
-  const channelInputs = [input, hexInput, rgbR, rgbG, rgbB, hslH, hslS, hslL]
+  const channelInputs = [input, hexInput, rgbR, rgbG, rgbB]
   const channelFocused = channelInputs.some((el) => el && document.activeElement === el)
   if (!host.__colorPicking && !channelFocused) {
     input.value = hex
@@ -14658,10 +14638,6 @@ function renderColorControl(
     rgbR.value = String(rgb.r)
     rgbG.value = String(rgb.g)
     rgbB.value = String(rgb.b)
-    const hsl = rgbToHslChannels(rgb.r, rgb.g, rgb.b)
-    hslH.value = String(Math.round(hsl.h * 360))
-    hslS.value = String(Math.round(hsl.s * 100))
-    hslL.value = String(Math.round(hsl.l * 100))
   }
   input.title = isTransparent ? 'Transparent — Farbe wählen zum Einfärben' : hex
   hexInput.title = 'HEX-Farbe (#RRGGBB)'
@@ -14671,9 +14647,6 @@ function renderColorControl(
   rgbR.disabled = disableFields
   rgbG.disabled = disableFields
   rgbB.disabled = disableFields
-  hslH.disabled = disableFields
-  hslS.disabled = disableFields
-  hslL.disabled = disableFields
   input.style.opacity = isTransparent ? '0.55' : '1'
 
   if (options?.allowTransparent) {
@@ -14698,6 +14671,96 @@ function renderColorControl(
   } else {
     host.querySelector('button.transparent-swatch')?.remove()
   }
+
+  let finishPanel = host.querySelector<HTMLDivElement>('.color-finish-panel')
+  if (options?.finish) {
+    if (options.finish.select) hideFinishSelectHost(options.finish.select)
+    if (!finishPanel) {
+      finishPanel = document.createElement('div')
+      finishPanel.className = 'color-finish-panel'
+      const title = document.createElement('span')
+      title.className = 'color-channel-label'
+      title.textContent = 'Oberfläche'
+      finishPanel.appendChild(title)
+      const axes: Array<{ key: keyof SurfaceFinish; label: string }> = [
+        { key: 'matte', label: 'Stumpf' },
+        { key: 'glossy', label: 'Glänzend' },
+        { key: 'metal', label: 'Metallisch' },
+      ]
+      for (const axis of axes) {
+        const row = document.createElement('label')
+        row.className = 'color-finish-row'
+        const name = document.createElement('span')
+        name.textContent = axis.label
+        const range = document.createElement('input')
+        range.type = 'range'
+        range.min = '0'
+        range.max = '100'
+        range.step = '1'
+        range.className = `color-finish-${axis.key}`
+        range.setAttribute('aria-label', `${axis.label} 0–100`)
+        const out = document.createElement('output')
+        out.className = `color-finish-${axis.key}-value`
+        out.textContent = '0'
+        const readMix = (): SurfaceFinish =>
+          normalizeSurfaceFinish({
+            matte: Number(finishPanel!.querySelector<HTMLInputElement>('.color-finish-matte')?.value ?? 0),
+            glossy: Number(finishPanel!.querySelector<HTMLInputElement>('.color-finish-glossy')?.value ?? 0),
+            metal: Number(finishPanel!.querySelector<HTMLInputElement>('.color-finish-metal')?.value ?? 0),
+          })
+        const syncOutputs = (next: SurfaceFinish) => {
+          for (const key of ['matte', 'glossy', 'metal'] as const) {
+            const el = finishPanel!.querySelector(`.color-finish-${key}-value`)
+            if (el) el.textContent = String(next[key])
+          }
+        }
+        const commitFinish = () => {
+          const next = readMix()
+          syncOutputs(next)
+          host.__colorFinishChange?.(next)
+          const select = host.dataset.finishSelectId
+            ? document.getElementById(host.dataset.finishSelectId)
+            : null
+          if (select instanceof HTMLSelectElement) syncFinishSelect(select, next)
+        }
+        range.addEventListener('pointerdown', openOverlay)
+        range.addEventListener('input', () => {
+          openOverlay()
+          syncOutputs(readMix())
+        })
+        range.addEventListener('change', commitFinish)
+        row.append(name, range, out)
+        finishPanel.appendChild(row)
+      }
+      host.appendChild(finishPanel)
+    }
+    if (finishPanel.parentElement !== overlay) {
+      overlay.appendChild(finishPanel)
+    }
+    if (options.finish.select) {
+      host.dataset.finishSelectId = options.finish.select.id
+      syncFinishSelect(options.finish.select, options.finish.value)
+    }
+    const mix = normalizeSurfaceFinish(options.finish.value)
+    const matteEl = finishPanel.querySelector<HTMLInputElement>('.color-finish-matte')
+    const glossyEl = finishPanel.querySelector<HTMLInputElement>('.color-finish-glossy')
+    const metalEl = finishPanel.querySelector<HTMLInputElement>('.color-finish-metal')
+    const focusedFinish = [matteEl, glossyEl, metalEl].some((el) => el && document.activeElement === el)
+    if (!focusedFinish) {
+      if (matteEl) matteEl.value = String(mix.matte)
+      if (glossyEl) glossyEl.value = String(mix.glossy)
+      if (metalEl) metalEl.value = String(mix.metal)
+      const matteOut = finishPanel.querySelector('.color-finish-matte-value')
+      const glossyOut = finishPanel.querySelector('.color-finish-glossy-value')
+      const metalOut = finishPanel.querySelector('.color-finish-metal-value')
+      if (matteOut) matteOut.textContent = String(mix.matte)
+      if (glossyOut) glossyOut.textContent = String(mix.glossy)
+      if (metalOut) metalOut.textContent = String(mix.metal)
+    }
+    finishPanel.hidden = false
+  } else if (finishPanel) {
+    finishPanel.hidden = true
+  }
 }
 
 /** @deprecated Alias — nutzt freie Color-Picker. */
@@ -14707,10 +14770,16 @@ function renderColorSwatches(
   active: string,
   onPick: (color: string) => void,
   onPreview?: (color: string | null) => void,
+  finish?: {
+    value: SurfaceFinish
+    onChange: (next: SurfaceFinish) => void
+    select?: HTMLSelectElement
+  },
 ) {
   void palette
   renderColorControl(container, active, onPick, onPreview, {
     allowTransparent: active === TRANSPARENT_GLASS || palette === 'glass',
+    finish,
   })
 }
 
@@ -15061,6 +15130,15 @@ function syncOpeningColorSwatches(
     activeFrameColor(),
     commitFrameColor,
     previewSelectionColor(previewFrameColor),
+    {
+      value: normalizeSurfaceFinish(selectedWindowOpening()?.opening.frameFinish),
+      select: openingFrameFinishSelect,
+      onChange: (finish) => {
+        const refs = scopedOpeningRefs()
+        if (refs.length === 0) return
+        commitState(updateOpeningFrameFinishes(state, refs, finish))
+      },
+    },
   )
   renderColorSwatches(
     glassContainer,
@@ -15080,9 +15158,12 @@ function syncColorSwatches(_wall: Wall) {
       commitState(updateWallColors(state, scopedWallIds(), color, 'wallColor'))
     },
     previewSelectionColor((color) => updateWallColors(state, scopedWallIds(), color, 'wallColor')),
+    {
+      value: normalizeSurfaceFinish(_wall.wallFinish),
+      select: moduleWallFinishSelect,
+      onChange: (finish) => commitState(updateWallFinishes(state, scopedWallIds(), finish, 'wallFinish')),
+    },
   )
-  moduleWallFinishSelect.value =
-    _wall.wallFinish === 'glossy' || _wall.wallFinish === 'metal' ? _wall.wallFinish : 'matte'
 
   renderColorSwatches(
     profileColorSwatches,
@@ -15092,9 +15173,12 @@ function syncColorSwatches(_wall: Wall) {
       commitState(updateWallColors(state, scopedWallIds(), color, 'profileColor'))
     },
     previewSelectionColor((color) => updateWallColors(state, scopedWallIds(), color, 'profileColor')),
+    {
+      value: normalizeSurfaceFinish(_wall.profileFinish),
+      select: moduleProfileFinishSelect,
+      onChange: (finish) => commitState(updateWallFinishes(state, scopedWallIds(), finish, 'profileFinish')),
+    },
   )
-  moduleProfileFinishSelect.value =
-    _wall.profileFinish === 'glossy' || _wall.profileFinish === 'metal' ? _wall.profileFinish : 'matte'
 
   syncOpeningColorSwatches(
     frameColorSwatchesWall,
@@ -15113,11 +15197,7 @@ function syncColorSwatches(_wall: Wall) {
       true,
     )
     syncRevealColorSwatches(true)
-    openingFrameFinishSelect.value = (() => {
-      const sel = selectedWindowOpening()
-      const finish = sel?.opening.frameFinish
-      return finish === 'glossy' || finish === 'metal' ? finish : 'matte'
-    })()
+    syncFinishSelect(openingFrameFinishSelect, selectedWindowOpening()?.opening.frameFinish)
   } else {
     syncRevealColorSwatches(false)
   }
@@ -15169,7 +15249,7 @@ function openingEdgesForSelection(ref: OpeningRef): OpeningEdge[] {
   return assigned.length > 0 ? assigned : [...ALL_EDGES]
 }
 
-function trimValueForSelection(field: keyof OpeningTrimConfig): string | number | boolean {
+function trimValueForSelection(field: keyof OpeningTrimConfig): string | number | boolean | SurfaceFinish {
   const values = editor.selectedOpenings.map((ref) => {
     const wall = getWall(state, ref.wallId)
     const opening = wall?.openings.find((item) => item.id === ref.openingId)
@@ -15184,14 +15264,6 @@ function trimValueForSelection(field: keyof OpeningTrimConfig): string | number 
     return 0
   }
   return first
-}
-
-function currentTrimOrientation(): Pick<OpeningTrimConfig, 'rotationDeg' | 'flipOutward' | 'flipForward'> {
-  return {
-    rotationDeg: Number(trimValueForSelection('rotationDeg')) || 0,
-    flipOutward: Boolean(trimValueForSelection('flipOutward')),
-    flipForward: Boolean(trimValueForSelection('flipForward')),
-  }
 }
 
 function drawSectionPreview(
@@ -15434,7 +15506,6 @@ function drawCorniceSectionPreview() {
   }
   const profileId = cornice?.profileId ?? 'traufgesims70x150'
   const color = activeCorniceColor()
-  drawSectionPreview(studioCornicePreview, profileId, orient, color, false, undefined, true)
   drawSectionPreview(wallCornicePreview, profileId, orient, color, false, undefined, true)
 }
 
@@ -15513,59 +15584,6 @@ function rebuildPlinthProfileCards(wall?: Wall) {
   })
   drawPlinthSectionPreview(w)
 }
-
-function syncEndBossControls(wall: Wall, allWalls: Wall[]) {
-  const panel = wall.panel
-  if (!panel) {
-    studioEndBossSection.hidden = true
-    return
-  }
-  const panelsOn = panel.enabled !== false && panel.pattern !== 'none' && (panel.taperDepth ?? 0) > 0
-  const startFree = !findAdjacentWall(wall, 'start', allWalls)
-  const endFree = !findAdjacentWall(wall, 'end', allWalls)
-  const startAdj = findAdjacentWall(wall, 'start', allWalls)
-  const endAdj = findAdjacentWall(wall, 'end', allWalls)
-  studioEndBossSection.hidden = !panelsOn
-  studioEndBossStartRow.hidden = !panelsOn
-  studioEndBossEndRow.hidden = !panelsOn
-  if (!panelsOn) return
-  studioEndBossStart.value = panel.endBossStart ?? 'off'
-  studioEndBossEnd.value = panel.endBossEnd ?? 'off'
-  studioEndBossStart.disabled = !startFree
-  studioEndBossEnd.disabled = !endFree
-  studioEndBossStartJoin.hidden = !startAdj
-  studioEndBossEndJoin.hidden = !endAdj
-  studioEndBossStartJoin.value = panel.endBossStartJoin ?? ''
-  studioEndBossEndJoin.value = panel.endBossEndJoin ?? ''
-}
-
-function commitEndBossPatch(
-  patch: Partial<{
-    endBossStart: EndBossPattern
-    endBossEnd: EndBossPattern
-    endBossStartJoin: EndBossJoin | undefined
-    endBossEndJoin: EndBossJoin | undefined
-  }>,
-) {
-  const ids = scopedWallIds().filter((id) => isStudioWall(getWall(state, id)!))
-  if (ids.length === 0) return
-  commitState(updateStudioPanel(state, ids, patch))
-}
-
-studioEndBossStart.addEventListener('change', () => {
-  commitEndBossPatch({ endBossStart: studioEndBossStart.value as EndBossPattern })
-})
-studioEndBossEnd.addEventListener('change', () => {
-  commitEndBossPatch({ endBossEnd: studioEndBossEnd.value as EndBossPattern })
-})
-studioEndBossStartJoin.addEventListener('change', () => {
-  const v = studioEndBossStartJoin.value
-  commitEndBossPatch({ endBossStartJoin: v === 'flush' || v === 'miter' ? v : undefined })
-})
-studioEndBossEndJoin.addEventListener('change', () => {
-  const v = studioEndBossEndJoin.value
-  commitEndBossPatch({ endBossEndJoin: v === 'flush' || v === 'miter' ? v : undefined })
-})
 
 function syncEndPieceControls(wall: Wall) {
   let parent = wall
@@ -16281,9 +16299,6 @@ function refreshAllProfileCards() {
     const cornice = wallCornice(wall)
     const profileId = cornice.enabled ? (cornice.profileId ?? 'traufgesims70x150') : ''
     const color = cornice.color ?? wall.profileColor ?? DEFAULT_PROFILE_COLOR
-    rebuildCorniceProfileCards(studioCorniceProfileCards, profileId, color, (id) => {
-      commitCornicePatch(id ? { enabled: true, profileId: id } : { enabled: false })
-    })
     rebuildCorniceProfileCards(wallCorniceProfileCards, profileId, color, (id) => {
       commitCornicePatch(id ? { enabled: true, profileId: id } : { enabled: false })
     })
@@ -16293,15 +16308,6 @@ function refreshAllProfileCards() {
 function fillAllProfileSelects() {
   refreshAllProfileCards()
   if (libraryTab === 'profiles' || libraryTab === 'pediment' || libraryTab === 'openingForm' || libraryTab === 'cornice' || libraryTab === 'plinth' || libraryTab === 'label' || libraryTab === 'panels') initOpeningLibrary()
-}
-
-function drawProfileSectionPreview() {
-  drawSectionPreview(
-    profileSectionPreview,
-    activeFrameProfileId(),
-    currentTrimOrientation(),
-    activeTrimColor(),
-  )
 }
 
 function selectedWindowOpening() {
@@ -16340,13 +16346,12 @@ function syncWindowSillControls() {
     previewSelectionColor((color) =>
       updateOpeningSills(state, scopedOpeningRefs(), { inner: { color } }),
     ),
+    {
+      value: normalizeSurfaceFinish(inner?.finish ?? sel.wall.profileFinish),
+      select: sillInnerFinishSelect,
+      onChange: (finish) => commitOpeningSillPatch({ inner: { finish } }),
+    },
   )
-  sillInnerFinishSelect.value =
-    inner?.finish === 'glossy' || inner?.finish === 'metal' || inner?.finish === 'matte'
-      ? inner.finish
-      : sel.wall.profileFinish === 'glossy' || sel.wall.profileFinish === 'metal'
-        ? sel.wall.profileFinish
-        : 'matte'
   sillOuterEnabled.checked = outer.enabled !== false
   rebuildSillOuterProfileCards()
   sillOuterOverhang.value = String(outer.overhang ?? 16)
@@ -16370,13 +16375,12 @@ function syncWindowSillControls() {
     previewSelectionColor((color) =>
       updateOpeningSills(state, scopedOpeningRefs(), { outer: { color } }),
     ),
+    {
+      value: normalizeSurfaceFinish(outer.finish ?? sel.wall.profileFinish),
+      select: sillOuterFinishSelect,
+      onChange: (finish) => commitOpeningSillPatch({ outer: { finish } }),
+    },
   )
-  sillOuterFinishSelect.value =
-    outer.finish === 'glossy' || outer.finish === 'metal' || outer.finish === 'matte'
-      ? outer.finish
-      : sel.wall.profileFinish === 'glossy' || sel.wall.profileFinish === 'metal'
-        ? sel.wall.profileFinish
-        : 'matte'
 }
 
 function syncPedimentControls() {
@@ -16462,6 +16466,7 @@ function syncPedimentControls() {
   pedimentConsoleWallOffset.value = String(pediment.consoles?.wallOffset ?? 0)
   pedimentConsoleWallOffset.disabled = !pediment.enabled || !pediment.consoles?.enabled
   rebuildPedimentConsoleCards(!pediment.enabled || !pediment.consoles?.enabled)
+  const pedimentWall = sel?.wall
   renderColorSwatches(
     pedimentColorSwatches,
     'profile',
@@ -16472,14 +16477,12 @@ function syncPedimentControls() {
     previewSelectionColor((color) =>
       updateOpeningPediment(state, scopedOpeningRefs(), { color }),
     ),
+    {
+      value: normalizeSurfaceFinish(pediment.finish ?? pedimentWall?.profileFinish),
+      select: pedimentFinishSelect,
+      onChange: (finish) => commitOpeningPedimentPatch({ finish }),
+    },
   )
-  const pedimentWall = sel?.wall
-  pedimentFinishSelect.value =
-    pediment.finish === 'glossy' || pediment.finish === 'metal' || pediment.finish === 'matte'
-      ? pediment.finish
-      : pedimentWall?.profileFinish === 'glossy' || pedimentWall?.profileFinish === 'metal'
-        ? pedimentWall.profileFinish
-        : 'matte'
 }
 
 function syncTaperedFieldControls() {
@@ -16729,9 +16732,12 @@ function syncDoorStairsControls() {
     stairColor,
     (color) => commitStairPatch({ color }),
     previewSelectionColor((color) => updateOpeningStairs(state, scopedOpeningRefs(), { color })),
+    {
+      value: normalizeSurfaceFinish(stairs.finish),
+      select: stairsFinishSelect,
+      onChange: (finish) => commitStairPatch({ finish }),
+    },
   )
-  stairsFinishSelect.value =
-    stairs.finish === 'glossy' || stairs.finish === 'metal' ? stairs.finish : 'matte'
 }
 
 let rollerShutterPhase: 'raise' | 'lower' = 'lower'
@@ -16761,8 +16767,6 @@ function syncRollerShutterControls() {
   rollerShutterDrop.value = String(pct)
   rollerShutterDropPct.value = String(pct)
   rollerShutterDropLabel.textContent = rollerDropLabel(shutter.drop)
-  rollerShutterFinish.value =
-    shutter.finish === 'glossy' || shutter.finish === 'metal' ? shutter.finish : 'matte'
   rollerShutterSlatHeight.value = String(shutter.slatHeightCm ?? 5)
   rollerShutterGap.value = String(shutter.gapCm ?? 0.85)
   const curve = rollerShutterPhase === 'raise' ? shutter.motion!.raise : shutter.motion!.lower
@@ -16779,6 +16783,11 @@ function syncRollerShutterControls() {
     previewSelectionColor((color) =>
       updateOpeningRollerShutter(state, scopedOpeningRefs(), { color }),
     ),
+    {
+      value: normalizeSurfaceFinish(shutter.finish),
+      select: rollerShutterFinish,
+      onChange: (finish) => commitRollerShutterPatch({ finish }),
+    },
   )
 }
 
@@ -16876,16 +16885,8 @@ function applySelectionToolbarTabFilter(toolbar: HTMLElement | null) {
       section.classList.remove('selection-tab-filtered-out')
       continue
     }
-    let show: boolean
-    if (section.dataset.settingsInlineAll !== undefined) {
-      show = true
-    } else if (selectionToolbarTab === 'all') {
-      show = true
-    } else {
-      const id = section.dataset.settingsSection
-      show = Boolean(id && selectionToolbarTab === id)
-    }
-    section.classList.toggle('selection-tab-filtered-out', !show)
+    // Alle sichtbaren Sektionen im Fluss — Register scrollen/sticky, nicht ausfiltern.
+    section.classList.remove('selection-tab-filtered-out')
   }
 }
 
@@ -16909,7 +16910,6 @@ function syncSelectionToolbarTabs() {
     selectionToolbarTab = pendingSelectionToolbarTab
     pendingSelectionToolbarTab = null
   }
-  selectionRightTabs.replaceChildren()
 
   const showSelectionOptions = Boolean(toolbar && !toolbar.hidden)
   syncBottomBarMode(showSelectionOptions)
@@ -16920,22 +16920,20 @@ function syncSelectionToolbarTabs() {
   }
 
   const tabSections = collectSelectionTabSections(toolbar)
-  const orderedIds: string[] = ['all']
   const labels = new Map<string, string>([['all', 'Übersicht']])
   for (const section of tabSections) {
     const id = section.dataset.settingsSection!
     if (labels.has(id)) continue
     labels.set(id, section.dataset.settingsLabel ?? id)
-    orderedIds.push(id)
   }
 
-  if (orderedIds.length <= 1 && tabSections.length === 0) {
+  if (tabSections.length === 0) {
     selectionToolbarTab = ''
     applySelectionToolbarTabFilter(toolbar)
     return
   }
 
-  // Nach Klick: Übersicht; sonst Sticky, falls noch gültig.
+  // Sticky-Kontext: Übersicht oder zuletzt gültiger Reiter.
   if (!selectionToolbarTab || !labels.has(selectionToolbarTab)) {
     if (lastStickySelectionToolbarTab && labels.has(lastStickySelectionToolbarTab)) {
       selectionToolbarTab = lastStickySelectionToolbarTab
@@ -16944,26 +16942,150 @@ function syncSelectionToolbarTabs() {
     }
   }
 
-  for (const id of orderedIds) {
-    const btn = document.createElement('button')
-    btn.type = 'button'
-    btn.className = `selection-tab-btn${selectionToolbarTab === id ? ' active' : ''}`
-    btn.setAttribute('role', 'tab')
-    btn.setAttribute('aria-selected', selectionToolbarTab === id ? 'true' : 'false')
-    btn.dataset.settingsTab = id
-    btn.textContent = labels.get(id) ?? id
-    btn.addEventListener('click', () => {
-      selectionToolbarTab = id
-      lastStickySelectionToolbarTab = id
-      syncSelectionToolbarTabs()
-    })
-    selectionRightTabs.appendChild(btn)
-  }
   applySelectionToolbarTabFilter(toolbar)
+  syncSettingsSectionStickyHeads(tabSections)
   const wall = anchorWall()
   if (wall && selectionIsStudioWall()) {
     syncStudioPanelColorControls(wall)
   }
+}
+
+const SETTINGS_STICK_TAB_REM = 2.15
+
+type SettingsHeadParkState = {
+  sections: HTMLElement[]
+  onScroll: () => void
+}
+
+const settingsHeadParkByPanel = new WeakMap<HTMLElement, SettingsHeadParkState>()
+
+function settingsStickHeadPx(): number {
+  const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize)
+  return SETTINGS_STICK_TAB_REM * (Number.isFinite(rootPx) && rootPx > 0 ? rootPx : 16)
+}
+
+function clearSettingsHeadFixedStyles(head: HTMLElement) {
+  head.classList.remove('settings-section-head-parked')
+  head.style.position = ''
+  head.style.top = ''
+  head.style.left = ''
+  head.style.right = ''
+  head.style.bottom = ''
+  head.style.width = ''
+  head.style.transform = ''
+  head.style.margin = ''
+  head.style.zIndex = ''
+}
+
+/** Aktiven Sektionskopf markieren: Abschnitt, dessen Kopf am oberen Stapel klebt. */
+function updateSettingsSectionHeadActive(panel: HTMLElement, sections: HTMLElement[]) {
+  const headH = settingsStickHeadPx()
+  const scrollTop = panel.scrollTop
+  let active = 0
+  for (let i = 0; i < sections.length; i++) {
+    const section = sections[i]!
+    // Kopf i klebt bei y = i·headH — darunter gilt der Abschnitt als aktiv.
+    if (section.offsetTop - scrollTop <= (i + 0.5) * headH) active = i
+  }
+  sections.forEach((section, index) => {
+    section
+      .querySelector<HTMLElement>(':scope > .settings-section-head')
+      ?.classList.toggle('settings-section-head-active', index === active)
+  })
+}
+
+/**
+ * Fächer in einer Scroll-Spalte: gescrollte Köpfe stapeln oben, noch nicht erreichte unten.
+ * Reines CSS-sticky reicht nicht (künftige Köpfe liegen unter dem Fold). Deshalb
+ * `translateY` aus der natürlichen Position in den erlaubten Bandbereich
+ * [index·h … viewH − (n−index)·h] — ohne min-height-Weißraum und ohne fixed außerhalb der Spalte.
+ */
+function parkSettingsSectionHeads(panel: HTMLElement) {
+  const state = settingsHeadParkByPanel.get(panel)
+  if (!state) return
+  const sections = state.sections.filter(
+    (section) =>
+      section.isConnected &&
+      !section.hidden &&
+      !section.classList.contains('selection-tab-filtered-out') &&
+      settingsSectionVisibleForUi(section),
+  )
+  const total = sections.length
+  if (total === 0) return
+
+  const viewH = panel.clientHeight
+  const headH = settingsStickHeadPx()
+  const scrollTop = panel.scrollTop
+
+  sections.forEach((section, index) => {
+    const head = section.querySelector<HTMLElement>(':scope > .settings-section-head')
+    if (!head) return
+    clearSettingsHeadFixedStyles(head)
+    head.style.removeProperty('--stick-top')
+    head.style.removeProperty('--stick-bottom')
+    section.style.paddingTop = ''
+    section.style.minHeight = ''
+
+    const naturalY = section.offsetTop - scrollTop
+    const minY = index * headH
+    const maxY = Math.max(minY, viewH - (total - index) * headH)
+    const parkedY = Math.min(maxY, Math.max(minY, naturalY))
+    const dy = parkedY - naturalY
+    head.style.transform = dy === 0 ? '' : `translateY(${dy}px)`
+    head.style.zIndex = String(40 + index)
+    head.classList.toggle('settings-section-head-parked', dy !== 0)
+  })
+
+  updateSettingsSectionHeadActive(panel, sections)
+}
+
+function syncSettingsSectionStickyHeads(sections: HTMLElement[]) {
+  const panel = sections[0]?.closest('.selection-toolbar-panels') as HTMLElement | null
+  if (!panel) return
+  const toolbar = panel.parentElement
+  if (toolbar instanceof HTMLElement) {
+    toolbar.querySelector(':scope > .settings-tab-rail-bottom')?.remove()
+  }
+
+  const total = sections.length
+  sections.forEach((section, index) => {
+    let head = section.querySelector<HTMLElement>(':scope > .settings-section-head')
+    if (!head) {
+      head = document.createElement('div')
+      head.className = 'settings-section-head'
+      section.insertBefore(head, section.firstChild)
+    }
+    clearSettingsHeadFixedStyles(head)
+    const label = section.dataset.settingsLabel ?? section.dataset.settingsSection ?? ''
+    if (head.textContent !== label) head.textContent = label
+    head.style.removeProperty('--stick-top')
+    head.style.removeProperty('--stick-bottom')
+    if (!head.dataset.parkScrollBound) {
+      head.dataset.parkScrollBound = '1'
+      head.addEventListener('click', () => {
+        const target = head.parentElement
+        if (!(target instanceof HTMLElement) || !panel.contains(target)) return
+        const live = settingsHeadParkByPanel.get(panel)?.sections ?? []
+        const idx = Math.max(0, live.indexOf(target))
+        const headH = settingsStickHeadPx()
+        panel.scrollTo({ top: Math.max(0, target.offsetTop - idx * headH), behavior: 'smooth' })
+      })
+    }
+  })
+
+  let state = settingsHeadParkByPanel.get(panel)
+  if (!state) {
+    const onScroll = () => parkSettingsSectionHeads(panel)
+    panel.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('resize', onScroll)
+    state = { sections, onScroll }
+    settingsHeadParkByPanel.set(panel, state)
+  } else {
+    state.sections = sections
+  }
+  panel.style.scrollPaddingTop = `${Math.max(1, total) * SETTINGS_STICK_TAB_REM}rem`
+  panel.style.scrollPaddingBottom = `${Math.max(0, total - 1) * SETTINGS_STICK_TAB_REM}rem`
+  parkSettingsSectionHeads(panel)
 }
 
 function syncStudioPanelColorControls(wall: Wall) {
@@ -16987,38 +17109,16 @@ function applySceneToolbarTabFilter() {
       section.classList.remove('selection-tab-filtered-out')
       continue
     }
-    let show: boolean
-    if (section.dataset.settingsInlineAll !== undefined) {
-      show = sceneToolbarTab === 'all'
-    } else if (sceneToolbarTab === 'all') {
-      show = true
-    } else {
-      const id = section.dataset.settingsSection
-      show = !id || sceneToolbarTab === id
-    }
-    section.classList.toggle('selection-tab-filtered-out', !show)
+    section.classList.remove('selection-tab-filtered-out')
   }
 }
 
 function syncSceneToolbarTabs() {
-  if (!sceneToolbarTabs || !sceneToolbarPanels) return
-  sceneToolbarTabs.replaceChildren()
+  if (!sceneToolbarPanels) return
   if (lightingAccordion.hidden) {
-    sceneToolbarTabs.hidden = true
     applySceneToolbarTabFilter()
     return
   }
-  sceneToolbarTabs.hidden = false
-
-  const allBtn = document.createElement('button')
-  allBtn.type = 'button'
-  allBtn.className = `selection-tab-btn${sceneToolbarTab === 'all' ? ' active' : ''}`
-  allBtn.textContent = 'Übersicht'
-  allBtn.addEventListener('click', () => {
-    sceneToolbarTab = 'all'
-    syncSceneToolbarTabs()
-  })
-  sceneToolbarTabs.appendChild(allBtn)
 
   const tabSections = [...sceneToolbarPanels.querySelectorAll<HTMLElement>('.settings-section')]
     .filter(
@@ -17032,27 +17132,17 @@ function syncSceneToolbarTabs() {
         Number(a.dataset.settingsOrder ?? 999) - Number(b.dataset.settingsOrder ?? 999),
     )
 
-  const seen = new Set<string>()
+  const seen = new Set<string>(['all'])
   for (const section of tabSections) {
     const id = section.dataset.settingsSection!
     if (seen.has(id)) continue
     seen.add(id)
-    const btn = document.createElement('button')
-    btn.type = 'button'
-    btn.className = `selection-tab-btn${sceneToolbarTab === id ? ' active' : ''}`
-    btn.textContent = section.dataset.settingsLabel ?? id
-    btn.addEventListener('click', () => {
-      sceneToolbarTab = id
-      syncSceneToolbarTabs()
-    })
-    sceneToolbarTabs.appendChild(btn)
   }
   if (sceneToolbarTab !== 'all' && !seen.has(sceneToolbarTab)) {
     sceneToolbarTab = 'all'
-    syncSceneToolbarTabs()
-    return
   }
   applySceneToolbarTabFilter()
+  syncSettingsSectionStickyHeads(tabSections)
 }
 
 /** Toolbar-Blöcke je nach gewähltem Opening-Teil ein-/ausblenden. */
@@ -17112,7 +17202,6 @@ function applyOpeningPartVisibility() {
     if (!isBasement) {
       frameColorSection.hidden = true
       glassColorSection.hidden = true
-      if (openingModelSelect.parentElement) openingModelSelect.parentElement.hidden = true
     }
   } else {
     const styleAcc = document.querySelector<HTMLElement>('#window-style-accordion')
@@ -17120,7 +17209,6 @@ function applyOpeningPartVisibility() {
     if (isBasement) {
       frameColorSection.hidden = false
       glassColorSection.hidden = false
-      if (openingModelSelect.parentElement) openingModelSelect.parentElement.hidden = false
     }
   }
 
@@ -17196,7 +17284,6 @@ function applyOpeningPartVisibility() {
     if (styleAcc) styleAcc.hidden = true
     frameColorSection.hidden = true
     glassColorSection.hidden = true
-    if (openingModelSelect.parentElement) openingModelSelect.parentElement.hidden = true
     windowSillSection.hidden = true
     doorStairsSection.hidden = true
     openingRollerShutterSection.hidden = true
@@ -17336,6 +17423,16 @@ function applyWallPartVisibility() {
   if (colors) {
     colors.hidden = focusPart && part !== 'label' && part !== 'cladding'
   }
+
+  // Schrift-Reiter nur wenn Labels vorhanden oder Schrift-Teil fokussiert.
+  const labelSection = toolbar.querySelector<HTMLElement>('[data-settings-section="label"]')
+  if (labelSection) {
+    const hasLabels = selectedWalls().some((wall) => wallLabels(wall).length > 0)
+    if (!hasLabels && part !== 'label') {
+      labelSection.hidden = true
+    }
+  }
+  syncSelectionToolbarTabs()
 }
 
 function nudgeSelectedOpenings(dx: number, dy: number) {
@@ -17438,27 +17535,30 @@ function syncProfileTrimControls() {
   profileOffsetXInput.value = String(trimValueForSelection('offsetX'))
   profileOffsetYInput.value = String(trimValueForSelection('offsetY'))
   profileOffsetForwardInput.value = String(trimValueForSelection('offsetForward'))
-  profileFlipOutwardButton.classList.toggle('active', Boolean(trimValueForSelection('flipOutward')))
-  profileFlipForwardButton.classList.toggle('active', Boolean(trimValueForSelection('flipForward')))
-  renderColorSwatches(
-    trimColorSwatches,
-    'profile',
-    activeTrimColor(),
-    (color) => {
-      commitOpeningTrim({ color })
-    },
-    previewSelectionColor((color) => updateOpeningTrim(state, scopedOpeningRefs(), { color })),
-  )
-  const trimFinish = trimValueForSelection('finish')
-  openingTrimFinishSelect.value =
-    trimFinish === 'glossy' || trimFinish === 'metal' || trimFinish === 'matte'
-      ? String(trimFinish)
-      : (() => {
-          const wall = selectedWindowOpening()?.wall
-          const f = wall?.profileFinish
-          return f === 'glossy' || f === 'metal' ? f : 'matte'
-        })()
-  drawProfileSectionPreview()
+  {
+    const raw = trimValueForSelection('finish')
+    const wall = selectedWindowOpening()?.wall
+    const finish =
+      raw && typeof raw === 'object'
+        ? normalizeSurfaceFinish(raw)
+        : typeof raw === 'string'
+          ? normalizeSurfaceFinish(raw)
+          : normalizeSurfaceFinish(wall?.profileFinish)
+    renderColorSwatches(
+      trimColorSwatches,
+      'profile',
+      activeTrimColor(),
+      (color) => {
+        commitOpeningTrim({ color })
+      },
+      previewSelectionColor((color) => updateOpeningTrim(state, scopedOpeningRefs(), { color })),
+      {
+        value: finish,
+        select: openingTrimFinishSelect,
+        onChange: (next) => commitOpeningTrim({ finish: next }),
+      },
+    )
+  }
   syncOpeningColorsHub()
 }
 
@@ -17490,10 +17590,7 @@ function syncOpeningColorsHub() {
   if (editor.selectedOpenings.length === 0) return
 
   const sel = selectedWindowOpening()
-  openingFrameFinishSelect.value = (() => {
-    const finish = sel?.opening.frameFinish
-    return finish === 'glossy' || finish === 'metal' ? finish : 'matte'
-  })()
+  syncFinishSelect(openingFrameFinishSelect, sel?.opening.frameFinish)
 
   const showTrim = selectedOpeningHasFrameProfile()
   trimColorHubSection.hidden = !showTrim
@@ -18775,47 +18872,6 @@ function runDuplicateOpenings(side: 'left' | 'right') {
   }
 }
 
-openingModelSelect.addEventListener('change', () => {
-  const refs = scopedOpeningRefs()
-  if (refs.length === 0) return
-  const value = openingModelSelect.value
-  let patch: Partial<import('./types/facade').Opening>
-
-  if (value.startsWith('door:')) {
-    const [w, h] = value.slice(5).split('x').map(Number)
-    patch = { width: w, height: h, windowModel: undefined }
-  } else {
-    const model = BLENDER_WINDOW_MODELS.find((m) => m.name === value)
-    if (!model) return
-    patch = { width: model.width, height: model.height, windowModel: model.name }
-  }
-
-  let next = state
-  for (const ref of refs) {
-    const wall = getWall(next, ref.wallId)
-    const oldOpening = wall?.openings.find((o) => o.id === ref.openingId)
-    let syncedPatch: Partial<Opening> =
-      oldOpening?.type === 'door' && oldOpening.stairs?.enabled && patch.width !== undefined
-        ? {
-            ...patch,
-            stairs: syncStairsToDoorWidth(oldOpening.stairs, {
-              ...oldOpening,
-              width: patch.width,
-              height: patch.height ?? oldOpening.height,
-            }),
-          }
-        : patch
-    if (oldOpening && patch.width !== undefined) {
-      syncedPatch = {
-        ...syncedPatch,
-        x: centeredOpeningX(oldOpening, patch.width, STUDIO_MASONRY),
-      }
-    }
-    next = updateOpening(next, ref.wallId, ref.openingId, syncedPatch)
-  }
-  commitState(next)
-})
-
 for (const button of windowCasementButtons) {
   button.addEventListener('click', () => {
     const casements = Number(button.dataset.casements) as 1 | 2 | 3
@@ -19489,10 +19545,6 @@ windowBasementGrilleHeight.addEventListener('change', () => {
   commitBasementGrilleHeight(Number(windowBasementGrilleHeight.value) / 100)
 })
 
-openingNudgeLeft.addEventListener('click', () => nudgeSelectedOpenings(-heldNudgeStepCm(), 0))
-openingNudgeRight.addEventListener('click', () => nudgeSelectedOpenings(heldNudgeStepCm(), 0))
-openingNudgeUp.addEventListener('click', () => nudgeSelectedOpenings(0, heldNudgeStepCm()))
-openingNudgeDown.addEventListener('click', () => nudgeSelectedOpenings(0, -heldNudgeStepCm()))
 openingPosX.addEventListener('change', () => {
   const sel = selectedWindowOpening()
   if (!sel) return
@@ -19963,7 +20015,7 @@ rollerShutterDropPct.addEventListener('change', () => {
 })
 rollerShutterFinish.addEventListener('change', () => {
   commitRollerShutterPatch({
-    finish: rollerShutterFinish.value as 'matte' | 'glossy' | 'metal',
+    finish: finishFromSelect(rollerShutterFinish),
   })
 })
 rollerShutterSlatHeight.addEventListener('change', () => {
@@ -20079,24 +20131,6 @@ profileExtentForwardInput.addEventListener('change', () => {
   commitOpeningTrim({
     extentForwardCm: Number.isFinite(n) && n > 0 ? n : undefined,
   })
-})
-
-profileRotateCcwButton.addEventListener('click', () => {
-  const current = Number(trimValueForSelection('rotationDeg')) || 0
-  commitOpeningTrim({ rotationDeg: (current + 270) % 360 })
-})
-
-profileRotateCwButton.addEventListener('click', () => {
-  const current = Number(trimValueForSelection('rotationDeg')) || 0
-  commitOpeningTrim({ rotationDeg: (current + 90) % 360 })
-})
-
-profileFlipOutwardButton.addEventListener('click', () => {
-  commitOpeningTrim({ flipOutward: !Boolean(trimValueForSelection('flipOutward')) })
-})
-
-profileFlipForwardButton.addEventListener('click', () => {
-  commitOpeningTrim({ flipForward: !Boolean(trimValueForSelection('flipForward')) })
 })
 
 svgView.setWallsMoveHandler((positions, commit) => {
@@ -24573,17 +24607,11 @@ function stretchSelectedWall(side: 'start' | 'end', sign: 1 | -1) {
   commitState(finalizeStudioGeometry(stretchStudioFacade(state, wallId, side, delta)))
 }
 
-studioStretchStartMinus.addEventListener('click', () => {
-  stretchSelectedWall('start', -1)
+studioWidthMinus.addEventListener('click', () => {
+  stretchSelectedWall(studioWallWidthGrowSide, -1)
 })
-studioStretchStartPlus.addEventListener('click', () => {
-  stretchSelectedWall('start', 1)
-})
-studioStretchEndMinus.addEventListener('click', () => {
-  stretchSelectedWall('end', -1)
-})
-studioStretchEndPlus.addEventListener('click', () => {
-  stretchSelectedWall('end', 1)
+studioWidthPlus.addEventListener('click', () => {
+  stretchSelectedWall(studioWallWidthGrowSide, 1)
 })
 
 studioHeightMinus.addEventListener('click', () => {
@@ -24929,9 +24957,10 @@ studioPlinthFlipForward.addEventListener('click', () => {
 studioProjectDepthInput.addEventListener('input', () => {
   commitStudioPanelPatch({ projectDepth: Number(studioProjectDepthInput.value) })
 })
-studioTileVariance.addEventListener('input', () => {
-  const v = Number(studioTileVariance.value)
-  studioTileVarianceValue.textContent = String(v)
+
+function commitTileVariance(raw: number) {
+  const v = Math.max(0, Math.min(100, Math.round(Number.isFinite(raw) ? raw : 0)))
+  studioTileVariance.value = String(v)
   studioTileVarietyRow.hidden = v <= 0
   if (v > 0 && Number(studioTileVariety.value) <= 0) {
     studioTileVariety.value = '40'
@@ -24940,6 +24969,19 @@ studioTileVariance.addEventListener('input', () => {
     return
   }
   commitStudioPanelPatch({ tileColorVariance: v })
+}
+
+studioTileVariance.addEventListener('input', () => {
+  commitTileVariance(Number(studioTileVariance.value))
+})
+studioTileVariance.addEventListener('change', () => {
+  commitTileVariance(Number(studioTileVariance.value))
+})
+studioTileVarianceMinus.addEventListener('click', () => {
+  commitTileVariance(Number(studioTileVariance.value) - 1)
+})
+studioTileVariancePlus.addEventListener('click', () => {
+  commitTileVariance(Number(studioTileVariance.value) + 1)
 })
 studioTileVariety.addEventListener('input', () => {
   const v = Number(studioTileVariety.value)
@@ -25083,61 +25125,61 @@ studioLabelEnabled.addEventListener('change', () => {
 })
 
 studioWallFinishSelect.addEventListener('change', () => {
-  const finish = studioWallFinishSelect.value as 'matte' | 'glossy' | 'metal'
+  const finish = finishFromSelect(studioWallFinishSelect)
   commitState(updateWallFinishes(state, scopedWallIds(), finish, 'wallFinish'))
 })
 studioCladdingFinishSelect.addEventListener('change', () => {
-  const finish = studioCladdingFinishSelect.value as 'matte' | 'glossy' | 'metal'
+  const finish = finishFromSelect(studioCladdingFinishSelect)
   commitState(updateWallFinishes(state, scopedWallIds(), finish, 'claddingFinish'))
 })
 studioProfileFinishSelect.addEventListener('change', () => {
-  const finish = studioProfileFinishSelect.value as 'matte' | 'glossy' | 'metal'
+  const finish = finishFromSelect(studioProfileFinishSelect)
   commitState(updateWallFinishes(state, scopedWallIds(), finish, 'profileFinish'))
 })
 studioLabelFinishSelect.addEventListener('change', () => {
-  const finish = studioLabelFinishSelect.value as 'matte' | 'glossy' | 'metal'
+  const finish = finishFromSelect(studioLabelFinishSelect)
   commitLabelPatch({ finish })
 })
 openingFrameFinishSelect.addEventListener('change', () => {
-  const finish = openingFrameFinishSelect.value as 'matte' | 'glossy' | 'metal'
+  const finish = finishFromSelect(openingFrameFinishSelect)
   const refs = scopedOpeningRefs()
   if (refs.length === 0) return
   commitState(updateOpeningFrameFinishes(state, refs, finish))
 })
 openingTrimFinishSelect.addEventListener('change', () => {
-  const finish = openingTrimFinishSelect.value as 'matte' | 'glossy' | 'metal'
+  const finish = finishFromSelect(openingTrimFinishSelect)
   commitOpeningTrim({ finish })
 })
 stairsFinishSelect.addEventListener('change', () => {
-  const finish = stairsFinishSelect.value as 'matte' | 'glossy' | 'metal'
+  const finish = finishFromSelect(stairsFinishSelect)
   commitStairPatch({ finish })
 })
 sillInnerFinishSelect.addEventListener('change', () => {
-  const finish = sillInnerFinishSelect.value as 'matte' | 'glossy' | 'metal'
+  const finish = finishFromSelect(sillInnerFinishSelect)
   commitOpeningSillPatch({ inner: { finish } })
 })
 sillOuterFinishSelect.addEventListener('change', () => {
-  const finish = sillOuterFinishSelect.value as 'matte' | 'glossy' | 'metal'
+  const finish = finishFromSelect(sillOuterFinishSelect)
   commitOpeningSillPatch({ outer: { finish } })
 })
 pedimentFinishSelect.addEventListener('change', () => {
-  const finish = pedimentFinishSelect.value as 'matte' | 'glossy' | 'metal'
+  const finish = finishFromSelect(pedimentFinishSelect)
   commitOpeningPedimentPatch({ finish })
 })
 studioCorniceFinishSelect.addEventListener('change', () => {
-  const finish = studioCorniceFinishSelect.value as 'matte' | 'glossy' | 'metal'
+  const finish = finishFromSelect(studioCorniceFinishSelect)
   commitCornicePatch({ finish })
 })
 wallCorniceFinishSelect.addEventListener('change', () => {
-  const finish = wallCorniceFinishSelect.value as 'matte' | 'glossy' | 'metal'
+  const finish = finishFromSelect(wallCorniceFinishSelect)
   commitCornicePatch({ finish })
 })
 moduleWallFinishSelect.addEventListener('change', () => {
-  const finish = moduleWallFinishSelect.value as 'matte' | 'glossy' | 'metal'
+  const finish = finishFromSelect(moduleWallFinishSelect)
   commitState(updateWallFinishes(state, scopedWallIds(), finish, 'wallFinish'))
 })
 moduleProfileFinishSelect.addEventListener('change', () => {
-  const finish = moduleProfileFinishSelect.value as 'matte' | 'glossy' | 'metal'
+  const finish = finishFromSelect(moduleProfileFinishSelect)
   commitState(updateWallFinishes(state, scopedWallIds(), finish, 'profileFinish'))
 })
 
@@ -25390,27 +25432,14 @@ function selectedCornice() {
   return wall ? wallCornice(wall) : normalizeWallCornice()
 }
 
-studioCorniceRotateCcw.addEventListener('click', () => {
-  commitCornicePatch({ rotationDeg: ((selectedCornice().rotationDeg ?? 0) + 270) % 360 })
-})
 wallCorniceRotateCcw.addEventListener('click', () => {
   commitCornicePatch({ rotationDeg: ((selectedCornice().rotationDeg ?? 0) + 270) % 360 })
-})
-studioCorniceRotateCw.addEventListener('click', () => {
-  commitCornicePatch({ rotationDeg: ((selectedCornice().rotationDeg ?? 0) + 90) % 360 })
 })
 wallCorniceRotateCw.addEventListener('click', () => {
   commitCornicePatch({ rotationDeg: ((selectedCornice().rotationDeg ?? 0) + 90) % 360 })
 })
-
-studioCorniceFlipOutward.addEventListener('click', () => {
-  commitCornicePatch({ flipOutward: !Boolean(selectedCornice().flipOutward) })
-})
 wallCorniceFlipOutward.addEventListener('click', () => {
   commitCornicePatch({ flipOutward: !Boolean(selectedCornice().flipOutward) })
-})
-studioCorniceFlipForward.addEventListener('click', () => {
-  commitCornicePatch({ flipForward: !Boolean(selectedCornice().flipForward) })
 })
 wallCorniceFlipForward.addEventListener('click', () => {
   commitCornicePatch({ flipForward: !Boolean(selectedCornice().flipForward) })

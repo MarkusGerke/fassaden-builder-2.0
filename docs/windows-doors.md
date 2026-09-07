@@ -34,9 +34,9 @@ Verwandte Docs: [ux.md](ux.md), [opening-motion.md](opening-motion.md), [roller-
 - **v2.0.90:** Default neu = 1 Flügel, kein Oberlicht, keine Sprossen (kein Mehrflügel-„Gitter“); Nutzer schaltet über Teilung zu
 - Kastenfenster inkl. **Innenfarbe** (`innerFrameColor`) und getrennte Innenwinkel
 - Brüstung bei Türen; Öffnungswinkel; Animation
-- **Holzmaße** (`timber`: Blend/Flügel/Sprosse/Kämpfer/Stulp)
+- **Holzmaße** (`timber`: Blend/Flügel/Sprosse/Kämpfer/Stulp) — **v2.0.265:** UI als eingeklapptes Akkordeon (`#window-timber-section`)
 - **Profilierte Sprossen** (`profiledBars`)
-- **Scharnierseite** (`leafHinges`) und **Öffnungsart** (`leafOpenModes`: turn/tilt/turnTilt)
+- **Scharnierseite** (`leafHinges`) und **Öffnungsart** (`leafOpenModes`: turn/tilt/turnTilt) — **v2.0.265:** UI als eingeklapptes Akkordeon (`#window-hinge-section`)
 - **Beschläge** (`hardware`: Olive + Bänder)
 
 ### Fassaden-Zubehör

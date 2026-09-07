@@ -2,9 +2,11 @@
 
 ## Verhalten für den Nutzer
 
-Im Reiter **Schrift**: Textfeld, darunter **Schriftart**-Karten wie die Paneel-Vorschau. Jede Karte ist **16:9**, die Karten stehen **untereinander**. Die Vorschau zeigt denselben Text wie das Feld oben, gesetzt in der jeweiligen Schrift (leer → Platzhalter des Textfelds). Standard bleibt **Federo**.
+Im Reiter **Schrift**: Textfeld, darunter **Schriftart**-Karten wie die Paneel-Vorschau. Jede Karte ist **16:9**, die Karten stehen **untereinander**. Die Vorschau zeigt denselben Text wie das Feld oben, gesetzt in der jeweiligen Schrift (leer → Platzhalter des Textfelds). Standard bleibt **Federo**. **v2.0.265:** Der rechte Reiter erscheint erst, wenn die Wand schon Schrift hat — Anlegen über die **Bibliothek**.
 
-**Bibliothek (unten, Tab Schrift) — v2.0.241:** Wie Wandöffnungen. Bei Wandauswahl beliebig viele Schriften: **Klick** auf eine Schriftart legt eine weitere Instanz an (Standard-Anker bzw. Offset); **Drag&Drop** auf die Wand platziert am Drop-Punkt. Während des Ziehens orangener Platzhalter (`setLibraryPlacementGhost`, gleiche Optik wie Öffnungs-Ghost). MIME `application/x-label-font` + `activeLibraryLabelFontId` (Custom-MIME oft leer im `dragover`). Raster **8 cm**.
+**Bibliothek (unten, Tab Schrift) — v2.0.241 / v2.0.267:** Wie Wandöffnungen. Ohne Schrift-Fokus: **Klick** legt eine weitere Instanz an; **Drag&Drop** platziert am Drop-Punkt. **Mit Fokus** auf eine Schrift (`selectedWallPart === 'label'`): aktive Schriftart ist in der Bibliothek markiert (`library-card-applied`); Klick **tauscht** `fontId` der Auswahl (`selectLabelFont`), legt keine neue Instanz an. Während des Ziehens orangener Platzhalter. MIME `application/x-label-font`. Raster **8 cm**.
+
+Auswahl in 3D (**v2.0.267**): nur die gewählte Instanz (`selectedLabelId`) bekommt eine orangene Kontur; der Text bleibt sichtbar (kein solides Auswahl-Material auf dem Glyph).
 
 **v2.0.237:** Mehrere Schriften pro Wand (`Wall.labels[]` mit `id`; Legacy `label` wird hydratisiert). Kopieren → Rechtsklick auf Wand → **Schrift einfügen** legt eine weitere Instanz an (Offset oder Klickpunkt); einzeln verschiebbar.
 
@@ -30,7 +32,7 @@ Im Reiter **Schrift**: Textfeld, darunter **Schriftart**-Karten wie die Paneel-V
 
 ## Datenfluss
 
-`wall.labels[].fontId` / Legacy `wall.label.fontId` → `resolveLabelFontId` → TTF (`FontFace`/Canvas) bzw. `*.typeface.json` (`TextGeometry`). Rechte Schriftart-Karten (falls sichtbar) und Bibliothek-Karten: neue Instanz über `placeLabelFromLibrary` / `addWallLabel` — nicht mehr nur `commitLabelPatch({ fontId })` auf die bestehende Schrift.
+`wall.labels[].fontId` / Legacy `wall.label.fontId` → `resolveLabelFontId` → TTF (`FontFace`/Canvas) bzw. `*.typeface.json` (`TextGeometry`). Bibliothek: neue Instanz über `placeLabelFromLibrary` / `addWallLabel`; bei bestehender Auswahl Schriftart tauschen über `selectLabelFont` / `commitLabelPatch({ fontId })`.
 
 ## Defaults / Konstanten
 
