@@ -12,6 +12,7 @@
 | [scene-lights.md](scene-lights.md) | Bibliotheks-Lichter: Presets, Fade, Uhrzeiten, XYZ, Persistenz |
 | [celestial-sky.md](celestial-sky.md) | Takram-Himmel, Sonne/Mond, Dämmerung, Tageszeit 0–24 h |
 | [stage-environment.md](stage-environment.md) | Bühnenmodus Himmel vs. Neutral (Schalen-Plattform, Beige/Nacht) |
+| [scrollable-settings-sections.md](scrollable-settings-sections.md) | Scroll-Akkordeon rechte Einstellungs-Leiste |
 | [ground-puddles.md](ground-puddles.md) | Steingrau-Boden, optionale Pfützen mit Fassaden-Spiegelung |
 | [ground-leaves.md](ground-leaves.md) | Herbstlaub: Platzieren, Cursor-Wind, Persistenz |
 | [panel-geometry.md](panel-geometry.md) | Gehrungsberechnung, `wallLocalX`, Paneelextrusion, 3D-Leibung, Rest-Bossen an Öffnungen (`remnantBoss.ts`) |
@@ -29,6 +30,7 @@
 | [roller-shutter.md](roller-shutter.md) | Rollläden: Lamellen, Höhe, Stapel, Animation, Uhrzeiten |
 | [roof.md](roof.md) | Berliner Mansarde: Ziegel/Trapez, bündige Traufe, Gehrungsrinne |
 | [gallery.md](gallery.md) | QA-Galerie: alle Standards im Raster, Abstand, Zufall, Projekt-Schutz |
+| [deploy-allinkl.md](deploy-allinkl.md) | Auto-Deploy auf All-Inkl (GitHub Actions, FTPS, Passwortschutz) |
 | [versioning.md](versioning.md) | App-Version, Release Notes, Quellen-Dialog, GitHub-Link, Pflege-Workflow |
 | [credits.md](credits.md) | Quellen, Lizenzen, Danksagung |
 | [fonts.md](fonts.md) | Fassaden-Schriften, Vorschaukarten, Peter-Wiegel-Lizenzen |

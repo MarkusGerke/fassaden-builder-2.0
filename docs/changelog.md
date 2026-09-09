@@ -2,6 +2,42 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### All-Inkl Auto-Deploy (2026-09-09)
+
+**Betrieb:** GitHub Actions Workflow `.github/workflows/deploy-allinkl.yml` — bei Push auf `main` (oder manuell): `npm ci`, `npm run build`, FTPS-Upload von `dist/` nach All-Inkl. Secrets: `FTP_SERVER`, `FTP_USERNAME`, `FTP_PASSWORD`, `FTP_REMOTE_DIR`. Docs: [deploy-allinkl.md](deploy-allinkl.md).
+
+### Scroll-Akkordeon wie Referenz, ohne Sprünge (2026-09-09) — v2.0.333
+
+**UI (Fehlersuche):** Symptom blieb nach v2.0.332 — Lücken im Stapel, Zittern. Ursachen (per CDP gemessen): (1) absolute Köpfe hingen am **Panel = Scroller** und scrollten mit → Containing Block jetzt der Wrapper `.right-selection-toolbar`; (2) Tab-Sortierung ≠ DOM-Reihenfolge (Farben unten) → Loch im Stapel → `orderSectionsInDom`; (3) Referenz-Formel `initialOffsetTop − Σh` lässt Köpfe ab Index 1 um Σh springen → `N[i]` direkt; (4) `marginTop`-Platzhalter überschrieb `.toolbar-group`-Margin und ließ Flex-`row-gap` weg → `paddingTop = h + gap` oben **und** unten (konstanter `scrollHeight`); (5) Layout-Read in der Stick-Schleife und RO auf Sektionen klemmten `scrollTop` am Ende. Neu: End-Spacer (letzte Sektion erreichbar), Sync-Signatur (kein Remeasure pro Render). Dateien: `scrollableSettingsSections.ts`, `style.css`. Docs: [scrollable-settings-sections.md](scrollable-settings-sections.md).
+
+### Scroll-Akkordeon ohne Lücken (2026-09-09) — v2.0.332
+
+**UI (Fehlersuche):** Symptom — Lücken zwischen Reitern, Zittern beim Scrollen. Versuche verworfen: `translateY` pro Frame + `minHeight` pro Sektion (riesiger Weißraum), `position:fixed` (v2.0.330/331). Fix wie [react-scrollable-accordion](https://github.com/andrii-maglovanyi/react-scrollable-accordion): `position:absolute` + `top`/`bottom`, `marginTop` nur oben klebend, `initialOffsetTop` einmal messen, Scroll per rAF; CSS: kein Flex-Gap, keine Doppel-Ränder. Datei: `scrollableSettingsSections.ts`, `style.css`.
+
+### Sektions-Reiter sichtbar (2026-09-09) — v2.0.331
+
+**UI (Fehlersuche):** Symptom — nach v2.0.330 fehlten die Sektions-Reiter rechts komplett. Ursache: `position:fixed` + `left/top` aus `getBoundingClientRect()` — unter `#ui-right` mit transformiertem Vorfahren doppelt versetzt (Köpfe außerhalb der Spalte). **Fix:** wieder `translateY`-Parking im Panel; `initialOffsetTop` panel-relativ gemessen. Datei: `scrollableSettingsSections.ts`.
+
+### Scroll-Akkordeon Einstellungen (2026-09-09) — v2.0.330
+
+**UI:** `scrollableSettingsSections.ts` — scrollgesteuertes Sektions-Layout (Köpfe oben/unten, aktive Sektion Mitte, Klick scrollt). Docs: [scrollable-settings-sections.md](scrollable-settings-sections.md).
+
+### Sticky-Fächer oben/unten (2026-09-09) — v2.0.329
+
+**UI:** v2.0.328 entfernte unteres Parking (Regression). Fix: Fächer oben+unten wieder; `position:fixed` an Panel-Rect + `.settings-section-head-spacer` statt `translateY` (Layout-Lücken). Dateien: `main.ts`, `style.css`.
+
+### Sticky-Köpfe ohne Lücken (2026-09-09) — v2.0.328
+
+**UI:** Symptom — Lücken zwischen Sektionsköpfen, alle Köpfe wirkten beim Scrollen mitzulaufen (translateY-Parking unten, v2.0.271). Fix: nur CSS-`sticky` mit gestapeltem `top`; ausstehende Köpfe bleiben im Fluss. Dateien: `main.ts`, `style.css`. Docs: [ux.md](ux.md).
+
+### Pfützen Wet-Floor / Noise (2026-09-09) — v2.0.327
+
+**Look:** wie three.js Retroreflection-Boden (Noise-Pfützen + ein Reflector), WebGL. Vorher: einzelne Disc-Reflectors lagen unter dem Haus und waren kaum sichtbar. Docs: [ground-puddles.md](ground-puddles.md).
+
+### Pfützen-Parameter (2026-09-09) — v2.0.326
+
+**Szene:** bei Pfützen an → Anzahl, Größe, Abstand, Spiegelstärke. Options-Block ausgeblendet wenn aus. Docs: [ground-puddles.md](ground-puddles.md).
+
 ### Steingrau-Boden und Pfützen (2026-09-09) — v2.0.325
 
 **Boden:** immer `#7E848C` (`GROUND_STONE_GRAY`); alte Beige-Defaults migriert.
