@@ -716,6 +716,13 @@ import {
   type FogSettings,
 } from './lighting/fog'
 import {
+  DEFAULT_GROUND_PUDDLE_SETTINGS,
+  GROUND_STONE_GRAY,
+  GroundPuddleRuntime,
+  normalizeGroundPuddleSettings,
+  type GroundPuddleSettings,
+} from './lighting/groundPuddles'
+import {
   applyLodPreset,
   DEFAULT_LOD_SETTINGS,
   normalizeLodSettings,
@@ -1080,6 +1087,7 @@ function setOrbitLite(active: boolean) {
       applyRendererPixelRatio()
       // Laufende Shadow-Bakes abbrechen — sonst 8192²-Hänger mitten in der Geste.
       suppressShadowBakeDuringOrbit()
+      syncGroundPuddles()
     }
     markViewportDirty()
     return
@@ -1094,6 +1102,7 @@ function setOrbitLite(active: boolean) {
     reflections: true,
     sun: deferred.sun || undefined,
   })
+  syncGroundPuddles()
   if (currentView === 'top') {
     updateGroundPlane()
     floorPlanView.syncGridToCamera(topCamera)
@@ -1271,7 +1280,7 @@ const GROUND_Y = -0.5
 let groundGeo = new THREE.PlaneGeometry(GROUND_BASE_SIZE, GROUND_BASE_SIZE)
 const groundMat = new THREE.MeshStandardMaterial({
   name: 'studioGround',
-  color: new THREE.Color(DEFAULT_SCENE_APPEARANCE.ground),
+  color: new THREE.Color(GROUND_STONE_GRAY),
   roughness: 1,
   metalness: 0,
   envMapIntensity: 0,
@@ -1289,6 +1298,9 @@ ground.castShadow = false
 ground.layers.set(SHADOW_LAYER_EXTERIOR)
 ground.frustumCulled = false
 siteOffset.add(ground)
+
+const groundPuddleRuntime = new GroundPuddleRuntime()
+siteOffset.add(groundPuddleRuntime.group)
 
 /** Neutrale Studio-Kugel: nur Innenfläche (BackSide) — von außen hindurchschauen. */
 const studioSphereMat = new THREE.MeshStandardMaterial({
@@ -5073,6 +5085,7 @@ function isColorPickerSessionActive(): boolean {
 let sceneAppearance: SceneAppearance = { ...DEFAULT_SCENE_APPEARANCE }
 let bloomSettings: BloomSettings = { ...DEFAULT_BLOOM_SETTINGS }
 let fogSettings: FogSettings = { ...DEFAULT_FOG_SETTINGS }
+let puddleSettings: GroundPuddleSettings = { ...DEFAULT_GROUND_PUDDLE_SETTINGS }
 let lodSettings: LodSettings = normalizeLodSettings(DEFAULT_LOD_SETTINGS)
 let stageEnvironment: StageEnvironment = loadStageEnvironment()
 
@@ -5167,6 +5180,7 @@ function persistApp() {
     scene: sceneAppearance,
     bloom: bloomSettings,
     fog: fogSettings,
+    puddles: puddleSettings,
     lod: lodSettings,
   })
 }
@@ -5330,7 +5344,7 @@ function resizeComposer() {
 }
 
 /** CubeCamera-Bake blendet Selektion, Hilfslinien und Raster aus. */
-const sceneReflectionHideRoots: THREE.Object3D[] = []
+const sceneReflectionHideRoots: THREE.Object3D[] = [groundPuddleRuntime.group]
 const reflectionProbePos = new THREE.Vector3()
 const reflectionCamPos = new THREE.Vector3()
 const reflectionFocus = new THREE.Vector3()
@@ -5468,6 +5482,7 @@ async function loadInitialState(): Promise<void> {
     sceneAppearance = normalizeSceneAppearance(persisted.scene)
     bloomSettings = normalizeBloomSettings(persisted.bloom)
     fogSettings = normalizeFogSettings(persisted.fog)
+    puddleSettings = normalizeGroundPuddleSettings(persisted.puddles)
     lodSettings = normalizeLodSettings(persisted.lod)
     if (facadeHasNeedsReview(state)) {
       queueMicrotask(() => {
@@ -6504,6 +6519,7 @@ const bloomExposure = document.querySelector<HTMLInputElement>('#bloom-exposure'
 const bloomExposureNum = document.querySelector<HTMLInputElement>('#bloom-exposure-num')!
 const bloomExposureValue = document.querySelector<HTMLOutputElement>('#bloom-exposure-value')!
 const fogEnabledInput = document.querySelector<HTMLInputElement>('#fog-enabled')!
+const groundPuddlesEnabledInput = document.querySelector<HTMLInputElement>('#ground-puddles-enabled')!
 const perfOverlayEnabledInput = document.querySelector<HTMLInputElement>('#perf-overlay-enabled')!
 const lodEnabledInput = document.querySelector<HTMLInputElement>('#lod-enabled')!
 const lodOptions = document.querySelector<HTMLDivElement>('#lod-options')!
@@ -10473,6 +10489,21 @@ function updateGroundPlane() {
   studioSphere.position.set(cx, GROUND_Y, cz)
   syncStageMeshVisibility()
   syncGroundDepthForView()
+  syncGroundPuddles()
+}
+
+function syncGroundPuddles() {
+  const box = buildingWorldBox(getAllWalls(state))
+  const { cx, cz } = groundSizeForView()
+  groundPuddleRuntime.sync({
+    enabled: puddleSettings.enabled,
+    view3d: currentView === '3d',
+    orbitLite: orbitLite || orbitLitePointer,
+    groundY: GROUND_Y,
+    cx,
+    cz,
+    box: box.isEmpty() ? null : box,
+  })
 }
 
 function buildingSpanForStudioFloor(): number {
@@ -11338,9 +11369,9 @@ function applySunLighting(opts?: {
   bounceDirLight.visible = mood.bounceIntensity > 0.02
 
   if (studio) {
-    groundMat.color.set(sceneColors.ground)
     studioSphereMat.color.set(sceneColors.background)
   }
+  groundMat.color.set(GROUND_STONE_GRAY)
   updateGroundMoodUniformValues(mood, groundMat.color)
   setGroundShadowHard(presentationUsesWorkLikeShading(presentationMode))
   // Live-Uhr: kein Material-Invalidate / needsUpdate — sonst Shadow-Bake jedes Frame.
@@ -23924,7 +23955,7 @@ function applySceneAppearance(override?: Partial<SceneAppearance>) {
       }
     : sceneColorsForLighting()
   const bg = colors.background
-  const groundColor = colors.ground
+  const groundColor = GROUND_STONE_GRAY
   const skyColor = colors.sky
   groundMat.color.set(groundColor)
   studioSphereMat.color.set(isStudioStage(stageEnvironment) ? bg : groundColor)
@@ -23939,6 +23970,7 @@ function applySceneAppearance(override?: Partial<SceneAppearance>) {
   applyBloomRenderer()
   applyFogToScene()
   applySunLighting({ updateShadowMap: false })
+  syncGroundPuddles()
   markSceneReflectionsDirty()
   markViewportDirty()
 }
@@ -24137,6 +24169,7 @@ function syncFogUi() {
 function syncBloomFogUi() {
   syncBloomUi()
   syncFogUi()
+  syncPuddleUi()
 }
 
 function syncLodUi() {
@@ -24229,6 +24262,19 @@ function commitFogPatch(patch: Partial<FogSettings>) {
   fogSettings = normalizeFogSettings({ ...fogSettings, ...patch })
   applyFogToScene()
   syncFogUi()
+  persistApp()
+  markViewportDirty()
+  if (currentView === '3d') render3dFrame()
+}
+
+function syncPuddleUi() {
+  groundPuddlesEnabledInput.checked = puddleSettings.enabled
+}
+
+function commitPuddlePatch(patch: Partial<GroundPuddleSettings>) {
+  puddleSettings = normalizeGroundPuddleSettings({ ...puddleSettings, ...patch })
+  syncPuddleUi()
+  syncGroundPuddles()
   persistApp()
   markViewportDirty()
   if (currentView === '3d') render3dFrame()
@@ -24487,6 +24533,10 @@ bindSceneDualControl(
 
 fogEnabledInput.addEventListener('change', () => {
   commitFogPatch({ enabled: fogEnabledInput.checked })
+})
+
+groundPuddlesEnabledInput.addEventListener('change', () => {
+  commitPuddlePatch({ enabled: groundPuddlesEnabledInput.checked })
 })
 
 if (localStorage.getItem('perf-overlay') === '1') {

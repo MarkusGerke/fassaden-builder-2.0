@@ -11,7 +11,8 @@ Zwei Bühnenmodi für die 3D-/Oben-Ansicht. Der Landschaftsmodus bleibt unverän
 
 - Umschalten: `#stage-env-sky-btn` / `#stage-env-studio-btn` (Chrome). Side-Buttons unter Szene (`#stage-env-*-btn-side`) sind ab **v2.0.209** ausgeblendet (IDs/Wiring bleiben).
 - Persistenz: `localStorage` `fassaden-builder-stage-environment` (`sky` \| `studio`).
-- **Neutral-Farben (v2.0.209):** `#scene-bg-color` → Kuppel/Hintergrund, `#scene-ground-color` → Boden. Default `#E8E3DD` (Studio-Beige). Nachts Abdunkelung Richtung `#0C0B0A` über `studioTintHex` / Tageszeit. Picker nur im Neutral-Modus sichtbar.
+- **Neutral-Farben (v2.0.209 / v2.0.325):** `#scene-bg-color` → Kuppel/Hintergrund. **v2.0.325:** sichtbarer Außenboden immer Steingrau (`GROUND_STONE_GRAY`); Picker `#scene-ground-color` ändert ihn nicht mehr. Nachts Abdunkelung der Kuppel Richtung `#0C0B0A`. Picker nur im Neutral-Modus sichtbar.
+- **Pfützen (v2.0.325):** siehe [ground-puddles.md](ground-puddles.md).
 - Haus-**Fußboden** bleibt sichtbar, auch wenn die **Decke** ausgeblendet wird (Ebenen → Decke).
 
 ## Technik

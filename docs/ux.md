@@ -112,12 +112,12 @@ Sonne (`DEFAULT_SUN_SETTINGS`): **heutiges Datum**, **13:15** (13,25 h), Sonnenw
 
 ### Szene-Farben (`SceneAppearance`, `src/utils/persistence.ts`)
 
-Im Akkordeon **Szene** (rechte Leiste) bei **Neutral** (Viewport-Wechsler Himmel | Neutral): **Hintergrund** und **Bodenfarbe** (v2.0.209). Ausgeblendet (IDs bleiben): Umgebung-Duplikat, Laub, „Alle drei“, Himmelsfarbe. Persistenz unter `PersistedAppState.scene`. Details: [stage-environment.md](stage-environment.md).
+Im Akkordeon **Szene** (rechte Leiste) bei **Neutral** (Viewport-Wechsler Himmel | Neutral): **Hintergrund** und **Bodenfarbe**-Picker (v2.0.209; **v2.0.325:** sichtbarer Außenboden immer Steingrau, Picker ohne Effekt auf den Mesh). **Pfützen** (`#ground-puddles-enabled`): optionale Fassaden-Spiegelung, siehe [ground-puddles.md](ground-puddles.md). Ausgeblendet (IDs bleiben): Umgebung-Duplikat, Laub, „Alle drei“, Himmelsfarbe. Persistenz unter `PersistedAppState.scene` / `puddles`. Details: [stage-environment.md](stage-environment.md).
 
 | Input | Feld | Default | Wirkung |
 |---|---|---|---|
 | `#scene-bg-color` | `background` | `#E8E3DD` | Neutral: Viewport-Hintergrund + Kugel-Kuppel (nachts Richtung Schwarz getönt). Im Himmel-Modus ausgeblendet. |
-| `#scene-ground-color` | `ground` | `#E8E3DD` | Neutral: Bodenplatte (nachts getönt). |
+| `#scene-ground-color` | `ground` | `#7E848C` | Persistenz; sichtbarer Außenboden immer Steingrau (v2.0.325). |
 | `#scene-all-color` / `#scene-sky-color` | — | — | UI ausgeblendet (v2.0.209); Wiring/IDs bleiben. |
 | `#scene-line-stroke` / `#view-line-stroke-row` | `lineStrokeScale` | `1` | Multiplikator für Linienstärke im Stil **Zeichnung**. |
 
@@ -624,7 +624,7 @@ Navigation: Button **?** unten rechts in der Bühne öffnet ein Dialog mit der T
 
 Oben links in der Zeichenfläche: Segmented Controls — **Oben | 2D | 3D** (Ansicht), **Farbe | Zeichnung** (Darstellung), **Entwurf | Vorschau | Render** (Darstellungsmodus, v0.7.316), **Himmel | Neutral** (Umgebung, v2.0.164), **Licht** (Licht-Modus), **Einfach | Komplex** (UI-Dichte, v0.7.51) und **Galerie** (QA-Übersicht aller Standards, v0.7.141, siehe [gallery.md](gallery.md)). **Laub** (v2.0.168) ist ab v2.0.209 in der UI ausgeblendet. Unabhängig voneinander. Bei **Zeichnung** erscheint daneben **Strichstärke** (Slider + Zahl).
 
-**Himmel / Neutral (v2.0.164 / v2.0.165 / v2.0.209):** `#stage-env-sky-btn` / `#stage-env-studio-btn` (Viewport) — Side-Duplikat ausgeblendet. **Himmel** = flache Bodenplatte + Takram-Himmel; **Neutral** = flacher Boden in durchsichtiger Kugel, Farben über Szene → Hintergrund/Bodenfarbe (Default Beige). Persistenz `fassaden-builder-stage-environment`. Siehe [stage-environment.md](stage-environment.md).
+**Himmel / Neutral (v2.0.164 / v2.0.165 / v2.0.209 / v2.0.325):** `#stage-env-sky-btn` / `#stage-env-studio-btn` (Viewport) — Side-Duplikat ausgeblendet. **Himmel** = flache Steingrau-Bodenplatte + Takram-Himmel; **Neutral** = flacher Steingrau-Boden in durchsichtiger Kugel, Hintergrund über Szene. Persistenz `fassaden-builder-stage-environment`. Siehe [stage-environment.md](stage-environment.md), [ground-puddles.md](ground-puddles.md).
 
 **Entwurf / Vorschau / Render (v0.7.316):** `#light-presentation-btn` / `#edit-presentation-btn` / `#render-presentation-btn` — immer genau einer aktiv. **Entwurf (v0.7.325):** Preset **anklicken** → Wand **anklicken** wählt aus (Farben/Mauerwerk); **nochmal klicken** auf die markierte Wand tauscht das Segment; **Greifer** verlängert; **Ziehen** platziert neue Wand. **Vorschau:** Flat-Meshes, detaillierte Fenster. **Render:** volle Geometrie, Himmel, Bloom. Details: [performance.md](performance.md).
 

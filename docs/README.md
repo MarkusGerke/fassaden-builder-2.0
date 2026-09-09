@@ -12,6 +12,7 @@
 | [scene-lights.md](scene-lights.md) | Bibliotheks-Lichter: Presets, Fade, Uhrzeiten, XYZ, Persistenz |
 | [celestial-sky.md](celestial-sky.md) | Takram-Himmel, Sonne/Mond, Dämmerung, Tageszeit 0–24 h |
 | [stage-environment.md](stage-environment.md) | Bühnenmodus Himmel vs. Neutral (Schalen-Plattform, Beige/Nacht) |
+| [ground-puddles.md](ground-puddles.md) | Steingrau-Boden, optionale Pfützen mit Fassaden-Spiegelung |
 | [ground-leaves.md](ground-leaves.md) | Herbstlaub: Platzieren, Cursor-Wind, Persistenz |
 | [panel-geometry.md](panel-geometry.md) | Gehrungsberechnung, `wallLocalX`, Paneelextrusion, 3D-Leibung, Rest-Bossen an Öffnungen (`remnantBoss.ts`) |
 | [floor-plan.md](floor-plan.md) | Grundriss-System, Ring-Erkennung, Miter, Etagen, Innenkante Decke/Boden |

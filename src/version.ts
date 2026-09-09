@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.324'
+export const APP_VERSION = '2.0.325'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,15 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.325',
+    date: '2026-09-09',
+    title: 'Steingrau-Boden und Pfützen',
+    changes: [
+      'Boden ist dauerhaft steingrau (#7E848C)',
+      'Szene → Pfützen: nasse Spiegelstellen spiegeln die Fassade (3D; während Orbit aus)',
+    ],
+  },
   {
     version: '2.0.324',
     date: '2026-09-09',

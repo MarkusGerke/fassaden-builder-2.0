@@ -2,6 +2,12 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Steingrau-Boden und Pfützen (2026-09-09) — v2.0.325
+
+**Boden:** immer `#7E848C` (`GROUND_STONE_GRAY`); alte Beige-Defaults migriert.
+
+**Pfützen:** Szene-Checkbox → `GroundPuddleRuntime` mit Three.js-`Reflector` vor den Fassaden; Orbit aus; Persistenz `puddles`. Dateien: `groundPuddles.ts`, `main.ts`, `persistence.ts`, `index.html`. Docs: [ground-puddles.md](ground-puddles.md).
+
 ### Toast Typ ohne Maßfilter (2026-09-09) — v2.0.324
 
 **Symptom:** Nach Änderung an einer Tür/Fenster mit Unikat-Maßen fehlte Button **Typ** (nur Etage/Fassade), weil `editOpeningTargets('type')` Typ+Maß verlangt.

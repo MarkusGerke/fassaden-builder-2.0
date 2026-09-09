@@ -14,6 +14,12 @@ import {
   type FogSettings,
 } from '../lighting/fog'
 import {
+  DEFAULT_GROUND_PUDDLE_SETTINGS,
+  isGroundPuddleSettings,
+  normalizeGroundPuddleSettings,
+  type GroundPuddleSettings,
+} from '../lighting/groundPuddles'
+import {
   DEFAULT_LOD_SETTINGS,
   isLodSettings,
   normalizeLodSettings,
@@ -42,10 +48,10 @@ export interface SceneAppearance {
   lineStrokeScale: number
 }
 
-/** Neutral-Studio-Tagesbeige — siehe `STUDIO_DAY_BEIGE` in `studioStage.ts`. */
+/** Neutral-Studio-Tagesbeige — siehe `STUDIO_DAY_BEIGE` in `studioStage.ts`. Boden: Steingrau. */
 export const DEFAULT_SCENE_APPEARANCE: SceneAppearance = {
   background: '#E8E3DD',
-  ground: '#E8E3DD',
+  ground: '#7E848C',
   skyReflection: '#E8E3DD',
   lineStrokeScale: 1,
 }
@@ -53,7 +59,7 @@ export const DEFAULT_SCENE_APPEARANCE: SceneAppearance = {
 /** Alte Defaults — gelten als nicht vom Nutzer überschrieben und werden migriert. */
 export const PREVIOUS_SKY_REFLECTION_DEFAULTS = ['#ffffff', '#3a6084', '#555555'] as const
 export const PREVIOUS_BACKGROUND_DEFAULTS = ['#ffffff', '#555555'] as const
-export const PREVIOUS_GROUND_DEFAULTS = ['#ffffff', '#555555'] as const
+export const PREVIOUS_GROUND_DEFAULTS = ['#ffffff', '#555555', '#E8E3DD', '#e8e3dd'] as const
 
 function normalizeLineStrokeScale(value: unknown): number {
   const n = typeof value === 'number' ? value : Number(value)
@@ -73,6 +79,7 @@ export interface PersistedAppState {
   scene?: SceneAppearance
   bloom?: BloomSettings
   fog?: FogSettings
+  puddles?: GroundPuddleSettings
   lod?: LodSettings
 }
 
@@ -197,6 +204,9 @@ export function loadPersistedState(): PersistedAppState | null {
         ? normalizeBloomSettings(parsed.bloom)
         : { ...DEFAULT_BLOOM_SETTINGS },
       fog: isFogSettings(parsed.fog) ? normalizeFogSettings(parsed.fog) : { ...DEFAULT_FOG_SETTINGS },
+      puddles: isGroundPuddleSettings(parsed.puddles)
+        ? normalizeGroundPuddleSettings(parsed.puddles)
+        : { ...DEFAULT_GROUND_PUDDLE_SETTINGS },
       lod: isLodSettings(parsed.lod) ? normalizeLodSettings(parsed.lod) : { ...DEFAULT_LOD_SETTINGS },
     }
   } catch {
