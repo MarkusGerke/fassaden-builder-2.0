@@ -236,7 +236,7 @@ Yaw-Konvention überall gleich: **0=N, 90=W, 180=S, 270=O** (gegen Uhrzeigersinn
 - **v2.0.207:** Bibliothek-Paneele und Stil einfügen / Stil-Vorlage nutzen `scopedWallIds()` / `scopedOpeningRefs()` — Scope **Etage** gilt auch dafür
 - Öffnungs-Edits (Profil, Fensterbank, Treppe, Rahmen/Glas, Gründerzeit, **Position/Nudge/Drag**): `editOpeningTargets` / `scopedOpeningRefs()`
 - Beim Verschieben: Delta gilt für alle Scoped-Refs. Türen mit aktiver Treppe behalten Auto-Y aus Stufen.
-- **v2.0.233 / v2.0.234 / v2.0.321 / v2.0.322:** Nach Edit mit Scope **Auswahl**/**Etage** ggf. `#scope-propagate-offer` im `#scope-bar-slot` — „Gültig für“ fadet aus, Angebot fährt von unten an dieselbe Stelle, **5-s-Countdown**, dann umgekehrt (Property-Deltas, siehe [views-and-state.md](views-and-state.md)). **v2.0.321:** Rahmenprofile (`wall.profiles`) werden mitübernommen. **v2.0.322:** Profil-Übernahme auf **Fenster und Türen** (auch andere Maße); übrige Opening-Properties weiter nur bei gleichem Typ+Maß.
+- **v2.0.233 / v2.0.234 / v2.0.321 / v2.0.322 / v2.0.323 / v2.0.324:** Nach Edit mit Scope **Auswahl**/**Typ**/**Etage** ggf. `#scope-propagate-offer` — **Typ / Etage / Fassade**, **5-s-Countdown**. **v2.0.324:** Toast-Typ auch bei unterschiedlicher Größe (gleicher Öffnungstyp). **v2.0.323:** Farbe/Profil auf Fenster und Türen.
 
 | Scope | Wände | Öffnungen |
 |---|---|---|

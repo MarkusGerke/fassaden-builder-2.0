@@ -6407,6 +6407,7 @@ const editScopeFacade = document.querySelector<HTMLButtonElement>('#edit-scope-f
 const editScopeFacadeYaws = document.querySelector<HTMLDivElement>('#edit-scope-facade-yaws')!
 const scopePropagateOffer = document.querySelector<HTMLDivElement>('#scope-propagate-offer')!
 const scopePropagateTimer = document.querySelector<HTMLSpanElement>('#scope-propagate-timer')!
+const scopePropagateTypeBtn = document.querySelector<HTMLButtonElement>('#scope-propagate-type')!
 const scopePropagateFloorBtn = document.querySelector<HTMLButtonElement>('#scope-propagate-floor')!
 const scopePropagateFacadeBtn = document.querySelector<HTMLButtonElement>('#scope-propagate-facade')!
 const scopePropagateDismissBtn = document.querySelector<HTMLButtonElement>('#scope-propagate-dismiss')!
@@ -11888,6 +11889,7 @@ function hideScopePropagateOffer(opts?: { animate?: boolean }) {
   pendingScopePropagate = null
   clearScopeOfferTimers()
   const animate = opts?.animate !== false && scopePropagateOffer.classList.contains('is-visible')
+  scopePropagateTypeBtn.hidden = true
   scopePropagateFloorBtn.hidden = true
   scopePropagateFacadeBtn.hidden = true
   if (!animate) {
@@ -11910,7 +11912,7 @@ function showScopePropagateOfferIfUseful(
   nextEditor: EditorState,
   fromScope: EditScope,
 ) {
-  if (fromScope !== 'element' && fromScope !== 'floor') {
+  if (fromScope === 'facade') {
     hideScopePropagateOffer({ animate: false })
     return
   }
@@ -11918,9 +11920,10 @@ function showScopePropagateOfferIfUseful(
     hideScopePropagateOffer({ animate: false })
     return
   }
+  const offerType = scopePropagateAvailable(after, nextEditor, fromScope, 'type')
   const offerFloor = scopePropagateAvailable(after, nextEditor, fromScope, 'floor')
   const offerFacade = scopePropagateAvailable(after, nextEditor, fromScope, 'facade')
-  if (!offerFloor && !offerFacade) {
+  if (!offerType && !offerFloor && !offerFacade) {
     hideScopePropagateOffer({ animate: false })
     return
   }
@@ -11935,6 +11938,7 @@ function showScopePropagateOfferIfUseful(
     fromScope,
   }
   clearScopeOfferTimers()
+  scopePropagateTypeBtn.hidden = !offerType
   scopePropagateFloorBtn.hidden = !offerFloor
   scopePropagateFacadeBtn.hidden = !offerFacade
   let remaining = SCOPE_OFFER_SECONDS
@@ -11969,10 +11973,15 @@ function acceptScopePropagate(toScope: ScopePropagateKind) {
   applyState(next, pending.editor)
   scheduleShareHashWrite()
   planStatus.textContent =
-    toScope === 'floor' ? 'Änderung auf Etage übernommen' : 'Änderung auf Fassade übernommen'
+    toScope === 'type'
+      ? 'Änderung auf Typ übernommen'
+      : toScope === 'floor'
+        ? 'Änderung auf Etage übernommen'
+        : 'Änderung auf Fassade übernommen'
   updateHistoryButtons()
 }
 
+scopePropagateTypeBtn.addEventListener('click', () => acceptScopePropagate('type'))
 scopePropagateFloorBtn.addEventListener('click', () => acceptScopePropagate('floor'))
 scopePropagateFacadeBtn.addEventListener('click', () => acceptScopePropagate('facade'))
 scopePropagateDismissBtn.addEventListener('click', () => hideScopePropagateOffer())

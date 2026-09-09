@@ -1,9 +1,14 @@
 import type { EditScope } from '../studio/editScope'
-import { editOpeningTargets, editWallTargets } from './editScope'
+import {
+  editOpeningTargets,
+  editWallTargets,
+  filterOpeningRefsByBasementParity,
+} from './editScope'
 import type {
   EditorState,
   FacadeState,
   Opening,
+  OpeningRef,
   ProfileAssignment,
   Wall,
 } from '../types/facade'
@@ -126,15 +131,7 @@ export function applyOpeningProfilesDelta(
   ]
 }
 
-function openingsMatchPropagate(a: Opening, b: Opening): boolean {
-  if (a.type !== b.type) return false
-  return (
-    Math.round(a.width) === Math.round(b.width) &&
-    Math.round(a.height) === Math.round(b.height)
-  )
-}
-
-/** Rahmenprofile: Fenster und Türen (Etage/Fassade, unabhängig von Maß). */
+/** Fenster/Türen: Property- und Profil-Deltas ohne Maßfilter. */
 function openingTakesFrameProfile(opening: Opening): boolean {
   return opening.type === 'window' || opening.type === 'door'
 }
@@ -154,7 +151,6 @@ function applyWallPropertyDelta(peer: Wall, before: Wall, after: Wall): Wall {
       afterRec[key as string],
     )
   }
-  // Öffnungen: Properties nur bei Typ+Maß; Rahmenprofile auf Fenster und Türen.
   const beforeById = new Map(before.openings.map((o) => [o.id, o]))
   const afterById = new Map(after.openings.map((o) => [o.id, o]))
   let profiles = next.profiles
@@ -169,14 +165,14 @@ function applyWallPropertyDelta(peer: Wall, before: Wall, after: Wall): Wall {
       const afterProf = profilesForOpening(after, id)
       const openSame = beforeOpen === afterOpen
       const profSame = openingProfilesEqual(beforeProf, afterProf)
-      const typeSizeMatch = openingsMatchPropagate(peerOpen, afterOpen)
-      const canTakeProfile =
+      const canTakePeer =
         openingTakesFrameProfile(peerOpen) && openingTakesFrameProfile(afterOpen)
-      if (!profSame && canTakeProfile) {
+      if (!canTakePeer) continue
+      if (!profSame) {
         profiles = applyOpeningProfilesDelta(profiles, peerOpen.id, beforeProf, afterProf)
         did = true
       }
-      if (!openSame && typeSizeMatch) {
+      if (!openSame) {
         nextOpen = applyOpeningPropertyDelta(peerOpen, beforeOpen, afterOpen)
         did = true
       }
@@ -210,7 +206,34 @@ function applyOpeningPropertyDelta(peer: Opening, before: Opening, after: Openin
   return out as unknown as Opening
 }
 
-export type ScopePropagateKind = 'floor' | 'facade'
+export type ScopePropagateKind = 'type' | 'floor' | 'facade'
+
+/**
+ * Toast „Typ“: gleicher Öffnungstyp (Fenster↔Fenster, Tür↔Tür), **beliebige Maße**.
+ * Sonst fehlt der Button bei Unikat-Maßen, obwohl Etage/Fassade angeboten werden.
+ * (Gültig-für „Typ“ in der Toolbar bleibt Typ+Maß via `editOpeningTargets`.)
+ */
+export function propagateOpeningTargets(
+  state: FacadeState,
+  editor: EditorState,
+  toScope: ScopePropagateKind,
+): OpeningRef[] {
+  if (toScope !== 'type') return editOpeningTargets(state, editor, toScope, null)
+  const types = new Set<string>()
+  for (const ref of editor.selectedOpenings) {
+    const wall = getWall(state, ref.wallId)
+    const opening = wall?.openings.find((item) => item.id === ref.openingId)
+    if (opening) types.add(opening.type)
+  }
+  if (types.size === 0) return [...editor.selectedOpenings]
+  const refs: OpeningRef[] = []
+  for (const wall of getAllWalls(state)) {
+    for (const opening of wall.openings) {
+      if (types.has(opening.type)) refs.push({ wallId: wall.id, openingId: opening.id })
+    }
+  }
+  return filterOpeningRefsByBasementParity(state, refs, editor)
+}
 
 /** Ob eine höhere Scope-Stufe mehr Ziele träfe als die aktuelle. */
 export function scopePropagateAvailable(
@@ -219,12 +242,13 @@ export function scopePropagateAvailable(
   fromScope: EditScope,
   toScope: ScopePropagateKind,
 ): boolean {
-  if (fromScope === 'facade' || fromScope === 'type') return false
-  if (fromScope === 'floor' && toScope === 'floor') return false
+  if (fromScope === 'facade') return false
+  if (fromScope === 'type' && toScope === 'type') return false
+  if (fromScope === 'floor' && (toScope === 'floor' || toScope === 'type')) return false
   const hasOpenings = editor.selectedOpenings.length > 0
   if (hasOpenings) {
     const current = editOpeningTargets(state, editor, fromScope, null)
-    const elevated = editOpeningTargets(state, editor, toScope, null)
+    const elevated = propagateOpeningTargets(state, editor, toScope)
     return elevated.length > current.length
   }
   if (editor.selectedWallIds.length === 0) return false
@@ -247,7 +271,7 @@ export function propagateSelectionEdit(
 
   const hasOpenings = editor.selectedOpenings.length > 0
   if (hasOpenings) {
-    const targets = editOpeningTargets(after, editor, toScope, null)
+    const targets = propagateOpeningTargets(after, editor, toScope)
     type OpeningDonor = {
       before: Opening
       after: Opening
@@ -283,10 +307,13 @@ export function propagateSelectionEdit(
         for (const donor of donors) {
           const openSame = donor.before === donor.after
           const profSame = openingProfilesEqual(donor.profilesBefore, donor.profilesAfter)
-          const typeSizeMatch = openingsMatchPropagate(open, donor.after)
-          const canTakeProfile =
-            openingTakesFrameProfile(open) && openingTakesFrameProfile(donor.after)
-          if (!profSame && canTakeProfile) {
+          // Typ-Stufe: nur gleicher Opening-Typ; Etage/Fassade: Fenster und Türen.
+          const canTakePeer =
+            toScope === 'type'
+              ? open.type === donor.after.type
+              : openingTakesFrameProfile(open) && openingTakesFrameProfile(donor.after)
+          if (!canTakePeer) continue
+          if (!profSame) {
             profiles = applyOpeningProfilesDelta(
               profiles,
               open.id,
@@ -295,7 +322,7 @@ export function propagateSelectionEdit(
             )
             did = true
           }
-          if (!openSame && typeSizeMatch) {
+          if (!openSame) {
             nextOpen = applyOpeningPropertyDelta(open, donor.before, donor.after)
             did = true
           }

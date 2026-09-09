@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.322'
+export const APP_VERSION = '2.0.324'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,23 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.324',
+    date: '2026-09-09',
+    title: 'Toast Übernehmen: Typ auch bei anderen Maßen',
+    changes: [
+      'Vorschlag „Typ“ erscheint nach Änderung an einem Objekt, sobald weitere Fenster bzw. Türen existieren — auch mit anderer Größe',
+    ],
+  },
+  {
+    version: '2.0.323',
+    date: '2026-09-09',
+    title: 'Übernehmen: Farbe/Profil auf alle Fenster und Türen',
+    changes: [
+      'Etage/Fassade/Typ-Übernahme setzt Farbe, Profil und andere Öffnungs-Eigenschaften auf alle Fenster und Türen — nicht nur gleiche Maße',
+      'Toast „Übernehmen?“ bietet jetzt auch Typ an',
+    ],
+  },
   {
     version: '2.0.322',
     date: '2026-09-09',

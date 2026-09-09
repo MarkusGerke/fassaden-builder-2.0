@@ -2,6 +2,18 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Toast Typ ohne Maßfilter (2026-09-09) — v2.0.324
+
+**Symptom:** Nach Änderung an einer Tür/Fenster mit Unikat-Maßen fehlte Button **Typ** (nur Etage/Fassade), weil `editOpeningTargets('type')` Typ+Maß verlangt.
+
+**Fix:** Toast-/Übernehmen-Typ über `propagateOpeningTargets` = gleicher `type`, beliebige Maße; Toolbar „Gültig für → Typ“ bleibt Typ+Maß. Datei: `scopePropagate.ts`. Docs: [views-and-state.md](views-and-state.md), [ux.md](ux.md).
+
+### Übernehmen: Farbe/Profil auf alle Fenster/Türen + Typ (2026-09-09) — v2.0.323
+
+**Symptom (Runtime):** Fassade-Übernahme nach Tür-Farbwechsel: 25 Ziele, aber `appliedProps: 1` / `skippedNoMatch: 24` — nur Typ+Maß.
+
+**Fix:** Opening-Property-Deltas (Farbe u. a.) wie Profile auf alle `window`/`door` ohne Maßfilter; Toast-Button **Typ**. Dateien: `scopePropagate.ts`, `main.ts`, `index.html`. Docs: [views-and-state.md](views-and-state.md), [ux.md](ux.md).
+
 ### Profil auf Fenster und Türen (2026-09-09) — v2.0.322
 
 **Wunsch:** Etage/Fassade-Übernahme für Rahmenprofile soll Fenster **und** Türen treffen (nicht nur gleiche Typ/Maße).

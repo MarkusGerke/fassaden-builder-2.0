@@ -7,6 +7,7 @@ import { ALL_EDGES } from '../constants/presets'
 import {
   applyOpeningProfilesDelta,
   propagateSelectionEdit,
+  scopePropagateAvailable,
 } from './scopePropagate'
 
 const H = 456
@@ -200,5 +201,87 @@ describe('propagateSelectionEdit — Fensterprofile', () => {
     const next = propagateSelectionEdit(before, after, editorForOpening('w1', 'd1'), 'floor')
     const peer = next.buildings[0]!.walls.find((w) => w.id === 'w2')!
     expect(peer.profiles.filter((p) => p.openingId === 'o2')).toHaveLength(4)
+  })
+
+  it('übernimmt Rahmenfarbe auf Fenster und Türen (auch andere Maße)', () => {
+    const door = win({
+      id: 'd1',
+      type: 'door',
+      x: 48,
+      y: 0,
+      width: 160,
+      height: 304,
+      frameColor: '#ffffff',
+    })
+    const o2 = win({ id: 'o2', width: 96, height: 192, frameColor: '#ffffff' })
+    const before = stateWithWalls([
+      wall({ id: 'w1', openings: [door] }),
+      wall({ id: 'w2', openings: [o2], originX: 400 }),
+    ])
+    const after = {
+      ...before,
+      buildings: [
+        {
+          ...before.buildings[0]!,
+          walls: [
+            {
+              ...before.buildings[0]!.walls[0]!,
+              openings: [{ ...door, frameColor: '#A54040' }],
+            },
+            before.buildings[0]!.walls[1]!,
+          ],
+        },
+      ],
+    }
+    const next = propagateSelectionEdit(before, after, editorForOpening('w1', 'd1'), 'facade')
+    const peer = next.buildings[0]!.walls.find((w) => w.id === 'w2')!
+    expect(peer.openings.find((o) => o.id === 'o2')?.frameColor).toBe('#A54040')
+  })
+
+  it('Typ-Übernahme: gleiche Art ohne Maßfilter; Toast-Typ ist verfügbar', () => {
+    const door = win({
+      id: 'd1',
+      type: 'door',
+      x: 48,
+      y: 0,
+      width: 160,
+      height: 304,
+      frameColor: '#ffffff',
+    })
+    const door2 = win({
+      id: 'd2',
+      type: 'door',
+      x: 48,
+      y: 0,
+      width: 96,
+      height: 240,
+      frameColor: '#ffffff',
+    })
+    const window = win({ id: 'o1', width: 96, height: 192, frameColor: '#ffffff' })
+    const before = stateWithWalls([
+      wall({ id: 'w1', openings: [door] }),
+      wall({ id: 'w2', openings: [door2, window], originX: 400 }),
+    ])
+    const after = {
+      ...before,
+      buildings: [
+        {
+          ...before.buildings[0]!,
+          walls: [
+            {
+              ...before.buildings[0]!.walls[0]!,
+              openings: [{ ...door, frameColor: '#A54040' }],
+            },
+            before.buildings[0]!.walls[1]!,
+          ],
+        },
+      ],
+    }
+    const editor = editorForOpening('w1', 'd1')
+    expect(scopePropagateAvailable(after, editor, 'element', 'type')).toBe(true)
+    const next = propagateSelectionEdit(before, after, editor, 'type')
+    const peer = next.buildings[0]!.walls.find((w) => w.id === 'w2')!
+    expect(peer.openings.find((o) => o.id === 'd2')?.frameColor).toBe('#A54040')
+    expect(peer.openings.find((o) => o.id === 'o1')?.frameColor).toBe('#ffffff')
   })
 })

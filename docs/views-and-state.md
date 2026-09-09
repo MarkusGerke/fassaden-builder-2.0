@@ -185,7 +185,7 @@ function commitStudioPanelPatch(patch) {
 
 Buttons `#edit-scope-element|type|floor|facade` in `#edit-scope-bar`. Bei Fassade: `#edit-scope-facade-yaws` (Himmelsrichtungen). Persistiert als `editScope` / `editFacadeYawFilter`. Ersetzt die frühere Checkbox `#studio-apply-all` (nur Paneele).
 
-**v2.0.233 / v2.0.234 / v2.0.321 / v2.0.322:** Nach einem Property-Edit mit Scope **Auswahl** oder **Etage** erscheint leise `#scope-propagate-offer` im `#scope-bar-slot` (an Stelle von „Gültig für“: Fade out → Angebot von unten, **5-s-Timer**, dann umgekehrt), wenn eine höhere Stufe mehr Ziele träfe. Übernahme: `propagateSelectionEdit` in `src/studio/scopePropagate.ts` (Deltas der Auswahl, Geometrie bleibt). **v2.0.321:** auch `wall.profiles` (Rahmenprofil je Kante). **v2.0.322:** Rahmenprofile auf alle **Fenster und Türen** der Stufe (ohne Maß-/Typ-Gleichheit); andere Opening-Felder weiter nur bei Typ+Maß. Schließen, Timeout oder Scope-Wechsel blendet aus.
+**v2.0.233 / v2.0.234 / v2.0.321 / v2.0.322 / v2.0.323 / v2.0.324:** Nach einem Property-Edit mit Scope **Auswahl**, **Typ** oder **Etage** erscheint leise `#scope-propagate-offer` (Fade, **5-s-Timer**). Buttons: **Typ** / **Etage** / **Fassade**. **v2.0.324:** Toast-**Typ** = gleicher Öffnungstyp ohne Maßfilter (sonst fehlt der Button bei Unikat-Maßen); Toolbar „Gültig für → Typ“ weiter Typ+Maß. **v2.0.323:** Farbe/Profil auf Fenster und Türen. Schließen, Timeout oder Scope-Wechsel blendet aus.
 
 Gilt analog für Gesims, Wandfarben, Öffnungs-Profil, Fensterbank, Treppe, Rahmen/Glas — jeweils über `editWallTargets` oder `editOpeningTargets` / `scopedOpeningRefs()`.
 
