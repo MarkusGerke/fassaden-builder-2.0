@@ -98,6 +98,7 @@
             <button id="save-json" type="button">Exportieren als .json</button>
             <button id="load-json" type="button">Importieren einer .json</button>
             <button id="copy-link" type="button">Link kopieren</button>
+            <button id="copy-showcase-link" type="button">Showcase-Link kopieren</button>
             <input id="load-json-input" type="file" accept="application/json,.json" hidden />
             <p id="share-status" class="hint" hidden></p>
           </div>
@@ -1331,6 +1332,16 @@
                   </select>
                   <p class="toolbar-hint">Abstand: Breite des Streifens um die Öffnung. Tiefe: positiv = Rahmen vor der Wand, 0 = Wandfläche, negativ = Vertiefung in die Wand (das Mauerwerk wird im Band ausgeschnitten). Leibung endet bündig an der Front.</p>
                 </div>
+              </div>
+              <div id="opening-panel-wrapped-reveal-section" class="toolbar-group">
+                <label class="toolbar-check">
+                  <input id="opening-panel-wrapped-reveal-enabled" type="checkbox" />
+                  Laibung mit Paneelen verkleiden
+                </label>
+                <p class="toolbar-hint compact-hint">Paneele setzen sich um die Öffnungskante in die äußere Laibung fort (wie an einer Wandecke) bis zur Fensterfront; die glatte Außenlaibung entfällt. Innen bleibt die Laibung in Innenfarbe.</p>
+                <p id="opening-panel-wrapped-reveal-info" class="toolbar-infobox" role="note" hidden>
+                  <strong>Hinweis:</strong> Bei Rundbögen kann es an der Bogenlaibung zu Darstellungsproblemen kommen (Lücken oder Versätze zwischen den Return-Steinen). Bei rechteckigen Öffnungen ist die Funktion unproblematisch.
+                </p>
               </div>
               <div id="opening-arch-section" class="toolbar-group">
                 <span class="toolbar-label">Bogenform der Öffnung</span>

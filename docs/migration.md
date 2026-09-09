@@ -97,7 +97,7 @@ Checkliste für den nächsten Fix:
 
 ## Aktuelle Schema-Version
 
-Siehe `FACADE_SCHEMA_VERSION` in `schemaMigrations.ts` (aktuell **15**).
+Siehe `FACADE_SCHEMA_VERSION` in `schemaMigrations.ts` (aktuell **21**).
 
 | Step | id | Wirkung |
 |---|---|---|
@@ -108,6 +108,12 @@ Siehe `FACADE_SCHEMA_VERSION` in `schemaMigrations.ts` (aktuell **15**).
 | 12 → 13 | `indoor-white-defaults` | Innenwand `interiorColor` Default Weiß. Decke/Boden: fehlende Farbe und alte Fallbacks `#9a8a7a` / `#8a7a6a` → Weiß; abweichende Nutzerfarben bleiben. |
 | 13 → 14 | `align-masonry-openings` | Bei Läufer-/Mauerwerksverband: Öffnungs-`x`/`y`/`width`/`height` auf Fugen und Schichten (`alignOpeningToMasonry`). Idempotent. Bei Überlappung nach Snap bleibt die Öffnung. Rundbogen: Stichmaß folgt der neuen Breite, wenn es zuvor ein Halbkreis war. |
 | 14 → 15 | `plan-grid-48-to-8` | Grundriss-Knoten: `gx`/`gz` ×6 (Zelle 48→8 cm), Weltpositionen unverändert. Wand-`originX`/`originZ` bleiben cm. |
+| 15 → 16 | `bay-front-288-to-336` | Erker-Paneel-Defaults (`applyBayPanelDefaults`); frühere Zwangs-Verbreiterung 288→336 wird in Schema 17 rückgängig. |
+| 16 → 17 | `bay-front-336-revert-to-288` | Bibliothek-Erker 336 → 288 (Mund bleibt), Läufer 48. |
+| 17 → 18 | `bay-panel-strip-to-running-48` | Erker-Flächen mit Streifen/ohne Muster → Läufer 48, Vorstand 0. |
+| 18 → 19 | `bay-outer-origin` | **v2.0.305.** Erker (rect/45°) mit **Innen-Origin** (`panelFlip: false` auf Front/Schenkel) werden via `swapBayPreset` mit demselben Preset neu aufgebaut → Planlinie = Außenkante, `panelFlip: true`. Vorher war die sichtbare Front an den 90°-Ecken um 2×Wandstärke breiter als `wall.width` (384 → 432 cm). Mund, Optik, Fenster-Stil bleiben; Fensterpositionen aus dem Preset. Balkon/Loggia/rund unberührt. |
+| 19 → 20 | `bay-panel-depth` | **v2.0.307.** Erker-Paneele (`bayRole`) mit `projectDepth` 0 **und** `taperDepth` 0 (Zwang aus v2.0.304 / Schema 18) → Vorstand/Bosse des Muster-Defaults (Läufer 4 / 1). Steine ohne Dicke lagen 0,15 cm vor der Wandschale → Z-Fight-Streifen. Breite/Höhe/Farbe/Fugen unverändert; idempotent. |
+| 20 → 21 | `bay-opening-sill-128` | **v2.0.309.** Erker-Fenster (`bayRole` front/side/arc) auf Brüstung `WINDOW_SILL_Y` + Rock (`bayWallSkirtDropCm`) setzen. Symptom: Front übernahm oft Spender-Y (64/72), Schenkel lagen schon auf 128. Stil unverändert; idempotent. |
 
 **Hydrate ohne Schema-Step (v0.7.247):**
 

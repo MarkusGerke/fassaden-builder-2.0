@@ -5,12 +5,23 @@
 import type { FacadeState, Opening, Wall } from '../types/facade'
 import { createId } from '../utils/id'
 import { findBuildingForWall, updateBuilding } from '../utils/buildings'
-import { BAY_SLIDE_STEP_CM, STUDIO_WALL_WIDTH_STEP } from './constants'
+import { WINDOW_SILL_Y } from '../constants/presets'
 import {
+  BAY_SLIDE_STEP_CM,
+  DEFAULT_STUDIO_PANEL,
+  STUDIO_WALL_WIDTH_STEP,
+  normalizeStudioPanel,
+  studioPanelDefaultsForPattern,
+} from './constants'
+import {
+  BAY_WINDOW_PRESETS,
   bayMouthWidthCm,
   bayPresetKind,
   bayWallSelectionIds,
+  bayWallSkirtDropCm,
   buildBayWindowAtPose,
+  isFlushBayPanel,
+  panelForBaySurface,
   type BayWindowPreset,
 } from './bayWindow'
 import { syncFloorPlansFromWalls } from './floorPlan'
@@ -28,7 +39,12 @@ import {
   wallEndPoint,
   wallStartPoint,
 } from './walls'
-import { splitWallStackRange, wallSplitRangeAt, type WallSplitRange } from './wallSplit'
+import {
+  splitWallStackRange,
+  wallSplitRangeAt,
+  wallSplitStack,
+  type WallSplitRange,
+} from './wallSplit'
 
 const EPS = 0.5
 
@@ -83,12 +99,23 @@ export function bayMemberIds(walls: Wall[], seedId: string): string[] | null {
 }
 
 /**
- * Aktuell gespeicherte Verlängerung nach unten (cm) für die Erker-Gruppe des Seeds.
+ * Aktuelle Verlängerung nach unten (cm) für die Erker-Gruppe.
+ * Max aus Meta-`dropCm` und gemessener Fußdifferenz zur Restwand — sonst bleibt
+ * Geometrie verlängert bei `dropCm: 0` und „Ausschalten“ ändert nichts (v2.0.278).
  */
 export function bayDropCm(walls: Wall[], seedId: string): number {
   const host = bayHostWall(walls, seedId)
-  const drop = host?.bayWindow?.dropCm
-  return typeof drop === 'number' && Number.isFinite(drop) ? Math.max(0, drop) : 0
+  if (!host) return 0
+  const drop = host.bayWindow?.dropCm
+  const stored = typeof drop === 'number' && Number.isFinite(drop) ? Math.max(0, drop) : 0
+  const memberIds = bayMemberIds(walls, seedId) ?? [host.id]
+  let measured = 0
+  for (const id of memberIds) {
+    const w = walls.find((item) => item.id === id)
+    if (!w) continue
+    measured = Math.max(measured, bayWallSkirtDropCm(w, walls))
+  }
+  return Math.max(stored, measured)
 }
 
 /**
@@ -102,15 +129,24 @@ export function bayDropClearanceCm(walls: Wall[], seedId: string): number {
   const members = walls.filter((w) => memberIds.has(w.id))
   if (members.length === 0) return 0
   const foot = Math.min(...members.map((w) => w.y ?? 0))
-  let maxBelowTop = -Infinity
+  // Unter dem Erker-Fuß: bei bündiger Geschossfuge (Unterwand-OK = Fuß) darf der Rock
+  // entlang der unteren Fassade bis zu deren Fuß absinken — nicht clearance 0.
+  let limit = Number.POSITIVE_INFINITY
+  let anyBelow = false
   for (const other of walls) {
     if (memberIds.has(other.id) || other.hidden) continue
-    const top = (other.y ?? 0) + other.height
+    const oy = other.y ?? 0
+    const top = oy + other.height
     if (top > foot + 0.5) continue
-    maxBelowTop = Math.max(maxBelowTop, top)
+    anyBelow = true
+    if (Math.abs(top - foot) <= 0.5) {
+      limit = Math.min(limit, Math.max(0, foot - oy))
+    } else {
+      limit = Math.min(limit, Math.max(0, foot - top))
+    }
   }
-  if (!Number.isFinite(maxBelowTop)) return Number.POSITIVE_INFINITY
-  return Math.max(0, foot - maxBelowTop)
+  if (!anyBelow) return Number.POSITIVE_INFINITY
+  return Number.isFinite(limit) ? limit : 0
 }
 
 /** Maximal erlaubter Drop-Zielwert (aktueller Drop + Freiraum darunter). */
@@ -220,16 +256,69 @@ export function applyBayDrop(
  * Liegt die Wandbreite nahe der Mundöffnung, bleibt das Preset unverändert.
  * Sonst wird die Front an die Wandbreite angepasst (Notfall für Passungen).
  */
+/**
+ * Stil-Spender für die Erker-Fenster (Rahmenfarbe, Bänke, Glas, …): die Host-Wand zuerst
+ * (vor dem Teilen — das Mittelstück hat nach dem Split oft keine Fenster mehr), danach
+ * alle anderen Wände derselben Etage mit Öffnungen. Ohne Spender bekämen die Erker-Fenster
+ * den Bibliothek-Default (weißer Rahmen, Brett-Bank) statt der Fassaden-Optik.
+ */
+export function bayOpeningDonorWalls(walls: Wall[], hostWallId: string, y: number): Wall[] {
+  const host = walls.find((w) => w.id === hostWallId)
+  const sameStorey = walls.filter(
+    (w) =>
+      w.id !== hostWallId &&
+      isStudioWall(w) &&
+      Math.abs((w.y ?? 0) - y) <= EPS &&
+      (w.openings?.length ?? 0) > 0,
+  )
+  return [...(host ? [host] : []), ...sameStorey]
+}
+
+/**
+ * Brüstung der Erker-Fenster auf Etagenfuß + 128 cm setzen (Rock/`dropCm` mitzählen).
+ * Historisch Schema 21 (v2.0.309): Front hatte oft Spender-Y, Schenkel 128.
+ * Ab v2.0.311 übernehmen **neue** Erker wieder die Spender-Y; diese Migration
+ * bleibt für Alt-Saves idempotent und wird nicht rückgängig gemacht.
+ */
+export function migrateBayOpeningSillTo128(state: FacadeState): FacadeState {
+  let changed = false
+  const buildings = state.buildings.map((building) => {
+    const walls = building.walls.map((w) => {
+      if (!w.bayRole || (w.bayRole !== 'front' && w.bayRole !== 'side' && w.bayRole !== 'arc')) {
+        return w
+      }
+      if (!w.openings?.some((o) => o.type === 'window')) return w
+      const skirt = bayWallSkirtDropCm(w, building.walls)
+      const targetY = WINDOW_SILL_Y + skirt
+      let wallChanged = false
+      const openings = w.openings.map((o) => {
+        if (o.type !== 'window') return o
+        const nextY = Math.max(0, Math.min(w.height - o.height, targetY))
+        if (Math.abs((o.y ?? 0) - nextY) < 0.5) return o
+        wallChanged = true
+        return { ...o, y: nextY }
+      })
+      if (!wallChanged) return w
+      changed = true
+      return { ...w, openings }
+    })
+    return { ...building, walls }
+  })
+  return changed ? { ...state, buildings } : state
+}
+
 export function replaceWallWithBayPreset(
   state: FacadeState,
   wallId: string,
   preset: BayWindowPreset,
+  opts?: { openingDonors?: Wall[] },
 ): { state: FacadeState; bayWallIds: string[] } | null {
   const building = findBuildingForWall(state, wallId)
   const wall = building?.walls.find((w) => w.id === wallId)
   if (!building || !wall || !isStudioWall(wall)) return null
   const mouth = bayMouthWidthCm(preset)
   if (wall.width + EPS < mouth) return null
+  const openingDonors = opts?.openingDonors ?? bayOpeningDonorWalls(building.walls, wall.id, wall.y)
 
   const builtPreset =
     Math.abs(wall.width - mouth) <= EPS
@@ -252,6 +341,7 @@ export function replaceWallWithBayPreset(
     },
     builtPreset,
     wall,
+    { openingDonors },
   )
   if (walls.length === 0) return null
 
@@ -307,6 +397,9 @@ export function insertBayAsWallSegment(
 
   const range = wallSplitRangeAt(wall, localX, mouth)
   if (!range) return null
+  // Fenster-Stil pro Etage von der ungeteilten Wand übernehmen (Split kann die Fenster
+  // aus dem Mittelstück in die Reststücke schieben → Mittelstück ohne Spender).
+  const preSplitWalls = building.walls
   const split = splitWallStackRange(state, wallId, range, {
     singleFloor: opts?.singleFloor === true,
   })
@@ -315,7 +408,16 @@ export function insertBayAsWallSegment(
   let next = split.state
   const allBayIds: string[] = []
   for (const midId of split.middleIds) {
-    const replaced = replaceWallWithBayPreset(next, midId, preset)
+    const mid = findBuildingForWall(next, midId)?.walls.find((w) => w.id === midId)
+    const stackHost = wallSplitStack(wall, preSplitWalls, building.wallHeight).find(
+      (w) => Math.abs((w.y ?? 0) - (mid?.y ?? wall.y)) <= EPS,
+    )
+    const openingDonors = bayOpeningDonorWalls(
+      preSplitWalls,
+      stackHost?.id ?? wall.id,
+      mid?.y ?? wall.y,
+    )
+    const replaced = replaceWallWithBayPreset(next, midId, preset, { openingDonors })
     if (!replaced) return null
     next = replaced.state
     allBayIds.push(...replaced.bayWallIds)
@@ -513,7 +615,11 @@ function stackedBayHosts(walls: Wall[], ctx: BaySlideContext): Wall[] {
       .map((id) => walls.find((w) => w.id === id))
       .filter((w): w is Wall => Boolean(w && w.bayRole === 'side'))
     if (sides.length < 2) continue
-    if (distPoint(wallStartPoint(sides[0]!), ctx.leftAttach) > 2) continue
+    // Umlaufrichtung kann je Etage verschieden sein (v2.0.305: Außenkanten-Umlauf) —
+    // beide Mundpunkte prüfen.
+    const mouthA = wallStartPoint(sides[0]!)
+    const mouthB = wallEndPoint(sides[sides.length - 1]!)
+    if (distPoint(mouthA, ctx.leftAttach) > 2 && distPoint(mouthB, ctx.leftAttach) > 2) continue
     if (out.some((h) => h.id === host.id)) continue
     out.push(host)
   }
@@ -531,6 +637,81 @@ export function bayStackWallIds(walls: Wall[], seedWallId: string): string[] | n
     }
   }
   return ids
+}
+
+/**
+ * Mundmitte eines anderen Erkers auf dieser Wand (lokal X), wenn kollinear und
+ * überlappend — für Einsetzen unter/über bestehendem Erker.
+ */
+export function stackedBayMouthLocalXOnWall(
+  walls: Wall[],
+  wall: Wall,
+  mouthWidthCm: number,
+): number | null {
+  if (!isStudioWall(wall) || wall.bayWindow || wall.bayParentId) return null
+  const yaw = wall.yawDeg ?? 0
+  const start = wallStartPoint(wall)
+  const along = wallAlongDelta(yaw, 1)
+  const normYaw = (d: number) => ((d % 360) + 360) % 360
+  let best: { localX: number; dist: number } | null = null
+  for (const host of walls) {
+    if (!host.bayWindow?.wallIds?.length) continue
+    if (Math.abs((host.y ?? 0) - (wall.y ?? 0)) < 1) continue
+    const hostYaw = host.yawDeg ?? 0
+    const dy = Math.abs(normYaw(hostYaw) - normYaw(yaw))
+    if (dy > 2 && Math.abs(dy - 180) > 2) continue
+    const sides = host.bayWindow.wallIds
+      .map((id) => walls.find((w) => w.id === id))
+      .filter((w): w is Wall => Boolean(w && w.bayRole === 'side'))
+    if (sides.length < 2) continue
+    const a = wallStartPoint(sides[0]!)
+    const b = wallEndPoint(sides[sides.length - 1]!)
+    const mid = { x: (a.x + b.x) / 2, z: (a.z + b.z) / 2 }
+    const localX = (mid.x - start.x) * along.x + (mid.z - start.z) * along.z
+    const half = mouthWidthCm / 2
+    if (localX < half - 1 || localX > wall.width - half + 1) continue
+    const dist = Math.abs(localX - wall.width / 2)
+    if (!best || dist < best.dist) best = { localX, dist }
+  }
+  return best?.localX ?? null
+}
+
+/**
+ * Treffer auf Erker-Fläche → kollineares Reststück derselben Etage (für Drop).
+ */
+export function resolveBayPlacementWall(
+  walls: Wall[],
+  seedId: string,
+  worldPoint: { x: number; z: number },
+): { wallId: string; localX: number } | null {
+  const seed = walls.find((w) => w.id === seedId)
+  if (!seed) return null
+  if (isStudioWall(seed) && !seed.bayWindow && !seed.bayParentId && !seed.endPieceParentId) {
+    const start = wallStartPoint(seed)
+    const yaw = seed.yawDeg ?? 0
+    const along = wallAlongDelta(yaw, 1)
+    const localX = (worldPoint.x - start.x) * along.x + (worldPoint.z - start.z) * along.z
+    return { wallId: seed.id, localX }
+  }
+  const host = bayHostWall(walls, seedId)
+  const yRef = seed.y ?? host?.y ?? 0
+  const yawRef = seed.yawDeg ?? host?.yawDeg ?? 0
+  const normYaw = (d: number) => ((d % 360) + 360) % 360
+  let best: { wallId: string; localX: number; dist: number } | null = null
+  for (const wall of walls) {
+    if (!isStudioWall(wall) || wall.bayWindow || wall.bayParentId || wall.endPieceParentId) continue
+    if (Math.abs((wall.y ?? 0) - yRef) > 2) continue
+    const dy = Math.abs(normYaw(wall.yawDeg ?? 0) - normYaw(yawRef))
+    if (dy > 2 && Math.abs(dy - 180) > 2) continue
+    const start = wallStartPoint(wall)
+    const along = wallAlongDelta(wall.yawDeg ?? 0, 1)
+    const localX = (worldPoint.x - start.x) * along.x + (worldPoint.z - start.z) * along.z
+    if (localX < -2 || localX > wall.width + 2) continue
+    const clamped = Math.max(0, Math.min(wall.width, localX))
+    const dist = Math.abs(localX - clamped)
+    if (!best || dist < best.dist) best = { wallId: wall.id, localX: clamped, dist }
+  }
+  return best ? { wallId: best.wallId, localX: best.localX } : null
 }
 
 /** Ob die Auswahl eine eingebettete Erker-Gruppe mit Reststücken links/rechts ist. */
@@ -675,6 +856,22 @@ export function flattenBayToFlatWall(
       : typeof styleFrom.storeyIndex === 'number' && Number.isFinite(styleFrom.storeyIndex)
         ? Math.max(0, Math.round(styleFrom.storeyIndex))
         : undefined
+  // Fenster der Front auf die Flachwand übernehmen (Stile bleiben beim Löschen→Neu-Einsetzen).
+  const openingIdMap = new Map<string, string>()
+  const flatOpenings = (styleFrom.openings ?? []).map((o) => {
+    const id = createId()
+    openingIdMap.set(o.id, id)
+    const x = Math.max(0, Math.min(width - o.width, o.x))
+    const y = Math.max(0, Math.min(storeyH - o.height, (o.y ?? 0) - drop))
+    return { ...o, id, x, y }
+  })
+  const flatProfiles = (styleFrom.profiles ?? [])
+    .filter((p) => p.openingId && openingIdMap.has(p.openingId))
+    .map((p) => ({
+      ...p,
+      id: createId(),
+      openingId: openingIdMap.get(p.openingId!)!,
+    }))
   const flat = normalizeStudioWall(
     {
       ...createStudioWall(leftAttach.x, storeyY),
@@ -694,7 +891,8 @@ export function flattenBayToFlatWall(
       panel: styleFrom.panel ? { ...styleFrom.panel } : undefined,
       cornice: styleFrom.cornice ? { ...styleFrom.cornice } : undefined,
       planLinked: true,
-      openings: [],
+      openings: flatOpenings,
+      profiles: flatProfiles,
       ...(storeyIndex != null ? { storeyIndex } : {}),
     },
     { keepOpenings: true },
@@ -814,6 +1012,7 @@ export function swapBayPreset(
     },
     preset,
     styleFrom,
+    { openingDonors: building.walls.filter((w) => memberSet.has(w.id)) },
   )
   if (built.length === 0) return null
 
@@ -836,4 +1035,143 @@ export function swapBayPreset(
   next = syncFloorPlansFromWalls(next)
   next = finalizeStudioGeometry(next)
   return { state: next, bayWallIds: grouped.map((item) => item.id) }
+}
+
+/** Alte Bibliothek-Fronten (288/336, Tiefe 96/144). */
+const LIBRARY_BAY_DEPTHS = [96, 144] as const
+
+function isLibraryBayHost(w: Wall, frontCm: number): boolean {
+  return Boolean(
+    w.bayWindow &&
+      (w.bayWindow.kind ?? 'bay') === 'bay' &&
+      (w.bayWindow.shape === 'rect' || w.bayWindow.shape === 'angled45') &&
+      Math.abs(w.bayWindow.frontWidthCm - frontCm) < EPS &&
+      LIBRARY_BAY_DEPTHS.some((d) => Math.abs(w.bayWindow!.depthCm - d) < EPS),
+  )
+}
+
+function applyBayPanelDefaults(state: FacadeState): FacadeState {
+  let changed = false
+  const buildings = state.buildings.map((building) => {
+    const walls = building.walls.map((w) => {
+      if (!w.bayRole || !w.panel) return w
+      const fixed = panelForBaySurface(w.panel, w.width)
+      if (!fixed || Math.abs((fixed.panelWidth ?? 0) - (w.panel.panelWidth ?? 0)) < 0.5) return w
+      changed = true
+      return { ...w, panel: fixed }
+    })
+    return { ...building, walls }
+  })
+  return changed ? { ...state, buildings } : state
+}
+
+function swapLibraryBayFronts(
+  state: FacadeState,
+  fromFront: number,
+  toFront: number,
+): FacadeState {
+  let next = state
+  const hostIds = allWallsFlat(next).filter((w) => isLibraryBayHost(w, fromFront)).map((w) => w.id)
+  for (const hostId of hostIds) {
+    const host = bayHostWall(allWallsFlat(next), hostId)
+    if (!host?.bayWindow) continue
+    const depth = Math.abs(host.bayWindow.depthCm - 144) < EPS ? 144 : 96
+    const shapeKey = host.bayWindow.shape === 'angled45' ? '45' : 'rect'
+    const preset = BAY_WINDOW_PRESETS.find((p) => p.id === `bay-f${toFront}-d${depth}-${shapeKey}`)
+    if (!preset) continue
+    const swapped = swapBayPreset(next, hostId, preset)
+    if (swapped) next = swapped.state
+  }
+  return applyBayPanelDefaults(next)
+}
+
+/**
+ * Schema 16 (v2.0.299): nur Paneel-Defaults — **keine** Zwangs-Verbreiterung mehr.
+ * (Frühere Versionen dieser Migration weiteten 288→336; das wird in Schema 17 rückgängig.)
+ */
+export function migrateLegacyBayFrontsTo336(state: FacadeState): FacadeState {
+  return applyBayPanelDefaults(state)
+}
+
+/**
+ * Schema 17: Zwangs-Verbreiterung 288→336 aus Schema 16 rückgängig + Läufer 48 erzwingen.
+ * Bibliothek bleibt bei 336 für **neue** Erker; bestehende Mundbreite wieder 288.
+ */
+export function reverseMigratedBayFronts336To288(state: FacadeState): FacadeState {
+  return swapLibraryBayFronts(state, 336, 288)
+}
+
+/** Schema 18: Erker-Streifen/24er → Läufer 48 (kein Breiten-Tausch). */
+export function migrateBayPanelsToRunningBond48(state: FacadeState): FacadeState {
+  return applyBayPanelDefaults(state)
+}
+
+/**
+ * Schema 19 (v2.0.305): Erker mit **Innen-Origin** (`panelFlip: false` auf Front/Schenkel)
+ * auf die Außenkante neu aufbauen. Mit Innen-Origin war die sichtbare Front an den
+ * 90°-Ecken um 2×Wandstärke breiter als `wall.width` (384 → 432 cm) und das
+ * Läufermuster hatte Stummel. Gleiches Preset, gleicher Mund, Optik/Fenster-Stil bleiben;
+ * Fensterpositionen werden aus dem Preset neu gelegt.
+ */
+export function migrateBaysToOuterOrigin(state: FacadeState): FacadeState {
+  let next = state
+  const hostIds = allWallsFlat(next)
+    .filter(
+      (w) =>
+        w.bayWindow?.wallIds?.length &&
+        (w.bayWindow.kind ?? 'bay') === 'bay' &&
+        (w.bayWindow.shape === 'rect' || w.bayWindow.shape === 'angled45'),
+    )
+    .map((w) => w.id)
+  for (const hostId of hostIds) {
+    const walls = allWallsFlat(next)
+    const host = walls.find((w) => w.id === hostId)
+    if (!host?.bayWindow) continue
+    const members = host.bayWindow.wallIds
+      .map((id) => walls.find((w) => w.id === id))
+      .filter((w): w is Wall => Boolean(w && (w.bayRole === 'front' || w.bayRole === 'side')))
+    if (members.length === 0 || !members.some((w) => w.panelFlip === false)) continue
+    const preset: BayWindowPreset = {
+      id: `bay-outer-origin-${host.id}`,
+      label: 'Erker',
+      frontWidthCm: host.bayWindow.frontWidthCm,
+      depthCm: host.bayWindow.depthCm,
+      shape: host.bayWindow.shape,
+      kind: 'bay',
+    }
+    const swapped = swapBayPreset(next, hostId, preset)
+    if (swapped) next = swapped.state
+  }
+  return next
+}
+
+/**
+ * Schema 20 (v2.0.307): Erker-Paneele **ohne Dicke** (`projectDepth` 0 / `taperDepth` 0,
+ * erzwungen in v2.0.304) bekommen Vorstand/Bosse des Muster-Defaults zurück (Läufer: 4 / 1).
+ * Steine ohne Dicke lagen 0,15 cm vor der Wandschale und flackerten ab ~10 m Abstand als
+ * weiß/beige Streifen (Z-Fight). Breite/Höhe/Farbe/Fugen bleiben unangetastet.
+ */
+export function migrateFlushBayPanelsToDepth(state: FacadeState): FacadeState {
+  let changed = false
+  const buildings = state.buildings.map((building) => {
+    const walls = building.walls.map((w) => {
+      if (!w.bayRole || !w.panel || !isFlushBayPanel(w.panel)) return w
+      const d = studioPanelDefaultsForPattern(w.panel.pattern ?? 'runningBond')
+      changed = true
+      return {
+        ...w,
+        panel: normalizeStudioPanel({
+          ...w.panel,
+          projectDepth: d.projectDepth ?? DEFAULT_STUDIO_PANEL.projectDepth,
+          taperDepth: d.taperDepth ?? DEFAULT_STUDIO_PANEL.taperDepth,
+        }),
+      }
+    })
+    return { ...building, walls }
+  })
+  return changed ? { ...state, buildings } : state
+}
+
+function allWallsFlat(state: FacadeState): Wall[] {
+  return state.buildings.flatMap((b) => b.walls)
 }

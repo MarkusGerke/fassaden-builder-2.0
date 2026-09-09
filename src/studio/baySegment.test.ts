@@ -296,6 +296,9 @@ describe('baySegment', () => {
     const flat = flattenBayToFlatWall(dropped, hostAfter.id)!
     const walls = flat.state.buildings[0]!.walls
     expect(walls.every((w) => !w.bayWindow && !w.bayParentId && !w.bayRole)).toBe(true)
+    const flatWall = walls.find((w) => w.id === flat.flatWallId) ?? walls[0]!
+    // Front-Fenster bleiben auf der Flachwand (Stile für Neu-Einsetzen).
+    expect(flatWall.openings.length).toBeGreaterThan(0)
     const total = walls.reduce((s, w) => s + w.width, 0)
     expect(total).toBeCloseTo(576, 0)
     // Flat-Wand auf Etagenfuß (ohne Rock), storeyIndex erhalten.

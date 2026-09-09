@@ -82,6 +82,7 @@ describe('hydrateOpening', () => {
     expect(hydrated.pediment?.enabled).toBe(false)
     expect(hydrated.revealFrame?.enabled).toBe(false)
     expect(hydrated.panelClearance?.enabled).toBe(false)
+    expect(hydrated.panelWrappedReveal?.enabled).toBe(false)
     expect(hydrated.arch?.enabled).toBe(false)
     expect(hydrated.basementWindow?.enabled).toBe(false)
     expect(hydrated.frameColor).toBe('#ffffff')

@@ -7,6 +7,11 @@ import {
   type SceneAppearance,
 } from './persistence'
 import { FACADE_SCHEMA_IMPORT_BASE, FACADE_SCHEMA_VERSION } from './schemaMigrations'
+import {
+  normalizeBloomSettings,
+  type BloomSettings,
+} from '../lighting/bloom'
+import { normalizeSunSettings, type SunSettings } from './sunLighting'
 
 const HASH_PREFIX = '#f='
 /** localStorage-Schlüssel: zuletzt von dieser App selbst geschriebener Live-Hash. */
@@ -24,12 +29,18 @@ export interface SharePayload {
   scene?: SceneAppearance
   /** Kompass-/Seitenansicht in Grad (45°-Raster), nur bei `kind: 'yaw'`. */
   viewYaw?: number
+  /** Licht- und Animations-Einstellungen (Showcase / Teilen). */
+  sun?: SunSettings
+  /** Bloom (Showcase / Teilen). */
+  bloom?: BloomSettings
 }
 
 export interface DecodedSharePayload {
   facade: FacadeState
   scene?: SceneAppearance
   viewYaw?: number
+  sun?: SunSettings
+  bloom?: BloomSettings
 }
 
 function bytesToBase64Url(bytes: Uint8Array): string {
@@ -97,20 +108,31 @@ function normalizeSharePayload(raw: unknown): DecodedSharePayload | null {
   const migrated = applyFacadeLoadPipeline(raw.facade as FacadeState, readSchemaVersion(raw))
   const scene = raw.scene != null ? normalizeSceneAppearance(raw.scene) : undefined
   const viewYaw = normalizeViewYaw(raw.viewYaw)
+  const sun = raw.sun != null ? normalizeSunSettings(raw.sun) : undefined
+  const bloom = raw.bloom != null ? normalizeBloomSettings(raw.bloom) : undefined
   return {
     facade: migrated.facade,
     scene,
     viewYaw,
+    sun,
+    bloom,
   }
 }
 
 export function buildSharePayload(
   facade: FacadeState,
-  extras?: { scene?: SceneAppearance; viewYaw?: number },
+  extras?: {
+    scene?: SceneAppearance
+    viewYaw?: number
+    sun?: SunSettings
+    bloom?: BloomSettings
+  },
 ): SharePayload {
   const payload: SharePayload = { facade, schemaVersion: FACADE_SCHEMA_VERSION }
   if (extras?.scene) payload.scene = extras.scene
   if (extras?.viewYaw !== undefined) payload.viewYaw = snapYawTo45(extras.viewYaw)
+  if (extras?.sun) payload.sun = normalizeSunSettings(extras.sun)
+  if (extras?.bloom) payload.bloom = normalizeBloomSettings(extras.bloom)
   return payload
 }
 
@@ -251,6 +273,47 @@ export async function copyFacadeLink(payload: SharePayload | FacadeState): Promi
   const url = new URL(window.location.href)
   url.hash = hash
   const link = url.toString()
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(link)
+  }
+  return link
+}
+
+/** Query-Parameter für den Showcase (kombinierbar mit `#f=`). */
+export const SHOWCASE_VIEW_QUERY = 'showcase'
+
+/** `true`, wenn die URL den Showcase-Modus anfordert (`?view=showcase` oder `?showcase=1`). */
+export function isShowcaseViewFromUrl(
+  search = typeof window !== 'undefined' ? window.location.search : '',
+): boolean {
+  const params = new URLSearchParams(search)
+  return params.has(SHOWCASE_VIEW_QUERY) || params.get('view') === SHOWCASE_VIEW_QUERY
+}
+
+/**
+ * Showcase-URL: Query `view=showcase` + Hash `#f=` (Fassade, Szene, Licht, Bloom).
+ * Ändert die aktuelle Editor-URL nicht.
+ */
+export function buildShowcaseUrl(
+  hash: string,
+  baseHref = typeof window !== 'undefined' ? window.location.href : 'http://localhost/',
+): string {
+  const url = new URL(baseHref)
+  url.searchParams.delete('stage')
+  url.searchParams.delete(SHOWCASE_VIEW_QUERY)
+  url.searchParams.set('view', SHOWCASE_VIEW_QUERY)
+  url.hash = hash.startsWith('#') ? hash : `#${hash}`
+  return url.toString()
+}
+
+/**
+ * Showcase-Link in die Zwischenablage: Query `view=showcase` + Hash `#f=`
+ * (Fassade, Szene, Licht, Bloom). Ändert die aktuelle Editor-URL nicht.
+ */
+export async function copyShowcaseLink(payload: SharePayload | FacadeState): Promise<string> {
+  facadeHashGeneration += 1
+  const hash = await encodeFacadeHash(payload)
+  const link = buildShowcaseUrl(hash)
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(link)
   }

@@ -46,7 +46,7 @@ import {
   markSceneReflectionsDirty,
   reflectionViewBucket,
 } from './studio/roomEnvironment'
-import { BAY_WINDOW_PRESETS, buildBayWindowWalls, buildBayWindowAtPose, bayWindowGhostSegments, bayWallSelectionIds, bayMetaForWall, type BayWindowPreset, bayPresetKind, scaleBayPresetToMouthWidth, bayMinMouthWidthCm, bayMouthWidthCm, bayWindowPreviewSvg } from './studio/bayWindow'
+import { BAY_WINDOW_PRESETS, BAY_LIBRARY_FRONTS_CM, BAY_WALL_DEPTH_CM, buildBayWindowWalls, buildBayWindowAtPose, bayWindowGhostSegments, bayWallSelectionIds, bayMetaForWall, bayWallSkirtDropCm, type BayWindowPreset, bayPresetKind, scaleBayPresetToMouthWidth, bayMinMouthWidthCm, bayMouthWidthCm, bayWindowPreviewSvg } from './studio/bayWindow'
 import {
   ceilingBeatsFacadeMesh,
   isSelectableCeilingKind,
@@ -159,6 +159,7 @@ import {
   normalizeOpeningArch,
   normalizeOpeningFill,
   normalizePanelClearance,
+  normalizePanelWrappedReveal,
   normalizeRevealFrame,
   openingArchGeom,
   openingArchHybridMasonryEnabled,
@@ -257,8 +258,10 @@ import { evalMotionCurve, openingMotionFromOpening } from './utils/openingMotion
 import {
   buildSharePayload,
   copyFacadeLink,
+  copyShowcaseLink,
   decodeFacadeHash,
   downloadFacadeJson,
+  isShowcaseViewFromUrl,
   loadFacadeFromFile,
   readFacadeFromLocationHash,
   scheduleFacadeHashWrite,
@@ -436,9 +439,12 @@ import {
   baySlideDeltaFromWorldMove,
   bayStackWallIds,
   replaceWallWithBayPreset,
+  resolveBayPlacementWall,
   slideBaySegmentAlong,
+  stackedBayMouthLocalXOnWall,
   swapBayPreset,
 } from './studio/baySegment'
+import { wallIdsForShiftRange } from './studio/wallRangeSelect'
 import {
   computeOpeningGuidesForRefs,
   computeOpeningDistanceLinesForRefs,
@@ -514,9 +520,12 @@ import {
 } from './windows/openingExtras'
 import { facadeOutward, facadeSunIsGrazing, wallsForYaw, wallElevationAlong, type ElevationFilter } from './studio/elevation'
 import { normalizeYawDeg, snapYawTo1, snapYawTo45, solarAzimuthToWallYaw, viewedFacadeYaw, wallCompassLabel, wallDockAxisFromFacadeYaw, yawFromCompassSvgPoint } from './studio/compass'
-import { panelCourseCount, visiblePanelRowRange } from './studio/panelLayout'
+import { panelCourseCount, visiblePanelRowRange, layoutPanelTiles } from './studio/panelLayout'
+import { APP_VERSION } from './version'
+
 import {
   DEFAULT_STUDIO_PANEL,
+  normalizeStudioPanel,
   DEFAULT_CORNICE_HEIGHT_CM,
   DUPLICATE_GAP_CM,
   PLAN_CLOSE_GAP_CM,
@@ -899,6 +908,109 @@ if (import.meta.env.DEV) {
     scene,
     camera,
     THREE,
+    appVersion: APP_VERSION,
+    /** Live-Zustand aller Erker: Pose, Gehrung, Paneel, Fenster, Steinbreiten der ersten zwei Lagen. */
+    dumpBays() {
+      const walls = getAllWalls(state)
+      const rowWidths = (w: Wall) => {
+        const p = normalizeStudioPanel(w.panel ?? DEFAULT_STUDIO_PANEL)
+        const tiles = layoutPanelTiles(w, p, walls)
+        const ys = [...new Set(tiles.map((t) => Math.round(t.y + t.height / 2)))].sort((a, b) => a - b)
+        const row = (y: number | undefined) =>
+          y == null
+            ? []
+            : tiles
+                .filter((t) => Math.abs(t.y + t.height / 2 - y) < 2)
+                .sort((a, b) => a.x - b.x)
+                .map((t) => Math.round(t.width * 10) / 10)
+        return { row0: row(ys[0]), row1: row(ys[1]), rowTop: row(ys[ys.length - 1]) }
+      }
+      return walls
+        .filter((w) => w.bayWindow?.wallIds?.length)
+        .map((host) => ({
+          hostId: host.id,
+          hostFlip: host.panelFlip,
+          hostYaw: host.yawDeg,
+          bay: host.bayWindow,
+          members: host.bayWindow!.wallIds
+            .map((id) => walls.find((w) => w.id === id))
+            .filter((w): w is Wall => Boolean(w))
+            .map((w) => ({
+              id: w.id,
+              role: w.bayRole,
+              width: w.width,
+              depth: w.depth,
+              y: w.y,
+              panelFlip: w.panelFlip,
+              yaw: w.yawDeg,
+              miter: [Math.round(w.miterStart ?? 0), Math.round(w.miterEnd ?? 0)],
+              panel: w.panel
+                ? {
+                    enabled: w.panel.enabled,
+                    pattern: w.panel.pattern,
+                    panelWidth: w.panel.panelWidth,
+                    panelHeight: w.panel.panelHeight,
+                    projectDepth: w.panel.projectDepth,
+                    taperDepth: w.panel.taperDepth,
+                    cornerJoin: w.panel.cornerJoin,
+                  }
+                : null,
+              openings: w.openings.map((o) => ({ x: o.x, w: o.width, y: o.y, h: o.height })),
+              ...rowWidths(w),
+            })),
+        }))
+    },
+    verifyBay384Bond() {
+      const preset = BAY_WINDOW_PRESETS.find((p) => p.id === 'bay-f384-d96-rect')!
+      const walls = buildBayWindowAtPose(
+        { originX: 0, originZ: 0, y: 0, yawDeg: 0, panelFlip: true, height: 512 },
+        preset,
+      )
+      const front = walls.find((w) => w.bayRole === 'front')!
+      const p = normalizeStudioPanel(front.panel ?? DEFAULT_STUDIO_PANEL)
+      const tiles = layoutPanelTiles(front, p, walls)
+      const midYs = [...new Set(tiles.map((t) => Math.round(t.y + t.height / 2)))]
+        .filter((y) => y > 148 && y < 220)
+        .sort((a, b) => a - b)
+      const row = (y: number) =>
+        tiles
+          .filter((t) => Math.abs(t.y + t.height / 2 - y) < 2)
+          .sort((a, b) => a.x - b.x)
+          .map((t) => Math.round(t.width * 10) / 10)
+      return {
+        version: APP_VERSION,
+        width: front.width,
+        depth: front.depth,
+        pattern: p.pattern,
+        panelWidth: p.panelWidth,
+        openings: front.openings.map((o) => ({ x: o.x, w: o.width, y: o.y })),
+        pierEven: row(midYs[0]!),
+        pierOdd: row(midYs[1] ?? midYs[0]!),
+        ok:
+          p.pattern === 'runningBond' &&
+          p.panelWidth === 48 &&
+          front.width === 384 &&
+          front.depth === BAY_WALL_DEPTH_CM &&
+          front.openings[0]?.x === 96 &&
+          front.openings[1]?.x === 240 &&
+          row(midYs[0]!).every((w) => w >= 46),
+      }
+    },
+    verifyBay288Bond() {
+      const preset = BAY_WINDOW_PRESETS.find((p) => p.id === 'bay-f288-d96-rect')!
+      const walls = buildBayWindowAtPose(
+        { originX: 0, originZ: 0, y: 0, yawDeg: 0, panelFlip: true, height: 512 },
+        preset,
+      )
+      const front = walls.find((w) => w.bayRole === 'front')!
+      return {
+        version: APP_VERSION,
+        width: front.width,
+        depth: front.depth,
+        openings: front.openings.map((o) => ({ x: o.x, w: o.width })),
+        ok: front.width === 288 && front.depth === BAY_WALL_DEPTH_CM,
+      }
+    },
   }
 }
 
@@ -4794,6 +4906,93 @@ function applyLayerTreeRange(from: number, to: number): void {
     selectedWallPart: labels.length === 1 && openings.length === 0 ? 'label' : 'group',
     selectedLabelId: labels.length === 1 && openings.length === 0 ? labels[0]!.labelId : undefined,
   })
+  if (selectedWallIds.length > 0) {
+    noteWallRangeAnchor(selectedWallIds[selectedWallIds.length - 1])
+  }
+}
+
+/**
+ * Letzte Wand für Shift-Bereich in der 3D/2D-Ansicht.
+ * Bereich = kürzerer Umlauf bzw. gleiche Fassadenseite über Etagen (`wallRangeSelect.ts`).
+ */
+let lastWallRangeAnchorId: string | null = null
+
+function noteWallRangeAnchor(wallId: string | null | undefined) {
+  lastWallRangeAnchorId = wallId ?? null
+}
+
+/** Shift+Klick: kürzerer Fassaden-/Umlauf-Bereich inkl. Etagen und Erker. */
+function selectWallsInRange(fromWallId: string, toWallId: string): void {
+  const fromWall = getWall(state, fromWallId)
+  const toWall = getWall(state, toWallId)
+  if (!fromWall || !toWall) {
+    selectWall(toWallId, false)
+    return
+  }
+  const building =
+    findBuildingForWall(state, fromWallId) ?? findBuildingForWall(state, toWallId)
+  if (!building || findBuildingForWall(state, toWallId)?.id !== building.id) {
+    selectWall(toWallId, false)
+    return
+  }
+  const selectedWallIds = wallIdsForShiftRange(
+    building.walls,
+    fromWallId,
+    toWallId,
+    building.wallHeight,
+  )
+  if (selectedWallIds.length === 0) {
+    selectWall(toWallId, false)
+    return
+  }
+  queueSelectionToolbarTab('all')
+  applyEditorSelection({
+    selectedWallIds,
+    selectedOpenings: [],
+    selectedEdges: [],
+    selectedRoofBuildingId: undefined,
+    selectedRoofPart: undefined,
+    selectedCeiling: undefined,
+    selectedBuildingId: undefined,
+    selectedWallPart: 'group',
+    selectedTrimBandId: undefined,
+    selectedLabelId: undefined,
+    selectedOpeningPart: undefined,
+  })
+  noteWallRangeAnchor(toWallId)
+  const treeIdx = layerTreeIndexOf({ kind: 'wall', wallId: toWallId })
+  if (treeIdx >= 0) lastLayerTreeAnchor = treeIdx
+  if (isGalleryModeActive() && currentView === '3d' && selectedWallIds.length > 0) {
+    const focused = selectedWallIds
+      .map((wid) => getWall(state, wid))
+      .filter((w): w is Wall => Boolean(w))
+    if (focused.length > 0) focusGalleryOnWalls(focused, false)
+  }
+}
+
+/** Viewport/SVG: Ctrl/Cmd = einzeln additiv, Shift = Bereich, sonst Einzelwahl. */
+function selectWallFromViewport(
+  wallId: string | null,
+  opts: {
+    additive?: boolean
+    rangeSelect?: boolean
+    wallPart?: NonNullable<EditorState['selectedWallPart']>
+    trimBandId?: string
+    labelId?: string
+  } = {},
+) {
+  const additive = Boolean(opts.additive)
+  const rangeSelect = Boolean(opts.rangeSelect) && !additive
+  if (wallId === null) {
+    selectWall(null, additive)
+    if (!additive) noteWallRangeAnchor(null)
+    return
+  }
+  if (rangeSelect && lastWallRangeAnchorId && lastWallRangeAnchorId !== wallId) {
+    selectWallsInRange(lastWallRangeAnchorId, wallId)
+    return
+  }
+  selectWall(wallId, additive, opts.wallPart ?? 'group', opts.trimBandId, opts.labelId)
 }
 
 function selectLayerTreeEntry(
@@ -4864,6 +5063,8 @@ let editScope: EditScope = DEFAULT_EDIT_SCOPE
 /** Bei Scope „Fassade“: gefilterte Yaws; null = alle Hausseiten. */
 let editFacadeYawFilter: number[] | null = null
 let sunSettings: SunSettings = { ...DEFAULT_SUN_SETTINGS }
+/** Sonnenstand aus Teilen-Hash — dann kein `applyTodaySunDate` beim Boot. */
+let sunLoadedFromShare = false
 let activeColorPickerCount = 0
 
 function isColorPickerSessionActive(): boolean {
@@ -4913,9 +5114,19 @@ let planBuildingDrag: {
 let planBuildingDragMoved = false
 
 function sharePayloadFromApp() {
+  const sunForShare = lightEditSunRestore
+    ? {
+        ...sunSettings,
+        timeOfDay: lightEditSunRestore.timeOfDay,
+        dayCycleEnabled: lightEditSunRestore.dayCycleEnabled,
+        animationsPaused: lightEditSunRestore.animationsPaused,
+      }
+    : sunSettings
   return buildSharePayload(state, {
     scene: sceneAppearance,
     viewYaw: currentElevation.kind === 'yaw' ? currentElevation.yaw : undefined,
+    sun: sunForShare,
+    bloom: bloomSettings,
   })
 }
 
@@ -5142,10 +5353,15 @@ function renderLitSceneFrame(activeCamera: THREE.Camera) {
   // Shadow-Map nur bei Geometrie/Licht-Änderung (scheduleSunShadowMapUpdate) —
   // nicht jeden Frame bei Punktlicht, sonst stottern Orbit und Verschieben.
   // Während Orbit: Bake unterdrücken (v2.0.259) — 8192² mittendrin = stockig.
+  // Ausnahme: forceShadowBakePending nach Geometrie-Commit (v2.0.320).
   if ((orbitLite || orbitLitePointer) && renderer.shadowMap.needsUpdate) {
-    deferOrbitShadowBake({ sun: dirLight.shadow.needsUpdate })
-    renderer.shadowMap.needsUpdate = false
-    dirLight.shadow.needsUpdate = false
+    if (forceShadowBakePending) {
+      forceShadowBakePending = false
+    } else {
+      deferOrbitShadowBake({ sun: dirLight.shadow.needsUpdate })
+      renderer.shadowMap.needsUpdate = false
+      dirLight.shadow.needsUpdate = false
+    }
   }
   const line = currentRenderStyle === 'line'
   atmosphereSky.setVisible(atmosphereSkyWanted(line))
@@ -5226,6 +5442,11 @@ async function loadInitialState(): Promise<void> {
       if (fromHash.viewYaw !== undefined) {
         currentElevation = { kind: 'yaw', yaw: fromHash.viewYaw }
       }
+      if (fromHash.sun) {
+        sunSettings = normalizeSunSettings(fromHash.sun)
+        sunLoadedFromShare = true
+      }
+      if (fromHash.bloom) bloomSettings = normalizeBloomSettings(fromHash.bloom)
       if (facadeHasNeedsReview(state)) {
         queueMicrotask(() => {
           planStatus.textContent =
@@ -5906,6 +6127,10 @@ const openingPanelClearanceCm = document.querySelector<HTMLInputElement>('#openi
 const openingPanelClearanceDepth = document.querySelector<HTMLInputElement>('#opening-panel-clearance-depth')!
 const openingPanelClearanceFinish = document.querySelector<HTMLSelectElement>('#opening-panel-clearance-finish')!
 const openingPanelClearanceFinishLabel = document.querySelector<HTMLSpanElement>('#opening-panel-clearance-finish-label')!
+const openingPanelWrappedRevealSection = document.querySelector<HTMLDivElement>('#opening-panel-wrapped-reveal-section')!
+const openingPanelWrappedRevealEnabled = document.querySelector<HTMLInputElement>('#opening-panel-wrapped-reveal-enabled')!
+/** Info-Box (Rundbogen-Hinweis) — nur sichtbar, wenn die Funktion aktiv ist. */
+const openingPanelWrappedRevealInfo = document.querySelector<HTMLParagraphElement>('#opening-panel-wrapped-reveal-info')
 const openingArchEnabled = document.querySelector<HTMLInputElement>('#opening-arch-enabled')!
 const openingArchFormCards = document.querySelector<HTMLDivElement>('#opening-arch-form-cards')!
 const openingArchRiseRow = document.querySelector<HTMLDivElement>('#opening-arch-rise-row')!
@@ -6026,6 +6251,7 @@ const redoButton = document.querySelector<HTMLButtonElement>('#redo')!
 const saveJsonButton = document.querySelector<HTMLButtonElement>('#save-json')!
 const loadJsonButton = document.querySelector<HTMLButtonElement>('#load-json')!
 const copyLinkButton = document.querySelector<HTMLButtonElement>('#copy-link')!
+const copyShowcaseLinkButton = document.querySelector<HTMLButtonElement>('#copy-showcase-link')!
 const loadJsonInput = document.querySelector<HTMLInputElement>('#load-json-input')!
 const shareStatus = document.querySelector<HTMLParagraphElement>('#share-status')!
 const wallColorSwatches = document.querySelector<HTMLDivElement>('#wall-color-swatches')!
@@ -6121,7 +6347,19 @@ function applyStageViewModeFromUrl(): boolean {
   hud.hidden = false
   return true
 }
+
+/** Showcase: Bühne + Licht/Animation rechts (`?view=showcase`). Nicht mit Stage kombinieren. */
+function applyShowcaseViewModeFromUrl(): boolean {
+  if (!isShowcaseViewFromUrl()) return false
+  if (new URLSearchParams(window.location.search).has('stage')) return false
+  if (new URLSearchParams(window.location.search).get('view') === 'stage') return false
+  document.documentElement.classList.add('showcase-view')
+  document.getElementById('app')?.classList.add('showcase-view')
+  document.title = 'Fassaden-Builder — Showcase'
+  return true
+}
 const STAGE_VIEW_MODE = applyStageViewModeFromUrl()
+const SHOWCASE_VIEW_MODE = !STAGE_VIEW_MODE && applyShowcaseViewModeFromUrl()
 
 const sunDateInput = document.querySelector<HTMLInputElement>('#sun-date')!
 const sunTimeInput = document.querySelector<HTMLInputElement>('#sun-time')!
@@ -10088,23 +10326,38 @@ function syncCameraDistanceLimits() {
   const box = buildingWorldBox(getAllWalls(state))
   if (box.isEmpty()) {
     controls.maxDistance = 4000
-    camera.far = 5000
-    camera.near = 1
-    camera.updateProjectionMatrix()
+    applyOrbitCameraDepthRange(5000)
     return
   }
   const span = Math.max(box.max.x - box.min.x, box.max.z - box.min.z, 400)
   const radius = Math.max(span / 2, 200)
   controls.maxDistance = Math.max(4000, radius * 6)
-  camera.far = Math.max(5000, controls.maxDistance + radius * 2 + 1000)
-  camera.near = 1
-  camera.updateProjectionMatrix()
+  const farHint = Math.max(5000, controls.maxDistance + radius * 2 + 1000)
+  applyOrbitCameraDepthRange(farHint)
   if (fogSettings.enabled && fogSettings.type === 'linear') {
     const far = Math.max(fogSettings.far, camera.far)
     if (far > fogSettings.far) {
       fogSettings = { ...fogSettings, far }
       applyFogToScene()
     }
+  }
+}
+
+/**
+ * Perspektiv-Near wächst mit Kameradistanz — sonst near=1 / far≈10 000 → 24-Bit-Tiefe
+ * kollabiert ab ~40–60 m (Z-Fight Stein/Mörtel/Glas, dunkle Speckles). Galerie hat
+ * bereits `galleryCameraDepthRange`; hier für den normalen Orbit.
+ */
+function applyOrbitCameraDepthRange(farHint?: number) {
+  if (currentView !== '3d' || isGalleryModeActive()) return
+  const dist = camera.position.distanceTo(controls.target)
+  const far = Math.max(farHint ?? camera.far, dist * 2 + 1000, 5000)
+  // 3 % der Distanz, Clamp 1…150 cm — nah unverändert, fern Depth-Ratio ≪ 10 000.
+  const near = THREE.MathUtils.clamp(dist * 0.03, 1, 150)
+  if (Math.abs(camera.near - near) > 0.05 || Math.abs(camera.far - far) > 1) {
+    camera.near = near
+    camera.far = far
+    camera.updateProjectionMatrix()
   }
 }
 
@@ -10396,8 +10649,11 @@ function commitSunFromDateTime(applySolarLook = true) {
 /**
  * Paneel-/Mauerwerk-Shadow-Map: farbiger Aufriss und 3D; Zeichnung aus.
  * Ost/West bei Südsonne im Aufriss: Streiflicht → Empfang aus (Acne).
+ * Distanz-Empfangs-Gate (v2.0.314, ab 10 m aus) wieder entfernt (v2.0.315) —
+ * es killte Schlagschatten von Erker/Gesims auf der Fassade; Speckles über PCSS-AA.
  */
 let facadeReady = false
+
 function syncCladdingReceiveShadows() {
   // applySceneAppearance / early applySunLighting laufen vor `const facade = …`
   if (!facadeReady) return
@@ -10454,6 +10710,11 @@ let sunSliderPersistTimer = 0
  */
 let orbitShadowBakeDeferred = false
 let orbitShadowBakeWantSun = false
+/**
+ * Geometrie-Commit (Wand/Öffnung verschieben): Bake trotz Orbit-Lite-Hold erlauben.
+ * Sonst bleiben Schatten ~1 s + Debounce auf der alten Position (v2.0.320).
+ */
+let forceShadowBakePending = false
 
 function isOrbitNavigating(): boolean {
   return orbitLite || orbitLitePointer || nav3d !== null
@@ -10472,6 +10733,8 @@ function takeDeferredOrbitShadowBake(): { sun: boolean } {
 }
 
 function suppressShadowBakeDuringOrbit() {
+  // Geometrie-Commit-Bake in diesem Frame durchlassen — nicht sofort wieder verschieben.
+  if (forceShadowBakePending) return
   if (sunShadowMapTimer) {
     window.clearTimeout(sunShadowMapTimer)
     sunShadowMapTimer = 0
@@ -10513,8 +10776,13 @@ let lastReflectionLightingKey = ''
 /** Hysterese für Key-Licht-Schatten (Sonne/Mond), vermeidet Shader-Flip an der Schwelle. */
 let keyCastShadowLatched = true
 
-function flushSunShadowMap(opts?: { reflections?: boolean; sceneLights?: boolean }) {
-  if (isOrbitNavigating()) {
+function flushSunShadowMap(opts?: {
+  reflections?: boolean
+  sceneLights?: boolean
+  /** Trotz Orbit-Lite-Hold sofort backen (Objekt verschoben/gebaut). */
+  force?: boolean
+}) {
+  if (!opts?.force && isOrbitNavigating()) {
     deferOrbitShadowBake({ sun: true })
     if (opts?.reflections !== false) {
       // EnvMap erst nach Orbit — sonst zusätzlich Cube-Bake-Hitch.
@@ -10529,6 +10797,12 @@ function flushSunShadowMap(opts?: { reflections?: boolean; sceneLights?: boolean
   sunShadowFirstQueueMs = 0
   sunShadowScheduleReflections = false
   sunShadowScheduleSun = false
+  // Geometrie-Commit: Orbit-Deferral aufheben und einen Bake durchlassen.
+  if (opts?.force) {
+    orbitShadowBakeDeferred = false
+    orbitShadowBakeWantSun = false
+    forceShadowBakePending = true
+  }
   dirLight.shadow.needsUpdate = true
   // Punktlicht-Cubes hängen nicht am Sonnenstand — nur bei Geometrie mitbacken.
   if (opts?.sceneLights) sceneLightRuntime.markAllShadowsDirty()
@@ -10973,7 +11247,12 @@ function patchSelectedSceneLight(patch: Parameters<typeof updateSceneLight>[2]):
   commitState(updateSceneLight(state, id, patch))
 }
 
-function applySunLighting(opts?: { updateShadowMap?: boolean; live?: boolean }) {
+function applySunLighting(opts?: {
+  updateShadowMap?: boolean
+  live?: boolean
+  /** Shadow-Bake trotz Orbit-Lite-Hold (nach Verschieben/Rebuild). */
+  forceShadowBake?: boolean
+}) {
   setFacadeShadeParams(facadeShadeParamsFromSun(sunSettings))
   syncCladdingReceiveShadows()
   const preCelestial = resolveCelestialState(sunSettings)
@@ -11123,18 +11402,21 @@ function applySunLighting(opts?: { updateShadowMap?: boolean; live?: boolean }) 
   }
   // Live-Scrub: kein Punktlicht-Sync (teuer bei vielen Lichtern) — Softness folgt beim Commit.
   if (!live) syncSceneLightRuntime()
+  const forceBake = opts?.forceShadowBake === true
   if (opts?.updateShadowMap === true) {
-    flushSunShadowMap({ sceneLights: true })
+    flushSunShadowMap({ sceneLights: true, force: forceBake })
   } else if (live) {
     if (sunLiveScrubActive()) {
       // Sofort 1×/Frame — Debounce ließ Schatten beim Scrub/Abspielen springen.
-      flushSunShadowMap({ reflections: false })
+      flushSunShadowMap({ reflections: false, force: forceBake })
+    } else if (forceBake) {
+      flushSunShadowMap({ reflections: true, sceneLights: true, force: true })
     } else {
       // Tagzyklus u. a.: weiter gedrosselt (~120–280 ms).
       scheduleSunShadowMapUpdate()
     }
   } else if (opts?.updateShadowMap !== false && startupShadowReady) {
-    flushSunShadowMap({ sceneLights: true })
+    flushSunShadowMap({ sceneLights: true, force: forceBake })
   }
   markViewportDirty()
 }
@@ -11257,7 +11539,7 @@ function applyState(nextState: FacadeState, nextEditor = editor) {
       facade.refreshFacadeDecorVisibility()
     }
     // Sofort mit Sichtbarkeit — kein Debounce (sonst Schatten nach dem Mesh).
-    flushSunShadowMap({ reflections: false, sceneLights: true })
+    flushSunShadowMap({ reflections: false, sceneLights: true, force: true })
   } else if (geometryUnchanged) {
     // Nur Editor/Selektion/Lichter — kein Geometrie-Rebuild.
     facade.setState(state, { rebuildBuildingIds: [] })
@@ -11282,14 +11564,13 @@ function applyState(nextState: FacadeState, nextEditor = editor) {
     updateGroundPlane()
     syncCameraDistanceLimits()
     if (openingDragCommit) {
-      // Live-Licht: kein sofortiges Shadow-Invalidate. EnvMap muss aber neu gebacken
-      // werden — sonst spiegeln neue Rahmen/Profile eine alte/dunkle Map (grau statt weiß).
-      applySunLighting({ live: true })
-      scheduleShadowMapUpdate({ sun: true, reflections: true })
+      // Live-Licht: kein Material-Invalidate (grau). Schatten sofort forcen — sonst
+      // Orbit-Lite-Hold (~1 s) + Debounce lassen den alten Werfschatten stehen (v2.0.320).
+      applySunLighting({ live: true, forceShadowBake: true })
       bindMaterialsToGlassEnv(scene)
-      syncSceneLightRuntime({ scheduleShadows: true })
+      syncSceneLightRuntime()
     } else {
-      applySunLighting({ updateShadowMap: true })
+      applySunLighting({ updateShadowMap: true, forceShadowBake: true })
       syncSceneLightRuntime()
     }
     syncLeafRuntime()
@@ -11816,8 +12097,9 @@ function renderUi(opts?: { skipLayerList?: boolean }) {
   const hasCeiling = Boolean(editor.selectedCeiling)
   const hasSceneLight = Boolean(editor.selectedSceneLightId)
   const studioWall = selectionIsStudioWall()
-  const showSelectionUi = hasWall || hasOpening || hasRoof || hasCeiling || hasSceneLight
-  lightingAccordion.hidden = showSelectionUi
+  const showSelectionUi =
+    !SHOWCASE_VIEW_MODE && (hasWall || hasOpening || hasRoof || hasCeiling || hasSceneLight)
+  lightingAccordion.hidden = SHOWCASE_VIEW_MODE ? false : showSelectionUi
   planSidebar.hidden = true
   syncSceneToolbarTabs()
   editScopeBar.hidden = !showSelectionUi
@@ -12689,8 +12971,7 @@ function wallContextItems(
     label: 'Löschen',
     danger: true,
     action: () => {
-      ensureWallSelected(wallId)
-      deleteWallButton.click()
+      deleteSelectedWalls(wallIdsForContextAction(wallId))
     },
   })
   return items
@@ -12758,8 +13039,7 @@ function openingContextItems(wallId: string, openingId: string): MenuItem[] {
     label: 'Löschen',
     danger: true,
     action: () => {
-      ensureOpeningSelected(wallId, openingId)
-      deleteOpeningButton.click()
+      deleteSelectedOpenings(openingRefsForContextAction(wallId, openingId))
     },
   })
   return items
@@ -12861,6 +13141,88 @@ function ensureOpeningSelected(wallId: string, openingId: string) {
     selectedOpenings: [{ wallId, openingId }],
     selectedEdges: [],
   })
+}
+
+/** Kontextmenü: Mehrfachauswahl behalten, wenn das Ziel schon markiert ist. */
+function openingRefsForContextAction(wallId: string, openingId: string): OpeningRef[] {
+  const inSel = editor.selectedOpenings.some(
+    (ref) => ref.wallId === wallId && ref.openingId === openingId,
+  )
+  return inSel ? [...editor.selectedOpenings] : [{ wallId, openingId }]
+}
+
+function wallIdsForContextAction(wallId: string): string[] {
+  return editor.selectedWallIds.includes(wallId) && editor.selectedOpenings.length === 0
+    ? [...editor.selectedWallIds]
+    : [wallId]
+}
+
+function deleteSelectedOpenings(refs: OpeningRef[]) {
+  if (refs.length === 0) return
+  let next = state
+  for (const ref of refs) {
+    next = removeOpening(next, ref.wallId, ref.openingId)
+  }
+  commitState(next, {
+    ...editor,
+    selectedOpenings: [],
+    selectedWallIds: [...new Set(refs.map((ref) => ref.wallId))].filter((id) =>
+      getAllWalls(next).some((wall) => wall.id === id),
+    ),
+    selectedEdges: [],
+  })
+}
+
+/** Wände löschen; markierte Erker jeweils zu flacher Wand (alle, nicht nur der erste). */
+function deleteSelectedWalls(wallIds: string[]) {
+  const ids = [...new Set(wallIds)]
+  if (ids.length === 0) return
+
+  let next = state
+  const remaining = new Set(ids)
+  const flatWallIds: string[] = []
+  const processedHosts = new Set<string>()
+
+  if (editor.selectedOpenings.length === 0) {
+    for (const id of ids) {
+      const wallsNow = getAllWalls(next)
+      const host = bayHostWall(wallsNow, id)
+      if (!host || processedHosts.has(host.id)) continue
+      const members = bayWallSelectionIds(wallsNow, host.id) ?? [host.id]
+      const flattened = flattenBayToFlatWall(next, id)
+      if (!flattened) continue
+      processedHosts.add(host.id)
+      next = flattened.state
+      flatWallIds.push(flattened.flatWallId)
+      for (const mid of members) remaining.delete(mid)
+    }
+  }
+
+  if (processedHosts.size > 0 && remaining.size === 0) {
+    commitState(next, {
+      selectedWallIds: flatWallIds.filter((id) => getAllWalls(next).some((wall) => wall.id === id)),
+      selectedOpenings: [],
+      selectedEdges: [],
+    })
+    rebuildFloorPlanOverlay()
+    planStatus.textContent =
+      processedHosts.size > 1 ? 'Erker entfernt — flache Wände' : 'Erker entfernt — flache Wand'
+    return
+  }
+
+  for (const id of remaining) {
+    if (getWall(next, id)) next = removeWall(next, id)
+  }
+  commitState(next, {
+    selectedWallIds: [...remaining, ...flatWallIds].filter((id) =>
+      getAllWalls(next).some((wall) => wall.id === id),
+    ),
+    selectedOpenings: editor.selectedOpenings.filter((ref) =>
+      getAllWalls(next).some((wall) => wall.id === ref.wallId),
+    ),
+    selectedEdges: editor.selectedEdges,
+  })
+  if (processedHosts.size > 0) rebuildFloorPlanOverlay()
 }
 
 function sceneLightContextItems(lightId: string): MenuItem[] {
@@ -13057,6 +13419,15 @@ function showElementContextMenu(
     if (!inSel) selectOpening(hit.wallId, hit.openingId, false)
     showContextMenu(clientX, clientY, openingContextItems(hit.wallId, hit.openingId))
     return
+  }
+  // Öffnungs-Mehrfachauswahl: Treffer auf die Wandfläche nicht zu einer Einzelwand kollabieren.
+  if (hit.wallId && !hit.openingId && editor.selectedOpenings.length > 0) {
+    const onWall = editor.selectedOpenings.filter((ref) => ref.wallId === hit.wallId)
+    if (onWall.length > 0) {
+      const anchor = onWall[0]!
+      showContextMenu(clientX, clientY, openingContextItems(anchor.wallId, anchor.openingId))
+      return
+    }
   }
   if (hit.wallId && hit.wallPart === 'trimBand' && hit.bandId) {
     selectWall(hit.wallId, false, 'trimBand', hit.bandId)
@@ -15696,7 +16067,10 @@ function applyBayWindowOnWall(
       planStatus.textContent = `${preset.label}: braucht ${Math.round(mouth)} cm (Wand ${Math.round(wall.width)} cm) — oder „An Wandbreite“`
       return
     }
-    const inserted = insertBayAsWallSegment(state, wall.id, preset, localX, { singleFloor })
+    // Unter/über bestehendem Erker: Mund ausrichten (sonst schwer zu treffen).
+    const stackedX = stackedBayMouthLocalXOnWall(getAllWalls(state), wall, mouth)
+    const placeX = stackedX != null ? stackedX : localX
+    const inserted = insertBayAsWallSegment(state, wall.id, preset, placeX, { singleFloor })
     if (!inserted) {
       planStatus.textContent = 'Erker-Segment konnte hier nicht eingesetzt werden'
       return
@@ -15708,7 +16082,9 @@ function applyBayWindowOnWall(
     })
     rebuildFloorPlanOverlay()
     planStatus.textContent = singleFloor
-      ? `${preset.label} als Segment auf dieser Wand (${Math.round(mouth)} cm)`
+      ? stackedX != null
+        ? `${preset.label} als Segment, Mund an Etagen-Stapel ausgerichtet`
+        : `${preset.label} als Segment auf dieser Wand (${Math.round(mouth)} cm)`
       : `${preset.label} als Segment auf allen Etagen (${Math.round(mouth)} cm)`
     return
   }
@@ -15829,10 +16205,26 @@ function placeBayWindowAtWall(presetId: string, clientX: number, clientY: number
   if (!preset) return
   const hit = pickWallHitAtClient(clientX, clientY)
   if (hit) {
+    const walls = getAllWalls(state)
     const wall = getWall(state, hit.wallId)
-    if (bayWindowParentEligible(wall)) {
-      askBayWindowPlacement(presetId, wall.id, hit.localX)
-      return
+    // Weltpunkt aus Treffer (für Auflösung Erker → Reststück).
+    const hitWall = wall
+    let worldXZ = { x: 0, z: 0 }
+    if (hitWall) {
+      const start = wallStartPoint(hitWall)
+      const along = wallAlongDelta(hitWall.yawDeg ?? 0, hit.localX)
+      worldXZ = { x: start.x + along.x, z: start.z + along.z }
+    }
+    const resolved =
+      hitWall && bayWindowParentEligible(hitWall)
+        ? { wallId: hit.wallId, localX: hit.localX }
+        : resolveBayPlacementWall(walls, hit.wallId, worldXZ)
+    if (resolved) {
+      const target = getWall(state, resolved.wallId)
+      if (bayWindowParentEligible(target)) {
+        askBayWindowPlacement(presetId, resolved.wallId, resolved.localX)
+        return
+      }
     }
     planStatus.textContent = 'Erker: gültige Wand wählen (ohne Erker/Endstück) oder in die Fläche legen'
     return
@@ -16575,6 +16967,12 @@ function syncOpeningPositionControls() {
   openingPanelClearanceFinish.hidden = !panelsOn
   openingPanelClearanceFinishLabel.hidden = !panelsOn
 
+  const wrapReveal = normalizePanelWrappedReveal(sel.opening.panelWrappedReveal)
+  openingPanelWrappedRevealEnabled.checked = wrapReveal.enabled
+  if (openingPanelWrappedRevealInfo) openingPanelWrappedRevealInfo.hidden = !wrapReveal.enabled
+  openingPanelWrappedRevealSection.hidden =
+    !panelsOn || fill.mode === 'niche' || fill.mode === 'flush' || Boolean(sel.opening.type === 'conch')
+
   const arch = normalizeOpeningArch(sel.opening.arch)
   const archForm = arch.form ?? 'rect'
   openingArchEnabled.checked = arch.enabled
@@ -16645,7 +17043,8 @@ function drawOpeningArchPreview(sel: { wall: Wall; opening: Opening }) {
   })
   if (!spec) return
   const hybrid = openingArchHybridMasonryEnabled(sel.opening, panel.pattern)
-  const { rowCuts } = visiblePanelRowRange(sel.wall.height, panel)
+  const skirt = bayWallSkirtDropCm(sel.wall, getAllWalls(state))
+  const { rowCuts } = visiblePanelRowRange(sel.wall.height, panel, skirt)
   const courseYs = hybrid
     ? archHybridCourseYs(rowCuts, spec.cy, spec.cy + spec.rOuter, panel.panelHeight)
     : undefined
@@ -16840,8 +17239,39 @@ function settingsSectionSkipsTab(section: HTMLElement): boolean {
   )
 }
 
+/**
+ * Sektion hat bedienbaren Inhalt (nicht nur Label/Hinweis).
+ * Leere Bereiche (z. B. Profil nur mit ausgebblendetem Library-Picker) bekommen kein Register.
+ */
+function settingsSectionHasUsableBody(section: HTMLElement): boolean {
+  const nodes = section.querySelectorAll(
+    'input, select, textarea, button:not(.field-info), a, .tpl-card, .color-swatches, .preset-btn, canvas, img, [role="option"]',
+  )
+  for (const node of nodes) {
+    if (!(node instanceof HTMLElement)) continue
+    if (node.closest('.settings-section-head')) continue
+    let cur: HTMLElement | null = node
+    let blocked = false
+    while (cur && cur !== section) {
+      if (cur.hidden) {
+        blocked = true
+        break
+      }
+      if (getComputedStyle(cur).display === 'none') {
+        blocked = true
+        break
+      }
+      cur = cur.parentElement
+    }
+    if (blocked) continue
+    return true
+  }
+  return false
+}
+
 function settingsSectionVisibleForUi(section: HTMLElement): boolean {
   if (section.hidden) return false
+  if (section.classList.contains('settings-section-empty')) return false
   // Verschachtelte Sektionen (z. B. Bank in #window-sill-section) zählen nicht,
   // wenn ein Vorfahre per hidden ausgeblendet ist.
   let ancestor = section.parentElement
@@ -16864,13 +17294,49 @@ function settingsSectionVisibleForUi(section: HTMLElement): boolean {
   return true
 }
 
+function markEmptySettingsSections(root: HTMLElement) {
+  for (const section of root.querySelectorAll<HTMLElement>('.settings-section[data-settings-section]')) {
+    if (section.hidden || settingsSectionSkipsTab(section)) {
+      section.classList.remove('settings-section-empty')
+      continue
+    }
+    let ancestorBlocked = false
+    let ancestor = section.parentElement
+    while (ancestor) {
+      if (ancestor.hidden) {
+        ancestorBlocked = true
+        break
+      }
+      if (
+        ancestor.id === 'toolbar-opening' ||
+        ancestor.id === 'toolbar-studio' ||
+        ancestor.id === 'toolbar-wall' ||
+        ancestor.id === 'toolbar-roof' ||
+        ancestor.id === 'toolbar-ceiling' ||
+        ancestor.id === 'toolbar-scene-light' ||
+        ancestor.id === 'lighting-accordion'
+      ) {
+        break
+      }
+      ancestor = ancestor.parentElement
+    }
+    if (ancestorBlocked) {
+      section.classList.remove('settings-section-empty')
+      continue
+    }
+    section.classList.toggle('settings-section-empty', !settingsSectionHasUsableBody(section))
+  }
+}
+
 function collectSelectionTabSections(toolbar: HTMLElement): HTMLElement[] {
+  markEmptySettingsSections(toolbar)
   return [...toolbar.querySelectorAll<HTMLElement>('.settings-section')]
     .filter(
       (section) =>
         settingsSectionVisibleForUi(section) &&
         section.dataset.settingsSection &&
-        !settingsSectionSkipsTab(section),
+        !settingsSectionSkipsTab(section) &&
+        settingsSectionHasUsableBody(section),
     )
     .sort(
       (a, b) =>
@@ -17047,8 +17513,16 @@ function syncSettingsSectionStickyHeads(sections: HTMLElement[]) {
     toolbar.querySelector(':scope > .settings-tab-rail-bottom')?.remove()
   }
 
+  // Köpfe nur für aktuelle Register; Reste entfernen (z. B. nach Leer-Ausblendung).
+  for (const orphan of panel.querySelectorAll<HTMLElement>('.settings-section > .settings-section-head')) {
+    const section = orphan.parentElement
+    if (!(section instanceof HTMLElement) || !sections.includes(section)) {
+      orphan.remove()
+    }
+  }
+
   const total = sections.length
-  sections.forEach((section, index) => {
+  sections.forEach((section) => {
     let head = section.querySelector<HTMLElement>(':scope > .settings-section-head')
     if (!head) {
       head = document.createElement('div')
@@ -17060,18 +17534,35 @@ function syncSettingsSectionStickyHeads(sections: HTMLElement[]) {
     if (head.textContent !== label) head.textContent = label
     head.style.removeProperty('--stick-top')
     head.style.removeProperty('--stick-bottom')
-    if (!head.dataset.parkScrollBound) {
-      head.dataset.parkScrollBound = '1'
-      head.addEventListener('click', () => {
-        const target = head.parentElement
-        if (!(target instanceof HTMLElement) || !panel.contains(target)) return
-        const live = settingsHeadParkByPanel.get(panel)?.sections ?? []
-        const idx = Math.max(0, live.indexOf(target))
-        const headH = settingsStickHeadPx()
-        panel.scrollTo({ top: Math.max(0, target.offsetTop - idx * headH), behavior: 'smooth' })
-      })
-    }
+    delete head.dataset.parkScrollBound
   })
+
+  // Event-Delegation: Klick auf Register scrollt zur Sektion und öffnet sie im Fächer.
+  // (Pro-Kopf-Listener mit Closure auf altes Panel feuerte nach Re-Sync nicht mehr zuverlässig.)
+  if (!panel.dataset.settingsFanClickBound) {
+    panel.dataset.settingsFanClickBound = '1'
+    panel.addEventListener('click', (ev) => {
+      const raw = ev.target
+      if (!(raw instanceof Element)) return
+      const head = raw.closest('.settings-section-head')
+      if (!(head instanceof HTMLElement) || !panel.contains(head)) return
+      const target = head.parentElement
+      if (!(target instanceof HTMLElement) || !panel.contains(target)) return
+      const state = settingsHeadParkByPanel.get(panel)
+      const live = (state?.sections ?? []).filter(
+        (section) =>
+          section.isConnected &&
+          !section.hidden &&
+          !section.classList.contains('selection-tab-filtered-out') &&
+          !section.classList.contains('settings-section-empty') &&
+          settingsSectionVisibleForUi(section),
+      )
+      const idx = live.indexOf(target)
+      if (idx < 0) return
+      const headH = settingsStickHeadPx()
+      panel.scrollTo({ top: Math.max(0, target.offsetTop - idx * headH), behavior: 'smooth' })
+    })
+  }
 
   let state = settingsHeadParkByPanel.get(panel)
   if (!state) {
@@ -17120,12 +17611,17 @@ function syncSceneToolbarTabs() {
     return
   }
 
+  markEmptySettingsSections(sceneToolbarPanels)
   const tabSections = [...sceneToolbarPanels.querySelectorAll<HTMLElement>('.settings-section')]
     .filter(
       (section) =>
         settingsSectionVisibleForUi(section) &&
         section.dataset.settingsSection &&
-        !settingsSectionSkipsTab(section),
+        !settingsSectionSkipsTab(section) &&
+        settingsSectionHasUsableBody(section) &&
+        (!SHOWCASE_VIEW_MODE ||
+          section.dataset.settingsSection === 'sun' ||
+          section.dataset.settingsSection === 'anim'),
     )
     .sort(
       (a, b) =>
@@ -17275,6 +17771,17 @@ function applyOpeningPartVisibility() {
   const fillSection = document.querySelector<HTMLElement>('#opening-fill-section')
   // Teil-Fokus: nur der passende Block — Arch/Fill/Reveal nur bei Ganz-Öffnung.
   if (revealSection) revealSection.hidden = Boolean(lacksChrome) || focusPart
+  if (openingPanelWrappedRevealSection) {
+    const panelsOn = Boolean(sel && wallHasPanels(sel.wall))
+    const fillMode = sel ? normalizeOpeningFill(sel.opening.fill).mode : 'opening'
+    openingPanelWrappedRevealSection.hidden =
+      focusPart ||
+      Boolean(lacksChrome) ||
+      Boolean(isConch) ||
+      !panelsOn ||
+      fillMode === 'niche' ||
+      fillMode === 'flush'
+  }
   if (archSection) archSection.hidden = Boolean(lacksChrome) || focusPart || Boolean(isConch)
   if (fillSection) fillSection.hidden = focusPart
   openingTypeSection.hidden = focusPart
@@ -18053,6 +18560,7 @@ function selectWall(
   if (id === null) {
     if (additive) return
     lastLayerTreeAnchor = null
+    noteWallRangeAnchor(null)
     applyEditorSelection({
       selectedWallIds: [],
       selectedOpenings: [],
@@ -18090,6 +18598,7 @@ function selectWall(
     if (bayIds && bayIds.length > 1) {
       const treeIdx = layerTreeIndexOf({ kind: 'wall', wallId: bayIds[0]! })
       if (treeIdx >= 0) lastLayerTreeAnchor = treeIdx
+      noteWallRangeAnchor(id)
       applyEditorSelection({
         selectedWallIds: [...bayIds],
         selectedOpenings: [],
@@ -18117,6 +18626,7 @@ function selectWall(
     if (group && group.memberWallIds.length > 1) {
       const treeIdx = layerTreeIndexOf({ kind: 'wall', wallId: group.memberWallIds[0]! })
       if (treeIdx >= 0) lastLayerTreeAnchor = treeIdx
+      noteWallRangeAnchor(id)
       applyEditorSelection({
         selectedWallIds: [...group.memberWallIds],
         selectedOpenings: [],
@@ -18141,6 +18651,7 @@ function selectWall(
       : [...editor.selectedWallIds, id]
     const treeIdxAdd = layerTreeIndexOf({ kind: 'wall', wallId: id })
     if (treeIdxAdd >= 0) lastLayerTreeAnchor = treeIdxAdd
+    noteWallRangeAnchor(id)
     applyEditorSelection({
       selectedWallIds,
       selectedOpenings: [],
@@ -18169,6 +18680,7 @@ function selectWall(
       ? layerTreeIndexOf({ kind: 'label', wallId: id, labelId: resolvedLabelId })
       : layerTreeIndexOf({ kind: 'wall', wallId: id })
   if (treeIdx >= 0) lastLayerTreeAnchor = treeIdx
+  noteWallRangeAnchor(id)
   applyEditorSelection({
     selectedWallIds: [id],
     selectedOpenings: [],
@@ -18253,7 +18765,7 @@ try {
   /* ignore */
 }
 syncUiModeChrome()
-applyTodaySunDate()
+if (!sunLoadedFromShare) applyTodaySunDate()
 syncSunUi()
 applySceneAppearance()
 syncSceneColorInputs()
@@ -18270,6 +18782,18 @@ if (STAGE_VIEW_MODE) {
     setView('3d')
     bloomSettings = normalizeBloomSettings({ ...bloomSettings, enabled: true })
     applyBloomRenderer()
+    syncBloomFogUi()
+    markViewportDirty()
+  })
+}
+if (SHOWCASE_VIEW_MODE) {
+  queueMicrotask(() => {
+    setView('3d')
+    applyEditorSelection(createDefaultEditorState())
+    lightingAccordion.hidden = false
+    applyBloomRenderer()
+    applySunLighting({ updateShadowMap: true })
+    syncSunUi()
     syncBloomFogUi()
     markViewportDirty()
   })
@@ -18773,35 +19297,7 @@ selectionToolbar.addEventListener('pointerdown', (event) => {
 })
 
 deleteWallButton.addEventListener('click', () => {
-  // Markierter Erker → flache Wand über die Mundöffnung (Reststücke verschmelzen).
-  const baySeed = editor.selectedWallIds.find((id) => {
-    const wall = getWall(state, id)
-    return wall && bayMetaForWall(getAllWalls(state), wall)
-  })
-  if (baySeed && editor.selectedOpenings.length === 0) {
-    const flattened = flattenBayToFlatWall(state, baySeed)
-    if (flattened) {
-      commitState(flattened.state, {
-        selectedWallIds: [flattened.flatWallId],
-        selectedOpenings: [],
-        selectedEdges: [],
-      })
-      rebuildFloorPlanOverlay()
-      planStatus.textContent = 'Erker entfernt — flache Wand'
-      return
-    }
-  }
-  let next = state
-  for (const id of editor.selectedWallIds) {
-    next = removeWall(next, id)
-  }
-  commitState(next, {
-    selectedWallIds: editor.selectedWallIds.filter((id) => getAllWalls(next).some((wall) => wall.id === id)),
-    selectedOpenings: editor.selectedOpenings.filter((ref) =>
-      getAllWalls(next).some((wall) => wall.id === ref.wallId),
-    ),
-    selectedEdges: editor.selectedEdges,
-  })
+  deleteSelectedWalls([...editor.selectedWallIds])
 })
 
 duplicateWallButton.addEventListener('click', () => {
@@ -18835,11 +19331,7 @@ function runDuplicateWalls(side: 'left' | 'right', opts?: { wallIds?: string[] }
 }
 
 deleteOpeningButton.addEventListener('click', () => {
-  let next = state
-  for (const ref of editor.selectedOpenings) {
-    next = removeOpening(next, ref.wallId, ref.openingId)
-  }
-  commitState(next)
+  deleteSelectedOpenings([...editor.selectedOpenings])
 })
 
 duplicateOpeningButton.addEventListener('click', () => {
@@ -19742,6 +20234,23 @@ openingPanelClearanceCm.addEventListener('change', () => commitOpeningPanelClear
 openingPanelClearanceDepth.addEventListener('input', () => commitOpeningPanelClearancePatch())
 openingPanelClearanceFinish.addEventListener('change', () => commitOpeningPanelClearancePatch())
 
+function commitOpeningPanelWrappedRevealPatch() {
+  const refs = scopedOpeningRefs()
+  if (refs.length === 0) return
+  const enabled = openingPanelWrappedRevealEnabled.checked
+  if (openingPanelWrappedRevealInfo) openingPanelWrappedRevealInfo.hidden = !enabled
+  let next = state
+  for (const ref of refs) {
+    next = updateOpening(next, ref.wallId, ref.openingId, {
+      panelWrappedReveal: normalizePanelWrappedReveal({ enabled }),
+    })
+  }
+  commitState(next)
+  syncOpeningPositionControls()
+}
+
+openingPanelWrappedRevealEnabled.addEventListener('change', () => commitOpeningPanelWrappedRevealPatch())
+
 function commitOpeningRevealFramePatch() {
   const refs = scopedOpeningRefs()
   if (refs.length === 0) return
@@ -20156,8 +20665,8 @@ svgView.setOpeningSelectHandler((wallId, id, additive, openingPart) => {
   selectOpening(wallId, id, additive, openingPart)
 })
 
-svgView.setWallSelectHandler((id, additive) => {
-  selectWall(id, additive)
+svgView.setWallSelectHandler((id, additive, rangeSelect) => {
+  selectWallFromViewport(id, { additive, rangeSelect })
 })
 
 svgView.setContextMenuHandler((event, hit) => {
@@ -20259,6 +20768,7 @@ let pointerDown: {
   x: number
   y: number
   additive: boolean
+  rangeSelect?: boolean
 } | null = null
 /** Auswahl wurde schon auf pointerdown gesetzt — pointerup darf nicht mit Decke/Leer überschreiben. */
 let pointerDownDidSelect = false
@@ -21025,6 +21535,8 @@ function setLeafEditMode(on: boolean): void {
 }
 
 canvas.addEventListener('pointerdown', (event) => {
+  // Showcase: nur Orbit/Zoom (OrbitControls) — keine Objektauswahl oder Drag-Edits.
+  if (SHOWCASE_VIEW_MODE) return
   if (currentView === 'front') {
     if (event.button === 2 || event.button === 1) {
       const lightHit = pickFromEvent(event)
@@ -21117,14 +21629,15 @@ canvas.addEventListener('pointerdown', (event) => {
     return
   }
 
-  const additive = event.shiftKey || event.metaKey || event.ctrlKey
+  const additive = event.metaKey || event.ctrlKey || modKeyHeld
+  const rangeSelect = event.shiftKey && !additive
 
   if (currentView === '3d') controls.enabled = false
 
   const hit = pickFromEvent(event)
   if (hit?.sceneLightId) {
     const light = sceneLightById(state, hit.sceneLightId)
-    selectSceneLight(hit.sceneLightId, additive)
+    selectSceneLight(hit.sceneLightId, additive || event.shiftKey)
     if (light && (currentView === '3d' || currentView === 'front')) {
       drag3dSceneLight = {
         lightId: hit.sceneLightId,
@@ -21139,7 +21652,7 @@ canvas.addEventListener('pointerdown', (event) => {
   }
   if (lightEditMode) {
     // Nur Lichter — leerer Klick hebt die Lichtwahl auf, keine Fassade.
-    if (!additive) selectSceneLight(null)
+    if (!additive && !event.shiftKey) selectSceneLight(null)
     if (currentView === '3d') controls.enabled = true
     return
   }
@@ -21163,8 +21676,9 @@ canvas.addEventListener('pointerdown', (event) => {
       const alreadySelected3d = editor.selectedOpenings.some(
         (r) => r.wallId === hit.wallId && r.openingId === hit.openingId,
       )
-      if (!alreadySelected3d || additive) {
-        selectOpening(hit.wallId, hit.openingId, additive, hit.openingPart)
+      const openingAdditive = additive || event.shiftKey
+      if (!alreadySelected3d || openingAdditive) {
+        selectOpening(hit.wallId, hit.openingId, openingAdditive, hit.openingPart)
         drag3dPendingSelect = null
       } else {
         drag3dPendingSelect = {
@@ -21184,7 +21698,12 @@ canvas.addEventListener('pointerdown', (event) => {
       if (hit.wallPart === 'trimBand' && hit.bandId) {
         const band = wallTrimBands(wall).find((item) => item.id === hit.bandId)
         if (band) {
-          selectWall(hit.wallId, additive, 'trimBand', hit.bandId)
+          selectWallFromViewport(hit.wallId, {
+            additive,
+            rangeSelect,
+            wallPart: 'trimBand',
+            trimBandId: hit.bandId,
+          })
           drag3dTrimBand = { wallId: hit.wallId, bandId: hit.bandId }
           drag3dTrimBandMoved = false
           drag3dStartTrimBandY = band.yFromBottom
@@ -21199,7 +21718,13 @@ canvas.addEventListener('pointerdown', (event) => {
           return
         }
       }
-      selectWall(hit.wallId, additive, hit.wallPart ?? 'group', hit.bandId, hit.labelId)
+      selectWallFromViewport(hit.wallId, {
+        additive,
+        rangeSelect,
+        wallPart: hit.wallPart ?? 'group',
+        trimBandId: hit.bandId,
+        labelId: hit.labelId,
+      })
       pointerDownDidSelect = true
       if (hit.wallPart === 'label' && wallHasLabel(wall)) {
         const label = wallLabel(wall, hit.labelId)
@@ -21225,7 +21750,12 @@ canvas.addEventListener('pointerdown', (event) => {
         hit.wallPart === 'plinth' ||
         hit.wallPart === 'label'
       ) {
-        pointerDown = { x: event.clientX, y: event.clientY, additive }
+        pointerDown = { x: event.clientX, y: event.clientY, additive, rangeSelect }
+        return
+      }
+      // Shift-Bereich: nicht sofort Wand-Drag starten (Auswahl ist der Zweck).
+      if (rangeSelect) {
+        pointerDown = { x: event.clientX, y: event.clientY, additive, rangeSelect }
         return
       }
       const grid = pickGroundGridFromClient(event.clientX, event.clientY)
@@ -21276,7 +21806,7 @@ canvas.addEventListener('pointerdown', (event) => {
       }
     }
   }
-  pointerDown = { x: event.clientX, y: event.clientY, additive }
+  pointerDown = { x: event.clientX, y: event.clientY, additive, rangeSelect }
 })
 
 canvas.addEventListener('pointermove', (event) => {
@@ -21823,6 +22353,7 @@ canvas.addEventListener('pointerup', (event) => {
   const dx = event.clientX - pointerDown.x
   const dy = event.clientY - pointerDown.y
   const additive = pointerDown.additive
+  const rangeSelect = Boolean(pointerDown.rangeSelect)
   const keepDownSelection = pointerDownDidSelect
   pointerDown = null
   pointerDownDidSelect = false
@@ -21839,7 +22370,7 @@ canvas.addEventListener('pointerup', (event) => {
     return
   }
   if (!hit) {
-    selectWall(null, additive)
+    selectWallFromViewport(null, { additive })
     return
   }
   if (hit.sceneLightId) {
@@ -21851,11 +22382,15 @@ canvas.addEventListener('pointerup', (event) => {
     return
   }
   if (hit.openingId && hit.wallId) {
-    selectOpening(hit.wallId, hit.openingId, additive, hit.openingPart)
+    selectOpening(hit.wallId, hit.openingId, additive || rangeSelect, hit.openingPart)
     return
   }
   if (hit.wallId) {
-    selectWall(hit.wallId, additive, hit.wallPart ?? 'group')
+    selectWallFromViewport(hit.wallId, {
+      additive,
+      rangeSelect,
+      wallPart: hit.wallPart ?? 'group',
+    })
   }
 })
 
@@ -24070,6 +24605,19 @@ copyLinkButton.addEventListener('click', async () => {
   }
 })
 
+copyShowcaseLinkButton.addEventListener('click', async () => {
+  try {
+    const link = await copyShowcaseLink(sharePayloadFromApp())
+    showShareStatus(
+      navigator.clipboard
+        ? 'Showcase-Link in Zwischenablage kopiert.'
+        : `Showcase-Link: ${link}`,
+    )
+  } catch {
+    showShareStatus('Showcase-Link konnte nicht erstellt werden.')
+  }
+})
+
 undoButton.addEventListener('click', () => {
   const previous = editHistory.undo(currentSnapshot())
   if (previous) applyState(previous.facade, previous.editor)
@@ -24339,6 +24887,7 @@ controls.addEventListener('change', () => {
   setOrbitLite(true)
   if (!orbitLitePointer && !nav3d) scheduleOrbitLiteEnd()
   syncGalleryNavigationFeel()
+  applyOrbitCameraDepthRange()
   markViewportDirty()
 })
 controls.addEventListener('end', () => {

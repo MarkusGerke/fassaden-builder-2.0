@@ -857,11 +857,19 @@ function computeRowColCuts(
   const faceLeft = studioMiterLocalX(wall, 0, faceZ, miters.start, miters.end)
   const faceRight = studioMiterLocalX(wall, wall.width, faceZ, miters.start, miters.end)
   const faceLen = Math.max(MIN_TILE, faceRight - faceLeft)
-  // Front-Layout nur wenn die sichtbare Front LÄNGER ist als der Plan
-  // (Innen-Origin / Keilzone). Bei Außenkante + projectDepth ist faceLen kürzer —
-  // Raster bleibt auf wall.width, sonst Stummel und zerstörter Verband.
+  // Front-Layout nur bei **Innen-Origin** (`panelFlip: false`): dort ist die sichtbare
+  // Außenfläche um ~2×Wandstärke länger als der Plan (Keilzone).
+  // Bei Außen-Origin (Planlinie = Außenkante) bleibt das Raster IMMER auf `wall.width`:
+  // Die Paneelfront steht um `projectDepth` vor der Außenkante und ist an der 90°-Gehrung
+  // um 2×projectDepth **länger** (384 → 392) — vor v2.0.305 kippte das ins Front-Layout
+  // und legte 8×48 + 8-cm-Stummel (Erker: `row0 […, 9.6]`, `row1 [23.6, …, 33.6]`).
+  // Die Ecksteine bekommen den Keil stattdessen als Trapez (`wallLocalX`-Clamp).
+  // Ausnahme 45°-Knick (auch Außen-Origin): Front-Layout mit komplementären Forced-Ends
+  // (v0.7.281) — der Keil ist dort nur ~0,4×projectDepth und wird vom Endstein aufgenommen.
+  const innerOrigin = !(wall.panelFlip ?? true)
+  const hasDiag = Boolean(startDiag) || Boolean(endDiag)
   const useFrontLayout =
-    (miters.start || miters.end || Boolean(startDiag) || Boolean(endDiag)) &&
+    (innerOrigin ? miters.start || miters.end || hasDiag : hasDiag) &&
     faceLen > wall.width + 0.5
   const layoutLen = useFrontLayout ? faceLen : wall.width
   const halfW = wall.width / 2
@@ -1066,7 +1074,8 @@ function rowColCutsWithOpenings(
   depth: number,
 ): number[] {
   panel = normalizeStudioPanel(panel)
-  const { rowCuts } = visiblePanelRowRange(wall.height, panel)
+  const skirt = bayWallSkirtDropCm(wall, allWalls)
+  const { rowCuts } = visiblePanelRowRange(wall.height, panel, skirt)
   const y0 = rowCuts[rowIndex]
   const y1 = rowCuts[rowIndex + 1]
   const blockers: XSpan[] =
@@ -1203,27 +1212,26 @@ function layoutWildBondRow(
 }
 
 /**
- * Paneel-/Mauerwerk-Raster startet immer am Wandfuß (Y=0).
+ * Paneel-/Mauerwerk-Raster startet am Wandfuß (Y=0) — außer bei Erker-Drop:
+ * dann bei `originY` = `skirtDrop` (Etagenfuß), damit Schichten mit der Restwand fluchten.
  * Sockelhöhe verschiebt die Y-Koordinaten nicht. Überlappende Steine werden
  * auf die Sockeloberkante gekürzt (`clipTilesAbovePlinth`); ganz unter dem Sockel
  * entfallen sie (Kellerfenster im Sockelstreifen). Der Sockelkörper liegt davor.
  */
-function masonryOriginY(_panel: StudioPanelConfig): number {
-  return 0
-}
-
-export function panelCourseCount(wallHeight: number, panel: StudioPanelConfig): number {
+export function panelCourseCount(wallHeight: number, panel: StudioPanelConfig, originY = 0): number {
   panel = normalizeStudioPanel(panel)
-  const { rowCuts } = visiblePanelRowRange(wallHeight, panel)
+  const { rowCuts } = visiblePanelRowRange(wallHeight, panel, originY)
   return Math.max(0, rowCuts.length - 1)
 }
 
 export function visiblePanelRowRange(
   wallHeight: number,
   panel: StudioPanelConfig,
+  /** Lokaler Y-Ursprung des Rasters (Erker: `bayWallSkirtDropCm`). */
+  originY = 0,
 ): { firstVisibleRow: number; lastVisibleRow: number; rowCuts: number[] } {
   panel = normalizeStudioPanel(panel)
-  const y0 = masonryOriginY(panel)
+  const y0 = Math.max(0, Number.isFinite(originY) ? originY : 0)
   const masonryH = Math.max(0, wallHeight - y0)
   const localCuts = buildCuts(masonryH, panel.panelHeight, undefined, panel.joint / 2 + MIN_TILE)
   const rowCuts = localCuts.map((y) => y + y0)
@@ -1246,10 +1254,10 @@ export function visiblePanelRowRect(
 ): { x: number; y: number; width: number; height: number } | null {
   if (!wall || panel.enabled === false || panel.pattern === 'none') return null
   panel = normalizeStudioPanel(panel)
-  const { firstVisibleRow, lastVisibleRow, rowCuts } = visiblePanelRowRange(wall.height, panel)
-  if (firstVisibleRow > lastVisibleRow) return null
   const skirt = bayWallSkirtDropCm(wall, allWalls)
-  let y = rowCuts[firstVisibleRow] ?? 0
+  const { firstVisibleRow, lastVisibleRow, rowCuts } = visiblePanelRowRange(wall.height, panel, skirt)
+  if (firstVisibleRow > lastVisibleRow) return null
+  let y = rowCuts[firstVisibleRow] ?? skirt
   y = Math.max(y, skirt)
   const yEnd = rowCuts[lastVisibleRow + 1] ?? wall.height
   const height = yEnd - y
@@ -1297,7 +1305,8 @@ function layoutPanelTilesForPanel(
   const { panelWidth, joint, pattern } = panel
   if (panel.enabled === false || pattern === 'none') return []
   const tiles: PanelTile[] = []
-  const { firstVisibleRow, lastVisibleRow, rowCuts } = visiblePanelRowRange(wall.height, panel)
+  const skirt = bayWallSkirtDropCm(wall, allWalls)
+  const { firstVisibleRow, lastVisibleRow, rowCuts } = visiblePanelRowRange(wall.height, panel, skirt)
   const lastRow = rowCuts.length - 2
   const projectDepth = panel.projectDepth ?? DEFAULT_STUDIO_PANEL.projectDepth
   const bondCornerW = Math.max(STUDIO_MASONRY, Math.round(projectDepth / STUDIO_MASONRY) * STUDIO_MASONRY)
@@ -1375,15 +1384,16 @@ function layoutPanelTilesForPanel(
     )
   }
 
-  return clipTilesAbovePlinth(
+  const clipped = clipTilesAbovePlinth(
     sealTilesToOpeningJambs(
       mergeNarrowPanelGaps(splitTilesAtOpenings(tiles, wall.openings), wall, panel),
       jambHoles,
       panelWidth,
     ),
     panel,
-    bayWallSkirtDropCm(wall, allWalls),
+    skirt,
   )
+  return clipped
 }
 
 /** True, wenn der Stein die Laibungsfläche in X schneidet (Öffnungs-Phantomsteine). */

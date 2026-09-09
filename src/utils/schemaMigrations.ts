@@ -25,9 +25,17 @@ import {
   replaceUnchangedDefault,
 } from './hydrate'
 import { PLAN_GRID_LEGACY_SCALE } from '../studio/constants'
+import {
+  migrateLegacyBayFrontsTo336,
+  reverseMigratedBayFronts336To288,
+  migrateBayPanelsToRunningBond48,
+  migrateBaysToOuterOrigin,
+  migrateFlushBayPanelsToDepth,
+  migrateBayOpeningSillTo128,
+} from '../studio/baySegment'
 
 /** Aktuelle Persistenz-Schema-Version (steigt nur bei Datenmodell-Änderungen). */
-export const FACADE_SCHEMA_VERSION = 15
+export const FACADE_SCHEMA_VERSION = 21
 
 /** Unterste Version, die Hash-/Datei-Imports ohne gespeicherte schemaVersion annehmen. */
 export const FACADE_SCHEMA_IMPORT_BASE = 7
@@ -280,6 +288,42 @@ export const SCHEMA_MIGRATIONS: SchemaMigration[] = [
     to: 15,
     id: 'plan-grid-48-to-8',
     apply: migratePlanGrid48to8,
+  },
+  {
+    from: 15,
+    to: 16,
+    id: 'bay-front-288-to-336',
+    apply: migrateLegacyBayFrontsTo336,
+  },
+  {
+    from: 16,
+    to: 17,
+    id: 'bay-front-336-revert-to-288',
+    apply: reverseMigratedBayFronts336To288,
+  },
+  {
+    from: 17,
+    to: 18,
+    id: 'bay-panel-strip-to-running-48',
+    apply: migrateBayPanelsToRunningBond48,
+  },
+  {
+    from: 18,
+    to: 19,
+    id: 'bay-outer-origin',
+    apply: migrateBaysToOuterOrigin,
+  },
+  {
+    from: 19,
+    to: 20,
+    id: 'bay-panel-depth',
+    apply: migrateFlushBayPanelsToDepth,
+  },
+  {
+    from: 20,
+    to: 21,
+    id: 'bay-opening-sill-128',
+    apply: migrateBayOpeningSillTo128,
   },
 ]
 

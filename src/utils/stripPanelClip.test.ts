@@ -990,8 +990,8 @@ describe('Läuferverband: Ecken und Laibungen im Render', () => {
   it('Farbstufen: halber Endstein am Wandende bleibt in jeder Lage (kein Treppen-Effekt)', () => {
     const { south: wall, walls } = userCornerWalls({ tileColorVariance: 5, tileColorVariety: 100 })
     const tiles = layoutPanelTiles(wall as never, wall.panel, walls)
-    // versetzte Lagen enden mit einem 11,6-cm-Stein (< halbe Steinbreite)
-    const narrowEnd = tiles.filter((t) => t.width < 12 && t.x + t.width > wall.width)
+    // versetzte Lagen enden mit einem schmalen Stein (< halbe Steinbreite) an der Kante
+    const narrowEnd = tiles.filter((t) => t.width < 12 && t.x + t.width >= wall.width - 0.05)
     expect(narrowEnd.length).toBeGreaterThan(2)
     const geos = createStudioPanelGeometriesByColorIndex(wall as never, wall.panel, 8, 'user-south:#7E2020', walls, tiles)
     expect(geos.length).toBeGreaterThan(1)

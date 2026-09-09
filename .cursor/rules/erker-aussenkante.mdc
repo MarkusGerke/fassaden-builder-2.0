@@ -1,0 +1,26 @@
+---
+description: Erker/Wände immer mit Planlinie = Außenkante (panelFlip true); sonst sichtbare Front um 2×Wandstärke breiter als wall.width
+alwaysApply: true
+---
+
+# Planlinie = Außenkante (Außenwände und Erker)
+
+## Symptom (zweimal aufgetreten)
+
+Sichtbare Wandfront an 90°-Ecken um **2×Wandstärke** breiter als `wall.width`; Läufer/Steinraster ab Planlinie → Stummel an beiden Ecken, „Muster nicht einheitlich“, „optisch 24 cm breiter je Seite“. Außenwände: v0.7.279. Erker: v2.0.305 (384 → optisch 432).
+
+## Ursache
+
+`panelFlip: false` = Planlinie ist die **Innenkante**, der Körper (Tiefe) liegt nach außen; die Körper-Gehrung verlängert die Außenfläche. Erkennbar am Vorzeichen: Innen-Origin `miterStart +d / miterEnd −d`, Außen-Origin `−d / +d`.
+
+## Regel
+
+- Verknüpfte Wände und **alle Erker-Flächen** (Front/Schenkel) entstehen mit `panelFlip: true` — bei falscher Seite den **Umlauf/Segment umdrehen** (`poseOnOuterSegment`, `buildUShapeWalls` `reversed`), nie `panelFlip: false` setzen, um die Außennormale zu treffen.
+- `bayWindow.wallIds` bleibt Umlaufreihenfolge: erster Schenkel **startet** am Mund, letzter **endet** am Mund (Slide/Anker/Stapel hängen daran).
+- Nicht an Paneel-Gehrung / `projectDepth` drehen, wenn die Abweichung ≈ Wandstärke ist (v2.0.303/304 waren ±4 cm an der falschen Stelle).
+- Alt-Daten per Schema-Step neu aufbauen (Schema 19 `bay-outer-origin`), nicht nur hydrieren.
+- **Kein `projectDepth: 0` / `taperDepth: 0` auf Erker-Paneelen** (v2.0.304 → Z-Fight-Streifen Stein↔Wandschale, 0,15 cm Abstand; zurückgenommen v2.0.307, Schema 20 `bay-panel-depth`). Stummel-Raster über `computeRowColCuts` lösen (v2.0.306), nicht über die Steindicke.
+- **Raster bleibt auf `wall.width`** bei Außen-Origin + 90°-Gehrung — kein Front-Layout, auch wenn die Paneelfront (`projectDepth`) an der Gehrung länger ist (v2.0.306: 392 statt 384 → 8-cm-Stummel). Front-Layout nur Innen-Origin oder 45°.
+- Diagnose zuerst: `__fbDebug.dumpBays()` (Steinbreiten `row0/row1`), nicht raten.
+
+Docs: `docs/bay-windows.md` (Fallstricke), `docs/migration.md`, `docs/changelog.md` (v0.7.279, v2.0.305). Test: `src/studio/bayOuterOrigin.test.ts`.

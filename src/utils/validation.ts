@@ -42,12 +42,13 @@ export function clampOpeningToWall(
 ): Opening {
   const doSnap = opts?.snapToGrid !== false
   const gridSize = grid ?? GRID_SIZE
-  // Studio-Mauerwerk: Positionen im 8-cm-Raster (nicht 4), damit Abstände konsistent 8er-Schritte zeigen.
-  const posGrid = grid === STUDIO_MASONRY ? STUDIO_MASONRY : gridSize
+  // X darf Modul-Raster nutzen (Laibung); Y immer 8-cm-Raster (UI „Vertikal, 8er-Raster“,
+  // Standard-Brüstung WINDOW_SILL_Y=128). Paneelhöhe 24 würde 128→120 ziehen.
+  const posGridX = grid === STUDIO_MASONRY ? STUDIO_MASONRY : gridSize
   const snapped = {
     ...opening,
-    x: doSnap ? snapToGrid(opening.x, posGrid) : opening.x,
-    y: doSnap ? snapToGrid(opening.y, gridSize) : opening.y,
+    x: doSnap ? snapToGrid(opening.x, posGridX) : opening.x,
+    y: doSnap ? snapToGrid(opening.y, STUDIO_MASONRY) : opening.y,
     width: doSnap
       ? Math.max(gridSize, snapToGrid(opening.width, gridSize))
       : Math.max(gridSize, opening.width),

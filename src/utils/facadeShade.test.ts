@@ -72,8 +72,16 @@ describe('facadeShade', () => {
     const params = facadeShadeParamsFromSun(DEFAULT_SUN_SETTINGS)
     expect(params.labelHemiDim).toBeLessThan(params.hemiDim)
     expect(params.labelDirectDim).toBeLessThan(params.directDim)
-    expect(params.labelHemiDim).toBeGreaterThanOrEqual(0.1)
-    expect(params.labelHemiDim).toBeLessThanOrEqual(0.32)
+    expect(params.labelHemiDim).toBeGreaterThanOrEqual(0.18)
+    expect(params.labelHemiDim).toBeLessThanOrEqual(0.55)
+  })
+
+  it('Gegenlicht behält starkes Himmels-Fill (näher an Schlagschatten)', () => {
+    const params = facadeShadeParamsFromSun(DEFAULT_SUN_SETTINGS)
+    // Direktlicht stark gedimmt, Ambient weitgehend erhalten (v2.0.312).
+    expect(params.directDim).toBeLessThan(0.25)
+    expect(params.hemiDim).toBeGreaterThanOrEqual(0.55)
+    expect(params.hemiDim).toBeLessThan(1)
   })
 
   it('nachts kein Gegenlicht-Dim (Punktlicht bleibt hell)', () => {

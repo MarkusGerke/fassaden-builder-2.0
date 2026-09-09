@@ -1,6 +1,12 @@
 import type { EditScope } from '../studio/editScope'
 import { editOpeningTargets, editWallTargets } from './editScope'
-import type { EditorState, FacadeState, Opening, Wall } from '../types/facade'
+import type {
+  EditorState,
+  FacadeState,
+  Opening,
+  ProfileAssignment,
+  Wall,
+} from '../types/facade'
 import { cloneFacadeState, cloneWall } from '../types/facade'
 import { findBuildingForWall, getAllWalls } from '../utils/buildings'
 import { getWall } from '../utils/walls'
@@ -82,7 +88,56 @@ const WALL_SKIP = new Set([
   'buildingId',
   'kind',
   'openings',
+  // Rahmenprofile hängen an openingId — nicht als Array deep-mergen (fremde IDs).
+  'profiles',
 ])
+
+/** Profil-Zuweisungen einer Öffnung (Kante+Profil), sortiert vergleichbar. */
+function profileAssignmentKey(p: ProfileAssignment): string {
+  return `${p.edge}:${p.profileId}`
+}
+
+function profilesForOpening(wall: Wall, openingId: string): ProfileAssignment[] {
+  return wall.profiles.filter((p) => p.openingId === openingId)
+}
+
+function openingProfilesEqual(a: ProfileAssignment[], b: ProfileAssignment[]): boolean {
+  if (a.length !== b.length) return false
+  const sa = a.map(profileAssignmentKey).sort()
+  const sb = b.map(profileAssignmentKey).sort()
+  return sa.every((k, i) => k === sb[i])
+}
+
+/** Ersetzt die Profil-Zuweisungen einer Peer-Öffnung durch die des Donors (IDs remappen). */
+export function applyOpeningProfilesDelta(
+  peerProfiles: ProfileAssignment[],
+  peerOpeningId: string,
+  beforeProfiles: ProfileAssignment[],
+  afterProfiles: ProfileAssignment[],
+): ProfileAssignment[] {
+  if (openingProfilesEqual(beforeProfiles, afterProfiles)) return peerProfiles
+  return [
+    ...peerProfiles.filter((p) => p.openingId !== peerOpeningId),
+    ...afterProfiles.map((p) => ({
+      openingId: peerOpeningId,
+      profileId: p.profileId,
+      edge: p.edge,
+    })),
+  ]
+}
+
+function openingsMatchPropagate(a: Opening, b: Opening): boolean {
+  if (a.type !== b.type) return false
+  return (
+    Math.round(a.width) === Math.round(b.width) &&
+    Math.round(a.height) === Math.round(b.height)
+  )
+}
+
+/** Rahmenprofile: Fenster und Türen (Etage/Fassade, unabhängig von Maß). */
+function openingTakesFrameProfile(opening: Opening): boolean {
+  return opening.type === 'window' || opening.type === 'door'
+}
 
 function applyWallPropertyDelta(peer: Wall, before: Wall, after: Wall): Wall {
   let next = cloneWall(peer)
@@ -99,28 +154,39 @@ function applyWallPropertyDelta(peer: Wall, before: Wall, after: Wall): Wall {
       afterRec[key as string],
     )
   }
-  // Öffnungen: nur wenn Anker-Öffnungen geändert wurden und Peer passende Typen hat
-  if (before.openings !== after.openings) {
-    const beforeById = new Map(before.openings.map((o) => [o.id, o]))
-    const afterById = new Map(after.openings.map((o) => [o.id, o]))
-    next = {
-      ...next,
-      openings: peer.openings.map((peerOpen) => {
-        for (const [id, afterOpen] of afterById) {
-          const beforeOpen = beforeById.get(id)
-          if (!beforeOpen || beforeOpen === afterOpen) continue
-          if (peerOpen.type !== afterOpen.type) continue
-          if (
-            Math.round(peerOpen.width) !== Math.round(afterOpen.width) ||
-            Math.round(peerOpen.height) !== Math.round(afterOpen.height)
-          ) {
-            continue
-          }
-          return applyOpeningPropertyDelta(peerOpen, beforeOpen, afterOpen)
-        }
-        return peerOpen
-      }),
+  // Öffnungen: Properties nur bei Typ+Maß; Rahmenprofile auf Fenster und Türen.
+  const beforeById = new Map(before.openings.map((o) => [o.id, o]))
+  const afterById = new Map(after.openings.map((o) => [o.id, o]))
+  let profiles = next.profiles
+  let openingsChanged = false
+  const openings = peer.openings.map((peerOpen) => {
+    let nextOpen = peerOpen
+    let did = false
+    for (const [id, afterOpen] of afterById) {
+      const beforeOpen = beforeById.get(id)
+      if (!beforeOpen) continue
+      const beforeProf = profilesForOpening(before, id)
+      const afterProf = profilesForOpening(after, id)
+      const openSame = beforeOpen === afterOpen
+      const profSame = openingProfilesEqual(beforeProf, afterProf)
+      const typeSizeMatch = openingsMatchPropagate(peerOpen, afterOpen)
+      const canTakeProfile =
+        openingTakesFrameProfile(peerOpen) && openingTakesFrameProfile(afterOpen)
+      if (!profSame && canTakeProfile) {
+        profiles = applyOpeningProfilesDelta(profiles, peerOpen.id, beforeProf, afterProf)
+        did = true
+      }
+      if (!openSame && typeSizeMatch) {
+        nextOpen = applyOpeningPropertyDelta(peerOpen, beforeOpen, afterOpen)
+        did = true
+      }
+      if (did) break
     }
+    if (did) openingsChanged = true
+    return nextOpen
+  })
+  if (openingsChanged) {
+    next = { ...next, openings, profiles }
   }
   return next
 }
@@ -182,38 +248,63 @@ export function propagateSelectionEdit(
   const hasOpenings = editor.selectedOpenings.length > 0
   if (hasOpenings) {
     const targets = editOpeningTargets(after, editor, toScope, null)
+    type OpeningDonor = {
+      before: Opening
+      after: Opening
+      profilesBefore: ProfileAssignment[]
+      profilesAfter: ProfileAssignment[]
+    }
     const donors = editor.selectedOpenings
-      .map((ref) => {
+      .map((ref): OpeningDonor | null => {
         const bWall = getWall(before, ref.wallId)
         const aWall = getWall(after, ref.wallId)
         const bOpen = bWall?.openings.find((o) => o.id === ref.openingId)
         const aOpen = aWall?.openings.find((o) => o.id === ref.openingId)
-        if (!bOpen || !aOpen) return null
-        return { before: bOpen, after: aOpen }
+        if (!bOpen || !aOpen || !bWall || !aWall) return null
+        return {
+          before: bOpen,
+          after: aOpen,
+          profilesBefore: profilesForOpening(bWall, ref.openingId),
+          profilesAfter: profilesForOpening(aWall, ref.openingId),
+        }
       })
-      .filter((d): d is { before: Opening; after: Opening } => Boolean(d))
+      .filter((d): d is OpeningDonor => Boolean(d))
 
     if (donors.length === 0) return after
 
     return updateWallsInState(after, (wall) => {
       let changed = false
+      let profiles = wall.profiles
       const openings = wall.openings.map((open) => {
         const hit = targets.some((t) => t.wallId === wall.id && t.openingId === open.id)
         if (!hit) return open
+        let nextOpen = open
+        let did = false
         for (const donor of donors) {
-          if (open.type !== donor.after.type) continue
-          if (
-            Math.round(open.width) !== Math.round(donor.after.width) ||
-            Math.round(open.height) !== Math.round(donor.after.height)
-          ) {
-            continue
+          const openSame = donor.before === donor.after
+          const profSame = openingProfilesEqual(donor.profilesBefore, donor.profilesAfter)
+          const typeSizeMatch = openingsMatchPropagate(open, donor.after)
+          const canTakeProfile =
+            openingTakesFrameProfile(open) && openingTakesFrameProfile(donor.after)
+          if (!profSame && canTakeProfile) {
+            profiles = applyOpeningProfilesDelta(
+              profiles,
+              open.id,
+              donor.profilesBefore,
+              donor.profilesAfter,
+            )
+            did = true
           }
-          changed = true
-          return applyOpeningPropertyDelta(open, donor.before, donor.after)
+          if (!openSame && typeSizeMatch) {
+            nextOpen = applyOpeningPropertyDelta(open, donor.before, donor.after)
+            did = true
+          }
+          if (did) break
         }
-        return open
+        if (did) changed = true
+        return nextOpen
       })
-      return changed ? { ...cloneWall(wall), openings } : wall
+      return changed ? { ...cloneWall(wall), openings, profiles } : wall
     })
   }
 

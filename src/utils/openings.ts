@@ -359,7 +359,7 @@ export function createOpening(
     buildingId?: string
   },
   at?: { x: number; y?: number },
-  opts?: { donorWalls?: Array<{ openings?: Opening[] }> },
+  opts?: { donorWalls?: Array<{ openings?: Opening[] }>; donor?: Opening },
 ): Opening {
   const sizeGrid = wall.kind === 'studio' ? studioOpeningSnapGridCm(wall) : undefined
   const posGrid = wall.kind === 'studio' ? studioOpeningSnapGridCm(wall) : undefined
@@ -376,16 +376,17 @@ export function createOpening(
     x = snapToGrid((wall.width - snappedWidth) / 2, posGrid)
   }
 
+  // Y immer 8-cm-Raster (nicht Paneel-Modul): WINDOW_SILL_Y=128 bleibt 128, nicht 120.
   const y =
     at?.y !== undefined
-      ? snapToGrid(at.y, posGrid)
+      ? snapToGrid(at.y, STUDIO_MASONRY)
       : type === 'door' || type === 'cutout'
         ? 0
         : type === 'conch'
           ? WINDOW_SILL_Y
           : WINDOW_SILL_Y
 
-  const donor = donorOpeningForStyle(wall, type, opts?.donorWalls)
+  const donor = opts?.donor ?? donorOpeningForStyle(wall, type, opts?.donorWalls)
 
   if (type === 'cutout') {
     return hydrateOpening(
@@ -532,11 +533,20 @@ export function inheritOpeningStyles(base: Opening, donor?: Opening): Opening {
     rollerShutter: donor.rollerShutter ? { ...donor.rollerShutter } : base.rollerShutter,
     basementWindow: donor.basementWindow ? { ...donor.basementWindow } : base.basementWindow,
     arch: donor.arch ? { ...donor.arch } : base.arch,
+    archRustication: donor.archRustication ? { ...donor.archRustication } : base.archRustication,
     fill: donor.fill ? { ...donor.fill } : base.fill,
     panelClearance: donor.panelClearance ? { ...donor.panelClearance } : base.panelClearance,
+    panelWrappedReveal: donor.panelWrappedReveal
+      ? { ...donor.panelWrappedReveal }
+      : base.panelWrappedReveal,
     revealFrame: donor.revealFrame ? { ...donor.revealFrame } : base.revealFrame,
     depthOffset: donor.depthOffset ?? base.depthOffset,
     cutoutShape: donor.cutoutShape ?? base.cutoutShape,
+    motion: donor.motion ? { ...donor.motion } : base.motion,
+    guard: donor.guard ? { ...donor.guard } : base.guard,
+    interiorShade: donor.interiorShade ? { ...donor.interiorShade } : base.interiorShade,
+    schedule: donor.schedule ? { ...donor.schedule } : base.schedule,
+    windowModel: donor.windowModel ?? base.windowModel,
   }
 }
 
@@ -556,12 +566,13 @@ export function addOpening(
     const useMasonry = wallUsesOpeningMasonrySnap(wall)
     let placed = opening
     if (useMasonry) {
-      // Nur Position an Fugen; Bibliotheksmaße (z. B. 96×192) bleiben erhalten.
+      // Nur X an Laibungsfugen; Y (Brüstung 128) nicht auf Schicht-/Wandmitte ziehen.
       placed = {
         ...opening,
         ...alignOpeningToMasonry(wall, allWalls, opening, {
           snapWidth: false,
           snapHeight: false,
+          snapY: false,
         }),
       }
     }
@@ -823,6 +834,8 @@ export function updateOpening(
         const aligned = alignOpeningToMasonry(wall, allWalls, merged, {
           snapWidth: patch.width !== undefined,
           snapHeight: patch.height !== undefined,
+          // Vertikal bleibt 8-cm / Nutzerwert — nicht auf Schichtmitte (128→132 bei h≠448).
+          snapY: false,
         })
         merged = { ...merged, ...aligned }
       }
@@ -1526,7 +1539,7 @@ export function applyWallOpeningPreset(
   return { state: next, opening }
 }
 
-/** Verschiebt eine Öffnung um dx/dy; Studio-Mauerwerk: an Fugen/Schichten. */
+/** Verschiebt eine Öffnung um dx/dy; Position immer 8-cm-Raster (auch bei Läuferverband). */
 export function moveOpening(
   state: FacadeState,
   wallId: string,
@@ -1540,44 +1553,33 @@ export function moveOpening(
   const mode = opts?.mode ?? 'drag'
   return mapWall(state, wallId, (wall) => {
     const step = openingPositionStep(wall)
-    const grid = openingGridForWall(wall)
     const others = wall.openings.filter((o) => o.id !== openingId)
-    const useMasonry = wallUsesOpeningMasonrySnap(wall)
     return {
       ...cloneWall(wall),
       openings: wall.openings.map((opening) => {
         if (opening.id !== openingId) return opening
-        // Mauerwerk: Rohposition (kein 8-cm-Vorschritt — sonst Springen gegen Fugen-Snap).
-        let newX = useMasonry ? opening.x + dx : Math.round((opening.x + dx) / step) * step
+        let newX = opening.x + dx
         let newY =
           opening.type === 'door' && opening.stairs?.enabled
             ? stairTopY(normalizeOpeningStairs(opening.stairs, opening))
-            : useMasonry
-              ? opening.y + dy
-              : Math.round((opening.y + dy) / step) * step
-        let newWidth = opening.width
-        let newHeight = opening.height
-        if (useMasonry) {
-          const snapped = snapOpeningMoveToMasonry(
-            wall,
-            allWalls,
-            opening,
-            newX,
-            newY,
-            dx,
-            dy,
-            mode,
-          )
-          newX = snapped.x
-          newY = snapped.y
-          newWidth = snapped.width
-          newHeight = snapped.height
-        }
-        const clamped = clampOpeningToWall(
-          { ...opening, x: newX, y: newY, width: newWidth, height: newHeight },
+            : opening.y + dy
+        const snapped = snapOpeningMoveToMasonry(
           wall,
-          grid,
-          { snapToGrid: !useMasonry },
+          allWalls,
+          opening,
+          newX,
+          newY,
+          dx,
+          dy,
+          mode,
+        )
+        newX = snapped.x
+        newY = snapped.y
+        const clamped = clampOpeningToWall(
+          { ...opening, x: newX, y: newY, width: snapped.width, height: snapped.height },
+          wall,
+          step,
+          { snapToGrid: true },
         )
         // Verschieben: kein Mindestabstand — nur echte Überlappung blockieren.
         if (mode === 'drag') {

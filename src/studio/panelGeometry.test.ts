@@ -537,6 +537,8 @@ describe('Bossen an maskierten Reststeinen (Rundbogen)', () => {
       taperDepth: 4,
       plinthEnabled: false,
       plinthHeight: 0,
+      hideRowsTop: 0,
+      hideRowsBottom: 0,
     }
     const opening = {
       id: 'arch',
@@ -823,9 +825,14 @@ describe('innerFaceRingFromWalls', () => {
   it('panelFlip false: Decke bündig an Innenkante (kein Doppel-Inset)', () => {
     const plan = rectanglePlan()
     const ring = extractPlanRings(plan).find((item) => item.closed)!
-    const walls = wallsFromFloorPlan(plan).map((wall) => ({ ...wall, panelFlip: false }))
-    const fromWalls = innerFaceRingFromWalls(ring.nodes, walls, WALL_DEPTH)
-    const fromFormula = innerFaceRingWorld(ring.nodes, WALL_DEPTH)
+    // Regression mit fester 32-cm-Tiefe (Produkt-Default EG ist 48).
+    const depth = 32
+    const walls = wallsFromFloorPlan(plan, 0, undefined, depth).map((wall) => ({
+      ...wall,
+      panelFlip: false,
+    }))
+    const fromWalls = innerFaceRingFromWalls(ring.nodes, walls, depth)
+    const fromFormula = innerFaceRingWorld(ring.nodes, depth)
     const minZWalls = Math.min(...fromWalls.map((p) => p.z))
     const minZFormula = Math.min(...fromFormula.map((p) => p.z))
     expect(minZWalls).toBeLessThan(minZFormula - 20)
@@ -943,6 +950,164 @@ describe('createStudioOpeningRevealGeometry', () => {
     }
     expect(maxOuterBandZ).toBeCloseTo(split, 1)
     geometry!.dispose()
+  })
+
+  it('panelWrappedReveal: Mörtelbett-Laibung + Return-Steine aus dem Verband bis zur Fensterfront', () => {
+    const opening = {
+      id: 'o1',
+      type: 'window' as const,
+      x: 48,
+      y: 128,
+      width: 96,
+      height: 192,
+      depthOffset: 0,
+      panelWrappedReveal: { enabled: true },
+      arch: { enabled: true, form: 'round' as const, riseCm: 48 },
+    }
+    const wall: Wall = {
+      ...studioWall({
+        ...DEFAULT_STUDIO_PANEL,
+        panelHeight: 32,
+        panelWidth: 64,
+        projectDepth: 4,
+        taperDepth: 2,
+        taper: 0.8,
+        enabled: true,
+      }),
+      kind: 'studio',
+      panelFlip: true,
+      width: 320,
+      height: 448,
+      depth: 32,
+      openings: [opening],
+    }
+    const zOuter = studioOpeningRevealOuterZ(wall, opening)
+    const zInner = studioOpeningRevealInnerZ(wall)
+    const zSplit = studioOpeningRevealColorSplitZ(wall, opening, zOuter, zInner, 0)
+    const reveal = createStudioOpeningRevealGeometry(wall, opening, { windowDepthOffset: 0 })
+    expect(reveal).not.toBeNull()
+    expect(reveal!.userData.panelWrappedReveal).toBe(true)
+    // Gruppen: 0 Mörtelbett außen, 1 innen, 2 Sohlbank-Putz (Fenster mit Brüstung)
+    expect(reveal!.groups.map((g) => g.materialIndex)).toEqual([0, 1, 2])
+
+    // Ohne Wrap: Vergleichsgeometrie — die Returns kommen zusätzlich dazu.
+    const plainWall: Wall = {
+      ...wall,
+      openings: [{ ...opening, panelWrappedReveal: { enabled: false } }],
+    }
+    const plain = createStudioPanelGeometry(plainWall, plainWall.panel!, [plainWall], undefined, { windowDepthOffset: 0 })
+    const wrapped = createStudioPanelGeometry(wall, wall.panel!, [wall], undefined, { windowDepthOffset: 0 })
+    const plainPos = plain.getAttribute('position')
+    const wPos = wrapped.getAttribute('position')
+    expect(wPos.count).toBeGreaterThan(plainPos.count + 200)
+
+    // Returns reichen bis zur Fensterfront (zSplit) — Fassadensteine enden bei backZ 0.
+    let maxZ = -Infinity
+    let maxZPlain = -Infinity
+    for (let i = 0; i < wPos.count; i += 1) maxZ = Math.max(maxZ, wPos.getZ(i))
+    for (let i = 0; i < plainPos.count; i += 1) maxZPlain = Math.max(maxZPlain, plainPos.getZ(i))
+    expect(maxZPlain).toBeLessThan(0.5)
+    expect(maxZ).toBeCloseTo(zSplit, 1)
+
+    // Bogen: Return-Vertices tief in der Laibung (z > 5) liegen auch über der Kämpferlinie
+    // (Bogenbereich) und in der Bogen-Mitte — der Verband folgt dem Bogen.
+    const halfH = wall.height / 2
+    const halfW = wall.width / 2
+    // Bogen liegt **innerhalb** der Öffnungshöhe: Kämpfer = y + height − rise, Scheitel = y + height.
+    const springLocalY = opening.y + opening.height - opening.arch.riseCm - halfH
+    const midX = opening.x + opening.width / 2 - halfW
+    let deepAboveSpring = 0
+    let deepNearApex = 0
+    for (let i = 0; i < wPos.count; i += 1) {
+      if (wPos.getZ(i) < 5) continue
+      const y = wPos.getY(i)
+      if (y > springLocalY + 10) deepAboveSpring += 1
+      if (Math.abs(wPos.getX(i) - midX) < 12 && y > springLocalY + 30) deepNearApex += 1
+    }
+    expect(deepAboveSpring).toBeGreaterThan(20)
+    expect(deepNearApex).toBeGreaterThan(4)
+
+    // Wandecken-Gehrung (v2.0.287): Fassadenstein-Vertices vor der Wand (z ≈ −P)
+    // ragen in die Öffnung (x > Laibung), im Nicht-Wrap-Fall nicht.
+    const jambLocalX = opening.x - halfW
+    const intrudes = (pos: THREE.BufferAttribute | THREE.InterleavedBufferAttribute) => {
+      let n = 0
+      for (let i = 0; i < pos.count; i += 1) {
+        const z = pos.getZ(i)
+        const y = pos.getY(i)
+        if (z < -3.5 && z > -4.5 && y > opening.y - halfH + 20 && y < springLocalY - 20) {
+          const x = pos.getX(i)
+          if (x > jambLocalX + 3.5 && x < jambLocalX + 4.5) n += 1
+        }
+      }
+      return n
+    }
+    expect(intrudes(plainPos)).toBe(0)
+    expect(intrudes(wPos)).toBeGreaterThan(0)
+
+    reveal!.dispose()
+    plain.dispose()
+    wrapped.dispose()
+  })
+
+  it('panelWrappedReveal: Sturz-Returns und Ecken-Gehrung bei Rechtecköffnung', () => {
+    const opening = {
+      id: 'o1',
+      type: 'window' as const,
+      x: 96,
+      y: 64,
+      width: 96,
+      height: 176,
+      depthOffset: 0,
+      panelWrappedReveal: { enabled: true },
+    }
+    const wall: Wall = {
+      ...studioWall({
+        ...DEFAULT_STUDIO_PANEL,
+        panelHeight: 24,
+        panelWidth: 48,
+        projectDepth: 4,
+        taperDepth: 1,
+        taper: 0.8,
+        joint: 0.8,
+        enabled: true,
+        pattern: 'runningBond',
+      }),
+      kind: 'studio',
+      panelFlip: true,
+      width: 480,
+      height: 352,
+      depth: 40,
+      openings: [opening],
+    }
+    const geo = createStudioPanelGeometry(wall, wall.panel!, [wall])
+    const pos = geo.getAttribute('position')
+    const halfH = wall.height / 2
+    const halfW = wall.width / 2
+    // Sturz kann durch snapHoleToTileGrid über opening.y+height liegen — Band darunter prüfen.
+    const lintelY = opening.y + opening.height
+    let deepLintel = 0
+    let deepCorner = 0
+    for (let i = 0; i < pos.count; i += 1) {
+      const x = pos.getX(i) + halfW
+      const y = pos.getY(i) + halfH
+      const z = pos.getZ(i)
+      if (z < 5) continue
+      if (
+        y > lintelY - 10 &&
+        y < lintelY + 28 &&
+        x > opening.x + 12 &&
+        x < opening.x + opening.width - 12
+      ) {
+        deepLintel += 1
+      }
+      if (Math.hypot(x - opening.x, y - lintelY) < 10 || Math.hypot(x - (opening.x + opening.width), y - lintelY) < 10) {
+        deepCorner += 1
+      }
+    }
+    expect(deepLintel, 'Return-Vertices am Sturz fehlen').toBeGreaterThan(20)
+    expect(deepCorner, 'keine Return-Geometrie an Sturz-Ecken').toBeGreaterThan(4)
+    geo.dispose()
   })
 })
 

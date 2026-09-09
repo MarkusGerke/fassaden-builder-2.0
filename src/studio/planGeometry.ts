@@ -208,11 +208,15 @@ function fitLoopWalls(
     const from = corners[i]!
     const to = corners[i + 1] ?? corners[0]!
     const newWidth = Math.hypot(to.x - from.x, to.z - from.z)
-    const oldWidth = segs[i]!.wall.width
+    const oldWall = segs[i]!.wall
+    const oldWidth = oldWall.width
+    const isBaySurface = Boolean(oldWall.bayParentId || oldWall.bayRole || oldWall.bayWindow)
+    const wallDepth =
+      isBaySurface && Number.isFinite(oldWall.depth) && oldWall.depth > 0 ? oldWall.depth : depth
     // Gegenläufiger Walk ohne Orientierung lieferte ~Wandstärke statt der Fassade.
-    if (newWidth < 1 || (oldWidth > depth * 2 && newWidth < oldWidth * 0.5)) continue
+    if (newWidth < 1 || (oldWidth > wallDepth * 2 && newWidth < oldWidth * 0.5)) continue
     const pose = poseOnOuterSegment(from, to, segs[i]!.outward)
-    byId.set(segs[i]!.wall.id, applyOuterPose(segs[i]!.wall, pose, depth))
+    byId.set(oldWall.id, applyOuterPose(oldWall, pose, wallDepth))
   }
 }
 
@@ -260,18 +264,25 @@ export function fitBuildingWallsToOuterSpine(building: Building, depth?: number)
 
   for (const wall of byId.values()) {
     if (!isStudioWall(wall) || used.has(wall.id)) continue
+    // Erker-/Balkon-Flächen behalten ihre eigene Stärke (24 cm), nicht Gebäude-EG-Default.
+    const isBaySurface = Boolean(wall.bayParentId || wall.bayRole || wall.bayWindow)
+    const targetDepth = isBaySurface
+      ? Number.isFinite(wall.depth) && wall.depth > 0
+        ? wall.depth
+        : nextDepth
+      : nextDepth
     const oldDepth = wall.depth
-    const delta = oldDepth - nextDepth
+    const delta = oldDepth - targetDepth
     if (!(wall.panelFlip ?? true) && Math.abs(delta) > 1e-6) {
       const out = studioWallOuterSpine(wall).outward
       const originX = (wall.originX ?? wall.x) + out.x * delta
       const originZ = (wall.originZ ?? 0) + out.z * delta
       byId.set(
         wall.id,
-        normalizeStudioWall({ ...wall, originX, originZ, x: originX, depth: nextDepth }),
+        normalizeStudioWall({ ...wall, originX, originZ, x: originX, depth: targetDepth }),
       )
     } else {
-      byId.set(wall.id, normalizeStudioWall({ ...wall, depth: nextDepth }))
+      byId.set(wall.id, normalizeStudioWall({ ...wall, depth: targetDepth }))
     }
   }
 

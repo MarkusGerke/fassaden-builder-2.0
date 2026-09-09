@@ -35,6 +35,25 @@ Kanonisch: `resolveOpeningLayerContract` in [`src/utils/openingGeometry.ts`](../
 - `finish: 'empty'` = Band ohne Steine; `taper` = radiale/konische Bandfüllung (nur mit Paneelen).
 - `depthCm` = Vorstand (+) / Vertiefung (−) des Freiraum-Bands.
 
+### Paneel-umwickelte Laibung (`Opening.panelWrappedReveal`, v2.0.279–293)
+
+- **v2.0.293:** **Sturz-Reihe an Wrap-Ecken geteilt** (`splitHeadRowPartsAtWrapCorners`): Steine direkt über dem Sturz, die eine Laibungslinie überspannen, werden bei `cornerX ± joint/2` geteilt → Sturz-Teil mit Gehrung + Return wie an den Seiten, kein schräg interpolierter Unterkanten-Versatz. Return-Kettenenden wieder exakt auf den Stein-Ecken. v2.0.290–292 entfernt.
+- **v2.0.292:** *(verworfen)* Stein-Inset `joint/2` an der Laibung.
+- **v2.0.291:** *(verworfen)* Return-Kette um `joint/√2` kürzen.
+- **v2.0.290:** *(verworfen)* joint/2 along-Offset.
+- **v2.0.289:** Sturz wieder **wie seitliche Laibungen**. v2.0.288 verworfen.
+- **v2.0.288:** *(verworfen)* nur vertikale Laibungen.
+- **v2.0.287:** Äußere Paneelkante an Laibung/Sturz **Wandecken-Gehrung**. Am Bogen kein Versatz.
+- **v2.0.286:** Wrap-Maske am **Rechteck-Sturz** folgt der gesnappten Paneel-Lochoberkante (`snapHoleToTileGrid`); explizite Ecken Sturz/Kämpfer für Return-Gehrung. Sonst fehlten Sturz-Returns (Steine lagen über der Masken-Y).
+- **v2.0.285:** Zwischenzeitlich **bündig statt Gehrung** (gesamte Wrap-Kante), weil der volle Versatz aus v2.0.284 am Bogen Keile erzeugte. UI-Info-Box `#opening-panel-wrapped-reveal-info` bleibt (Rundbogen-Hinweise).
+- **v2.0.284:** Verband läuft **wie an einer Wandecke** um die Öffnungskante:
+  - Fassadensteine mit Randkante auf der Öffnungsmaske: **konvexe 45°-Gehrung** (`WrapMiterSpec` / `makeCoordAt`) — ab v2.0.287 wieder, aber nur achsparallel; `WrapMiterSpec` auch für Ketten, flache Boss-Seite (`edgeOnWrap`, `pinInsetToFlushPlanes(wrap)`) und Return-Loft.
+  - Pro Fassadenstein ein **Return-Stein** aus seiner Randkette (`wrapChainsOfRing` → `extrudeWrapReturn`): Loft entlang der Kette; Querschnitt Körper d ∈ [−0,25, P] mit Gehrungsebene außen (v2.0.287), innen bis `zSplit`; Trapez-Boss d ∈ [P, P+T] außen flach, innen/Enden `chamfer`. Enden ≤ 1,6 cm neben Masken-Ecke → 45°-Schnitt. Gleiche Farbgruppe wie der Stein.
+  - Laibungsfläche außen bleibt als **Mörtelbett** (`jointColor`, Gruppe 0) ab Wandaußenfläche bis `zSplit`; Innen ab `zSplit` (Gruppe 1); **Sohlbank** ohne Return, Putz (Gruppe 2). `FacadeController.rebuildReveals` belegt `[mortar, interior, exterior]`.
+  - Konstanten: `WRAP_EDGE_EPS_CM` 1,25 (deckt `joint/2` am Sturz), `WRAP_CORNER_SNAP_CM` 1,6, `WRAP_RETURN_BACK_OVERLAP_CM` 0,25. Freiraum-Band (`openingPanelClearance` > 0) schließt Wrap aus.
+  - **Fallstricke:** `windowDepthOffset` muss Steinen **und** Laibung gleich übergeben werden (sonst enden Returns nicht an der Fensterfront). Rechteck-Boss im Frustum läuft jetzt über `p` (nicht `xAt`) — bei Erker-Bogenwänden folgt der Boss damit wie der Körper der Krümmung.
+- Frühere Ansätze (verworfen, nicht wieder einbauen): Strip-Mesh (v2.0.279 Streifen/Z-Fight), flache Stein-`backZ`-Vertiefung (v2.0.280–282, kein Boss), eigenständig gerasterte Laibungs-Module (v2.0.283 — ohne Gehrung, Bogen leer, Verband passt nicht zur Fassade), konvexer 45°-Versatz der Fassadensteine entlang der Bogennormale (v2.0.284 — Keile an Bogen ∩ Lagerfuge).
+
 Bestehende Helfer (`openingCutsWall`, `openingPanelClearance`, …) bleiben API-kompatibel und müssen semantisch mit dem Vertrag übereinstimmen (Tests).
 
 ## Verkleidungszonen (B)

@@ -1,15 +1,13 @@
 /**
- * Öffnungen immer bündig oder zentriert zu Fugen/Ziegeln/Paneelen — kein festes 8-cm-Raster.
+ * Öffnungs-Snap an Fugen/Ziegeln/Paneelen (Maße, explizite Ausrichtung).
  *
- * Snap-Ziele für die linke Laibung `x`:
+ * **Verschieben (Drag/Nudge):** immer 8-cm-Raster (`STUDIO_MASONRY`) — v2.0.302.
+ * Früher Fugen/Steinmitte → oft 12/24-cm-Sprünge; Position-UI ist step=8.
+ *
+ * Snap-Ziele für `alignOpeningToMasonry` / Breiten-Snap (linke Laibung `x`):
  * 1. Bündig an Fuge — `x` = Cut
- * 2. Zentriert auf Stein — Fenstermitte auf Steinmitte (Mitte zwischen zwei Cuts)
- * 3. Wandmitte — `x` = wall.width/2 − width/2 (wichtig bei 45°-Längen)
- *
- * Drag: nur Fugen-bündig + Wandmitte; immer nächster Kandidat (kein Freilauf).
- *       Freie Position ließ Öffnungen zwischen Halbstein-Fugen stehen → Stummel.
- * Nudge: volles Raster (Fuge + Steinmitte + Wandmitte).
- * Breite: rechte Laibung ebenfalls auf eine Fuge, damit beide Kanten aufgehen.
+ * 2. Zentriert auf Stein — Fenstermitte auf Steinmitte
+ * 3. Wandmitte — `x` = wall.width/2 − width/2
  *
  * Gestapelte Etagen mit unterschiedlichem Modul: gemeinsame Cuts (LCM), sonst echte Lagen-Cuts.
  * Multi-Zone (`claddingZones` mit rect): Cuts aus dem Modul der Zone an Öffnungs-Mitte-Y.
@@ -21,6 +19,7 @@ import {
   STUDIO_MASONRY,
 } from '../studio/constants'
 import { effectivePanelAtY } from '../studio/facadeLayers'
+import { bayWallSkirtDropCm } from '../studio/bayWindow'
 import {
   masonryPatternCuts,
   patternModuleUnit,
@@ -199,9 +198,10 @@ export function openingMasonryJambXs(
 }
 
 /** Horizontale Schichtgrenzen. Optional Y-bewusst (Zonen-`panelHeight`). */
-export function openingMasonryCourseYs(wall: Wall, atY?: number): number[] {
+export function openingMasonryCourseYs(wall: Wall, atY?: number, allWalls: Wall[] = []): number[] {
   const panel = snapPanelForWall(wall, atY ?? wall.height / 2)
-  const { rowCuts } = visiblePanelRowRange(wall.height, panel)
+  const skirt = bayWallSkirtDropCm(wall, allWalls)
+  const { rowCuts } = visiblePanelRowRange(wall.height, panel, skirt)
   return uniqueSortedCuts(rowCuts, wall.height)
 }
 
@@ -260,9 +260,10 @@ export function openingPlacementCandidateYs(
   height: number,
   atY?: number,
   kind: OpeningPlacementCandidateKind = 'full',
+  allWalls: Wall[] = [],
 ): number[] {
   const maxY = Math.max(0, wall.height - height)
-  const cuts = openingMasonryCourseYs(wall, atY)
+  const cuts = openingMasonryCourseYs(wall, atY, allWalls)
   const ys: number[] = []
   for (const c of cuts) {
     if (c >= -EPS && c <= maxY + EPS) ys.push(c)
@@ -442,64 +443,33 @@ export interface OpeningMasonrySnapResult {
 export type OpeningMasonryMoveMode = 'drag' | 'nudge'
 
 /**
- * Position an Kandidaten (Fuge / Steinmitte / Wandmitte).
- * - `drag`: Fugen-bündig + Wandmitte, immer nächster Kandidat; Breite so dass beide Laibungen auf Fugen liegen
- * - `nudge`: nächster/vorheriger Kandidat aus dem vollen Raster
+ * Position beim Verschieben: festes 8-cm-Raster (`STUDIO_MASONRY`).
+ * Fugen-Ausrichtung bleibt bei `alignOpeningToMasonry` (Maße / explizit).
+ * `allWalls`/`mode`/`dx`/`dy` bleiben in der Signatur für Aufrufer-Kompatibilität.
  */
 export function snapOpeningMoveToMasonry(
   wall: Wall,
-  allWalls: Wall[],
+  _allWalls: Wall[],
   opening: Pick<Opening, 'x' | 'y' | 'width' | 'height' | 'type' | 'stairs'>,
   proposedX: number,
   proposedY: number,
-  dx: number,
-  dy: number,
-  mode: OpeningMasonryMoveMode = 'drag',
+  _dx: number,
+  _dy: number,
+  _mode: OpeningMasonryMoveMode = 'drag',
 ): OpeningMasonrySnapResult {
-  let { x, y, width, height } = {
-    x: proposedX,
-    y: proposedY,
-    width: opening.width,
-    height: opening.height,
-  }
-
-  if (!wallUsesOpeningMasonrySnap(wall)) {
-    return { x, y, width, height }
-  }
-
-  const atY = openingCenterY(opening, proposedY)
-  const kind: OpeningPlacementCandidateKind = mode === 'drag' ? 'drag' : 'full'
-  // Beim Verschieben Breite/Höhe nicht anfassen — sonst wird Bibliothek 96×192 zu 104.
-  // Drag: wenn möglich nur Positionen mit beiden Laibungen auf Fugen (Sollbreite).
-  const flushXs = openingFlushWidthPlacementXs(wall, allWalls, width, atY)
-  const xs =
-    mode === 'drag' && flushXs.length > 0
-      ? flushXs
-      : openingPlacementCandidateXs(wall, allWalls, width, atY, kind)
-  if (xs.length > 0) {
-    if (mode === 'nudge' && Math.abs(dx) > EPS) {
-      x = adjacentValueByTravel(xs, opening.x, dx > 0 ? 1 : -1, dx)
-    } else if (Math.abs(dx) > EPS || Math.abs(proposedX - opening.x) > EPS) {
-      x = nearestPlacementX(xs, proposedX, width, wall.width)
-    } else {
-      x = nearestPlacementX(xs, opening.x, width, wall.width)
-    }
-  }
-
+  const step = STUDIO_MASONRY
+  const width = opening.width
+  const height = opening.height
+  const maxX = Math.max(0, wall.width - width)
+  const maxY = Math.max(0, wall.height - height)
+  const maxXStep = Math.max(0, Math.floor((maxX + EPS) / step) * step)
+  const maxYStep = Math.max(0, Math.floor((maxY + EPS) / step) * step)
+  let x = Math.max(0, Math.min(maxXStep, Math.round(proposedX / step) * step))
+  let y = proposedY
   const lockY = opening.type === 'door' && Boolean(opening.stairs?.enabled)
   if (!lockY) {
-    const ys = openingPlacementCandidateYs(wall, height, atY, kind)
-    if (ys.length > 0) {
-      if (mode === 'nudge' && Math.abs(dy) > EPS) {
-        y = adjacentValueByTravel(ys, opening.y, dy > 0 ? 1 : -1, dy)
-      } else if (Math.abs(dy) > EPS || Math.abs(proposedY - opening.y) > EPS) {
-        y = nearestValue(ys, proposedY)
-      } else {
-        y = nearestValue(ys, opening.y)
-      }
-    }
+    y = Math.max(0, Math.min(maxYStep, Math.round(proposedY / step) * step))
   }
-
   return { x, y, width, height }
 }
 
@@ -508,7 +478,7 @@ export function alignOpeningToMasonry(
   wall: Wall,
   allWalls: Wall[],
   opening: Pick<Opening, 'x' | 'y' | 'width' | 'height' | 'type' | 'stairs'>,
-  opts?: { snapWidth?: boolean; snapHeight?: boolean },
+  opts?: { snapWidth?: boolean; snapHeight?: boolean; snapY?: boolean },
 ): OpeningMasonrySnapResult {
   let { x, y, width, height } = opening
   if (!wallUsesOpeningMasonrySnap(wall)) {
@@ -517,6 +487,9 @@ export function alignOpeningToMasonry(
 
   const atY = openingCenterY(opening)
   const snapHeight = opts?.snapHeight === true
+  // Default true (explizites „An Fugen“ / Alt-Migration). Neu platzieren: snapY false —
+  // sonst wandert WINDOW_SILL_Y=128 auf Schichtmitte/Wandmitte (448 cm: Mitte≡128, andere Höhen falsch).
+  const snapY = opts?.snapY !== false
 
   // Explizite Breitenänderung (snapWidth): Sollbreite halten — nicht auf nächste Fugen-Spannweite
   // aufblasen (96→100/104). Nur Position so wählen, dass möglichst beide Laibungen auf Fugen liegen.
@@ -530,9 +503,9 @@ export function alignOpeningToMasonry(
   if (xs.length > 0) x = nearestPlacementX(xs, x, width, wall.width)
 
   const lockY = opening.type === 'door' && Boolean(opening.stairs?.enabled)
-  if (!lockY) {
+  if (!lockY && snapY) {
     if (snapHeight) {
-      const ysCuts = openingMasonryCourseYs(wall, atY)
+      const ysCuts = openingMasonryCourseYs(wall, atY, allWalls)
       if (ysCuts.length >= 2) {
         const top = nearestValue(ysCuts, y)
         const bottom = nearestValue(ysCuts, top + height)
@@ -543,7 +516,7 @@ export function alignOpeningToMasonry(
         }
       }
     }
-    const ys = openingPlacementCandidateYs(wall, height, atY, 'full')
+    const ys = openingPlacementCandidateYs(wall, height, atY, 'full', allWalls)
     if (ys.length > 0) y = nearestValue(ys, y)
   }
 

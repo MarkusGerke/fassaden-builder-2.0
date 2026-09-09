@@ -11,6 +11,7 @@ import {
   openingMasonryJambXs,
   wallUsesOpeningMasonrySnap,
 } from '../utils/openingPanelSnap'
+import { bayWallSkirtDropCm } from './bayWindow'
 import { visiblePanelRowRange } from './panelLayout'
 import { wallAlongDelta } from './walls'
 
@@ -94,15 +95,16 @@ export function wallFaceGridXs(wall: Wall, allWalls: Wall[] = [wall]): number[] 
 /**
  * Horizontale Rasterlinien = Schichtgrenzen des Paneels / Mauerwerks.
  */
-export function wallFaceGridYs(wall: Wall): number[] {
+export function wallFaceGridYs(wall: Wall, allWalls: Wall[] = []): number[] {
   const panel = normalizeStudioPanel(wall.panel ?? DEFAULT_STUDIO_PANEL)
   if (!panel.enabled || panel.pattern === 'none') {
     return regularCuts(wall.height, STUDIO_TILE)
   }
   if (wallUsesOpeningMasonrySnap(wall)) {
-    return openingMasonryCourseYs(wall, wall.height / 2)
+    return openingMasonryCourseYs(wall, wall.height / 2, allWalls)
   }
-  const { rowCuts } = visiblePanelRowRange(wall.height, panel)
+  const skirt = bayWallSkirtDropCm(wall, allWalls)
+  const { rowCuts } = visiblePanelRowRange(wall.height, panel, skirt)
   return uniqueCuts(rowCuts, wall.height)
 }
 
@@ -194,7 +196,9 @@ export function showWallFacePlacementGrid(
   const oz = outward.z
   const verts: THREE.Vector3[] = []
   const xs = wallFaceGridXs(wall, allWalls)
-  const ys = wallFaceGridYs(wall)
+  // Erker-Skirt: allWalls nötig, sonst starten Hilfslinien am verlängerten Fuß
+  // statt an den Paneel-Schichten (Fugen mittig durch Steine).
+  const ys = wallFaceGridYs(wall, allWalls)
 
   for (const lx of xs) {
     const along = wallAlongDelta(yawDeg, lx)

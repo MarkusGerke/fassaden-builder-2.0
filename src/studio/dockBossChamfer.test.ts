@@ -15,7 +15,7 @@ function studioWall(partial: Partial<Wall> & { id: string }): Wall {
     y: 0,
     width: partial.width ?? 384,
     height: partial.height ?? 128,
-    depth: WALL_DEPTH,
+    depth: partial.depth ?? 32,
     originX: partial.originX ?? 0,
     originZ: partial.originZ ?? 0,
     yawDeg: 0,
@@ -44,6 +44,8 @@ describe('1+1 dock boss trapezoid', () => {
     taper: 0.5,
     endBossEndJoin: 'flush' as const,
     endBossStartJoin: 'flush' as const,
+    hideRowsTop: 0,
+    hideRowsBottom: 0,
   }
 
   it('markiert 1+1-Endsteine mit keepBossChamfer', () => {

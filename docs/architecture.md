@@ -135,7 +135,7 @@ interface Building {
   walls: Wall[]              // buildingId === building.id
   roof?: RoofConfig
   wallHeight: number         // Geschosshöhe (cm), Standard 448 cm
-  wallDepth: number          // Wandstärke (cm), Standard 32 cm
+  wallDepth: number          // Wandstärke EG (cm), Standard 48 cm; OG/Erker oft 24
   windowDepthOffset?: number
 }
 

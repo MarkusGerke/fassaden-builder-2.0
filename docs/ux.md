@@ -14,6 +14,8 @@ Schlanker Produkt-Fokus auf **2D-Front im Render-Modus**; **3D** ist wieder per 
 
 **Rechteckauswahl (v2.0.193):** Ohne aktuelle Auswahl **Shift+Ziehen** auf der Bühne (2D/3D/Oben) → orangefarbenes Auswahlrechteck. Gewählt werden nur **vollständig** eingerahmte Wände, Öffnungen oder Lichter (`src/utils/marqueeSelect.ts`). Angeschnittene Objekte zählen nicht. Mit Auswahl bleibt Shift+Klick Mehrfachwahl bzw. Shift+Leer Pan.
 
+**Shift-Wandbereich (v2.0.317 / v2.0.318 / v2.0.319):** Erste Wand anklicken, dann **Shift+Klick** auf eine andere Wand. **Gleiche Fassadenseite über Etagen:** nur Wände mit gleicher Blickrichtung (Yaw) auf den Etagen dazwischen — nicht der ganze Grundriss. **Gleiche Etage:** kürzester Weg entlang der Wandstöße (bei gegenüberliegenden Wänden die Seite mit weniger Wänden). **Erker:** nur mitmarkiert, wenn eine Erker-Wand auf dem Pfad/Streifen liegt oder zuvor selbst gewählt wurde — keine automatische Gruppen-Expansion (**v2.0.319**). **Ctrl/Cmd+Klick** bleibt einzelnes Hinzufügen/Entfernen.
+
 **Alles auswählen (v2.0.195 / v2.0.198):** `Cmd/Ctrl+A` wählt alle sichtbaren Studio-Wände des aktiven Hauses (ausgeblendete Etagen/Wände ausgenommen). Im Lichtmodus: alle eingeschalteten Lichter. **Kein** Markieren von Panel-/UI-Text (`preventDefault`, Selection leeren, `user-select: none` auf `#app`). In Eingabefeldern und Release-/Credits-Dialogen bleibt Textauswahl.
 
 ---
@@ -61,7 +63,7 @@ OS-artiges Textmenü (`position: fixed`), Untermenü nach rechts per Hover, Esc 
 
 **Wand duplizieren (v0.7.113 / v0.7.115, Ketteneinfügung v0.7.212):** Nach links/rechts = gleiche Etage (`duplicateWalls`). Liegt die Quellwand in einer kollinearen Kette und duplizierst du **in Richtung eines Nachbarn**, wird die Kopie **zwischen** Quellwand und diesem Nachbarn eingefügt; weiter außen liegende Wände rutschen um die Klonbreite (`collinearChainFromEnd`). Am freien Wandende bleibt das Verhalten wie bisher (Kopie außerhalb). **Darüber** = `insertStoreyAbove` — neues Geschoss direkt über der Quell-Etage, höhere Etagen rutschen nach oben; Mehrfachauswahl wird mitkopiert, Treppen an Türen bleiben aus. **v2.0.234:** `groupId` und Erker-Links (`bayParentId` / `bayWindow.wallIds`) werden auf neue IDs remappt — Gruppen/Erker lösen sich nicht auf. Bei mehreren Klonen bleibt `planLinked` untereinander erhalten (v0.7.115); Einzelwand darüber ist unverbunden. **Separiert** (Studio) = senkrechte Parallelkopie im Grundriss (`planLinked: false`).
 
-Richtung **links/rechts** folgt der **Blickrichtung** (Kamera): „links“ ist immer links auf dem Bildschirm, unabhängig von Wand-Yaw oder Himmelsrichtung (`viewerSideToAlongSign` in `src/studio/walls.ts`, `viewerRightXZ()` aus der Kamera). Gilt für Duplizieren, Einfügen, Bibliotheks-Gizmos (+/−), Erker-Anbindung und Endstücke. Studio-Wände verschieben `origin` entlang der Wandachse; Modul-Wände über Layout-`x`. Rechtsklick auf ein bereits ausgewähltes Element behält die Mehrfachauswahl (Löschen/Duplizieren wirkt auf alle).
+Richtung **links/rechts** folgt der **Blickrichtung** (Kamera): „links“ ist immer links auf dem Bildschirm, unabhängig von Wand-Yaw oder Himmelsrichtung (`viewerSideToAlongSign` in `src/studio/walls.ts`, `viewerRightXZ()` aus der Kamera). Gilt für Duplizieren, Einfügen, Bibliotheks-Gizmos (+/−), Erker-Anbindung und Endstücke. Studio-Wände verschieben `origin` entlang der Wandachse; Modul-Wände über Layout-`x`. Rechtsklick auf ein bereits ausgewähltes Element behält die Mehrfachauswahl (Löschen/Duplizieren wirkt auf alle — **v2.0.316:** Löschen snapshot’t die Refs/IDs und entfernt Erker jeweils vollständig; Treffer auf die Wandfläche bei Öffnungs-Mehrfachauswahl öffnet das Öffnungsmenü).
 
 **Stile kopieren (v0.7.65):** Rechtsklick auf eine Wand kopiert Paneel, Farben, Gesims, Sockel, Außenseite und die Stile der ersten Öffnung (Rahmenprofil aus `wall.profiles`, Verdachung, Bänke). Einfügen per Rechtsklick auf Wand(en) oder Öffnung(en) öffnet `#style-paste-dialog` — Checkboxen steuern, was übernommen wird. Rahmenprofile liegen auf der Wand (`assignProfilesToOpenings`), nicht als Array an der Öffnung.
 
@@ -83,8 +85,10 @@ Nach `commitState` (nicht bei Drag-`previewState`) schreibt `scheduleShareHashWr
 | `schemaVersion` | `number` | **v2.0.142:** Schema-Stand (`FACADE_SCHEMA_VERSION`). Ohne Feld (alte Links) startet der Import bei `FACADE_SCHEMA_IMPORT_BASE` = 7 und spielt alle Migrationen erneut |
 | `scene` | `SceneAppearance` | Hintergrund, Bodenfarbe, Himmelsfarbe, Strichstärke (optional) |
 | `viewYaw` | `number` | Kompass-/Seitenansicht in Grad, 45°-Raster (optional) |
+| `sun` | `SunSettings` | **v2.0.313:** Licht + Animation (optional; Showcase / Teilen) |
+| `bloom` | `BloomSettings` | **v2.0.313:** Bloom (optional) |
 
-Alte Links ohne Wrapper (`{ facade }`) oder nur mit reiner `FacadeState`-JSON werden weiter gelesen; fehlende `scene`/`viewYaw` → Defaults (`DEFAULT_SCENE_APPEARANCE`, Nord/0°). Datei-Export (`downloadFacadeJson`) schreibt `schemaVersion` neben die Fassade; Import (`loadFacadeFromFile`) liest sie und streift sie ab.
+Alte Links ohne Wrapper (`{ facade }`) oder nur mit reiner `FacadeState`-JSON werden weiter gelesen; fehlende `scene`/`viewYaw` → Defaults (`DEFAULT_SCENE_APPEARANCE`, Nord/0°). Fehlendes `sun`/`bloom` → aktuelle App-Defaults bzw. Persistenz. Datei-Export (`downloadFacadeJson`) schreibt `schemaVersion` neben die Fassade; Import (`loadFacadeFromFile`) liest sie und streift sie ab.
 
 **Reload (v2.0.142):** Ein **fremder/eingefügter** `#f=`-Link hat Vorrang vor localStorage. Der **eigene Live-Hash** (von dieser App geschrieben, Marker `fassaden-builder-live-hash` in localStorage = zuletzt geschriebener Hash) **nicht** — dann lädt localStorage (350 ms Debounce, frischer als der 1200-ms-Hash). Übersteigt der Hash `MAX_LIVE_HASH_CHARS` (12 000), wird ein bestehender `#f=` aus der URL **entfernt** statt veraltet stehen zu bleiben.
 
@@ -232,7 +236,7 @@ Yaw-Konvention überall gleich: **0=N, 90=W, 180=S, 270=O** (gegen Uhrzeigersinn
 - **v2.0.207:** Bibliothek-Paneele und Stil einfügen / Stil-Vorlage nutzen `scopedWallIds()` / `scopedOpeningRefs()` — Scope **Etage** gilt auch dafür
 - Öffnungs-Edits (Profil, Fensterbank, Treppe, Rahmen/Glas, Gründerzeit, **Position/Nudge/Drag**): `editOpeningTargets` / `scopedOpeningRefs()`
 - Beim Verschieben: Delta gilt für alle Scoped-Refs. Türen mit aktiver Treppe behalten Auto-Y aus Stufen.
-- **v2.0.233 / v2.0.234:** Nach Edit mit Scope **Auswahl**/**Etage** ggf. `#scope-propagate-offer` im `#scope-bar-slot` — „Gültig für“ fadet aus, Angebot fährt von unten an dieselbe Stelle, **5-s-Countdown**, dann umgekehrt (Property-Deltas, siehe [views-and-state.md](views-and-state.md)).
+- **v2.0.233 / v2.0.234 / v2.0.321 / v2.0.322:** Nach Edit mit Scope **Auswahl**/**Etage** ggf. `#scope-propagate-offer` im `#scope-bar-slot` — „Gültig für“ fadet aus, Angebot fährt von unten an dieselbe Stelle, **5-s-Countdown**, dann umgekehrt (Property-Deltas, siehe [views-and-state.md](views-and-state.md)). **v2.0.321:** Rahmenprofile (`wall.profiles`) werden mitübernommen. **v2.0.322:** Profil-Übernahme auf **Fenster und Türen** (auch andere Maße); übrige Opening-Properties weiter nur bei gleichem Typ+Maß.
 
 | Scope | Wände | Öffnungen |
 |---|---|---|
@@ -346,7 +350,7 @@ Tab **Schrift** (`data-settings-section="label"`): Checkbox, Textfeld mit **Spei
 - Bei Teil-Fokus (`part !== 'group'`): rechte Toolbar zeigt **nur** den passenden Reiter (andere `.settings-section` per `hidden`; verschachtelte Sektionen zählen nur wenn kein Vorfahre ausgeblendet ist). Maße/Aktionen und irrelevante Farben ausgeblendet. **Ausnahme Paneele (`cladding`):** **v2.0.156** / v0.7.227 — **wie Wand ganz** (alle Bibliothek-Tabs und Studio-Reiter); nur 3D-Highlight bleibt auf dem Paneel.
 - **v0.7.176:** Anklicken in 3D behält Teil-Fokus für Profil, Bänke, Verdachung, Konsolen, Treppe, Gesims, Sockel, Paneele, Schrift. Rahmen/Glas → Ganz-Öffnung (`group`). **v2.0.230:** Bei jedem Objekt-Klick startet rechts der Tab **Übersicht** (`selectionToolbarTab = 'all'`); alle Sektionen sichtbar. Nutzer kann danach in Maße/Farben/… wechseln (Sticky bleibt für denselben Toolbar-Typ).
 - 3D-Highlight: Treppe = Stufen-Meshes orange (kein flaches Overlay in der Sockelzone); Wand-Teil = markierte Meshes + Overlay. **v2.0.205 / v2.0.206:** Gesims/Sockel/Zierband und Öffnungs-Teil Profile/Bänke/Verdachung orange per unbeleuchtetem `#ff6600` (`selectedUnlitMaterial`, `toneMapped: false`) — Standard-Material wirkte unter Tone-Mapping dunkelrot. Öffnungs-Overlay folgt der Maske (`openingForShellCut` + `openingWallFaceMaskPolyline`).
-- **Verschieben (v2.0.156 / v2.0.171 / v2.0.173 / v2.0.174 / v2.0.175 / v2.0.177 / v2.0.187):** Ghost, Hilfslinien und Pick-Ebene auf derselben Fassadentiefe (`OPENING_DRAG_FLOAT_CM` = 4 cm) und derselben Maskenkontur — Orange = Linien = Loch nach Drop. **v2.0.171:** kein Shadow-Bake beim Zug-Start (Sockel/Gesims). **v2.0.173:** Shadow-Bake beim Loslassen verzögert. **v2.0.174:** Profile/Bänke sofort mit Außen-EnvMap. **v2.0.175 / v2.0.177:** matte Rahmen kurz ohne Env (gegen Grau). **v2.0.187:** Rahmen wieder mit Außen-EnvMap + Facade-Shade wie Wand/Laibung (sonst dumpferes Weiß).
+- **Verschieben (v2.0.156 / v2.0.171 / v2.0.173 / v2.0.174 / v2.0.175 / v2.0.177 / v2.0.187 / v2.0.320):** Ghost, Hilfslinien und Pick-Ebene auf derselben Fassadentiefe (`OPENING_DRAG_FLOAT_CM` = 4 cm) und derselben Maskenkontur — Orange = Linien = Loch nach Drop. **v2.0.171:** kein Shadow-Bake beim Zug-Start (Sockel/Gesims). **v2.0.173 / v2.0.320:** beim Loslassen `live` (kein Profil-Grau); Schatten-Map ab v2.0.320 sofort forcen. **v2.0.174:** Profile/Bänke sofort mit Außen-EnvMap. **v2.0.175 / v2.0.177:** matte Rahmen kurz ohne Env (gegen Grau). **v2.0.187:** Rahmen wieder mit Außen-EnvMap + Facade-Shade wie Wand/Laibung (sonst dumpferes Weiß).
 
 - 3D: `tagPickable(..., { openingPart })` an Rahmen, Profil-Sweeps, Leibung (`trim`), Bänke, Verdachung, Treppe, Gitter, Freiraum-Kappe; Raycast inkl. `profileGroup`. Pick-Priorität: **Treppe vor Öffnung vor Verkleidung**; Treffer im Öffnungsloch auf Paneel/Wand zählen als Fenster.
 - 2D: Bank/Treppe/Verdachung mit `data-opening-part` pickbar; Öffnungspfade `pointer-events: all`.
@@ -474,7 +478,7 @@ Auswahl darf die Aufriss-Skala nicht springen lassen: bei gleichem `contentKey` 
 Bei Wand-, Öffnungs-, Studio-, Dach- oder Decken-Auswahl:
 
 - **Unten** (`#library-dock` / `#opening-library` / `#library-mode`): **kontextuelle** Element-Bibliothek (siehe Grundgesetz). Tabs horizontal **oberhalb** der Kartenleiste (`#library-dock > .library-chrome`), Text **waagerecht** lesbar; kein Titel „Bibliothek“.
-- **Rechts** (`#selection-toolbar`): Werte, Farben, ±, Löschen. **Eine** Scroll-Spalte (`.selection-toolbar-panels`): Sektionsköpfe volle Breite als vertikaler Fächer — **gescrollte** Köpfe stapeln oben, **noch nicht erreichte** unten (`parkSettingsSectionHeads` per `translateY` in Band `[i·h … viewH−(n−i)·h]`; reines CSS-sticky reicht nicht unter dem Fold). Inhalte bleiben kompakt (kein `min-height`-Weißraum, kein `margin-top`); aktiver Kopf `.settings-section-head-active`. Keine separate untere Tab-Leiste (**v2.0.271** / Rail v2.0.269 entfernt). Kein `position:fixed` (v2.0.269: lag außerhalb). Analog Szene. **v2.0.65/267:** Paneele + Licht-Leiste Geschwister.
+- **Rechts** (`#selection-toolbar`): Werte, Farben, ±, Löschen. **Eine** Scroll-Spalte (`.selection-toolbar-panels`): Sektionsköpfe volle Breite als vertikaler Fächer — **gescrollte** Köpfe stapeln oben, **noch nicht erreichte** unten (`parkSettingsSectionHeads` per `translateY` in Band `[i·h … viewH−(n−i)·h]`; reines CSS-sticky reicht nicht unter dem Fold). **Leere** Sektionen ohne bedienbaren Inhalt (nur Label/Hinweis, ausgeblendete Controls) → Klasse `settings-section-empty`, kein Register (**v2.0.272**). Klick auf Kopf scrollt zur Sektion (Event-Delegation am Panel). Inhalte bleiben kompakt (kein `min-height`-Weißraum, kein `margin-top`); aktiver Kopf `.settings-section-head-active`. Keine separate untere Tab-Leiste (**v2.0.271** / Rail v2.0.269 entfernt). Kein `position:fixed` (v2.0.269: lag außerhalb). Analog Szene. **v2.0.65/267:** Paneele + Licht-Leiste Geschwister.
 - Ohne Auswahl: rechts **immer** die Szeneneinstellungen (`#lighting-accordion`, Geschwister von `#selection-toolbar` unter `#ui-right` — nicht darin verschachtelt, sonst verschwindet die Szene mit `[hidden]` der Auswahl-Toolbar).
 - **`data-settings-inline-all`**: kein eigener Reiter, im aktiven rechten Panel mit sichtbar (Modell/Aktionen).
 - Tab-Wechsel filtert per CSS-Klasse `selection-tab-filtered-out` — bestehende `hidden`-Logik bleibt maßgeblich.
@@ -525,6 +529,10 @@ Button `#ui-left-collapse` als **Fixed-Overlay** am linken Viewport-Rand (`grid-
 
 Checkbox oder Aktion aus → zugehörige Felder, Hinweise und Vorschauen `hidden`, nicht nur disabled. Steuerndes Element bleibt. Beispiel: Keilstein-Ring aus → SVG-Vorschau, Anzahl, Bogenstärke, Schenkel weg (`#opening-arch-voussoir-opts`).
 
+### Info-Box unter Optionen (`.toolbar-infobox`, v2.0.285)
+
+Gelb hinterlegter Hinweiskasten (`<p class="toolbar-infobox" role="note">`) direkt unter einer Checkbox für Einschränkungen/Warnungen, die der Nutzer beim Aktivieren sehen soll. Sichtbar **nur**, wenn die Option aktiv ist (`hidden` sonst — siehe „Inaktive Einstellungen ausblenden“). Erstes Vorkommen: `#opening-panel-wrapped-reveal-info` („Laibung mit Paneelen verkleiden“: bei Rundbögen mögliche Darstellungsprobleme), gesetzt in `syncOpeningPositionControls` und im `change`-Handler der Checkbox (`src/main.ts`).
+
 ### Wände andocken, verschieben & drehen (v0.7.55–0.7.56)
 
 - Wand-Presets aus der Bibliothek: Live-Vorschau in **Plan, 2D und 3D**. Beim Ziehen markiert die App die **Andockflächen orange** (Querschnitt links/rechts = Wandtiefe, oder die obere Fläche beim Aufsetzen) — `dockFacesForSegment`, Ghost-Kappen und Overlay auf bestehenden Wänden; im Grundriss optionale Endkappen.
@@ -540,7 +548,7 @@ Checkbox oder Aktion aus → zugehörige Felder, Hinweise und Vorschauen `hidden
 - **Leere Öffnung:** Bibliothek Fenster → **Keines (leer)** (`opening-empty-96`) bzw. Typ **Keines (leer)** — Loch ohne Fenster/Tür-Chrome (`type: 'cutout'`, `fill.mode: 'opening'`).
 - **Endstück 48** (v0.7.63–v2.0.222): war in der Bibliothek als L-Karten links/rechts; **v2.0.223 entfernt**. Bestehende Endstücke in Projekten bleiben editierbar (`Wall.endPiece`).
 - Tab **Wände** (v2.0.223): nur noch `WALL_LENGTH_PRESETS` (48…576 cm) plus „Keines“ — keine Endstücke und keine „Wand + Fenster/Tür“-Karten.
-- **Erker / Balkon / Loggia** (Bibliothek): Tab **Erker** mit Gruppen **90°/45° · Tiefe 96/144** und Frontbreiten 192/288/384/576 (IDs `bay-f…-d…-{rect|45}`). Fenster 96×192 auf der Front (Anzahl nach Außenrand ≥ 24 / Abstand ≥ 48), Schenkel 48×192 (Tiefe 96) bzw. 96×192 (Tiefe 144) — nach dem Einfügen normal editierbar. Vorschau von **draußen schräg oben** (v2.0.228). Drop auf Wand: Dialog **Als Segment** (Vorlagenbreite, verschiebbar) oder **An Wandbreite** (skaliert); Links/Rechts/Darüber angeln. **v2.0.227 / v2.0.242:** Klick markiert alle drei Flächen; Ziehen gleitet den Erker (Reststücke schrumpfen/wachsen); keine Breiten-Greifer; Löschen → flache Wand; Bibliothek-Karte umrandet / tauscht Preset (**alle** markierten Erker bei Mehrfachauswahl). Tabs **Balkon** / **Loggia** weiter 192/384. Drag zeigt Ghost wie eine Wand; Drop in die Fläche setzt die Baugruppe eigenständig.
+- **Erker / Balkon / Loggia** (Bibliothek): Tab **Erker** mit Gruppen **90°/45° · Tiefe 96/144** und Frontbreiten 192/288/384/576 (IDs `bay-f…-d…-{rect|45}`; **v2.0.302:** schmal 288, breit 384, Wandstärke 24). Fenster 96×192 auf der Front (**v2.0.308 / v2.0.311:** Rand 48 / Lücke 96 → 384: 48/240, 288: eines zentriert; Stil **und Brüstung** von der Fassade derselben Etage, sonst Brüstung 128), Schenkel 48×192 (Tiefe 96) bzw. 96×192 (Tiefe 144) — nach dem Einfügen normal editierbar. Vorschau von **draußen schräg oben** (v2.0.228). Drop auf Wand: Dialog **Als Segment** (Vorlagenbreite, verschiebbar) oder **An Wandbreite** (skaliert); Links/Rechts/Darüber angeln. **v2.0.227 / v2.0.242:** Klick markiert alle drei Flächen; Ziehen gleitet den Erker (Reststücke schrumpfen/wachsen); keine Breiten-Greifer; Löschen → flache Wand; Bibliothek-Karte umrandet / tauscht Preset (**alle** markierten Erker bei Mehrfachauswahl). Tabs **Balkon** / **Loggia** weiter 192/384. Drag zeigt Ghost wie eine Wand; Drop in die Fläche setzt die Baugruppe eigenständig.
 
 ### Wand-Gruppen (v0.7.60)
 
@@ -606,7 +614,7 @@ Profil-, Verbands-, Font-, Form- und Bogenform-Karten in der **rechten Seitenlei
 
 **Aktive Kachel (v0.7.167–v0.7.175):** Die Karte, die bereits zur Auswahl gehört, hat einen **1 px schwarzen** Rahmen (`.library-card-applied`). Ohne Auswahl ist **Keines** so umrandet. Bei Wandauswahl erscheinen +/− an der Wand (folgen der Wand auch beim Orbit); + links/rechts/oben fügt aus der Zwischenablage ein oder dupliziert die Auswahl. Drag auf die Bühne bleibt.
 
-Unter **Datei**: „Exportieren als .json“, „Importieren einer .json“, „Link kopieren“.
+Unter **Datei**: „Exportieren als .json“, „Importieren einer .json“, „Link kopieren“, **„Showcase-Link kopieren“** (v2.0.313).
 
 Bloom und Gobo-Schatten sind entfernt; `render3dFrame()` nutzt direkt `renderer.render`.
 
@@ -652,6 +660,14 @@ Voraussetzungen für laufende Sonne (Zyklus): **Tageszyklus an** + **Animationen
 
 URL-Parameter **`?stage=1`** (oder `?view=stage`): nur die 3D-Zeichenfläche, der **Tageszeit**-Slider und **Animationen pausieren** — fürs Handy im lokalen Netz. Bloom ist an. Start: `npm run dev:lan`, dann `http://<LAN-IP>:5173/?stage=1`.
 
+### Showcase (v2.0.313)
+
+**Datei → Showcase-Link kopieren** erzeugt eine URL mit **`?view=showcase`** (alternativ `?showcase=1`) und Hash `#f=` inkl. Fassade, Szene, **Licht** (`sun`) und **Bloom**. Die aktuelle Editor-URL bleibt unverändert (nur Zwischenablage).
+
+Im Showcase: nur **3D-Bühne** + rechte Leiste **Licht** und **Animation** (Szene-Farben, Galerie, Debug ausgeblendet). Keine Bibliothek, keine Auswahl/Gizmos, kein Editor-Chrome. Orbit/Zoom wie gewohnt. Stage (`?stage=1`) hat Vorrang, wenn beide Parameter gesetzt sind.
+
+Dateien: `src/utils/share.ts` (`copyShowcaseLink`, `isShowcaseViewFromUrl`), `src/main.ts`, `index.html`, `src/style.css`.
+
 ---
 
 ## Ausrichtungs-Hilfslinien
@@ -663,7 +679,7 @@ Beim **Verschieben oder Platzieren** von Wänden und Öffnungen erscheint ein bl
 - **Wand aus Bibliothek / Wand verschieben:** **32-cm**-Gitter auf dem **Boden** der Ziel-Etage (Oben, 2D, 3D) — unverändert `STUDIO_TILE`.
 - **Öffnung verschieben (v2.0.89):** Gitter auf der **Zielwand** = **Stoßfugen und Schichtgrenzen** des Paneels/Mauerwerks (`wallFaceGridXs` / `wallFaceGridYs`, gleiche Cuts wie `openingPanelSnap`). Streifen: nur Laibungen vertikal; ohne Modul: 32 cm.
 - Nach **Ablegen** oder Abbruch wird das Raster ausgeblendet (`clearPlacementGridOverlay`).
-- Öffnungs-**Position** (Drag, Nudge, Zahlenfelder): bei Modulverband Drag = Fuge + Wandmitte; Nudge = Fuge / Steinmitte / Wandmitte, Schrittweite **8·n** cm (Numpad 1–9); bei Zwei-Bändern je Zone Y-bewusst; sonst **8 cm**. Schrift-Position ebenfalls **8 cm** (`STUDIO_MASONRY`).
+- Öffnungs-**Position** (Drag, Nudge, Zahlenfelder): **v2.0.310 / Drag:** festes **8-cm-Raster** (`snapOpeningMoveToMasonry`); Vertikal-Feld ebenfalls 8 cm. **Neu platzieren:** Brüstung fest **128 cm** (`WINDOW_SILL_Y`), auch bei Wandhöhe ≠ 448 — Laibungen horizontal an Fugen, Y nicht auf Schicht-/Wandmitte. Explizites „An Fugen“ (`alignOpeningToMasonry`) kann Y weiter an Schichten ziehen. Schrift-Position **8 cm** (`STUDIO_MASONRY`).
 - **Orangene Drag-Vorschau:** unter `siteOffset` (dreht mit dem Haus); bei Breiten-/Höhen-Snap wird der Ghost neu gebaut.
 
 ### Öffnungen (`src/studio/openingGuides.ts`)

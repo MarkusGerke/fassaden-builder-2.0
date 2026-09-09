@@ -1,4 +1,11 @@
-import { DEFAULT_WINDOW_DEPTH_OFFSET, FLUSH_TOLERANCE, JOIN_OVERLAP, WALL_DEPTH } from '../constants/presets'
+import {
+  DEFAULT_WINDOW_DEPTH_OFFSET,
+  FLUSH_TOLERANCE,
+  JOIN_OVERLAP,
+  UPPER_STOREY_WALL_DEPTH,
+  WALL_DEPTH,
+} from '../constants/presets'
+import { BAY_WALL_DEPTH_CM } from '../studio/bayWindow'
 import {
   DEFAULT_CLADDING_COLOR_V2,
   DEFAULT_INTERIOR_COLOR,
@@ -46,6 +53,34 @@ import {
 
 const TOUCH_EPS = 0.5
 const OVERLAP_EPS = JOIN_OVERLAP + 0.05
+
+/** Obergeschoss-Klon: Erker 24 cm, sonst Obergeschoss-Wand 24 cm. */
+export function depthForUpperStoreyWall(wall: Wall): number {
+  if (wall.bayParentId || wall.bayRole || wall.bayWindow) return BAY_WALL_DEPTH_CM
+  return UPPER_STOREY_WALL_DEPTH
+}
+
+/** Typische Hauswand-Dicke einer Etage (ohne Erker-Flächen) für Decken/Böden. */
+export function storeyStructuralDepthCm(floorWalls: Wall[], fallback: number): number {
+  const hosts = floorWalls.filter(
+    (w) => isStudioWall(w) && !w.bayParentId && !w.bayRole,
+  )
+  if (hosts.length === 0) return fallback
+  const depths = hosts.map((w) => w.depth).filter((d) => Number.isFinite(d) && d > 0)
+  if (depths.length === 0) return fallback
+  // Häufigster Wert; bei Gleichstand größerer (EG-Massivität).
+  const counts = new Map<number, number>()
+  for (const d of depths) counts.set(d, (counts.get(d) ?? 0) + 1)
+  let best = depths[0]!
+  let bestN = 0
+  for (const [d, n] of counts) {
+    if (n > bestN || (n === bestN && d > best)) {
+      best = d
+      bestN = n
+    }
+  }
+  return best
+}
 
 export interface Bounds {
   minX: number
@@ -143,17 +178,26 @@ export function proposedAdjacentRect(wall: Wall, side: WallSide) {
   }
 }
 
+/** Studio-Wandtiefe behalten (Erker 24 / OG 24); nur fehlende Werte aus Gebäude-Default. */
+function studioWallDepthOrBuilding(wall: Wall, buildingDepth: number): number {
+  if (Number.isFinite(wall.depth) && (wall.depth as number) > 0) return wall.depth as number
+  return buildingDepth
+}
+
 export function recomputeBuildingLayout(building: Building): Building {
   const height = building.wallHeight
   const depth = building.wallDepth
   const walls = building.walls.map((wall) => {
     if (isStudioWall(wall)) {
-      return normalizeStudioWall({ ...cloneWall(wall), depth })
+      return normalizeStudioWall({
+        ...cloneWall(wall),
+        depth: studioWallDepthOrBuilding(wall, depth),
+      })
     }
     const dims = clampWallDimensions({
       width: wall.width,
       height,
-      depth,
+      depth: studioWallDepthOrBuilding(wall, depth),
     })
     const cloned = cloneWall(wall)
     return {
@@ -794,13 +838,14 @@ export function clampBuilding(building: Building): Building {
     depth: building.wallDepth ?? WALL_DEPTH,
   })
   const walls = building.walls.map((wall) => {
+    const wallDepth = studioWallDepthOrBuilding(wall, dims.depth)
     if (isStudioWall(wall)) {
-      return normalizeStudioWall({ ...cloneWall(wall), depth: dims.depth })
+      return normalizeStudioWall({ ...cloneWall(wall), depth: wallDepth })
     }
     const wallDims = clampWallDimensions({
       width: wall.width,
       height: dims.height,
-      depth: dims.depth,
+      depth: wallDepth,
     })
     const cloned = cloneWall(wall)
     return {
@@ -1179,6 +1224,7 @@ export function insertStoreyAbove(
   const clones = remappedClones.map((clone) => ({
     ...clone,
     storeyIndex: targetIndex,
+    depth: depthForUpperStoreyWall(clone),
   }))
 
   // Lift aus Quell-Geometrie (Drop abgezogen) — nicht aus genormter Klon-Höhe

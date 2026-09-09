@@ -44,7 +44,11 @@ export type OpeningSelectHandler = (
   additive: boolean,
   openingPart?: import('./types/facade').OpeningPart,
 ) => void
-export type WallSelectHandler = (id: string | null, additive: boolean) => void
+export type WallSelectHandler = (
+  id: string | null,
+  additive: boolean,
+  rangeSelect?: boolean,
+) => void
 export type WallsMoveHandler = (positions: WallMovePosition[], commit: boolean) => void
 export type OpeningsMoveHandler = (
   dx: number,
@@ -100,7 +104,8 @@ export class FacadeSvgView {
     scaleX: number
     scaleY: number
     moved: boolean
-    shiftKey: boolean
+    additive: boolean
+    rangeSelect: boolean
     clickWallId: string
     pendingOpeningSelect: { wallId: string; openingId: string } | null
   } | null = null
@@ -1071,7 +1076,9 @@ export class FacadeSvgView {
 
   private onPointerDown = (event: PointerEvent) => {
     if (event.button !== 0) return
-    const additive = event.shiftKey || event.metaKey || event.ctrlKey
+    const additive = event.metaKey || event.ctrlKey
+    const rangeSelect = event.shiftKey && !additive
+    const openingAdditive = additive || event.shiftKey
     const { openingId, wallId, openingPart } = this.resolveHitTarget(event.target)
 
     if (openingId && wallId) {
@@ -1084,7 +1091,7 @@ export class FacadeSvgView {
         scaleX: viewBox.width / rect.width,
         scaleY: viewBox.height / rect.height,
         moved: false,
-        additive,
+        additive: openingAdditive,
         wallId,
         openingId,
         openingPart,
@@ -1110,7 +1117,8 @@ export class FacadeSvgView {
         scaleX: viewBox.width / rect.width,
         scaleY: viewBox.height / rect.height,
         moved: false,
-        shiftKey: additive,
+        additive,
+        rangeSelect,
         clickWallId: wallId,
         pendingOpeningSelect: null,
       }
@@ -1119,7 +1127,7 @@ export class FacadeSvgView {
       return
     }
 
-    this.onWallSelect?.(null, additive)
+    this.onWallSelect?.(null, additive, rangeSelect)
   }
 
   private onPointerMove = (event: PointerEvent) => {
@@ -1199,13 +1207,21 @@ export class FacadeSvgView {
           true,
         )
         if (!this.editor.selectedWallIds.includes(this.wallDragging.clickWallId)) {
-          this.onWallSelect?.(this.wallDragging.clickWallId, this.wallDragging.shiftKey)
+          this.onWallSelect?.(
+            this.wallDragging.clickWallId,
+            this.wallDragging.additive,
+            this.wallDragging.rangeSelect,
+          )
         }
       } else if (this.wallDragging.pendingOpeningSelect) {
         const pending = this.wallDragging.pendingOpeningSelect
-        this.onOpeningSelect?.(pending.wallId, pending.openingId, this.wallDragging.shiftKey)
+        this.onOpeningSelect?.(pending.wallId, pending.openingId, this.wallDragging.additive)
       } else {
-        this.onWallSelect?.(this.wallDragging.clickWallId, this.wallDragging.shiftKey)
+        this.onWallSelect?.(
+          this.wallDragging.clickWallId,
+          this.wallDragging.additive,
+          this.wallDragging.rangeSelect,
+        )
       }
 
       this.wallDragging = null

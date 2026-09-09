@@ -25,6 +25,7 @@ import {
   normalizeOpeningArch,
   normalizeOpeningFill,
   normalizePanelClearance,
+  normalizePanelWrappedReveal,
   normalizeRevealFrame,
 } from './openingGeometry'
 import {
@@ -187,6 +188,7 @@ export function hydrateOpening(
     if (!next.cutoutShape) next.cutoutShape = 'rect'
     next.revealFrame = normalizeRevealFrame(next.revealFrame)
     next.panelClearance = normalizePanelClearance(next.panelClearance)
+    next.panelWrappedReveal = normalizePanelWrappedReveal(next.panelWrappedReveal)
     next.arch = normalizeOpeningArch(next.arch)
     next.hidden = Boolean(next.hidden)
     next.needsReview =
@@ -202,6 +204,7 @@ export function hydrateOpening(
     next.cutoutShape = undefined
     next.revealFrame = normalizeRevealFrame(next.revealFrame)
     next.panelClearance = normalizePanelClearance(next.panelClearance)
+    next.panelWrappedReveal = normalizePanelWrappedReveal(next.panelWrappedReveal)
     // Konche: immer Rundbogen-Maske; Stich = halbe Breite (volle Halbkreis-Krone).
     const rise = Math.min(next.width / 2, next.height)
     next.arch = normalizeOpeningArch({
@@ -221,6 +224,7 @@ export function hydrateOpening(
 
   next.revealFrame = normalizeRevealFrame(next.revealFrame)
   next.panelClearance = normalizePanelClearance(next.panelClearance)
+  next.panelWrappedReveal = normalizePanelWrappedReveal(next.panelWrappedReveal)
   next.fill = normalizeOpeningFill(next.fill)
   next.arch = normalizeOpeningArch(next.arch)
   // glazingArch: Legacy, ignoriert — Blendrahmen folgt immer Opening.arch.form; nicht auf false setzen.
@@ -472,9 +476,23 @@ function ensureBuildingStoreyIndices(building: {
 /** Prüft, ob eine Öffnung den kanonischen Feldkatalog hat (für Tests). */
 export function openingHasCanonicalFields(opening: Opening): boolean {
   if (opening.type === 'cutout' || opening.type === 'conch') {
-    return Boolean(opening.fill && opening.revealFrame && opening.panelClearance && opening.arch)
+    return Boolean(
+      opening.fill &&
+        opening.revealFrame &&
+        opening.panelClearance &&
+        opening.panelWrappedReveal &&
+        opening.arch,
+    )
   }
-  if (!opening.revealFrame || !opening.panelClearance || !opening.fill || !opening.arch) return false
+  if (
+    !opening.revealFrame ||
+    !opening.panelClearance ||
+    !opening.panelWrappedReveal ||
+    !opening.fill ||
+    !opening.arch
+  ) {
+    return false
+  }
   if (!opening.trim || !opening.gruenderzeit) return false
   if (opening.frameColor == null || opening.glassColor == null || opening.glassMode == null) return false
   if (opening.type === 'window' || opening.type === 'door') {

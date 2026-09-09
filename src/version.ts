@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.271'
+export const APP_VERSION = '2.0.322'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,456 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.322',
+    date: '2026-09-09',
+    title: 'Profil auf Fenster und Türen',
+    changes: [
+      'Übernehmen auf Etage/Fassade setzt Rahmenprofile auf alle Fenster und Türen — auch bei unterschiedlicher Größe',
+    ],
+  },
+  {
+    version: '2.0.321',
+    date: '2026-09-09',
+    title: 'Profil auf Etage/Fassade übernehmen',
+    changes: [
+      'Vorschlag „Übernehmen? Etage / Fassade“ nach Rahmenprofil-Wechsel setzt das Profil jetzt wirklich auf passende Fenster',
+    ],
+  },
+  {
+    version: '2.0.320',
+    date: '2026-09-09',
+    title: 'Schatten sofort nach Verschieben',
+    changes: [
+      'Nach Verschieben von Wand, Erker oder Öffnung aktualisiert der Werfschatten sofort — nicht erst nach Orbit-Pause oder Debounce',
+    ],
+  },
+  {
+    version: '2.0.319',
+    date: '2026-09-09',
+    title: 'Shift-Bereich: Erker nur wenn auf dem Pfad',
+    changes: [
+      'Beim Shift-Markieren von Wänden werden Erker-Schenkel nicht mehr automatisch mitgewählt — nur wenn sie zwischen den Endpunkten liegen oder selbst markiert wurden',
+    ],
+  },
+  {
+    version: '2.0.318',
+    date: '2026-09-09',
+    title: 'Shift-Wandbereich: nur Fassadenseite / kürzerer Umlauf',
+    changes: [
+      'Shift+Klick EG→höheres Geschoss markiert nur die gleiche Fassadenseite (inkl. Zwischenetagen), nicht alle Wände',
+      'Auf einer Etage bei gegenüberliegenden Wänden: kürzerer Weg ums Haus; Erker an der Seite werden mitmarkiert',
+    ],
+  },
+  {
+    version: '2.0.317',
+    date: '2026-09-09',
+    title: 'Shift+Klick wählt Wandbereich inkl. Etagen',
+    changes: [
+      'Wand markieren, dann Shift+Klick auf eine andere Wand: alle Wände dazwischen werden mitmarkiert — auch über Etagen hinweg',
+      'Ctrl/Cmd+Klick bleibt einzelnes Hinzufügen/Entfernen; Shift+Ziehen ohne Auswahl bleibt Rechteckauswahl',
+    ],
+  },
+  {
+    version: '2.0.316',
+    date: '2026-09-09',
+    title: 'Rechtsklick-Löschen für Mehrfachauswahl',
+    changes: [
+      'Mehrere markierte Öffnungen oder Wände werden per Rechtsklick → Löschen alle entfernt (nicht nur das angeklickte)',
+      'Mehrere markierte Erker werden jeweils zu flachen Wänden — bisher blieb nur der erste Erker übrig',
+    ],
+  },
+  {
+    version: '2.0.315',
+    date: '2026-09-08',
+    title: 'Fassaden-Schlagschatten wieder in 3D',
+    changes: [
+      'Paneele und Öffnungen empfangen in 3D wieder Sonnen-Schatten (Erker-/Gesims-Schlagschatten auf der Fassade)',
+      'Die Distanz-Sperre aus v2.0.314 entfällt — Speckles bleiben über den PCSS-Distanzfilter und adaptives Kamera-Near begrenzt',
+    ],
+  },
+  {
+    version: '2.0.314',
+    date: '2026-09-08',
+    title: 'Weniger Schatten-Speckles beim Rauszoomen',
+    changes: [
+      'Beim Rauszoomen keine fragmentierten dunklen Flecken mehr auf Paneelen, Fenstern und Türen',
+      'Ab ca. 10 m Kameradistanz empfangen Paneele/Öffnungen keine Sonnen-Shadow-Map mehr (Selbstschatten-Acne); nah unverändert',
+      'PCSS-Distanzfilter stabiler; Kameras Near-Plane wächst mit dem Zoom (weniger Z-Fight)',
+    ],
+  },
+  {
+    version: '2.0.313',
+    date: '2026-09-08',
+    title: 'Showcase-Link — nur Bühne, Licht und Animation',
+    changes: [
+      'Datei → Showcase-Link kopieren: öffnet die Fassade in einem Präsentationsmodus (nur 3D-Bühne + Licht- und Animations-Einstellungen)',
+      'Link enthält Lichtstand und Bloom; Orbitieren bleibt möglich, Bearbeiten und Editor-UI sind ausgeblendet',
+    ],
+  },
+  {
+    version: '2.0.312',
+    date: '2026-09-08',
+    title: 'Schattenseiten heller — näher am Schlagschatten',
+    changes: [
+      'Sonnenabgewandte Flächen (z. B. Erker-Schenkel) behalten mehr Himmelslicht — wirken nicht mehr deutlich dunkler als der Schlagschatten auf der angrenzenden Wand',
+      'Etwas stärkerer Bodenreflex füllt Innenecken realistischer',
+    ],
+  },
+  {
+    version: '2.0.311',
+    date: '2026-09-08',
+    title: 'Erker-Fenster: Brüstung wie die Fassade',
+    changes: [
+      'Beim Einsetzen eines Erkers übernehmen die Erker-Fenster die Brüstungshöhe der vorhandenen Fenster derselben Etage (z. B. Vertikal 72)',
+      'Neue Fenster auf normalen Wänden bleiben bei Standard-Brüstung 128 cm; ohne Fassadenfenster am Erker ebenfalls 128',
+    ],
+  },
+  {
+    version: '2.0.310',
+    date: '2026-09-08',
+    title: 'Fenster-Brüstung 128 cm bei jeder Wandhöhe',
+    changes: [
+      'Neue Fenster stehen immer 128 cm über dem Wandfuß (Vertikal = 128) — auch bei Obergeschossen und Wänden unter 448 cm Höhe',
+      'Bisher wirkte 128 nur bei Geschosshöhe 448 korrekt, weil das zufällig die vertikale Wandmitte war; sonst rutschte die Brüstung auf Schicht- oder Paneel-Raster',
+    ],
+  },
+  {
+    version: '2.0.309',
+    date: '2026-09-08',
+    title: 'Erker-Fenster: Brüstung 128 cm',
+    changes: [
+      'Erker-Fenster stehen standardmäßig 128 cm über dem Etagenfuß (Vertikal = 128) — auch wenn die Fassaden-Fenster tiefer sitzen (z. B. 64/72); der Stil kommt weiter von der Fassade, die Brüstung nicht',
+      'Bestehende Erker mit falscher Brüstung (oft Front 72, Schenkel schon 128) werden beim Laden korrigiert (Schema 21)',
+    ],
+  },
+  {
+    version: '2.0.308',
+    date: '2026-09-08',
+    title: 'Erker-Fenster: Stil der Fassade, Lage 48 / 96 / 128',
+    changes: [
+      'Erker-Fenster übernehmen beim Einsetzen den Fenster-Stil der bestehenden Fassade (Rahmenfarbe, Bänke, Glas, Rollladen, …) — auch wenn im Erker-Mund selbst kein Fenster lag; pro Etage vom eigenen Geschoss',
+      'Erker-Front: Fenster mit 48 cm Rand links/rechts und 96 cm Lücke — 384 → 48 / 240, 576 → 48 / 240 / 432; 288 bekommt ein zentriertes Fenster (96 | 96 | 96), zwei 96er passen mit dieser Regel nicht',
+      'Brüstung der Erker-Fenster immer 128 cm wie bei einem neuen Fenster auf einer normalen Wand',
+    ],
+  },
+  {
+    version: '2.0.307',
+    date: '2026-09-08',
+    title: 'Erker: kein Flackern der Steine',
+    changes: [
+      'Erker-Steine haben wieder Dicke (Vorstand 4, Bosse 1 wie die Hauswand) — seit 2.0.304 lagen sie ohne Dicke 0,15 cm vor der Wand und flackerten ab ~10 m als weiß/beige Streifen, besonders beim Orbitieren',
+      'Bestehende Erker ohne Steindicke werden beim Laden korrigiert (Schema 20); Breite, Höhe, Farbe und Fugen bleiben',
+      'Der frühere Grund für Vorstand 0 (Stummel-Raster an der Gehrung) ist seit 2.0.306 im Layout gelöst',
+    ],
+  },
+  {
+    version: '2.0.306',
+    date: '2026-09-08',
+    title: 'Läufer an Außenecken ohne Stummel',
+    changes: [
+      'Läuferverband an 90°-Ecken bleibt auf der Planbreite (384 → 8×48 und 0,5/7×1/0,5), auch wenn die Steine 4 cm vor der Wand stehen — vorher 8×48 + 8-cm-Stummel bzw. 24/…/32',
+      'Betrifft Erker und Außenwände mit Vorstand; die Ecksteine tragen den Gehrungskeil als Trapez',
+      'Dev-Hook __fbDebug.dumpBays() zeigt Pose, Gehrung, Paneel und Steinbreiten aller Erker',
+    ],
+  },
+  {
+    version: '2.0.305',
+    date: '2026-09-08',
+    title: 'Erker: sichtbare Front = Planbreite',
+    changes: [
+      'Erker-Wände liegen jetzt immer mit der Planlinie auf der Außenkante (wie Außenwände) — 384er Front ist optisch 384, nicht 432; Läufer 1/1/… und 0,5/1/…/0,5 ohne Stummel an den Ecken',
+      'Ursache war ein Erker auf einer Wand mit Innen-Origin: Körper lief nach außen, Gehrung machte die Front je Seite um die Wandstärke (24) breiter',
+      'Bestehende Erker werden beim Laden automatisch neu aufgebaut (Schema 19); Mund, Optik und Fenster-Stil bleiben, Fensterpositionen aus der Vorlage',
+      'Erker übernimmt die Schichthöhe der Hauswand (nur Läuferbreite 48 fest) — Schichtfugen fluchten wieder',
+    ],
+  },
+  {
+    version: '2.0.304',
+    date: '2026-09-08',
+    title: 'Erker-Ecken wieder geschlossen',
+    changes: [
+      'Paneel-Gehrung Front↔Schenkel wieder an (v2.0.303 stumpfe Ecken → sichtbare Lücke)',
+      'Erker-Paneele: Vorstand/Bossen-Tiefe 0 — sichtbare Front bleibt = wall.width (384), Läufer 1/1/… und 0,5/1/…/0,5 ohne Ecken-Loch',
+    ],
+  },
+  {
+    version: '2.0.303',
+    date: '2026-09-08',
+    title: 'Erker: Läufer optisch auf Planbreite',
+    changes: [
+      'Paneele an Erker-Ecken (Front↔Schenkel) nicht mehr gehren — sichtbare Front = wall.width (z. B. 384), Muster 1/1/… und 0,5/1/…/0,5',
+      'Wandkörper gehrt weiter; Paneel-Gehrung zur Host-Wand unverändert',
+      'Vorstand bleibt; zuvor verkürzte die Gehrung die Front um ~2×Vorstand und verschob das Raster optisch',
+    ],
+  },
+  {
+    version: '2.0.302',
+    date: '2026-09-08',
+    title: 'Öffnungen 8-cm-Schritte; Erker 288/384',
+    changes: [
+      'Wandöffnungen verschieben (Drag/Pfeile/Position): immer 8-cm-Raster — nicht mehr an Fugen/Steinmitten (12/24-cm-Sprünge)',
+      'Erker-Bibliothek: schmal 288 cm, breit 384 cm (statt 336); Wandstärke Front/Schenkel weiter 24 cm',
+      'Fugen-Ausrichtung bleibt bei Maßen / explizitem Align; bestehende Erker-Breiten werden nicht auto-migriert',
+    ],
+  },
+  {
+    version: '2.0.301',
+    date: '2026-09-07',
+    title: 'Erker 336: immer Läufer 48 (nicht Streifen 64)',
+    changes: [
+      'Neuer Bibliothek-Erker ohne Host bekam App-Default Streifen 64 cm — Fenster lagen auf 48er-Raster, Paneele auf 64 → kaputter Verband',
+      'Erker-Flächen: Default und bei Streifen/aus → Läuferverband 48×24; Front 336 bleibt die passende Bibliothek-Breite (7×48, Pfeiler 48|48|48)',
+      'Schema 18: bestehende Erker-Streifen beim Laden auf Läufer 48 umstellen',
+    ],
+  },
+  {
+    version: '2.0.300',
+    date: '2026-09-07',
+    title: 'Erker: Zwangs-336 rückgängig, Läufer immer 48',
+    changes: [
+      'Bestehende Erker nicht mehr automatisch von 288 auf 336 verbreitern (Fenster/Mund blieben sonst verschoben)',
+      'Beim Laden: irrtümlich verbreiterte Bibliothek-Erker wieder auf 288; Läuferverband auf Erker-Flächen immer 48×24 (auch wenn 24 die Breite teilte)',
+      'Bibliothek behält 336 für neue Erker — sauberer Verband inkl. Fenster-Pfeiler',
+    ],
+  },
+  {
+    version: '2.0.299',
+    date: '2026-09-07',
+    title: 'Erker 336: Läufer 48 wenn Host-Stein nicht teilt',
+    changes: [
+      '336-cm-Front wirkte wie 288, wenn die Wand noch 64-cm-Steine (Streifen-Default) mit Läuferverband hatte — 5,25×64 = 0,25-Stummel',
+      'Erker-Flächen: bei Läuferverband Steinmaß auf Muster-Default 48×24, sobald die Front sonst nicht aufgeht',
+    ],
+  },
+  {
+    version: '2.0.298',
+    date: '2026-09-07',
+    title: 'Erker-Front 336 cm, Verband ohne End-Stretch',
+    changes: [
+      'Mittlere Bibliothek-Front: 288 → 336 cm (7×48) — Fenster 48/192 auf Raster, Ränder 48 cm, kein Stummel-Verband',
+      'Endstein-Stretch (1,125) rückgängig: Läufer wieder Rest nur am Ende; saubere Breite statt verzerrter Paneele',
+    ],
+  },
+  {
+    version: '2.0.297',
+    date: '2026-09-07',
+    title: 'Erker: Stile behalten, Stapel-Platzierung, Verband ohne Stummel',
+    changes: [
+      'Erker löschen: Front-Fenster (Stile/Profile) bleiben auf der Flachwand — Neu-Einsetzen übernimmt sie',
+      'Drop auf Erker-Fläche trifft das Reststück darunter/daneben; Einsetzen richtet den Mund an Erkern anderer Etagen aus',
+      'Fenster-Snap bleibt zentriert, wenn Raster beide Ränder ≥ 24 cm nicht halten kann (kein Flush-Rechts-Versatz mehr)',
+      'Erker-Paneele: Rest &lt; ½ Stein in der geraden Lage als symmetrische Endsteine (z. B. 1,125/1/…/1,125) statt 0,25-Stummel',
+    ],
+  },
+  {
+    version: '2.0.296',
+    date: '2026-09-07',
+    title: 'Wandstärke EG 48 / OG+Erker 24, Verband am Erker',
+    changes: [
+      'Standard-Wandstärke Erdgeschoss 48 cm, Obergeschosse und Erker-Flächen 24 cm (Berliner Altbau, 8-cm-Raster)',
+      'Erker behalten 24 cm nach Geometrie-Finalize (nicht mehr auf EG-48 zurückgesetzt)',
+      'Erker-Fenster auf 48-cm-Läufer-Raster; Drop über bündiger Geschossfuge wieder möglich',
+    ],
+  },
+  {
+    version: '2.0.295',
+    date: '2026-09-07',
+    title: 'Erker-Fenster auf Paneel-Fugen',
+    changes: [
+      'Neue Erker: Front- und Schenkelfenster rasten mit der linken Laibung auf dem Läufer-Raster der Wandpaneele (nicht mehr bei ½ Stein durch zentrierte 24-cm-Ränder) — Verband bleibt über/neben den Fenstern bündig',
+    ],
+  },
+  {
+    version: '2.0.294',
+    date: '2026-09-07',
+    title: 'Erker: Paneel-Hilfslinien und Öffnungs-Snap an Skirt',
+    changes: [
+      'Erker nach unten verlängert: blaues Wandraster und Öffnungs-Höhen-Snap folgen den Paneel-Schichten (ab Restwand-Fuß), nicht dem verlängerten Wandfuß — keine Linien mehr mitten durch die Steine',
+    ],
+  },
+  {
+    version: '2.0.293',
+    date: '2026-09-07',
+    title: 'Paneel-Laibung: Sturz-Reihe an den Laibungen geteilt',
+    changes: [
+      '„Laibung mit Paneelen verkleiden“: Steine der Reihe über dem Sturz werden an den Laibungslinien mit Fuge geteilt — Sturz-Paneele mit Trapez, Fuge und Gehrung wie an den Seiten, keine schräg über die Ecke laufende Unterkante mehr',
+    ],
+  },
+  {
+    version: '2.0.292',
+    date: '2026-09-07',
+    title: 'Paneel-Laibung: Fuge an Trapezschrägen der Fassade',
+    changes: [
+      '„Laibung mit Paneelen verkleiden“: Sturz- und Seitenpaneele lassen an den Laibungen den Fugenabstand zwischen den Trapezschrägen (Fassadensteine um half joint eingerückt), nicht nur die Return-Steine',
+    ],
+  },
+  {
+    version: '2.0.291',
+    date: '2026-09-07',
+    title: 'Paneel-Laibung: echte Fuge an Sturz-Ecken',
+    changes: [
+      '„Laibung mit Paneelen verkleiden“: an Ecken Sturz↔Laibung bleiben die Trapezschrägen nicht mehr auf einer gemeinsamen Gehrungsebene — sichtbarer Fugenabstand wie zwischen normalen Paneelen',
+    ],
+  },
+  {
+    version: '2.0.290',
+    date: '2026-09-07',
+    title: 'Paneel-Laibung: Fuge an Sturz-Ecken',
+    changes: [
+      '„Laibung mit Paneelen verkleiden“: an den Ecken Sturz↔Laibung bleibt zwischen den Trapezschrägen der Fugenabstand (je half joint), nicht mehr bündig aneinander',
+    ],
+  },
+  {
+    version: '2.0.289',
+    date: '2026-09-07',
+    title: 'Paneel-Laibung: Sturz wie Seiten',
+    changes: [
+      '„Laibung mit Paneelen verkleiden“: Sturz wieder dieselbe Geometrie wie die seitlichen Laibungen (Fassadenstein mit Trapez/Fugen/Gehrung + Return) — kein abstehender Lappen mehr',
+    ],
+  },
+  {
+    version: '2.0.288',
+    date: '2026-09-07',
+    title: 'Paneel-Laibung: Sturz-Schicht bleibt in Linie',
+    changes: [
+      '„Laibung mit Paneelen verkleiden“: Fassadensteine am Sturz hängen nicht mehr unter die Nachbar-Schicht — Gehrungs-Versatz nur noch an den vertikalen Laibungen; am Sturz liefert der Return die Gehrung',
+    ],
+  },
+  {
+    version: '2.0.287',
+    date: '2026-09-07',
+    title: 'Paneel-Laibung: äußere Kante wieder auf Gehrung',
+    changes: [
+      '„Laibung mit Paneelen verkleiden“: äußere Paneelkante an Laibung/Sturz wieder wie eine Wandecke mit 45°-Gehrung (Fassadenstein + Return); am Bogen weiterhin ohne Versatz, damit keine Keile entstehen',
+    ],
+  },
+  {
+    version: '2.0.286',
+    date: '2026-09-07',
+    title: 'Paneel-Laibung am Sturz, Erker-Öffnungsraster',
+    changes: [
+      '„Laibung mit Paneelen verkleiden“: Return-Steine am Fenstersturz wieder vorhanden; Ecken Laibung↔Sturz (und Kämpfer am Bogen) wieder auf Gehrung — Wrap-Maske folgt der gesnappten Paneel-Sturzlinie',
+      'Öffnungen auf Erker-Wänden: Verschiebe-Raster wie an der normalen Fassade (Fugen-bündig), nicht nur wenige Flush-Positionen',
+    ],
+  },
+  {
+    version: '2.0.285',
+    date: '2026-09-07',
+    title: 'Paneel-Laibung: bündig statt Gehrung, Rundbogen-Hinweis',
+    changes: [
+      '„Laibung mit Paneelen verkleiden“: Fassadensteine enden wieder an der Öffnungskante (kein 45°-Versatz in die Öffnung mehr — der erzeugte am Bogen Keile), Return-Steine schließen stumpf und bündig mit der Paneelfront ab (Boss beidseitig gefast)',
+      'Info-Box unter der Option (nur wenn aktiv): Bei Rundbögen kann es an der Bogenlaibung zu Darstellungsproblemen kommen',
+    ],
+  },
+  {
+    version: '2.0.284',
+    date: '2026-09-07',
+    title: 'Paneel-Laibung: Gehrung und Bogen',
+    changes: [
+      '„Laibung mit Paneelen verkleiden“: Steine laufen wie an einer Wandecke mit 45°-Gehrung um die Öffnungskante; jeder Return-Stein folgt seinem Fassadenstein (Verband, Fugen, Bogen), Ecken an Sturz/Laibung auf Gehrung',
+      'Laibung hinter den Returns in Fugenfarbe (Mörtelbett), Sohlbank bleibt Putz',
+    ],
+  },
+  {
+    version: '2.0.283',
+    date: '2026-09-07',
+    title: 'Paneel-Laibung mit Boss-Verband',
+    changes: [
+      '„Laibung mit Paneelen verkleiden“: Verband setzt sich mit Bossen/Trapez in die Laibung fort (Module in der Tiefe, Fugen wie zur Front nach innen versetzt) — nicht nur flache Stein-Rückseiten',
+    ],
+  },
+  {
+    version: '2.0.282',
+    date: '2026-09-07',
+    title: 'Paneel-Laibung: Fugen bis Fensterfront',
+    changes: [
+      '„Laibung mit Paneelen verkleiden“: Mörtelfugen an gewrappten Öffnungen reichen wie die Steine bis zur Fensterfront — keine offenen Fugentunnel zur Laibung',
+    ],
+  },
+  {
+    version: '2.0.281',
+    date: '2026-09-07',
+    title: 'Paneel-Laibung ohne Putz in den Fugen',
+    changes: [
+      '„Laibung mit Paneelen verkleiden“: Stein-Tiefe nutzt denselben Fenster-Offset wie die Laibung; Innenputz startet hinter den Steinrücken — keine helle Wand mehr in den Return-Fugen',
+    ],
+  },
+  {
+    version: '2.0.280',
+    date: '2026-09-07',
+    title: 'Paneel-Laibung wie an der Ecke',
+    changes: [
+      '„Laibung mit Paneelen verkleiden“: Paneele setzen sich in die äußere Laibung fort (Stein-Tiefe bis Fensterfront) — keine streifigen Strip-Meshes mehr am Bogen',
+    ],
+  },
+  {
+    version: '2.0.279',
+    date: '2026-09-07',
+    title: 'Laibung mit Paneelen verkleiden',
+    changes: [
+      'Optional an Fenster/Tür: Paneele gehen um die Öffnungskante in die äußere Laibung; die glatte Außenlaibung entfällt bis zur Fensterfront',
+    ],
+  },
+  {
+    version: '2.0.278',
+    date: '2026-09-07',
+    title: 'Erker-Paneele: Fußmessung auch ohne dropCm',
+    changes: [
+      'Paneelschichten am Erker fluchten mit der Restwand, auch wenn die Verlängerungs-Meta 0 ist, die Geometrie aber noch nach unten reicht',
+      '„Nach unten verlängern“-Schalter folgt der gemessenen Fußdifferenz — Ausschalten setzt die Wand wieder auf Etagenhöhe',
+    ],
+  },
+  {
+    version: '2.0.277',
+    date: '2026-09-07',
+    title: 'Erker-Paneele fluchten mit der Fassade',
+    changes: [
+      'Nach unten verlängerter Erker: Paneelschichten nutzen zuverlässig den Etagenfuß (auch wenn die Restwand-Messung 0 liefert) — Fugen auf gleicher Höhe wie außerhalb des Erkers',
+    ],
+  },
+  {
+    version: '2.0.276',
+    date: '2026-09-07',
+    title: 'Offene Boss-Fronten & Erker-Schichten',
+    changes: [
+      'Paneele mit dichter Bogenkontur: Boss bekommt wieder eine Deckfläche (keine offenen Fronten mehr)',
+      'Erker nach unten verlängert: Paneelschichten starten am Etagenfuß und fluchten mit der Restwand',
+    ],
+  },
+  {
+    version: '2.0.275',
+    date: '2026-09-07',
+    title: 'Paneele am Bogen: Ecken erhalten',
+    changes: [
+      'Beschädigte Paneele neben dem Fensterbogen behoben: beim Ausdünnen der Bogen-Kontur bleiben scharfe Ecken (L-/Boss-Steine) erhalten — keine diagonalen Schnitte mehr',
+    ],
+  },
+  {
+    version: '2.0.274',
+    date: '2026-09-07',
+    title: 'Paneel-Bogen ohne grobe Sehnen',
+    changes: [
+      'Paneele am Fensterbogen: Douglas-Peucker-Ausdünnung entfernt — Segmentdichte wie der Blendrahmen (64), keine langen Sehnen mehr neben dem feinen Bogen',
+    ],
+  },
+  {
+    version: '2.0.273',
+    date: '2026-09-07',
+    title: 'Paneele am Bogen so rund wie das Fenster',
+    changes: [
+      'Angrenzende Paneele/Mörtel an der Bogenkappe nutzen dieselbe Segmentzahl wie der Fensterbogen (64) — keine gröberen Sehnen mehr',
+    ],
+  },
+  {
+    version: '2.0.272',
+    date: '2026-09-07',
+    title: 'Leere Register weg, Klick öffnet Fächer',
+    changes: [
+      'Rechte Einstellungen: leere Bereiche ohne bedienbaren Inhalt erscheinen nicht mehr als Register',
+      'Klick auf ein Register scrollt zuverlässig dorthin und öffnet den Abschnitt; Stapel oben/unten bleibt',
+    ],
+  },
   {
     version: '2.0.271',
     date: '2026-09-07',

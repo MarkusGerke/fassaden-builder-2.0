@@ -193,6 +193,15 @@ export interface OpeningPanelClearance {
 }
 
 /**
+ * Äußere Laibungshälfte mit Paneelen/Mauerwerk verkleiden (Return um die Öffnungskante).
+ * Glatte Außen-Laibung entfällt bis zur Fensterfront; Innenhälfte bleibt Putz.
+ * Default aus. Nur wirksam mit sichtbaren Paneelen.
+ */
+export interface OpeningPanelWrappedReveal {
+  enabled: boolean
+}
+
+/**
  * Füllmodus der Öffnung:
  * - `opening` = normales Fenster/Tür mit Glas
  * - `flush` = bündige Wandfläche (kein Loch)
@@ -302,6 +311,11 @@ export interface Opening {
   revealFrame?: OpeningRevealFrame
   /** Freiraum ohne Paneele/Ziegel rund um die Öffnung (Wand bleibt stehen). */
   panelClearance?: OpeningPanelClearance
+  /**
+   * Äußere Laibung mit Paneelen verkleiden (um die Ecke in die Öffnung).
+   * Default aus — Hydrate setzt `{ enabled: false }`.
+   */
+  panelWrappedReveal?: OpeningPanelWrappedReveal
   /** Wandfläche / Nische statt durchgehender Öffnung. */
   fill?: OpeningFill
   /** Rundbogen der Wandöffnung + optionale Keilsteine. Dekorative Profile folgen automatisch. */

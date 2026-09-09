@@ -4,7 +4,10 @@ export const GRID_SIZE = 8
 
 export const WALL_WIDTH_PRESETS = [96, 192, 384, 576] as const
 export const WALL_HEIGHT = 448
-export const WALL_DEPTH = 32
+/** Standard-Wandstärke Erdgeschoss (Berliner Altbau ≈ 2 Stein), 8-cm-Raster. */
+export const WALL_DEPTH = 48
+/** Wandstärke Obergeschosse (≈ 1 Stein), 8-cm-Raster. */
+export const UPPER_STOREY_WALL_DEPTH = 24
 
 /** Bibliotheks-Presets: Wandlänge in cm (Vielfache des 48-cm-Grundrissrasters). */
 export interface WallLengthPreset {

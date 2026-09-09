@@ -6,6 +6,8 @@ import { SKIP_POINT_LIGHTS_MARKER } from '../lighting/skipPointLights'
  * Gegenlicht: die große Fassadenfront wird dunkel (N·L), Seiten und Oberseiten
  * bleiben ohne Nachhilfe hell (Sonne + Hemisphere). Shader dämpft Direct+Hemi
  * auf Nicht-Frontflächen, wenn die Fassadennormale von der Sonne wegzeigt.
+ * **v2.0.312:** Hemi nur noch leicht dämpfen — Schlagschatten behalten volles Ambient;
+ * zu starkes Hemi-Dim machte Erker-Schenkel/Nordfassaden pechschwarz dagegen.
  * Schrift nutzt denselben Shader, dimmt aber die ganze Glyphe (inkl. Front)
  * und stärkere Faktoren — Labels empfangen oft nur grob Shadow-Map.
  *
@@ -68,10 +70,14 @@ export function facadeShadeParamsFromSun(settings: SunSettings): FacadeShadePara
   const ambientNorm = THREE.MathUtils.clamp(settings.ambient / 0.65, 0.25, 1.4)
   const invContrast = 1 / Math.max(0.5, settings.shadowContrast)
   const densityBoost = 1 + settings.shadowDensity * 0.35
+  // Ambient auf Gegenlicht-Flächen: Schlagschatten (PCSS) behalten volles Hemi —
+  // früher ~0,39 → Erker-Schenkel/Nordfassade pechschwarzer als angrenzende Wand im Schlagschatten.
+  // Realistisch: kein Direktlicht, Himmel/Bodenreflex bleiben (leicht durch Kontrast gedämpft).
+  const hemiContrast = Math.pow(invContrast, 0.25)
   return {
-    // Contrast bis 10: Direct und Hemi dimmen mit — hohe Werte = deutlich dunklere Schattenseite.
+    // Contrast bis 10: Direct dimmen mit — hohe Werte = deutlich dunklere Schattenseite.
     directDim: THREE.MathUtils.clamp((0.05 + 0.08 * ambientNorm) * invContrast * densityBoost, 0.01, 0.35),
-    hemiDim: THREE.MathUtils.clamp((0.32 + 0.28 * ambientNorm) * invContrast, 0.04, 0.68),
+    hemiDim: THREE.MathUtils.clamp((0.78 + 0.16 * ambientNorm) * hemiContrast, 0.55, 0.94),
     interiorDirectDim: THREE.MathUtils.clamp((0.14 + 0.12 * ambientNorm) * densityBoost, 0.1, 0.38),
     interiorHemiDim: THREE.MathUtils.clamp(0.3 + 0.22 * ambientNorm, 0.25, 0.58),
     labelDirectDim: THREE.MathUtils.clamp(
@@ -79,11 +85,7 @@ export function facadeShadeParamsFromSun(settings: SunSettings): FacadeShadePara
       0.015,
       0.14,
     ),
-    labelHemiDim: THREE.MathUtils.clamp(
-      (0.11 + 0.14 * ambientNorm) * invContrast,
-      0.04,
-      0.32,
-    ),
+    labelHemiDim: THREE.MathUtils.clamp((0.28 + 0.18 * ambientNorm) * hemiContrast, 0.18, 0.55),
   }
 }
 

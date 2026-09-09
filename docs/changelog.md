@@ -2,6 +2,441 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Profil auf Fenster und Türen (2026-09-09) — v2.0.322
+
+**Wunsch:** Etage/Fassade-Übernahme für Rahmenprofile soll Fenster **und** Türen treffen (nicht nur gleiche Typ/Maße).
+
+**Fix:** Profil-Delta ohne Typ-/Maßfilter für `window`/`door`; andere Opening-Properties weiter nur bei Typ+Maß. Tests: `scopePropagate.test.ts`. Docs: [views-and-state.md](views-and-state.md), [ux.md](ux.md).
+
+### Profil auf Etage/Fassade übernehmen (2026-09-09) — v2.0.321
+
+**Symptom:** Nach Rahmenprofil-Wechsel am Fenster erschien „Übernehmen? Etage/Fassade“, Klick änderte nichts.
+
+**Ursache:** Profile liegen in `wall.profiles` (nicht nur an der Opening); `propagateSelectionEdit` kopierte nur Opening-Property-Deltas.
+
+**Fix:** Profil-Zuweisungen mit remappter `openingId` mitpropagieren (`applyOpeningProfilesDelta`); `profiles` nicht mehr als Wall-Array deep-mergen. Tests: `scopePropagate.test.ts`. Docs: [views-and-state.md](views-and-state.md), [ux.md](ux.md).
+
+### Schatten sofort nach Verschieben (2026-09-09) — v2.0.320
+
+**Symptom:** Nach Wand-/Erker-/Öffnungs-Verschieben blieb der Werfschatten ~1 s (oder länger) auf der alten Position.
+
+**Ursache:** Orbit-Lite-Hold (`ORBIT_LITE_HOLD_MS` 1000) unterdrückte `flushSunShadowMap` und im Render-Loop `needsUpdate`; Öffnungs-Commit nutzte zusätzlich Debounce (`scheduleShadowMapUpdate`).
+
+**Fix:** `forceShadowBakePending` / `flushSunShadowMap({ force: true })` nach Geometrie-Commit — Bake trotz Orbit-Lite-Hold; Öffnungs-Commit weiter `live` (kein Material-Grau), aber sofortiger Flush statt Schedule. Datei: `main.ts`. Docs: [shadows.md](shadows.md), [performance.md](performance.md).
+
+### Shift-Bereich: Erker nur auf dem Pfad (2026-09-09) — v2.0.319
+
+**Symptom:** Shift-Fassadenstreifen expandierte ganze Erker-Gruppen (Schenkel mit), obwohl nur die Front dieselbe Yaw hatte.
+
+**Fix:** Kein `expandWithBays` mehr in `wallIdsForShiftRange` — Erker-Wände nur wenn sie auf dem Dock-Pfad bzw. Yaw-Streifen liegen oder zuvor einzeln markiert wurden. Datei: `wallRangeSelect.ts`. Docs: [ux.md](ux.md).
+
+### Shift-Wandbereich: Fassadenseite / kürzerer Umlauf (2026-09-09) — v2.0.318
+
+**Symptom:** Shift+Klick EG→4. OG markierte alle Wände im Ebenenbaum dazwischen; gegenüberliegende Wände unklar links/rechts; Erker fehlten oft.
+
+**Fix:** `wallIdsForShiftRange` (`wallRangeSelect.ts`): gleiche Yaw über Etagen = nur diese Fassadenseite; gleiche Etage = kürzester Dock-Pfad (wenigste Wände); Erker-Gruppen expandieren. Tests: `wallRangeSelect.test.ts`. Docs: [ux.md](ux.md).
+
+### Shift-Wandbereich in der Ansicht (2026-09-09) — v2.0.317
+
+**Wunsch:** Wand markieren, Shift+Klick auf andere Wand → alle Wände dazwischen inkl. anderer Etagen.
+
+**Fix:** `selectWallsInRange` / `buildWallRangeOrderIds` (Ebenenbaum-Reihenfolge, Etagen auch wenn eingeklappt). Viewport und SVG: Shift = Bereich, Ctrl/Cmd = additiv. Dateien: `main.ts`, `FacadeSvgView.ts`. Docs: [ux.md](ux.md), [views-and-state.md](views-and-state.md).
+
+### Mehrfach-Löschen per Rechtsklick (2026-09-09) — v2.0.316
+
+**Symptom:** Mehrere markierte Öffnungen/Wände → Rechtsklick → Löschen entfernte nur ein Objekt.
+
+**Ursache:** Kontextmenü löste Toolbar-`click()` aus bzw. kollabierte die Auswahl; bei Erkern brach `deleteWallButton` nach dem ersten `flattenBayToFlatWall` ab.
+
+**Fix:** `deleteSelectedOpenings` / `deleteSelectedWalls` mit Snapshot der Mehrfachauswahl (wie Lichter); alle Erker in der Auswahl flachlegen; Rechtsklick auf Wandfläche bei Öffnungs-Mehrfachauswahl öffnet Öffnungsmenü statt Einzelwand. Dateien: `main.ts`. Docs: [ux.md](ux.md).
+
+### Fassaden-Schlagschatten wieder an (2026-09-08) — v2.0.315
+
+**Symptom:** Nach v2.0.314 Artefakte weg, aber auch **Schlagschatten** von Erker/Gesims auf Paneelen/Fassade weg (ab ~10 m Zoom).
+
+**Ursache:** Distanz-Gate `CLADDING_SHADOW_RECEIVE_MAX_DIST_CM` 1000 schaltete `setCladdingReceiveShadows(false)` — sichtbare Fassade = Paneele, ohne Empfang kein Werfschatten.
+
+**Fix:** Gate entfernt; 3D wieder immer Empfang an (wie vor dem Gate). Speckle-Schutz bleibt über PCSS-Distanz-AA + adaptives `camera.near` + polygonOffset (v2.0.314). Dateien: `main.ts`. Docs: [shadows.md](shadows.md).
+
+### Distanz-Speckles PCSS + Empfang (2026-09-08) — v2.0.314
+
+**Symptom:** Beim Rauszoomen fragmentierte dunkle Artefakte auf Paneelen, Fenstern und Türen; nah sauberer. Nutzer-Repro auf großer Site (Frustum ~6 m, Distanz 2–8 m).
+
+**Messung:**
+- Mid (~1,6 m) Schatten an: Wand-JumpPct **2,45 → 0,08** nach Distanz-Empfangs-Gate; Glas **3,2 → 0,01**.
+- Fern (~5–7 m): Schatten an≈aus (Rest = Geometrie-Aliasing); adaptives `camera.near` senkt Depth-Ratio 10 600 → ~80.
+
+**Ursache:** (1) PCSS-Hart-Tap/Umbra/Poisson umgingen Distanz-AA. (2) In **3D** empfingen Paneele/Öffnungen **immer** Shadow-Map (`syncCladdingReceiveShadows` Early-Return) — Selbstschatten fragmentiert, sobald Steine wenige Pixel groß sind. (3) `near=1`/`far≈10 000` → Z-Fight ab ~40–60 m.
+
+**Fix:** PCSS lit-Mix + Umbra-Guard + feste Rotation + `PCSS_FOOTPRINT_SCALE` 1,0; ab **1000 cm** Distanz `setCladdingReceiveShadows(false)` (**in v2.0.315 zurückgenommen** — killte Schlagschatten); adaptives Orbit-`near` (3 % Distanz, max 150 cm); Mörtel/Schale polygonOffset 8/16. Dateien: `pcssShadows.ts`, `main.ts`, `FacadeController.ts`. Docs: [shadows.md](shadows.md).
+
+### Showcase-Modus (2026-09-08) — v2.0.313
+
+**Wunsch:** Präsentations-Link nur mit Bühne, Licht- und Animationseinstellungen — erreichbar über **Datei → Showcase-Link kopieren**.
+
+**Umsetzung:** Query `?view=showcase` (oder `?showcase=1`) + Hash `#f=` mit Fassade, Szene, `sun`, `bloom`. CSS `showcase-view`: Editor-Chrome aus, rechte Licht-/Animations-Leiste an. Keine Objektauswahl (Pointer early-out). Share-Payload erweitert; Sonnenstand aus Hash überschreibt nicht mehr `applyTodaySunDate`. Stage bleibt separat (`?stage=1` hat Vorrang). Dateien: `share.ts`, `main.ts`, `index.html`, `style.css`. Docs: [ux.md](ux.md), [views-and-state.md](views-and-state.md).
+
+### Erker-Fenster: Brüstung fest 128 (2026-09-08) — v2.0.309
+
+**Symptom:** Nach Stil-Übernahme (v2.0.308) standen Erker-Frontfenster weiter bei Vertikal 72 (wie die Restwand), Schenkel schon bei 128. Nutzer: Brüstung soll standardmäßig 128 cm sein.
+
+**Ursache:** Alt-Erker (und ggf. Spender-Pfade) behielten die Fassaden-Y der Spenderfenster auf der Front; Layout setzt 128, aber bestehende Daten wurden in v2.0.308 nicht migriert.
+
+**Fix:** `openingsFromLayouts` erzwingt `y: WINDOW_SILL_Y` (nicht Spender-Y, nicht Paneel-Snap). Schema **21** `bay-opening-sill-128` (`migrateBayOpeningSillTo128`) setzt alle Erker-Fenster auf 128 + Rock. Test: `bayOpeningStyle.test.ts`.
+
+### Schattenseiten vs. Schlagschatten (2026-09-08) — v2.0.312
+
+**Symptom:** Erker-Schenkel (sonnenabgewandt) wirkten deutlich dunkler/pechiger als der Schlagschatten des Erkers auf der angrenzenden Fassade — unnatürlicher Kontrast an der Innenecke.
+
+**Ursache:** Gegenlicht-Shader (`facadeShade`) dämpfte auf zurückliegenden Hauptflächen Direct **und** Hemisphere stark (~0,39 Hemi). Schlagschatten (PCSS) entfernen nur Direktlicht und behalten volles Ambient — deshalb wirkte die Schattenwand heller als die Eigen-/Gegenlichtseite.
+
+**Versuche / Grenzen:** Kein PCSS-/Density-Default anfassen (Sollzustand Schatten). Nicht nur Erker-Meshes `skipFacadeShade` (würde Nordfassaden inkonsistent lassen).
+
+**Fix:** `hemiDim` deutlich anheben (Ambient bleibt weitgehend); Direct weiter stark gedimmt. Leicht stärkerer `bounceIntensity` für Innenecken. Dateien: `facadeShade.ts`, `lightingMood.ts`. Docs: [lighting-mood.md](lighting-mood.md), [shadows.md](shadows.md).
+
+### Erker-Fenster: Brüstung von der Fassade (2026-09-08) — v2.0.311
+
+**Symptom / Wunsch:** Standard-Fenster 128 cm nach unten; beim Erker an einer Wand jedoch die Höhe der vorhandenen Fenster übernehmen (z. B. Vertikal 72), damit Erker und Fassade bündig wirken.
+
+**Fix:** `baySillYFromDonorOpenings` (häufigste Fenster-Y der Spender, 8-cm-Raster) → `layoutBayFrontOpenings` / `layoutBaySideOpenings` / `openingsFromLayouts`. Ohne Spender-Fenster: `WINDOW_SILL_Y` 128. Normale Bibliotheksfenster unverändert 128 (v2.0.310). Test: `bayOpeningStyle.test.ts`.
+
+### Fenster-Brüstung 128 bei jeder Wandhöhe (2026-09-08) — v2.0.310
+
+**Symptom:** Freie Wand 384×448 → Fenster Vertikal 128 korrekt. Andere Wandhöhen (v. a. Obergeschoss) → Fenster falsch platziert und falsche Werte im Vertikal-Feld. EG mit 448 wirkte oft „richtig“.
+
+**Ursache / Versuche:**
+- Erker-Daten lagen schon bei y=128 (Debug-Logs widerlegt Spender-/Finalize-Overwrite) — optischer Vergleich zur Restfassade (72) war ein anderes Thema.
+- **Zufall:** Bei Höhe 448 und Fenster 192 ist `(448−192)/2 = 128` = Wandmitte = `WINDOW_SILL_Y`. Bei 352 ist die Mitte 80; `alignOpeningToMasonry` zog neue Öffnungen auf Schichtmitten-Kandidaten (z. B. 132) bzw. `clampOpeningToWall`/`createOpening` auf Paneel-Modul 24 → 120.
+- **Nicht:** Brüstung an Fassadenfenster (64/72) angleichen als Default — Nutzer will fest 128 vom Wandfuß.
+
+**Fix:** `createOpening` / `clampOpeningToWall`: Y immer 8-cm-Raster. `addOpening` / `updateOpening`: `alignOpeningToMasonry({ snapY: false })` — nur X an Laibungen. Test: `createOpeningSillY.test.ts`. Docs: [windows-doors.md](windows-doors.md).
+
+### Erker-Fenster: Fassaden-Stil, Rand 48 / Lücke 96, Brüstung 128 (2026-09-08) — v2.0.308
+
+**Symptom:** Erker „Als Segment“ eingesetzt → Fenster mit weißem Rahmen und Brett-Bank statt der Haus-Optik (dunkelgrün, Profilbank); Front 384 mit Fenstern 96/240 (Ränder 96, Lücke 48). Nutzer: Fenster sollen 48 cm Rand links/rechts, 96 cm Lücke und immer 128 cm Brüstung haben, Stile von der bestehenden Fassade.
+
+**Ursache:** (1) `insertBayAsWallSegment` teilt die Wand und reicht **nur das Mittelstück** als `styleFrom` an `buildBayWindowAtPose` — liegen die Haus-Fenster außerhalb des Munds, ist das Mittelstück leer → kein Spender → `createOpening`-Defaults. (2) `layoutBayFrontOpenings` nutzte die Schenkel-Regel Rand ≥ 24 / Abstand 48 → 384: Rand 72, Raster-Snap 96/240.
+
+**Fix:** `bayOpeningDonorWalls(walls, hostId, y)` = Host **vor dem Split** + Wände derselben Etage mit Öffnungen; `insertBayAsWallSegment` ermittelt sie pro Etage (`wallSplitStack`) und übergibt `replaceWallWithBayPreset(opts.openingDonors)` → `buildBayWindowAtPose(opts.openingDonors)`. Neue Konstanten `BAY_FRONT_OPENING_MARGIN_CM` 48 / `BAY_FRONT_OPENING_GAP_CM` 96 nur für die Front (Schenkel weiter 24 / 48, sonst verlieren 96er Schenkel ihr 48er Fenster). Brüstung `WINDOW_SILL_Y` 128 kommt vom Layout, nicht vom Spender. Konsequenz: 288-Front → **ein** zentriertes Fenster (96 | 96 | 96); 576 → 48/240/432. Keine Migration bestehender Erker (Nutzer-Positionen bleiben). Dateien: `bayWindow.ts`, `baySegment.ts`; Tests: `bayOpeningStyle.test.ts` (neu), `bayWindow.test.ts`, `bayBond336.verify.test.ts`.
+
+### Erker-Steine mit Dicke — kein Z-Fight (2026-09-08) — v2.0.307
+
+**Symptom:** Auf Bibliothek-Erkern (seit v2.0.304) breite weiß/beige **Streifen** über die Steinflächen, die beim Orbitieren wandern; Fugen unsichtbar, Front wirkt wie eine Platte. Nutzer: „Artefakte auf Wänden und Paneelen — Wand zu nah hinter den Paneelen? Wände ausblenden? Fugen?“
+
+**Ursache:** `panelForBaySurface`/`defaultBayLibraryPanel` erzwangen `projectDepth: 0` + `taperDepth: 0` (v2.0.304, Motiv: Planbreite = sichtbare Front). Steine ohne Dicke lagen auf der Planlinie, die Wandschale bei Paneelen 0,15 cm dahinter (`studioWallOuterFaceLocalZ`); Polygon-Offset (Stein 1 / Mörtel 4 / Schale 8) reicht bei near 1 / far 61 000 ab ~10 m nicht mehr → Z-Fight Stein↔Schale. Fugen (`jointDepth` 0,8) lagen hinter der Schale — verdeckt, nicht Ursache. Hauswände mit Vorstand 4 sind nicht betroffen.
+
+**Verworfen:** Wandschale bei Paneelen ausblenden (Laibungen, Innenseite, Öffnungsränder, Fugen-Untergrund hängen daran; bei Vorstand ≥ 1 cm kein Konflikt). Offsets vergrößern (Kontaktschatten verschieben sich).
+
+**Fix:** Vorstand/Bosse nicht mehr nullen (Läufer-Default 4 / 1, Host-Werte bleiben); `isFlushBayPanel` repariert 0/0-Hosts. Schema **20** `bay-panel-depth` (`migrateFlushBayPanelsToDepth`) für Alt-Erker. Das Stummel-Motiv ist seit v2.0.306 im Layout gelöst. Dateien: `bayWindow.ts`, `baySegment.ts`, `schemaMigrations.ts`. Tests: `bayOuterOrigin.test.ts`, `bayBond336.verify.test.ts`, `bayWindow.test.ts` (Steinfront = width + 2×Vorstand, Körper-Außenkante = width).
+
+**Nebenbefund (nicht behoben):** Ein Plan-Drag der Hauswände (Etage/Fassade) landet nicht im Undo-Stack — `Widerrufen` stellte die Position nicht wieder her; Wiederherstellung nur über Plan-Footprint-Koordinaten möglich.
+
+### Läufer an Außenecken ohne Stummel (2026-09-08) — v2.0.306
+
+**Symptom (nach v2.0.305, Live-Dump `__fbDebug.dumpBays()`):** Erker-Front 384, Außen-Origin, `projectDepth: 4` → `row0 [47.6, 7×47.2, 9.6]`, `row1 [23.6, 7×47.2, 33.6]`. Erker mit `projectDepth: 0` waren sauber.
+
+**Ursache:** Die Paneelfront steht 4 cm **vor** der Außenkante; an der 90°-Gehrung (Planlinie = Außenkante) laufen die Gehrungsebenen nach außen auseinander → Paneelfront 392 statt 384. `computeRowColCuts` kippte bei `faceLen > width` ins Front-Layout und legte 8×48 auf 392 → 8-cm-Rest. Die alte Annahme („an der Außenkante ist faceLen kürzer“) galt nur für Innen-Origin.
+
+**Fix:** Front-Layout nur bei Innen-Origin (`panelFlip: false`) oder 45°-Knick (Forced-Ends fangen den kleinen Keil). Außen-Origin + 90°: Raster immer auf `wall.width`; die Ecksteine bekommen den Keil als Trapez (`wallLocalX`-Clamp). Dateien: `panelLayout.ts`. Test: `bayOuterOrigin.test.ts` („Vorstand 4 … kein 8-cm-Stummel“), `stripPanelClip.test.ts` (45°-Ecke unverändert).
+
+### Erker: Planlinie = Außenkante (2026-09-08) — v2.0.305
+
+**Symptom:** 384er Erker-Front rechnerisch 384, optisch 432 cm (je 24 cm breiter links/rechts); Läufer 8×48 mit Stummeln an beiden Ecken. Außenwände korrekt.
+
+**Ursache (Test-Probe):** Host mit Innen-Origin (`panelFlip: false`) → `buildUShapeWalls` gab Front/Schenkel ebenfalls `panelFlip: false` (Planlinie = Innenkante, Körper nach außen). Körper-Gehrung verlängert die Außenfläche um 2×Wandstärke. Gleiches Problem wie v0.7.279 bei Außenwänden; der Load-Fit dort schließt Erker aus. v2.0.303/304 (Paneel-Gehrung / Vorstand) waren an der falschen Stelle — ±4 cm statt 2×24.
+
+**Fix:** Umlauf umdrehen statt `panelFlip: false` → alle Erker-Wände Außen-Origin, `panelFlip: true`, sichtbare Front = `wall.width` in allen vier Host-Orientierungen und beiden Host-`panelFlip`. Schema **19** `bay-outer-origin` baut bestehende Innen-Origin-Erker neu. `stackedBayHosts` prüft beide Mundpunkte. `panelForBaySurface` erzwingt nur Läuferbreite 48, Schichthöhe vom Host (Schichtflucht). Debug-Instrumentierung (v2.0.301–304) entfernt.
+
+Dateien: `bayWindow.ts`, `baySegment.ts`, `schemaMigrations.ts`. Tests: `bayOuterOrigin.test.ts` (reproduziert 432 → 384, Slide mit umgedrehtem Umlauf, Migration), `bayWindow.test.ts`.
+
+### Erker-Ecken wieder geschlossen (2026-09-08) — v2.0.304
+
+**Symptom:** Nach v2.0.303 vertikale Lücke an Front↔Schenkel (auch Sockel).
+
+**Ursache (Log):** `panelMiterEnds` für Erker↔Erker `false` (`cornersOpen: true`, `projectDepth: 4`, `faceLen: 384`) — Paneele stumpf, Ecke offen.
+
+**Fix:** Paneel-Gehrung wieder an; Erker-Paneele `projectDepth`/`taperDepth` = 0, damit sichtbare Front = Planbreite ohne Gehrungs-Verkürzung.
+
+Dateien: `walls.ts`, `bayWindow.ts`. Tests: `bayBond336.verify.test.ts`.
+
+### Erker: Läufer optisch auf Planbreite (2026-09-08) — v2.0.303
+
+**Symptom:** Front 384 cm modular, Muster wirkte an den Ecken verschoben / nicht 1/1/… bzw. 0,5/1/…/0,5.
+
+**Ursache:** Paneel-Gehrung Front↔Schenkel + Vorstand verkürzte die sichtbare Front um ~2×`projectDepth` (~8 cm), während das Raster auf `wall.width` blieb.
+
+**Fix:** `panelMiterEnds` gehrt nicht zwischen zwei Erker-Flächen — Paneele stumpf an der Plan-Kante; Wandkörper-Gehrung und Host-Anschluss unverändert.
+
+Dateien: `walls.ts`. Tests: `bayBond336.verify.test.ts`.
+
+### Öffnungen 8 cm; Erker 288/384 (2026-09-08) — v2.0.302
+
+**Symptom:** (1) Öffnungen springen beim Verschieben um 12/24 cm statt 8. (2) Bibliothek hatte 336 statt schmal 288 / breit 384.
+
+**Ursache (Logs):** `snapOpeningMoveToMasonry` nutzte Fugen/Steinmitten (`minGap` 12/24); `moveOpening` mit `useMasonry: true` → Positionen wie `toX: 667` (`mod8: false`). Startup: `fronts: [192,336,384,576]`, `wallDepth: 24`, `has288: false`.
+
+**Fix:** Verschieben immer 8-cm-Raster; Bibliothek `BAY_LIBRARY_FRONTS_CM = [192, 288, 384, 576]`; Wandstärke unverändert 24. Keine Auto-Migration bestehender Erker-Breiten.
+
+Dateien: `openingPanelSnap.ts`, `openings.ts`, `bayWindow.ts`. Tests: `openingPanelSnap.test.ts`, `bayBond336.verify.test.ts`, `bayWindow.test.ts`.
+
+### Erker 336: Läufer 48 statt Streifen 64 (2026-09-07) — v2.0.301
+
+**Symptom:** Neu eingefügter 336er-Erker mit „48er Paneelen“ wirkte trotzdem falsch.
+
+**Ursache (Log):** Standalone-Drop setzte `pattern: strip`, `panelWidth: 64` (App-Default). Fenster-Snap nutzte Fallback 48 → Öffnungen 48/192, Paneel-Raster 64 → Stummel. Breite 336 ist für 48er-Läufer korrekt (7×48, Pfeiler 48|96|48|96|48).
+
+**Fix:** `defaultBayLibraryPanel()` = Läufer 48×24; `panelForBaySurface` wandelt Streifen/aus ebenfalls nach Läufer 48; Brüstung bleibt 128 (kein Snap auf Paneelhöhe).
+
+Dateien: `bayWindow.ts`. Tests: `bayBond336.verify.test.ts`.
+
+### Erker: Zwangs-336 rückgängig (2026-09-07) — v2.0.300
+
+**Symptom:** Nach Reload Fenster verschoben, Erker breiter, Verband weiter falsch.
+
+**Ursache (Logs):** Schema-16-Migration tauschte bestehende 288er-Erker auf 336 (Mund + Fenster-Neulage). Paneele oft `panelWidth: 24` — `panelForBaySurface` ließ 24 stehen, weil 336÷24 aufging; Versatzlage erzeugt dann 12-cm-Endstücke (= 0,25×48).
+
+**Fix:** Schema 17 setzt Bibliothek-Erker 336→288 zurück. `panelForBaySurface` erzwingt bei Läufer* immer 48×24. Schema 16 weitet nicht mehr. Bibliothek bleibt 336 für **neue** Erker.
+
+Dateien: `baySegment.ts`, `bayWindow.ts`, `schemaMigrations.ts`. Docs: [bay-windows.md](bay-windows.md).
+
+### Erker 336 vs. 64-cm-Steine (2026-09-07) — v2.0.299
+
+**Symptom:** Bibliothek-Front 336 wirkte wie 288 (0,25-Stummel / gleiches „kaputtes“ Muster).
+
+**Ursache:** 336 ist 7×48 (Läufer-Default). Viele Wände hatten noch `panelWidth: 64` (Streifen-Default) trotz Läuferverband → 336 = 5,25×64 → Rest 0,25 wie zuvor. Der 1,125-Stretch hatte das kaschiert; ohne Stretch war 336 allein wirkungslos.
+
+**Fix:** `panelForBaySurface` — bei Läufer* und Front teilt Host-Modul nicht, aber 48 schon → Erker-Flächen bekommen Muster-Defaults 48×24. Fenster-Snap folgt dann 48/192.
+
+Dateien: `bayWindow.ts`. Docs: [bay-windows.md](bay-windows.md).
+
+### Erker-Front 336 cm, kein End-Stretch (2026-09-07) — v2.0.298
+
+**Symptom / Entscheidung:** Endstein-Stretch 1,125 auf Erker-Flächen verzerrte Paneele; mittlere Bibliothek-Front 288 cm erzwang 24-cm-Ränder und Stummel-Verband.
+
+**Fix:** Stretch rückgängig (`buildStretcherCuts` wieder Rest nur am Ende). Bibliothek-Front **288 → 336** (`BAY_LIBRARY_FRONTS_CM`: 192 / 336 / 384 / 576). 336 = 7×48: Fenster-Snap 48/192, Ränder 48, Verband `1/1/…` ohne Rest. Segment-Einsetzen in längere Wände unverändert (Reststücke klassischer Läufer).
+
+Dateien: `bayWindow.ts`, `panelLayout.ts`. Docs: [bay-windows.md](bay-windows.md), [panel-geometry.md](panel-geometry.md), [ux.md](ux.md).
+
+### Erker: Stile, Stapel-Platzierung, Verband ohne Stummel (2026-09-07) — v2.0.297
+
+**Symptom:** Löschen→Neu-Einsetzen verlor Fensterstile; Platzieren unter vorhandenem Erker schwierig; Fenster wirkten stark versetzt; Paneele mit 0,25-Stummel am Rand.
+
+**Ursache:** `flattenBayToFlatWall` setzte `openings: []`. Drop traf Erker-Meshes ohne Reststück-Auflösung. `snapBayOpeningsToModule` mit `Math.round` erzwang auf 288 cm Flush-Rechts (48/192). Läufer `buildStretcherCuts` packte Rest nur ans Ende.
+
+**Fix:**
+- Flatten übernimmt Front-Öffnungen + Profile; Swap/Preset reichen Donors indexweise; `inheritOpeningStyles` um motion/guard/shade/…
+- `resolveBayPlacementWall` + `stackedBayMouthLocalXOnWall`
+- Snap nur wenn beide Ränder ≥ 24 cm, sonst zentriert
+- Erker: End-Stretch in gerader Lage bei Rest &lt; ½ Modul (**v2.0.298 rückgängig** — statt dessen Front 336)
+
+Dateien: `baySegment.ts`, `bayWindow.ts`, `openings.ts`, `panelLayout.ts`, `main.ts`. Docs: [bay-windows.md](bay-windows.md), [panel-geometry.md](panel-geometry.md).
+
+### Wandstärke EG 48 / OG+Erker 24, Verband am Erker (2026-09-07) — v2.0.296
+
+**Soll:** Berliner Altbau — EG ~2 Stein (48 cm), Obergeschosse und Erker ~1 Stein (24 cm); Paneelverband am Erker wie an einer normalen Wand.
+
+**Umsetzung:**
+- `WALL_DEPTH = 48`, `UPPER_STOREY_WALL_DEPTH = 24`, `BAY_WALL_DEPTH_CM = 24`
+- Geschoss darüber: `depthForUpperStoreyWall` / `insertStoreyAbove`
+- Erker: `mkChildWall` / `buildBayWindowAtPose` setzen 24 cm; `recomputeBuildingLayout` / `clampBuilding` / `fitBuildingWallsToOuterSpine` **überschreiben** Erker- und per-Wand-Tiefen nicht mehr mit `building.wallDepth`
+- Fenster: `snapBayOpeningsToModule` (48-cm-Modul) — Laibungen auf Läuferfugen
+- Drop: bei bündiger Geschossfuge `bayDropClearanceCm` = Höhe der unteren Fassade (nicht mehr 0)
+
+**Mund 48↔24:** Gehrung nutzt je Wand `wall.depth` — EG-Reststück 48, Erker-Schenkel 24; Planlinie bleibt Außenkante. Alt-Projekte behalten gespeicherte Tiefen bis Neuaufbau/Geschoss-Klon.
+
+**Dateien:** `presets.ts`, `bayWindow.ts`, `baySegment.ts`, `walls.ts`, `planGeometry.ts`, `FacadeController.ts`. Docs: [bay-windows.md](bay-windows.md), [README.md](README.md).
+
+### Erker-Fenster auf Paneel-Fugen (2026-09-07) — v2.0.295
+
+**Symptom:** Erker-Front wirkte wie „anderes Muster“ als eine Wand gleicher Breite — Stoßfugen und Fensterlaibungen nicht bündig; schmale 24-cm-Streifen neben den Fenstern.
+
+**Ursache (Messung):** Verband-Algorithmus Erker = flache Wand bei gleichen Öffnungen. Erker-Preset zentrierte Fenster mit Restbreite als Ränder → bei 288 cm und 2×96 oft **Margin 24 cm** = ½ Läufer (48). Laibungen mitten im Stein der geraden Lage.
+
+**Fix:** Nach dem Packen `snapBayOpeningsToModule` — linke Laibung auf Vielfache der Paneel-`panelWidth` (wenn Paneele an). Ohne Paneele unverändert zentriert. Dateien: `bayWindow.ts`. Docs: [bay-windows.md](bay-windows.md).
+
+### Erker: Hilfslinien/Öffnungs-Snap an Paneel-Skirt (2026-09-07) — v2.0.294
+
+**Symptom:** Am verlängerten Erker lagen blaue Wandraster-Linien und die orangene Öffnungsmarkierung **mitten durch die Paneele**, nicht auf den Fugen; Platzieren wirkte nicht fugenbündig.
+
+**Ursache (Logs):** Paneele nutzen `bayWallSkirtDropCm(..., allWalls)` → Schichten ab Restwand-Fuß (z. B. `rowCuts [32,56,80…]`). Hilfslinien riefen `wallFaceGridYs(wall)` **ohne** `allWalls` auf → Skirt 0, Raster `[0,24,48…]`. Öffnungs-Y-Snap (`openingPlacementCandidateYs` / `openingMasonryCourseYs`) ebenfalls ohne `allWalls`.
+
+**Fix:** `showWallFacePlacementGrid` übergibt `allWalls` an `wallFaceGridYs`; Move/Align-Snap übergibt `allWalls` an Y-Kandidaten. Dateien: `placementGrid.ts`, `openingPanelSnap.ts`. Docs: [bay-windows.md](bay-windows.md), [opening-features.md](opening-features.md).
+
+### Paneel-Laibung: Sturz-Reihe an Laibungslinien geteilt (2026-09-07) — v2.0.293
+
+**Symptom:** „Links und rechts an den Trapezschrägen fehlen die Abstände entsprechend der Fugen“ — v2.0.290–292 (Return-Offsets, Stein-Inset an der Laibung) änderten nichts Sichtbares.
+
+**Ursache (Logs):** Im Läuferverband läuft in der Reihe direkt über dem Sturz ein Stein **über die Laibungslinie hinaus** (z. B. `x 91.4…138.6` bei Laibung `x=96`). Nur der Kettenanteil auf der Maske (`96…138.6`) bekommt den Wrap-Versatz; die Steinkante wird als **ein** Quad von unversetzt (x=91.4) zu versetzt (x=138.6) interpoliert → schräge Unterkante („Trapezschräge“), Boss-Front ohne Versatz, kein Fugenabstand zum Laibungsstein darunter. Zusätzlich lag die Return-Gehrung durch die v2.0.291-Kettenkürzung um ≈0,57 cm neben der Stein-Gehrung (dunkler Keil).
+
+**Verworfen:** v2.0.290 `joint/2`-along-Offset am Return (gleiche Ebene), v2.0.291 Ketten-Pullback (Versatz Return↔Stein), v2.0.292 `wrapJambJointInset` (Fassadenstein an der Laibung eingerückt — Log `x1: 95.6` bestätigt aktiv, optisch unverändert). Alle drei entfernt.
+
+**Fix:** `splitHeadRowPartsAtWrapCorners` in `extrudeStudioPanelParts`: Rechteck-Steine, deren Unterkante auf einer Wrap-Ecke liegt (`|y − cornerY| ≤ WRAP_EDGE_EPS_CM`) und die eine Laibungslinie überspannen, werden bei `cornerX ± joint/2` in zwei Steine geteilt (Bogen-/Outline-Teile unverändert). Sturz-Teil über der Öffnung: Gehrung + Return wie an den Seiten; Rest sitzt mit normaler Fuge auf dem Laibungsstein. Return-Kettenenden wieder exakt auf den Stein-Ecken (gemeinsame 45°-Ebene).
+
+Dateien: `panelGeometry.ts`. Docs: [facade-layers.md](facade-layers.md), [opening-features.md](opening-features.md).
+
+### Paneel-Laibung: Fuge an Fassaden-Trapezschrägen (2026-09-07) — v2.0.292 *(verworfen in v2.0.293)*
+
+**Symptom:** Nach v2.0.290/291 (nur Return-Offsets) unverändert: an den linken/rechten Trapezschrägen des Sturzes fehlt der Fugenabstand zur Nachbar-Paneele (Außenansicht).
+
+**Ursache (Logs + Bild):** Return-Ketten-Inset war aktiv (`inset≈0,57`), aber die **Fassadensteine** treffen an der Laibung weiter auf derselben Wrap-Gehrungsebene (Sturz-Unterkante ↔ Seiten-Laibung) ohne `joint`-Abstand.
+
+**Fix:** `wrapJambJointInset` — Fassadenstein und Return an vertikalen Wrap-Laibungen um `joint/2` einrücken; `makeCoordAt` mit etwas größerer Wrap-Toleranz, damit die Gehrung an der eingerückten Kante bleibt.
+
+Dateien: `panelGeometry.ts`. Docs: [facade-layers.md](facade-layers.md), [opening-features.md](opening-features.md).
+
+### Paneel-Laibung: echte Fuge an Sturz-Ecken (2026-09-07) — v2.0.291
+
+**Symptom:** Nach v2.0.290 (joint/2 along-Offset) fehlte der Fugenabstand an den Trapezschrägen weiterhin — Schrägen wirkten bündig.
+
+**Ursache (Logs + Geometrie):** `gap:[0.4,0.4]` war aktiv, aber Sturz- und Laibungs-Return bleiben auf **derselben** 45°-Ebene (`along = d + gap` verschiebt nur die gemeinsame Ebene). Entlang der Gehrung kein Spalt zwischen den Trapezschrägen.
+
+**Fix:** Kettenenden an Masken-Ecken um `joint/√2` kürzen, dann 45° — getrennte parallele Gehrungsebenen, Abstand ≈ Fugenbreite. v2.0.290-along-Offset entfernt.
+
+Dateien: `panelGeometry.ts`. Docs: [facade-layers.md](facade-layers.md), [opening-features.md](opening-features.md).
+
+### Paneel-Laibung: Fuge an Sturz-Ecken (2026-09-07) — v2.0.290
+
+**Unzureichend** (ersetzt durch v2.0.291): joint/2 als along-Offset trennt die Gehrungsebenen nicht.
+
+### Paneel-Laibung: Sturz wie Seiten (2026-09-07) — v2.0.289
+
+**Symptom:** Nach v2.0.288 (kein Y-Versatz am Sturz) hingen dünne Return-Lappen unter dem Sturz, klafften zur Fassade; Seiten ok.
+
+**Ursache (Logs):** `facadeYShift: false` bei `inward: {y:-1}` — Fassadenstein blieb an `headY`, Return-Querschnitt lag weiter in der Öffnung → sichtbare Lappen/Lücke.
+
+**Fix (Nutzervorgabe: wie seitliche Laibungen):** Gehrungs-Versatz wieder für Laibung **und** Sturz (`|nx| < 0,35` oder `|ny| < 0,35`) — gleiche Trapez/Fugen/Gehrung-Logik. v2.0.288 verworfen.
+
+Dateien: `panelGeometry.ts`. Docs: [facade-layers.md](facade-layers.md), [opening-features.md](opening-features.md).
+
+### Paneel-Laibung: Sturz-Schicht in Linie (2026-09-07) — v2.0.288
+
+**Verworfen in v2.0.289** (Return-Lappen). Zwischenversuch: kein Y-Versatz am Sturz.
+
+### Paneel-Laibung: äußere Kante wieder Gehrung (2026-09-07) — v2.0.287
+
+**Symptom:** Nach v2.0.285/286 sah die äußere Paneelkante an der Laibung **stumpf** aus — nicht wie die 45°-Gehrung einer Wandecke.
+
+**Ursache:** v2.0.285 hatte den Wrap-Versatz in `makeCoordAt` und die Gehrungsebene im Return-Querschnitt absichtlich entfernt (bündig), weil der Versatz entlang **Bogennormalen** Keile an Bogen ∩ Lagerfuge erzeugte. An Laibung/Sturz (achsparallel) fehlte damit die gewünschte Wandecken-Gehrung.
+
+**Fix:** Gehrung wieder aktiv, aber nur bei **achsparalleler** Inwärts-Normale (`|nx| < 0,35` oder `|ny| < 0,35`):
+- `makeCoordAt`: Punkte auf der Wrap-Maske wandern mit `|z − wrapRefZ|` nach innen (wie Wandecke).
+- `extrudeWrapReturn`: Querschnitt wieder `(−ov, backZ) → (P, zOf(P))` (komplementäre Gehrungsebene); Boss außen flach.
+- Am Bogen (beide Normalen-Komponenten groß) **kein** Versatz — Keile aus v2.0.284 bleiben vermieden.
+
+Dateien: `panelGeometry.ts`, `panelGeometry.test.ts`, `version.ts`. Docs: [facade-layers.md](facade-layers.md), [opening-features.md](opening-features.md).
+
+### Paneel-Laibung Sturz + Erker-Öffnungsraster (2026-09-07) — v2.0.286
+
+**Symptom 1:** Bei „Laibung mit Paneelen verkleiden“ fehlten die Return-Paneele am **Fenstersturz**; Ecken Laibung↔Sturz ohne Gehrung (Seiten-Laibung ok).
+
+**Ursache:** `snapHoleToTileGrid` weitet Rechtecklöcher nach oben auf die nächste Schicht aus — Steine enden über der geometrischen Öffnungsoberkante. Zusätzlich sitzen Steine oft `joint/2` über der Sturzlinie. Die Wrap-Maske mit `WRAP_EDGE_EPS` 0,3 cm traf die Sturz-Kanten nicht → nur vertikale Laibungen (X-Flush) erzeugten Returns. Explizite Sturz-/Kämpfer-Ecken fehlten oft in `wrapCorners`.
+
+**Fix:** `wrapMiterSpecForWall` hebt die Sturzlinie auf die gesnappten Loch-Oberkante; `WRAP_EDGE_EPS_CM` 1,25; explizite Ecken an Sturz (Rechteck) bzw. Kämpfer (Bogen). Debug-Instrumentierung aus v2.0.284/285 entfernt.
+
+**Symptom 2:** Öffnungen auf **Erker-Wänden** rasteten beim Verschieben grober als an normalen Wänden — oft nicht bündig zu Paneelfugen.
+
+**Ursache:** Drag bevorzugte ausschließlich Flush-Positionen (beide Laibungen auf Fugen). An Erkern mit Forced-Ends / kurzen Schenkeln gibt es oft nur 1–2 solche Positionen.
+
+**Fix:** Auf Erker-Wänden (`bayParentId`/`bayRole`) und wenn Flush viel dünner als das Fugen-Raster ist → Drag nutzt `openingPlacementCandidateXs` (linke Laibung auf Cut). Dateien: `openingPanelSnap.ts`.
+
+Docs: [opening-features.md](opening-features.md), [facade-layers.md](facade-layers.md), [bay-windows.md](bay-windows.md).
+
+### Paneel-Laibung: bündig statt Gehrung, Rundbogen-Hinweis (2026-09-07) — v2.0.285
+
+**Symptom:** Nach v2.0.284 „Für die Seiten passt es, der Bogen ist jedoch zerstört“: an der Bogenlaibung helle Keile/Platten an jedem Reihenübergang und am Scheitel, von unten betrachtet wie aus der Wand ragende Flossen.
+
+**Fehlersuche (Runtime-Logs, Session c6b426):**
+- Ketten-Erkennung und Loft der Bogen-Returns **korrekt** (alle Bogensteine `onMask ≈ arcN`, `results: ok`, Stations-Normalen zeigen zur Öffnungsmitte, Querschnitt wie geplant) — Hypothesen „Maskentoleranz“, „Loft bricht ab“, „Keilstein-Kontur“, „Normalen kippen“ verworfen.
+- Ein zusätzliches Teil `96×160` mit vollem Bogen stammt aus der **Low-LOD-Platte** (`createStudioPanelLowGeometry`, ganze Wand als Kachel) — nur auf mittlerer Distanz sichtbar, nicht die Ursache in der Nahansicht.
+- Bounding-Box pro Stein: Körper/Boss der Scheitel- und Bogensteine ragen **2–2,5 cm unter ihre Lagerfuge** und seitlich aus dem Rechteck — exakt der 45°-Versatz (4 cm bei z=−4, 5 cm bei z=−5) entlang der **Bogennormale**. Am Eckpunkt Bogen ∩ Lagerfuge hat die Normale eine Y-Komponente → der Eckpunkt wandert schräg aus der Reihe, Lagerfugen-Flächen verdrehen sich zu Keilen. An den Laibungen (Normale rein horizontal) tritt das nicht auf → „Seiten passen“. Die Geometrie war also „wie entworfen“; der Entwurf (konvexe Gehrung entlang gekrümmter Kanten) ist am Bogen visuell untauglich.
+
+**Nicht geholfen / verworfen:** Eckpunkte entlang der Lagerfuge auf den versetzten Bogen schieben (Divergenz am Scheitel, wo die Reihenlinie den versetzten Bogen nicht mehr schneidet) — nicht umgesetzt, Nutzer wünscht stattdessen bündigen Abschluss.
+
+**Fix (Nutzervorgabe: „Laibung immer bündig mit der Wand“):**
+- `makeCoordAt`: **kein Wrap-Versatz** der Fassadensteine mehr (Parameter `wrapRefZ` entfernt). Steine enden an der Öffnungskante; Boss-Seite dort weiterhin flach (`edgeOnWrap`, `pinInsetToFlushPlanes(wrap)`).
+- `extrudeWrapReturn`: Querschnitt stumpf — Körper d ∈ [−0,25, P] mit **Front in der Steinfront** `zOf(P)` (bündig, nichts vor der Paneelfront), innen bis `zSplit`; Trapez-Boss d ∈ [P, P+T] mit Fase `cZ` an **beiden** Z-Enden (Front + Fensterfront) und `cAlong` an den Kettenenden. Bogen-Loft, Mörtelbett-Gruppen und Sohlbank-Putz unverändert.
+- UI: `#opening-panel-wrapped-reveal-info` (Klasse `toolbar-infobox`) unter der Checkbox, sichtbar nur bei aktivem Wrap: Hinweis auf mögliche Darstellungsprobleme bei Rundbögen (z. B. Lücke am Scheitel, wo ein Reihen-Sliver unter `MIN_ARCH_CLIP_REMNANT` verworfen wird und kein Return entsteht).
+- Test `panelWrappedReveal`: prüft jetzt „nichts vor der Paneelfront“ (`minZ ≥ −(P+T)`) und Return-Körperfront in der Steinfront statt Gehrungs-Intrusion.
+
+Dateien: `panelGeometry.ts`, `panelGeometry.test.ts`, `index.html`, `main.ts`, `style.css`. Docs: [opening-features.md](opening-features.md), [facade-layers.md](facade-layers.md), [panel-geometry.md](panel-geometry.md), [ux.md](ux.md).
+
+### Paneel-Laibung: Gehrung + Bogen aus dem Verband (2026-09-07) — v2.0.284
+
+**Symptom:** v2.0.283-Returns liefen als gerade Modulreihen ohne Gehrung an der Ecke und ohne Bogen (Bogenbereich leer, Laibungs-Module bis zur vollen Höhe).
+
+**Fehlersuche:** Logs `hasArch=true, tiles=16, depthCuts=2` — der Bogen-Zweig fand keine tangentialen Segmente, senkrechte Module wurden gerastert statt aus dem Verband; Fassadensteine blieben an der Laibung flach abgeschnitten (kein Gehrungsblock).
+
+**Nicht geholfen / verworfen:** Eigene Rasterung der Laibung (Module × Tiefe, v2.0.283) — Verband und Bogen können so nie zur Fassade passen.
+
+**Fix:**
+- **Fassadensteine** an gewrappten Öffnungen bekommen eine **konvexe 45°-Gehrung in die Öffnung** wie an einer Wandecke (`makeCoordAt` + `WrapMiterSpec`: Punkte **auf** der Maske wandern mit `|z − backZ|` entlang der Inwärts-Normale, an Masken-Ecken Gehrungs-Normale). Boss-Seite dort flach (`edgeOnWrap` → `atStart/atEnd`/`flatBottom/flatTop`, `pinInsetToFlushPlanes(wrap)`), Rechteck-Boss läuft jetzt über `p` statt `xAt`.
+- **Return-Steine pro Fassadenstein** (`appendWrapReturnsForPart` → `wrapChainsOfRing` → `extrudeWrapReturn`): Randkette des Steins auf der Maske (Laibung, Sturz, Bogen — auch kollineare Überlappung eines Sturzsteins) wird als Körper (d ∈ [−0,25, P], Außenseite = Gehrungsebene, innen bis `zSplit`) + Trapez-Boss (außen flach, innen/Enden `chamfer`) geloftet. Kettenenden nahe Masken-Ecken (≤ 1,6 cm) 45° geschnitten (Rahmen-Gehrung), sonst gerade. **Verband, Fugen und Bogenform kommen vom Stein selbst.** Sohlbank ohne Return (Fensterbank).
+- Laibungsfläche bei Wrap: Außen-Quads bleiben als **Mörtelbett** (Gruppe 0, `jointColor`) ab Wandaußenfläche bis `zSplit`; Innen ab `zSplit` (Gap 2 cm entfernt); Sohlbank Putz (Gruppe 2). `createStudioPanelWrappedRevealGeometry`, `wrappedRevealBackZ`, `WRAP_REVEAL_INNER_GAP_CM`, Mörtel-`opts` entfernt. Freiraum-Band > 0 schließt Wrap aus.
+
+Dateien: `panelGeometry.ts`, `FacadeController.ts`, `panelGeometry.test.ts`. Docs: [opening-features.md](opening-features.md), [facade-layers.md](facade-layers.md), [panel-geometry.md](panel-geometry.md).
+
+### Paneel-Laibung mit Boss-Verband (2026-09-07) — v2.0.283
+
+**Symptom:** Fuge in der Laibung passte fast, aber ohne Versatz wie zur Front; Verband fehlte als Boss/Trapez in die Öffnung.
+
+**Fehlersuche:** v2.0.280–282 vertieften nur Fassadensteine/`backZ` (flache Returns). Logs: `wrapBack=26`, kein Boss in +X. Nutzer: Fuge nach innen versetzt + Boss wie Fassade.
+
+**Fix:** `createStudioPanelWrappedRevealGeometry` legt Modulsteine (Schicht × Tiefe) mit `projectDepth`/`taperDepth`-Boss in die Öffnung; flache Stein-Vertiefung entfernt. Dateien: `panelGeometry.ts`, `FacadeController` (Wrap-Mesh). Docs: [opening-features.md](opening-features.md), [facade-layers.md](facade-layers.md).
+
+### Paneel-Laibung: Fugen bis Fensterfront (2026-09-07) — v2.0.282
+
+**Symptom:** Bei Wrap wirkten die hellen Linien wie offene Fugen zur Laibung (nicht Wandfarbe).
+
+**Fehlersuche:** Steine `wrapBack=26` (v2.0.281 Offset ok), Mörtel blieb `backZ=0` → Fugentunnel zwischen Returns offen. Nutzer: Fugen sollen durchgehen.
+
+**Fix:** `createStudioMortarGeometry` vertieft Mörtel an gewrappten Öffnungen auf dieselbe `wrappedRevealBackZ` wie die Steine (`windowDepthOffset` mitgeben). Dateien: `panelGeometry.ts`, `FacadeController.ts`.
+
+### Paneel-Laibung ohne Putz in den Fugen (2026-09-07) — v2.0.281
+
+**Symptom:** Bei „Laibung mit Paneelen verkleiden“ schien in den Fugen der Returns eine helle flache Fläche (Wand/Putz), nicht die dunkle Fuge.
+
+**Fehlersuche:** Logs `outerIdx=0` (Außen-Laibung weg), `innerIdx=402` (Innenputz bleibt), aber `wrapBack=18` vs `zSplit=26` — Steine ohne `building.windowDepthOffset` (Default 8 → 18 cm), Laibung mit Offset 0 → 26 cm. 8 cm Lücke + koplanarer Putz an den Steinrücken → helles Durchscheinen.
+
+**Nicht geholfen / verworfen:** Strip-Mesh erneut (v2.0.279 Streifen).
+
+**Fix:** `createStudioPanelGeometry` bekommt `windowDepthOffset` wie die Laibung; bei Wrap startet die Innen-Laibung `WRAP_REVEAL_INNER_GAP_CM` (2 cm) hinter `zSplit`. Dateien: `panelGeometry.ts`, `FacadeController.ts`. Docs: [opening-features.md](opening-features.md), [facade-layers.md](facade-layers.md).
+
+### Paneel-Laibung wie an der Ecke (2026-09-07) — v2.0.280
+
+**Fehlersuche:** Symptom — „Laibung mit Paneelen verkleiden“ am Rundbogen: dichte horizontale Streifen/Z-Fight. Runtime: Strip-Mesh `polyLen=67`, `segsPushed=81`, `minSegLen=0,52`, `dzFaceOuter=1` (koplanar zur Steinfront). Fix: Strip-Mesh entfernt; angrenzende Steine bekommen `backZ` bis zur Fensterfront (`wrappedRevealBackZ`) — Return wie Wandecke. Außen-Laibung bleibt ausgeblendet. Datei: `panelGeometry.ts`. Docs: [opening-features.md](opening-features.md), [facade-layers.md](facade-layers.md).
+
+### Laibung mit Paneelen verkleiden (2026-09-07) — v2.0.279
+
+**Öffnung:** Option **„Laibung mit Paneelen verkleiden“** (`panelWrappedReveal`): Paneele/Mauerwerk gehen um die Öffnungskante in die äußere Laibung bis zur Fensterfront; glatte Außenlaibung entfällt. Innen bleibt Putz. Default aus; Hydrate ohne Schema-Bump. Dateien: `facade.ts`, `openingGeometry.ts`, `hydrate.ts`, `panelGeometry.ts`, `FacadeController.ts`, `index.html`, `main.ts`. Docs: [opening-features.md](opening-features.md), [facade-layers.md](facade-layers.md).
+
+### Erker-Paneele: Fußmessung auch ohne dropCm (2026-09-07) — v2.0.278
+
+**Geometrie / Fehlersuche:** Symptom — Paneelfugen am Erker versetzt zur Restfassade, **auch mit Verlängerung aus**. Runtime: Erker `y=416/h=384`, Restwand gleiche Oberkante `y=448/h=352`, aber `dropCm=0` → `bayWallSkirtDropCm` Early-Return 0 (v2.0.277) → Raster am verlängerten Fuß. Fix: Fußdifferenz zur Restwand **immer** messen; `dropCm` nur Fallback. `bayDropCm` = max(Meta, Messung), damit Ausschalten die Geometrie zurücksetzt. Dateien: `bayWindow.ts`, `baySegment.ts`. Docs: [bay-windows.md](bay-windows.md).
+
+### Erker-Paneele fluchten mit der Fassade (2026-09-07) — v2.0.277
+
+**Geometrie / Fehlersuche:** Symptom — nach „Nach unten verlängern“ lagen Paneelfugen am Erker versetzt zur Restfassade (oft um ~½ Schichthöhe). Ursache: `bayWallSkirtDropCm` konnte 0 liefern, wenn eine Schein-Restwand denselben Fuß hatte (Messung schlägt Meta-`dropCm`); Raster startete dann am verlängerten Wandfuß. Fix: Messung nur übernehmen wenn > 0, sonst `dropCm`; unter mehreren Partnern die größte positive Messung. Dateien: `bayWindow.ts`, `panelLayout.ts`. Docs: [bay-windows.md](bay-windows.md). **Teilweise überholt durch v2.0.278** (Early-Return bei `dropCm=0` war falsch bei Meta-Desync).
+
+### Offene Boss-Fronten & Erker-Schichten (2026-09-07) — v2.0.276
+
+**Geometrie / Fehlersuche:** Symptom — einzelne Paneele „vorne offen“ (Boss nur Fase, Loch in der Deckfläche); Erker nach unten verlängert zeigte versetzte Schichten zur Restwand. Runtime: `extrudeInsetRingFrustum` mit `tops:0` bei `ringLen≈102` (dichte Mesh-Dock-Ringe → `offsetLoops` ohne Deckfläche); Raster startete am verlängerten Wandfuß und wurde nur geclippt. Fix: Boss-Ring auf ≤40 Stützpunkte mit Ecken-Erhalt vor dem Offset; ohne Deckfläche kein Strip-Only-Mesh (`return false` → flacher Fallback). Paneel-Raster bei `skirtDrop` mit Ursprung am Etagenfuß (`visiblePanelRowRange(..., skirt)`). Dateien: `panelGeometry.ts`, `panelLayout.ts`, `bay`-Aufrufer. Docs: [panel-geometry.md](panel-geometry.md), [bay-windows.md](bay-windows.md).
+
+### Paneele am Bogen: Ecken erhalten (2026-09-07) — v2.0.275
+
+**Geometrie / Fehlersuche:** Symptom nach v2.0.274 — Rundung am Bogen passte, aber einzelne Paneele wirkten beschädigt (schräge Kanten, Lücken, fehlende Boss-Ecken neben dem Scheitel). Runtime: `simplifyClosedRingMeshDock` / `arcSamplesForMeshDock` mit reinem Index-Stride (`lostCorners` 4→3, 40 Treffer). Fix: beim Stride scharfe Knicke (`isSharpPolylineTurn`) immer behalten. Datei: `panelGeometry.ts`. Docs: [panel-geometry.md](panel-geometry.md).
+
+### Paneel-Bogen ohne grobe Sehnen (2026-09-07) — v2.0.274
+
+**Geometrie / Fehlersuche:** Symptom nach v2.0.273 — Paneele am Bogen wirkten weiter eckiger als der Blendrahmen. Ursache: Cap auf 64 half nicht, weil `sparsePolyline` mit Toleranz 0,85 cm auf dem kurzen Paneel-Bogenabschnitt fast alle Clip-Punkte wegwarf (wenige lange Sehnen). Fix: `arcSamplesForMeshDock` — Stride `ARCH_CURVE_SEGMENTS`→`ARCH_MESH_SEGMENTS` ohne Douglas-Peucker; Front, Soffit und Bogen-`remnantOutline` nutzen das. Datei: `panelGeometry.ts`. Docs: [panel-geometry.md](panel-geometry.md).
+
+### Paneele am Bogen so rund wie das Fenster (2026-09-07) — v2.0.273
+
+**Geometrie:** Symptom — Fensterbogen fein facettiert (`ARCH_MESH_SEGMENTS` 64), angrenzende Paneele/Mörtel an der Bogenkappe grober (Front/Soffit/`remnantOutline` nur 24 bzw. 48 Punkte seit v2.0.166). Fix: `ARC_FRONT_MAX_SAMPLES` und `ARC_SOFFIT_MAX_SAMPLES` = `ARCH_MESH_SEGMENTS`. Earcut bleibt eine Fläche (kein Rückfall auf 128 Spalten-Quads). Datei: `panelGeometry.ts`. Docs: [panel-geometry.md](panel-geometry.md).
+
+### Leere Register weg, Klick öffnet Fächer (2026-09-07) — v2.0.272
+
+**UI:** Symptom — Register ohne bedienbaren Inhalt (z. B. Profil nur Label, Library-Picker per CSS aus) blieben im Fächer; Klick auf gestapelte Köpfe scrollte nicht (Pro-Kopf-Listener mit Closure auf veraltetes Panel). Fix: `settingsSectionHasUsableBody` + Klasse `settings-section-empty` (kein Tab, `display: none`); Klick per Event-Delegation auf `.selection-toolbar-panels`. Stapel-Logik unverändert. Dateien: `main.ts`, `style.css`. Docs: [ux.md](ux.md).
+
 ### Einstellungs-Fächer oben und unten (2026-09-07) — v2.0.271
 
 **UI:** Symptom — Sticky oben passte fast, aber noch nicht erreichte Register stapelten nicht unten (und CSS-`sticky` mit `--stick-top`/`--stick-bottom` zieht Köpfe unter dem Fold nicht in die Spalte). Fix: `parkSettingsSectionHeads` clamp’t jeden Kopf per `translateY` in `[index·h … viewH − (n−index)·h]` — oben Stapel der gescrollten, unten der ausstehenden; Inhalte bleiben kompakt (kein per-Sektion-`min-height`). Kein `position:fixed` (v2.0.269). Dateien: `main.ts`, `style.css`. Docs: [ux.md](ux.md).

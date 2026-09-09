@@ -3,6 +3,7 @@ import type {
   OpeningArch,
   OpeningFill,
   OpeningPanelClearance,
+  OpeningPanelWrappedReveal,
   OpeningRevealFrame,
 } from '../types/facade'
 import {
@@ -416,6 +417,12 @@ export function normalizePanelClearance(
     )
   }
   return out
+}
+
+export function normalizePanelWrappedReveal(
+  raw?: Partial<OpeningPanelWrappedReveal> | null,
+): OpeningPanelWrappedReveal {
+  return { enabled: Boolean(raw?.enabled) }
 }
 
 /** Rolle der Öffnung gegenüber Shell (A) / Verkleidung (B) / Anbauteile (C). */

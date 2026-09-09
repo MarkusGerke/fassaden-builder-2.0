@@ -123,9 +123,10 @@ export function resolveLightingMood(
 
   let bounceIntensity = 0
   if (isDay) {
+    // v2.0.312: etwas mehr Bodenreflex — füllt Innenecken (Erker-Schenkel) realistischer.
     bounceIntensity =
       celestial.lightIntensity *
-      THREE.MathUtils.lerp(0.08, 0.18, ambientNorm) *
+      THREE.MathUtils.lerp(0.11, 0.24, ambientNorm) *
       (1 - twilight * 0.85)
   } else if (isMoon) {
     bounceIntensity = celestial.lightIntensity * 0.04

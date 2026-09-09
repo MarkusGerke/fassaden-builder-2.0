@@ -150,6 +150,55 @@ body {
   padding-bottom: 4.5rem;
 }
 
+/* Showcase (?view=showcase): Bühne + rechte Licht-/Animations-Leiste, kein Editor-Chrome */
+#app.showcase-view {
+  grid-template-columns: minmax(0, 1fr) 280px;
+}
+#app.showcase-view #ui,
+#app.showcase-view #ui-left-collapse,
+#app.showcase-view #viewport-chrome,
+#app.showcase-view #scope-bar-slot,
+#app.showcase-view #edit-scope-bar,
+#app.showcase-view #scope-propagate-offer,
+#app.showcase-view #library-dock,
+#app.showcase-view #nav-help-btn,
+#app.showcase-view #wall-library-gizmos,
+#app.showcase-view #wall-resize-gizmos,
+#app.showcase-view #plan-label-layer,
+#app.showcase-view .viewport-status,
+#app.showcase-view #compass,
+#app.showcase-view #view-compass,
+#app.showcase-view #history-toolbar,
+#app.showcase-view #perf-overlay,
+#app.showcase-view #selection-toolbar,
+#app.showcase-view #stage-hud,
+#app.showcase-view #gallery-settings-section,
+#app.showcase-view #lighting-accordion [data-settings-section="gallery"],
+#app.showcase-view #lighting-accordion [data-settings-section="colors"],
+#app.showcase-view #lighting-accordion [data-settings-section="perf"],
+#app.showcase-view #export-sidebar,
+#app.showcase-view #export-stage {
+  display: none !important;
+}
+#app.showcase-view #viewport {
+  grid-column: 1;
+}
+#app.showcase-view #ui-right {
+  display: flex !important;
+  flex-direction: column;
+  grid-column: 2;
+  min-height: 0;
+}
+#app.showcase-view #lighting-accordion {
+  display: flex !important;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+#app.showcase-view.has-selection #lighting-accordion {
+  display: flex !important;
+}
+
 #viewport-stage {
   position: relative;
   flex: 1;
@@ -753,6 +802,10 @@ body {
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
   cursor: pointer;
   user-select: none;
+}
+
+.selection-toolbar-panels .settings-section.settings-section-empty {
+  display: none !important;
 }
 
 .selection-toolbar-panels .settings-section > .settings-section-head.settings-section-head-parked {
@@ -1829,6 +1882,25 @@ button.field-info:focus-visible {
 
 .toolbar-hint.is-error {
   color: #c0392b;
+}
+
+/* Info-Box unter einer Option (z. B. Laibung mit Paneelen: Rundbogen-Hinweis). */
+.toolbar-infobox {
+  margin: 0.25rem 0 0;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid #f5d38a;
+  border-left: 3px solid #d99a1c;
+  border-radius: 6px;
+  background: #fff8e6;
+  color: #6b4b00;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.toolbar-infobox strong {
+  font-weight: 600;
 }
 
 .toolbar-danger {

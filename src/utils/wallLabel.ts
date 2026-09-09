@@ -1,5 +1,6 @@
 import type { FacadeState, Opening, Wall, WallLabelConfig, WallLabelDepth, WallTrimBand } from '../types/facade'
 import { STUDIO_MASONRY, studioPlinthActive } from '../studio/constants'
+import { bayWallSkirtDropCm } from '../studio/bayWindow'
 import { visiblePanelRowRange } from '../studio/panelLayout'
 import { openingCutsWall } from './openingGeometry'
 import { snapToGrid } from './grid'
@@ -308,7 +309,11 @@ export function topBareBandForWall(
   if (!panel || panel.enabled === false || panel.pattern === 'none') return null
   const hideTop = Math.max(0, Math.floor(Number(panel.hideRowsTop) || 0))
   if (hideTop <= 0) return null
-  const { lastVisibleRow, rowCuts } = visiblePanelRowRange(wall.height, panel)
+  const { lastVisibleRow, rowCuts } = visiblePanelRowRange(
+    wall.height,
+    panel,
+    bayWallSkirtDropCm(wall),
+  )
   const yMin = rowCuts[lastVisibleRow + 1] ?? wall.height
   const yMax = wall.height
   const height = yMax - yMin

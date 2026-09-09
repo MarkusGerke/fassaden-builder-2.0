@@ -28,7 +28,7 @@ import {
 } from './studio/facadeDecor'
 import { resolveProfile } from './profiles/registry'
 import { applyPlinthOpeningFragmentDiscard, buildProfilePaths, clipProfileSectionAboveCm, createPlinthProfileSweepGeometry, createProfileSweepGeometry, createSimpleProfileBarGeometry, disposePlinthOpeningDiscard, scaleProfileSectionAxes, transformProfileSection, transformProfileSectionAnchored } from './utils/profilePaths'
-import { clampFacadeState, edgeIsJoined } from './utils/walls'
+import { clampFacadeState, edgeIsJoined, storeyStructuralDepthCm } from './utils/walls'
 import {
   labelWorldDeltaFromStates,
   openingDragFloatLocalZ,
@@ -152,10 +152,11 @@ import { buildPointLightRoomOccluders } from './lighting/pointLightRoomOccluders
  * (24 Bit, near 1 cm) zusammenfallen → dunkle Mörtel-/Schalen-Streifen über den Steinen.
  * Der Offset in ULPs ist distanzunabhängig: Steine gewinnen immer vor Mörtel, Mörtel vor der Schale.
  * Basis-Material (Steine, Profile, …) = Factor 1 / Units 1.
+ * v2.0.314: Mörtel/Schale-Units verdoppelt — Rest-Z-Fight bei großen Sites trotz adaptivem near.
  */
 const DEPTH_LAYER_TILE_UNITS = 1
-const DEPTH_LAYER_MORTAR_UNITS = 4
-const DEPTH_LAYER_WALL_SHELL_UNITS = 8
+const DEPTH_LAYER_MORTAR_UNITS = 8
+const DEPTH_LAYER_WALL_SHELL_UNITS = 16
 /** Laibung: vor Stein-/Mörtel-Seitenflächen am Jamb (negativ = näher), Factor bleibt +1. */
 const REVEAL_DEPTH_UNITS = -6
 
@@ -1967,7 +1968,6 @@ export class FacadeController {
       if (buildingShowsBareWalls(building)) continue
       const floors = building.floors
       if (!floors || floors.length === 0) continue
-      const wallDepth = building.wallDepth ?? WALL_DEPTH
       const buildingWalls = getVisibleWalls(this.state).filter(
         (wall) => wall.buildingId === building.id,
       )
@@ -1981,6 +1981,7 @@ export class FacadeController {
         const floorWalls = buildingWalls.filter(
           (wall) => floorIndex(wall, building.wallHeight) === fi,
         )
+        const wallDepth = storeyStructuralDepthCm(floorWalls, building.wallDepth ?? WALL_DEPTH)
         const faces = planFacesWithHoles(plan)
         for (const face of faces) {
           // Sichtbar: echte Innenkante der Studio-Wände (panelFlip-sicher) + 1 cm Inset.
@@ -3673,8 +3674,22 @@ export class FacadeController {
         exteriorMaterial.shadowSide = THREE.FrontSide
         interiorMaterial.shadowSide = THREE.FrontSide
         interiorMaterial.userData.skipFacadeShade = true
-        const materials =
-          geometry.groups.length >= 2
+        // Paneel-Wrap: Außenlaibung = Mörtelbett hinter den Return-Steinen (Gruppe 0),
+        // Innen (1), Sohlbank-Putz (2) — feste Gruppen-Indizes aus der Geometrie.
+        const wrapReveal = Boolean(geometry.userData.panelWrappedReveal)
+        let wrapMortarMaterial: THREE.MeshStandardMaterial | null = null
+        if (wrapReveal) {
+          const mortarColor = wall.panel?.jointColor ?? DEFAULT_JOINT_COLOR
+          wrapMortarMaterial = createTintedMaterial(
+            this.material,
+            mortarColor,
+            wall.claddingFinish ?? wall.wallFinish,
+          )
+          wrapMortarMaterial.shadowSide = THREE.FrontSide
+        }
+        const materials: THREE.Material | THREE.Material[] = wrapReveal
+          ? [wrapMortarMaterial!, interiorMaterial, exteriorMaterial]
+          : geometry.groups.length >= 2
             ? [exteriorMaterial, interiorMaterial]
             : exteriorMaterial
         const mesh = new THREE.Mesh(geometry, materials)
@@ -3701,6 +3716,10 @@ export class FacadeController {
           // nachts schwarz, während die Fassade IBL-Grau spiegelt.
           this.finishExteriorMaterial(exteriorMaterial)
           this.finishInteriorMaterial(interiorMaterial)
+          if (wrapMortarMaterial) {
+            if (this.isPreviewPresentation()) applyWorkModeSurfaceLook(wrapMortarMaterial)
+            else this.finishMortarMaterial(wrapMortarMaterial)
+          }
         }
         // Sonne + Punktlicht: Empfang wie Paneele (auch Nische/Konche).
         mesh.receiveShadow = this.revealShouldReceiveShadow(mesh)
@@ -3715,8 +3734,14 @@ export class FacadeController {
         interiorMaterial.polygonOffset = true
         interiorMaterial.polygonOffsetFactor = 1
         interiorMaterial.polygonOffsetUnits = REVEAL_DEPTH_UNITS
+        if (wrapMortarMaterial) {
+          wrapMortarMaterial.polygonOffset = true
+          wrapMortarMaterial.polygonOffsetFactor = 1
+          wrapMortarMaterial.polygonOffsetUnits = REVEAL_DEPTH_UNITS
+          ensureShadowDepthMaterial(wrapMortarMaterial)
+        }
         ensureShadowDepthMaterial(exteriorMaterial)
-        if (geometry.groups.length >= 2) ensureShadowDepthMaterial(interiorMaterial)
+        if (wrapReveal || geometry.groups.length >= 2) ensureShadowDepthMaterial(interiorMaterial)
         mesh.userData.originalMaterial = materials
         mesh.userData.wallId = wall.id
         // Zeichnung: Kanten wie Wandkörper bei Paneelen weglassen — Extrados besitzen
@@ -4086,6 +4111,8 @@ export class FacadeController {
       if (isStudioWall(wall)) {
         const panel = this.panelForCladdingGeometry(wall)
         const transform = wallPlacement(wall)
+        const building = findBuildingForWall(this.state, wall.id)
+        const panelGeomOpts = { windowDepthOffset: building?.windowDepthOffset }
         if (!(panel.enabled === false || panel.pattern === 'none')) {
           try {
             const claddingColor = wall.claddingColor ?? wall.wallColor ?? DEFAULT_WALL_COLOR
@@ -4156,6 +4183,7 @@ export class FacadeController {
                         seedKey,
                         neighborWalls,
                         tiles,
+                        panelGeomOpts,
                       )
                     : [
                         {
@@ -4163,8 +4191,19 @@ export class FacadeController {
                           // Bei persistierten Zonen echtes Raster (sonst eine Platte ohne Modulwechsel).
                           geometry:
                             geomWall.claddingZones && geomWall.claddingZones.length > 0
-                              ? createStudioPanelGeometry(geomWall, panel, neighborWalls, tiles)
-                              : createStudioPanelLowGeometry(geomWall, panel, neighborWalls),
+                              ? createStudioPanelGeometry(
+                                  geomWall,
+                                  panel,
+                                  neighborWalls,
+                                  tiles,
+                                  panelGeomOpts,
+                                )
+                              : createStudioPanelLowGeometry(
+                                  geomWall,
+                                  panel,
+                                  neighborWalls,
+                                  panelGeomOpts,
+                                ),
                         },
                       ]
               for (const { stageIndex, geometry } of geos) {
@@ -4269,11 +4308,18 @@ export class FacadeController {
                     seedKey,
                     neighborWalls,
                     tiles,
+                    panelGeomOpts,
                   )
                 : [
                     {
                       stageIndex: 0,
-                      geometry: createStudioPanelGeometry(geomWall, panel, neighborWalls, tiles),
+                      geometry: createStudioPanelGeometry(
+                        geomWall,
+                        panel,
+                        neighborWalls,
+                        tiles,
+                        panelGeomOpts,
+                      ),
                     },
                   ]
               for (const { stageIndex, geometry } of geos) {

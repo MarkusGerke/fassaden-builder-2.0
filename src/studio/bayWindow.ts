@@ -1,4 +1,4 @@
-import type { Opening, Wall } from '../types/facade'
+import type { Opening, Wall, StudioPanelConfig, StudioPanelPattern } from '../types/facade'
 import { WALL_DEPTH, WINDOW_HEIGHT, WINDOW_SILL_Y } from '../constants/presets'
 import { createId } from '../utils/id'
 import { createOpening } from '../utils/openings'
@@ -7,6 +7,12 @@ import {
   arcOuterBulgeZ,
   partialEllipseArcLength,
 } from './arcWall'
+import {
+  normalizeStudioPanel,
+  studioPanelDefaultsForPattern,
+  DEFAULT_STUDIO_PANEL,
+  STUDIO_MASONRY,
+} from './constants'
 import {
   createStudioWall,
   isStudioWall,
@@ -21,14 +27,24 @@ import {
 export const BAY_PARAPET_HEIGHT_CM = 96
 export const BAY_PARAPET_DEPTH_CM = 16
 
-/** Fenster auf Erker-Wänden: Außenrand ≥ 24 cm, Abstand untereinander ≥ 48 cm. */
+/** Fenster auf Erker-Schenkeln: Außenrand ≥ 24 cm, Abstand untereinander ≥ 48 cm. */
 export const BAY_OPENING_MIN_MARGIN_CM = 24
 export const BAY_OPENING_MIN_GAP_CM = 48
+/**
+ * Fenster auf der Erker-Front: Außenrand ≥ 48 cm, Lücke zwischen den Fenstern 96 cm
+ * (384: 48 | 96 | 96 | 96 | 48 → x = 48 / 240; 576: drei Fenster 48 / 240 / 432).
+ */
+export const BAY_FRONT_OPENING_MARGIN_CM = 48
+export const BAY_FRONT_OPENING_GAP_CM = 96
 /** Standard-Fenster auf der Front (cm). */
 export const BAY_FRONT_WINDOW_WIDTH_CM = 96
+/** Wandstärke Erker-Flächen (Front/Schenkel), 8-cm-Raster — dünner als EG-Hauswand. */
+export const BAY_WALL_DEPTH_CM = 24
+/** Fallback-Läufermodul für Erker-Fenster-Snap (wie Läuferverband-Default). */
+export const BAY_OPENING_BOND_MODULE_CM = 48
 /** Erker-Tiefen in der Bibliothek (cm) — steuern die Schenkel-Fensterbreite. */
 export const BAY_LIBRARY_DEPTHS_CM = [96, 144] as const
-/** Frontbreiten in der Bibliothek (cm). */
+/** Frontbreiten in der Bibliothek (cm): schmal 288, breit 384 (+ 192 / 576). */
 export const BAY_LIBRARY_FRONTS_CM = [192, 288, 384, 576] as const
 
 /** Geometrische Grundform der Baugruppe. */
@@ -115,13 +131,24 @@ export interface BayOpeningLayout {
 }
 
 /**
- * Fenster auf einer Wand zentriert packen: Abstand untereinander = 48 cm,
- * Rest gleichmäßig als Außenränder (≥ 24 cm).
+ * Fenster auf einer Wand zentriert packen: Abstand untereinander = `minGap`
+ * (Schenkel 48, Front 96), Rest gleichmäßig als Außenränder (≥ `minMargin`: Schenkel 24, Front 48).
+ * Brüstung: `sillY` (Default `WINDOW_SILL_Y` 128) — beim Erker-Einsetzen die Y der Fassadenfenster.
+ * Optional `moduleCm` (Paneel-/Läuferbreite): linke Laibungen auf das Verband-Raster
+ * snappen, damit Stoßfugen und Fenster bündig sind (nicht bei ½ Stein enden).
  */
 export function layoutBayOpeningsOnWall(
   wallWidthCm: number,
   windowWidthCm: number,
-  opts?: { count?: number; height?: number; sillY?: number; minMargin?: number; minGap?: number },
+  opts?: {
+    count?: number
+    height?: number
+    sillY?: number
+    minMargin?: number
+    minGap?: number
+    /** Läuferbreite / Vertikalmodul — Laibungen auf Vielfache davon. */
+    moduleCm?: number
+  },
 ): BayOpeningLayout[] {
   const height = opts?.height ?? WINDOW_HEIGHT
   const sillY = opts?.sillY ?? WINDOW_SILL_Y
@@ -142,27 +169,149 @@ export function layoutBayOpeningsOnWall(
       height,
     })
   }
+  return snapBayOpeningsToModule(out, wallWidthCm, opts?.moduleCm, minGap, minMargin)
+}
+
+/**
+ * Linke Laibung auf Vielfache von `moduleCm` (gerade Läuferlage ab Wandkante).
+ * Abstand ≥ minGap bleibt. Wenn kein Raster-Satz beide Außenränder ≥ minMargin hält
+ * (z. B. 288 cm / 2×96 / 48er-Modul), bleibt die zentrierte Lage — kein Flush-Rechts-Versatz.
+ */
+export function snapBayOpeningsToModule(
+  layouts: BayOpeningLayout[],
+  wallWidthCm: number,
+  moduleCm: number | undefined,
+  minGap = BAY_OPENING_MIN_GAP_CM,
+  minMargin = BAY_OPENING_MIN_MARGIN_CM,
+): BayOpeningLayout[] {
+  const mod = moduleCm != null && Number.isFinite(moduleCm) ? moduleCm : 0
+  if (mod < 1 || layouts.length === 0) return layouts
+  const snapX = (x: number) => Math.round(x / mod) * mod
+  const sorted = [...layouts].sort((a, b) => a.x - b.x)
+  const out: BayOpeningLayout[] = []
+  for (let i = 0; i < sorted.length; i += 1) {
+    const layout = sorted[i]!
+    let x = snapX(layout.x)
+    if (i > 0) {
+      const prev = out[i - 1]!
+      const minX = prev.x + prev.width + minGap
+      if (x < minX - 0.05) x = Math.ceil(minX / mod - 1e-9) * mod
+    }
+    x = Math.max(0, Math.min(wallWidthCm - layout.width, x))
+    x = Math.max(0, Math.min(wallWidthCm - layout.width, snapX(x)))
+    if (i > 0) {
+      const prev = out[i - 1]!
+      const minX = prev.x + prev.width + minGap
+      if (x < minX - 0.05) {
+        x = Math.min(wallWidthCm - layout.width, Math.ceil(minX / mod - 1e-9) * mod)
+      }
+    }
+    if (x + layout.width > wallWidthCm + 0.05) return layouts
+    if (i > 0 && x + 0.05 < out[i - 1]!.x + out[i - 1]!.width + minGap) return layouts
+    out.push({ ...layout, x })
+  }
+  const first = out[0]!
+  const last = out[out.length - 1]!
+  const leftM = first.x
+  const rightM = wallWidthCm - (last.x + last.width)
+  if (leftM < minMargin - 0.5 || rightM < minMargin - 0.5) return layouts
   return out
 }
 
-export function layoutBayFrontOpenings(frontWidthCm: number): BayOpeningLayout[] {
-  return layoutBayOpeningsOnWall(frontWidthCm, BAY_FRONT_WINDOW_WIDTH_CM)
+/** Läuferbreite der Wandpaneele — für Erker-Fenster-Snap; Fallback 48 cm (Läufer-Default). */
+export function bayOpeningModuleCmForWall(wall: Pick<Wall, 'panel'>): number {
+  const raw = wall.panel
+  if (raw && raw.enabled !== false) {
+    const panel = normalizeStudioPanel(raw)
+    if (
+      panel.pattern !== 'none' &&
+      panel.pattern !== 'strip' &&
+      panel.pattern !== 'wildBond' &&
+      Number.isFinite(panel.panelWidth) &&
+      panel.panelWidth >= 8
+    ) {
+      return panel.panelWidth
+    }
+  }
+  return BAY_OPENING_BOND_MODULE_CM
 }
 
-export function layoutBaySideOpenings(sideWidthCm: number, depthCm: number): BayOpeningLayout[] {
-  return layoutBayOpeningsOnWall(sideWidthCm, baySideWindowWidthCm(depthCm), { count: 1 })
+export function layoutBayFrontOpenings(
+  frontWidthCm: number,
+  opts?: { moduleCm?: number; sillY?: number },
+): BayOpeningLayout[] {
+  return layoutBayOpeningsOnWall(frontWidthCm, BAY_FRONT_WINDOW_WIDTH_CM, {
+    minMargin: BAY_FRONT_OPENING_MARGIN_CM,
+    minGap: BAY_FRONT_OPENING_GAP_CM,
+    moduleCm: opts?.moduleCm ?? BAY_OPENING_BOND_MODULE_CM,
+    sillY: opts?.sillY,
+  })
+}
+
+export function layoutBaySideOpenings(
+  sideWidthCm: number,
+  depthCm: number,
+  opts?: { moduleCm?: number; sillY?: number },
+): BayOpeningLayout[] {
+  return layoutBayOpeningsOnWall(sideWidthCm, baySideWindowWidthCm(depthCm), {
+    count: 1,
+    moduleCm: opts?.moduleCm ?? BAY_OPENING_BOND_MODULE_CM,
+    sillY: opts?.sillY,
+  })
+}
+
+/**
+ * Brüstung für Erker-Fenster: häufigste Fenster-Y der Spender (8-cm-Raster),
+ * sonst `WINDOW_SILL_Y` (128). Türen/Keller (y≈0) zählen nicht.
+ */
+export function baySillYFromDonorOpenings(openings: Opening[] | undefined): number {
+  const ys = (openings ?? [])
+    .filter((o) => o.type === 'window' && (o.y ?? 0) > 0.5)
+    .map((o) => Math.round((o.y ?? 0) / STUDIO_MASONRY) * STUDIO_MASONRY)
+  if (ys.length === 0) return WINDOW_SILL_Y
+  const counts = new Map<number, number>()
+  for (const y of ys) counts.set(y, (counts.get(y) ?? 0) + 1)
+  let best = ys[0]!
+  let bestN = 0
+  for (const [y, n] of counts) {
+    if (n > bestN || (n === bestN && y < best)) {
+      best = y
+      bestN = n
+    }
+  }
+  return best
 }
 
 function openingsFromLayouts(
   wall: Wall,
   layouts: BayOpeningLayout[],
   donorWalls?: Wall[],
+  donorOpenings?: Opening[],
 ): Opening[] {
-  return layouts.map((layout) =>
-    createOpening('window', layout.width, layout.height, wall, { x: layout.x, y: layout.y }, {
-      donorWalls,
-    }),
-  )
+  const typedDonors =
+    donorOpenings?.filter((o) => o.type === 'window') ??
+    donorWalls
+      ?.flatMap((w) => w.openings ?? [])
+      .filter((o) => o.type === 'window') ??
+    []
+  return layouts.map((layout, i) => {
+    const donor = typedDonors[Math.min(i, Math.max(0, typedDonors.length - 1))]
+    const opening = createOpening(
+      'window',
+      layout.width,
+      layout.height,
+      wall,
+      { x: layout.x, y: layout.y },
+      {
+        donorWalls,
+        donor,
+      },
+    )
+    // X/Y aus Layout (Brüstung = Spender-Y oder 128); createOpening darf nicht überschreiben.
+    const maxY = Math.max(0, wall.height - opening.height)
+    const y = Math.max(0, Math.min(maxY, layout.y))
+    return { ...opening, x: layout.x, y }
+  })
 }
 
 /** Echte, nachträglich editierbare Fenster auf Front- und Schenkelwänden. */
@@ -172,21 +321,40 @@ export function applyBayPresetOpenings(
   donorWalls?: Wall[],
 ): Wall[] {
   if (bayPresetKind(preset) !== 'bay') return walls
+  const donors = donorWalls ?? []
+  const frontDonors = donors
+    .filter((w) => w.bayRole === 'front' || (!w.bayRole && w.openings?.length))
+    .flatMap((w) => w.openings ?? [])
+  const sideDonors = donors
+    .filter((w) => w.bayRole === 'side')
+    .flatMap((w) => w.openings ?? [])
+  const fallbackDonors = donors.flatMap((w) => w.openings ?? [])
+  const sillY = baySillYFromDonorOpenings(
+    frontDonors.length ? frontDonors : fallbackDonors,
+  )
+  let sideIndex = 0
   return walls.map((wall) => {
+    const moduleCm = bayOpeningModuleCmForWall(wall)
     if (wall.bayRole === 'front') {
-      return {
-        ...wall,
-        openings: openingsFromLayouts(wall, layoutBayFrontOpenings(wall.width), donorWalls),
-      }
-    }
-    if (wall.bayRole === 'side') {
       return {
         ...wall,
         openings: openingsFromLayouts(
           wall,
-          layoutBaySideOpenings(wall.width, preset.depthCm),
-          donorWalls,
+          layoutBayFrontOpenings(wall.width, { moduleCm, sillY }),
+          donors,
+          frontDonors.length ? frontDonors : fallbackDonors,
         ),
+      }
+    }
+    if (wall.bayRole === 'side') {
+      const layouts = layoutBaySideOpenings(wall.width, preset.depthCm, { moduleCm, sillY })
+      const sideSlice = sideDonors.length
+        ? sideDonors.slice(sideIndex, sideIndex + layouts.length)
+        : fallbackDonors
+      sideIndex += layouts.length
+      return {
+        ...wall,
+        openings: openingsFromLayouts(wall, layouts, donors, sideSlice),
       }
     }
     return wall
@@ -236,7 +404,83 @@ export function outwardYawDeg(yawDeg: number, panelFlip: boolean): number {
   return normalizeYawDeg(yawDeg + (panelFlip ? 90 : -90))
 }
 
+function isRunningBondPattern(pattern: StudioPanelPattern): boolean {
+  return (
+    pattern === 'runningBond' ||
+    pattern === 'runningBondThird' ||
+    pattern === 'runningBondQuarter' ||
+    pattern === 'runningBondDiagonal'
+  )
+}
+
+/**
+ * Bibliothek-Erker ohne Host-Stil: Läufer 48×24 (nicht App-Default Streifen 64) mit dem
+ * normalen Vorstand 4 / Bosse 1 des Läufer-Defaults.
+ *
+ * **Nicht** `projectDepth: 0` setzen (v2.0.304 → zurückgenommen in v2.0.307): Steine
+ * ohne Dicke liegen 0,15 cm vor der Wandschale und flackern ab ~10 m Kameraabstand
+ * als weiß/beige Streifen (Z-Fight, Depth-Buffer-Auflösung) — besonders beim Orbit.
+ * Der ursprüngliche Grund (Stummel-Raster an der 90°-Gehrung) ist seit v2.0.306 im
+ * Layout gelöst (`computeRowColCuts`: Außen-Origin bleibt auf `wall.width`).
+ */
+export function defaultBayLibraryPanel(): StudioPanelConfig {
+  return normalizeStudioPanel({
+    ...DEFAULT_STUDIO_PANEL,
+    ...studioPanelDefaultsForPattern('runningBond'),
+    pattern: 'runningBond',
+    enabled: true,
+    hideRowsTop: 0,
+    hideRowsBottom: 0,
+  })
+}
+
+/** Erker-Paneel ohne Dicke (v2.0.304-Altdaten) — Z-Fight mit der Wandschale. */
+export function isFlushBayPanel(panel: StudioPanelConfig | undefined | null): boolean {
+  if (!panel) return false
+  return (panel.projectDepth ?? 0) <= 0.05 && (panel.taperDepth ?? 0) <= 0.05
+}
+
+/**
+ * Erker-Flächen mit Läuferverband: Läuferbreite 48; Schichthöhe, Vorstand und Bosse des
+ * Hosts bleiben. Streifen/ohne Muster → Läufer-Default 48×24 (Bibliothek-Erker sind auf
+ * 48 ausgelegt). Host-Paneele ohne Dicke (Altdaten v2.0.304) bekommen Vorstand/Bosse des
+ * Muster-Defaults zurück.
+ */
+export function panelForBaySurface(
+  raw: Wall['panel'] | undefined,
+  _surfaceWidthCm: number,
+): StudioPanelConfig | undefined {
+  if (!raw) return defaultBayLibraryPanel()
+  const panel = normalizeStudioPanel(raw)
+  const withDepth = (p: StudioPanelConfig): StudioPanelConfig => {
+    if (!isFlushBayPanel(p)) return normalizeStudioPanel(p)
+    const d = studioPanelDefaultsForPattern(p.pattern)
+    return normalizeStudioPanel({
+      ...p,
+      projectDepth: d.projectDepth ?? DEFAULT_STUDIO_PANEL.projectDepth,
+      taperDepth: d.taperDepth ?? DEFAULT_STUDIO_PANEL.taperDepth,
+    })
+  }
+
+  if (panel.pattern === 'strip' || panel.pattern === 'none' || panel.enabled === false) {
+    return defaultBayLibraryPanel()
+  }
+  if (!isRunningBondPattern(panel.pattern)) {
+    return withDepth({ ...panel })
+  }
+  const defaults = studioPanelDefaultsForPattern(panel.pattern)
+  const target = defaults.panelWidth ?? BAY_OPENING_BOND_MODULE_CM
+  if (Math.abs(panel.panelWidth - target) < 0.5) {
+    return withDepth({ ...panel })
+  }
+  // Nur die Breite auf 48 zwingen — die Schichthöhe des Hosts bleibt, damit die
+  // Schichtfugen von Erker und Restwand weiter auf gleicher Welthöhe liegen
+  // (`bayPanelAlign.test.ts`). Höhe 24 erzwingen brach diese Flucht (v2.0.305).
+  return withDepth(normalizeStudioPanel({ ...panel, panelWidth: target }))
+}
+
 function copyWallOptics(from: Wall, to: Wall): Wall {
+  const surfaceW = to.width > 0 ? to.width : from.width
   return {
     ...to,
     panelFlip: to.panelFlip ?? from.panelFlip ?? true,
@@ -247,7 +491,7 @@ function copyWallOptics(from: Wall, to: Wall): Wall {
     claddingFinish: from.claddingFinish,
     profileColor: from.profileColor,
     profileFinish: from.profileFinish,
-    panel: from.panel ? { ...from.panel } : to.panel,
+    panel: panelForBaySurface(from.panel, surfaceW) ?? (from.panel ? { ...from.panel } : to.panel),
     claddingZones: from.claddingZones?.map((zone) => ({ ...zone, id: createId() })),
     cornice: from.cornice ? { ...from.cornice } : to.cornice,
     trimBands: from.trimBands?.map((band) => ({ ...band, id: createId() })),
@@ -273,6 +517,7 @@ function mkChildWall(
   opts?: { panelFlip?: boolean; height?: number; depth?: number; y?: number },
 ): Wall {
   const panelFlip = opts?.panelFlip ?? parent.panelFlip ?? true
+  const depth = opts?.depth ?? BAY_WALL_DEPTH_CM
   return copyWallOptics(
     parent,
     normalizeStudioWall({
@@ -284,7 +529,7 @@ function mkChildWall(
       yawDeg: wallYaw,
       width,
       height: opts?.height ?? parent.height,
-      depth: opts?.depth ?? parent.depth ?? WALL_DEPTH,
+      depth,
       panelFlip,
       bayParentId: parent.id,
       bayRole: role,
@@ -334,6 +579,7 @@ function buildUShapeWalls(
   preset: BayWindowPreset,
   attachAlongCenter: number | undefined,
   inward: boolean,
+  openingDonors?: Wall[],
 ): { parent: Wall; walls: Wall[] } | null {
   const angled = preset.shape === 'angled45'
   // 45°: Schenkel fest (Tiefe D entlang Fassade + nach außen) → Front = Ansatz − 2D.
@@ -378,45 +624,55 @@ function buildUShapeWalls(
   const isParapet = bayPresetKind(preset) === 'balcony' || bayPresetKind(preset) === 'loggia'
 
   // Wie manuell gezeichnet (Vorlage v2.0.224): Planlinie im Umlauf Mund → Front → Mund.
-  // Linker Schenkel Ansatz→Front, Front links→rechts, rechter Schenkel Front→Ansatz.
+  // Erster Schenkel Ansatz→Front, Front, zweiter Schenkel Front→Ansatz.
   // So haben alle drei Wände dasselbe `panelFlip`; kein Schenkelpaar teilt den Yaw,
   // und `unifyGroupFrontOrientation` kann keinen Schenkel nach innen kippen.
-  const leftYaw = yawFromSegment(leftAttach, frontLeft)
-  const frontYaw = yawFromSegment(frontLeft, frontRight)
-  const rightYaw = yawFromSegment(frontRight, rightAttach)
+  //
+  // **v2.0.305 — Planlinie = Außenkante (wie Außenwände seit v0.7.279).** Die U-Kontur
+  // liegt auf der Außenkante des Erkers; der Wandkörper (24 cm) geht nach innen, alle
+  // drei Wände `panelFlip: true`. Läuft der Umlauf links→rechts so, dass die Außenseite
+  // auf der `panelFlip: false`-Seite läge (Host mit Innen-Origin), wird der Umlauf
+  // **umgedreht** (rechts→links) statt panelFlip=false zu setzen. Mit Innen-Origin war
+  // die sichtbare Front an den 90°-Ecken um 2×Wandstärke breiter als `wall.width`
+  // (384 → 432 cm): Läuferverband 8×48 auf 384 gelegt, optisch 24 cm Stummel je Seite.
+  const frontOut = { x: out.x, z: out.z }
+  const forwardFrontYaw = yawFromSegment(frontLeft, frontRight)
+  const reversed = !panelFlipForExteriorNormal(forwardFrontYaw, frontOut)
+  const p0 = reversed ? rightAttach : leftAttach
+  const p1 = reversed ? frontRight : frontLeft
+  const p2 = reversed ? frontLeft : frontRight
+  const p3 = reversed ? leftAttach : rightAttach
 
-  const leftAlong = wallAlongDelta(leftYaw, 1)
-  const rightAlong = wallAlongDelta(rightYaw, 1)
+  const firstYaw = yawFromSegment(p0, p1)
+  const frontYaw = yawFromSegment(p1, p2)
+  const lastYaw = yawFromSegment(p2, p3)
+
+  const firstAlong = wallAlongDelta(firstYaw, 1)
+  const lastAlong = wallAlongDelta(lastYaw, 1)
   // Außennormale = Laufrichtung ±90°, zur Seite weg vom Erker-Zentrum.
-  // Fest CW (az,-ax) ist nur bei panelFlip=true (Vorsprung −Z bei yaw 0) richtig;
-  // bei panelFlip=false zeigt CW auf die Innenseite (Paneele innen).
   const bayCentroid = {
     x: (leftAttach.x + rightAttach.x + frontLeft.x + frontRight.x) / 4,
     z: (leftAttach.z + rightAttach.z + frontLeft.z + frontRight.z) / 4,
   }
-  const leftMid = {
-    x: (leftAttach.x + frontLeft.x) / 2,
-    z: (leftAttach.z + frontLeft.z) / 2,
-  }
-  const rightMid = {
-    x: (frontRight.x + rightAttach.x) / 2,
-    z: (frontRight.z + rightAttach.z) / 2,
-  }
-  const leftOut = exteriorNormalAwayFromCentroid(leftAlong, leftMid, bayCentroid)
-  const rightOut = exteriorNormalAwayFromCentroid(rightAlong, rightMid, bayCentroid)
-  const frontOut = { x: out.x, z: out.z }
+  const firstMid = { x: (p0.x + p1.x) / 2, z: (p0.z + p1.z) / 2 }
+  const lastMid = { x: (p2.x + p3.x) / 2, z: (p2.z + p3.z) / 2 }
+  const firstOut = exteriorNormalAwayFromCentroid(firstAlong, firstMid, bayCentroid)
+  const lastOut = exteriorNormalAwayFromCentroid(lastAlong, lastMid, bayCentroid)
 
-  const leftLen = dist2(leftAttach, frontLeft)
-  const rightLen = dist2(rightAttach, frontRight)
-  const frontLen = dist2(frontLeft, frontRight)
+  const firstLen = dist2(p0, p1)
+  const lastLen = dist2(p2, p3)
+  const frontLen = dist2(p1, p2)
 
-  const leftSide = mkChildWall(parent, leftAttach, leftYaw, leftLen, 'side', {
-    panelFlip: panelFlipForExteriorNormal(leftYaw, leftOut),
+  // Nach dem Umdrehen liefert `panelFlipForExteriorNormal` für alle drei `true`
+  // (Außenseite auf der Planlinie). Trotzdem berechnen — kein hartes `true`, falls
+  // die Kontur einmal nicht konvex ist.
+  const leftSide = mkChildWall(parent, p0, firstYaw, firstLen, 'side', {
+    panelFlip: panelFlipForExteriorNormal(firstYaw, firstOut),
   })
-  const rightSide = mkChildWall(parent, frontRight, rightYaw, rightLen, 'side', {
-    panelFlip: panelFlipForExteriorNormal(rightYaw, rightOut),
+  const rightSide = mkChildWall(parent, p2, lastYaw, lastLen, 'side', {
+    panelFlip: panelFlipForExteriorNormal(lastYaw, lastOut),
   })
-  const front = mkChildWall(parent, frontLeft, frontYaw, frontLen, 'front', {
+  const front = mkChildWall(parent, p1, frontYaw, frontLen, 'front', {
     panelFlip: panelFlipForExteriorNormal(frontYaw, frontOut),
     height: isParapet ? BAY_PARAPET_HEIGHT_CM : parent.height,
     depth: isParapet ? BAY_PARAPET_DEPTH_CM : undefined,
@@ -437,7 +693,11 @@ function buildUShapeWalls(
   rightSide.bayParentId = parent.id
   front.bayParentId = parent.id
 
-  const donors = [parent, ...(parent.openings?.length ? [parent] : [])]
+  const donors = [
+    ...(openingDonors ?? []),
+    parent,
+    ...(parent.openings?.length ? [parent] : []),
+  ]
   const withOpenings = applyBayPresetOpenings([leftSide, front, rightSide], preset, donors)
   return { parent: updatedParent, walls: withOpenings }
 }
@@ -533,13 +793,14 @@ export function buildBayWindowWalls(
   parent: Wall,
   preset: BayWindowPreset,
   attachAlongCenter?: number,
+  openingDonors?: Wall[],
 ): { parent: Wall; walls: Wall[] } | null {
   if (!isStudioWall(parent)) return null
   const inward = bayPresetKind(preset) === 'loggia'
   if (preset.shape === 'round') {
     return buildRoundBayWalls(parent, preset, attachAlongCenter, inward)
   }
-  return buildUShapeWalls(parent, preset, attachAlongCenter, inward)
+  return buildUShapeWalls(parent, preset, attachAlongCenter, inward, openingDonors)
 }
 
 export function wallHasBay(wall: Wall): boolean {
@@ -567,29 +828,28 @@ export function bayMetaForWall(
  * Nach-unten-Verlängerung (cm): Sockel/Paneele bleiben auf Etagenfuß,
  * darunter nur roher Wandblock + Untersicht.
  *
- * Quelle der Wahrheit ist der gemessene Abstand zum Etagenfuß der Restwände
- * (gleiche Oberkante, keine Erker-Rolle) — nicht allein `dropCm`. So bleiben
- * Sockel auf Schenkeln und Front bündig, auch wenn Y-Drop und Meta kurz divergieren.
+ * Misst den Abstand zum Etagenfuß der Restwände (gleiche Oberkante, keine Erker-Rolle).
+ * Auch wenn `dropCm` 0/fehlt — Geometrie kann verlängert sein (Meta-Desync); Early-Return
+ * auf 0 ließ Paneele am verlängerten Fuß starten (v2.0.278). Fallback: gespeichertes `dropCm`.
  */
 export function bayWallSkirtDropCm(wall: Wall, walls: Wall[] = []): number {
   const meta = bayMetaForWall(walls, wall) ?? wall.bayWindow
-  const stored = meta?.dropCm
-  if (!(typeof stored === 'number' && Number.isFinite(stored)) || stored <= 0) return 0
+  const stored =
+    typeof meta?.dropCm === 'number' && Number.isFinite(meta.dropCm)
+      ? Math.max(0, Math.round(meta.dropCm))
+      : 0
 
   const top = (wall.y ?? 0) + wall.height
-  let remnantFloor: number | null = null
+  let bestMeasured = 0
   for (const other of walls) {
     if (!isStudioWall(other)) continue
     if (other.id === wall.id) continue
     if (other.bayParentId || other.bayRole || other.bayWindow) continue
     if (Math.abs((other.y ?? 0) + other.height - top) > 2) continue
-    remnantFloor = other.y ?? 0
-    break
+    const measured = Math.max(0, Math.round((other.y ?? 0) - (wall.y ?? 0)))
+    if (measured > bestMeasured) bestMeasured = measured
   }
-  if (remnantFloor != null) {
-    return Math.max(0, Math.round(remnantFloor - (wall.y ?? 0)))
-  }
-  return Math.max(0, Math.round(stored))
+  return bestMeasured > 0 ? bestMeasured : stored
 }
 
 /**
@@ -684,6 +944,7 @@ export function buildBayWindowAtPose(
   },
   preset: BayWindowPreset,
   styleFrom?: Wall,
+  opts?: { openingDonors?: Wall[] },
 ): Wall[] {
   const kind = bayPresetKind(preset)
   const needsBackWall = kind === 'balcony' || kind === 'loggia'
@@ -701,7 +962,7 @@ export function buildBayWindowAtPose(
     width: attachW,
     height,
     depth: needsBackWall ? depth : 0,
-    panel: styleFrom?.panel ? { ...styleFrom.panel } : undefined,
+    panel: panelForBaySurface(styleFrom?.panel, attachW) ?? defaultBayLibraryPanel(),
     claddingZones: styleFrom?.claddingZones?.map((zone) => ({ ...zone, id: createId() })),
     cornice: styleFrom?.cornice ? { ...styleFrom.cornice } : undefined,
     trimBands: styleFrom?.trimBands?.map((band) => ({ ...band, id: createId() })),
@@ -716,7 +977,7 @@ export function buildBayWindowAtPose(
     bayRole: needsBackWall ? 'back' : undefined,
     planLinked: true,
   }
-  const built = buildBayWindowWalls(virtual, preset, attachW / 2)
+  const built = buildBayWindowWalls(virtual, preset, attachW / 2, opts?.openingDonors)
   if (!built) return []
   const host =
     needsBackWall
@@ -742,11 +1003,15 @@ export function buildBayWindowAtPose(
     })
   }
   for (const wall of built.walls) {
+    const baySurfaceDepth =
+      wall.bayRole === 'front' && (kind === 'balcony' || kind === 'loggia')
+        ? BAY_PARAPET_DEPTH_CM
+        : wall.bayRole === 'back'
+          ? depth
+          : BAY_WALL_DEPTH_CM
     const withDepth = {
       ...wall,
-      depth: wall.bayRole === 'front' && (kind === 'balcony' || kind === 'loggia')
-        ? BAY_PARAPET_DEPTH_CM
-        : depth,
+      depth: baySurfaceDepth,
       planLinked: true,
       bayParentId: host.id,
     }

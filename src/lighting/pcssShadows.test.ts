@@ -161,25 +161,32 @@ describe('pcssShadows', () => {
     expect(chunk).toContain('weight = isBlocker / ( abs( zReceiver - depth ) + PCSS_BLOCKER_PROX );')
     expect(chunk).toContain('return vec2( blockerDepthSum / weightSum, numBlockers );')
     expect(chunk).toContain('#define PCSS_BLOCKER_PROX 0.010000')
-    // Voll lit: ohne Blocker kein Filter.
-    expect(chunk).toContain('if ( blocker.x == -1.0 ) return hard;')
-    // Voll Umbra: alle Such-Taps verdeckt und Filterscheibe ⊆ Suchscheibe → 0 ohne 64-Tap-Filter.
+    // Voll lit: ohne Blocker — nah Hart-Tap, fern lit (v2.0.314 Distanz-Speckles).
+    expect(chunk).toContain('return mix( hard, 1.0, litBlend );')
+    // Voll Umbra: nur wenn Penumbra (nicht Distanz-AA) die Radien treibt.
     expect(chunk).toContain(
-      `if ( blocker.y > float( ${PCSS_NUM_SAMPLES} ) - 0.5 && filterRadius <= searchRadius ) return 0.0;`,
+      `if ( blocker.y > float( ${PCSS_NUM_SAMPLES} ) - 0.5 && filterRadius <= searchRadius && aaRadius <= penumbraRadius ) return 0.0;`,
     )
     expect(chunk).not.toContain('softDrive')
     disablePcssShadows()
   })
 
-  it('Distanz-AA: Filter mindestens über die Pixel-Fläche (v2.0.270, Raster beim Rauszoomen)', () => {
+  it('Distanz-AA: Filter mindestens über die Pixel-Fläche (v2.0.270/314, Raster beim Rauszoomen)', () => {
     enablePcssShadows()
     const chunk = THREE.ShaderChunk.shadowmap_pars_fragment
     expect(chunk).toContain('float pcssFootprint = pcssUvFootprint( shadowCoord.xy );')
     expect(chunk).toContain('float aaRadius = footprint * PCSS_FOOTPRINT_SCALE;')
-    expect(chunk).toContain('filterRadius = max( penumbraRatio * pcssLightSizeUv * PCSS_PENUMBRA_SCALE, aaRadius );')
-    expect(chunk).toContain('#define PCSS_FOOTPRINT_SCALE 0.5000')
+    expect(chunk).toContain('filterRadius = max( penumbraRadius, aaRadius );')
+    expect(chunk).toContain('#define PCSS_FOOTPRINT_SCALE 1.0000')
     // Plane-Steigung auf Distanz dämpfen (Ableitung über Steinkanten → graue Steine).
     expect(chunk).toContain('return slope * clamp( texelUv / max( footprint, 1e-8 ), 0.0, 1.0 );')
+    // Hart-Tap nur nah; Distanz → lit wenn Suche leer (v2.0.314)
+    expect(chunk).toContain('return mix( hard, 1.0, litBlend );')
+    // Umbra-Early-Out nicht unter Distanz-AA
+    expect(chunk).toContain('aaRadius <= penumbraRadius ) return 0.0;')
+    // Feste Rotation auf Distanz (kein Poisson-Flicker zwischen Pixeln)
+    expect(chunk).toContain('aaRadius > texelUv * 1.5')
+    expect(chunk).toContain('mat2( 1.0, 0.0, 0.0, 1.0 )')
     // Footprint vor dem Branch (uniformer Kontrollfluss für dFdx/dFdy).
     expect(chunk.indexOf('pcssUvFootprint( shadowCoord.xy )')).toBeLessThan(chunk.indexOf('if ( frustumTest )', chunk.indexOf('pcssUvFootprint( shadowCoord.xy )')))
     disablePcssShadows()

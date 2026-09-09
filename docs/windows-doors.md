@@ -26,6 +26,7 @@ Verwandte Docs: [ux.md](ux.md), [opening-motion.md](opening-motion.md), [roller-
 
 - Typ: `window` \| `door` \| `cutout` \| `conch`
 - Maße, Position, Laibungstiefe (`depthOffset`)
+- **Brüstung / Vertikal (v2.0.310):** Neue Fenster von der Bibliothek stehen bei **`WINDOW_SILL_Y` = 128 cm** über dem Wandfuß — unabhängig von der Wandhöhe. Bei Geschosshöhe **448** und Fensterhöhe **192** ist das zufällig auch die vertikale Wandmitte (`(448−192)/2 = 128`); bei anderen Höhen (typisch OG 352) darf die Brüstung **nicht** auf Schichtmitte, Paneel-Raster (120) oder Wandmitte springen. Vertikal-Feld: **8-cm-Raster**. Nur horizontal rasten neue Öffnungen an Laibungsfugen ein (`addOpening` mit `alignOpeningToMasonry({ snapY: false })`). Zu kurze Wände: Y wird auf `height − Fensterhöhe` geklemmt.
 - Füllmodus, Blendrahmen-Einbettung, Freiraum, Bogen/Keilsteine, Laibungsfarben
 
 ### Fenster-/Tür-Element (`gruenderzeit`)

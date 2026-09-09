@@ -19,7 +19,7 @@
 | [camera.md](camera.md) | 3D-Kamera, Orbit-Ziel, ⌘/Ctrl-Gesten, Geschwindigkeiten |
 | [ux.md](ux.md) | Bedienung: Navigation, Kontextmenü, Farben, Scope; **rechte Einstellungs-Tabs** (Übersicht → Maße → Farben → Formen → Dekor oben→unten) |
 | [wall-decor.md](wall-decor.md) | Gesims, Sockel, Zierbänder |
-| [opening-features.md](opening-features.md) | Bogen, Nischen/Konche, Freiraum, Bänke, Verdachung, Treppe, Kellerfenster |
+| [opening-features.md](opening-features.md) | Bogen, Nischen/Konche, Freiraum, Paneel-Laibung, Bänke, Verdachung, Treppe, Kellerfenster |
 | [windows-doors.md](windows-doors.md) | Fenster/Türen: Ist-Bestand Gründerzeit-Teilung, Individualisierung, Altbau-Roadmap |
 | [profiles.md](profiles.md) | Profil-Querschnitte, Built-ins, Custom-IDs, SVG-Achsen |
 | [bay-windows.md](bay-windows.md) | Erker, Balkon, Loggia |
@@ -50,7 +50,9 @@
 | `STUDIO_WALL_WIDTH_STEP` | 8 cm | Greifer/Toolbar-Breite; 45°: \(8\sqrt{2}\) |
 | `PLAN_DIAGONAL_STEP` | \(48\sqrt{2}\) cm | 45°-Wandschritt (Diagonale eines Rasterfeldes) |
 | `PLAN_DRAW_CELLS` | 32 | Zeichenfläche in Gitterzellen |
-| `WALL_DEPTH` | 32 cm | Standard-Wandstärke |
+| `WALL_DEPTH` | 48 cm | Standard-Wandstärke Erdgeschoss |
+| `UPPER_STOREY_WALL_DEPTH` | 24 cm | Wandstärke neuer Obergeschosse |
+| `BAY_WALL_DEPTH_CM` | 24 cm | Wandstärke Erker-Front/Schenkel |
 | `WALL_HEIGHT` | 448 cm | Standard-Geschosshöhe |
 | `WINDOW_RECESS` | 24 cm | Fensterfront hinter der Wandaußenkante (nicht die Leibungswandung) |
 | `PANEL_OPENING_CLEARANCE` | 0 | Paneel/Mörtel und Wandloch teilen dieselbe Maskenkontur (`panelGeometry.ts`); Nutzer-Freiraum bleibt ein konzentrischer Offset |

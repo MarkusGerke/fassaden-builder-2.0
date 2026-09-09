@@ -3,7 +3,6 @@ import type { Wall } from '../types/facade'
 import { emptyNeighbors } from '../types/facade'
 import { DEFAULT_STUDIO_PANEL, PLAN_DIAGONAL_STEP } from './constants'
 import { layoutPanelTiles, masonryPatternCuts, panelCourseCount, visiblePanelRowRect, clipTilesAbovePlinth } from './panelLayout'
-import { WALL_DEPTH } from '../constants/presets'
 import { panelMiterEnds, studioPanelFaceLocalZ } from './walls'
 import { studioMiterLocalX } from './wallMiterX'
 
@@ -15,7 +14,7 @@ function studioWall(partial: Partial<Wall> & { id: string }): Wall {
     y: 0,
     width: partial.width ?? 384,
     height: partial.height ?? 128,
-    depth: WALL_DEPTH,
+    depth: partial.depth ?? 32,
     originX: partial.originX ?? 0,
     originZ: partial.originZ ?? 0,
     yawDeg: partial.yawDeg ?? 0,
@@ -28,6 +27,8 @@ function studioWall(partial: Partial<Wall> & { id: string }): Wall {
       panelHeight: 32,
       plinthEnabled: false,
       plinthHeight: 0,
+      hideRowsTop: 0,
+      hideRowsBottom: 0,
     },
     ...partial,
   }
@@ -88,6 +89,8 @@ describe('hide panel rows', () => {
       ...DEFAULT_STUDIO_PANEL,
       plinthEnabled: false,
       plinthHeight: 0,
+      hideRowsTop: 0,
+      hideRowsBottom: 0,
       panelWidth: 48,
       panelHeight: 32,
       pattern: 'runningBond' as const,
@@ -96,6 +99,8 @@ describe('hide panel rows', () => {
       ...DEFAULT_STUDIO_PANEL,
       plinthEnabled: false,
       plinthHeight: 0,
+      hideRowsTop: 0,
+      hideRowsBottom: 0,
       panelWidth: 24,
       panelHeight: 32,
       pattern: 'runningBond' as const,
@@ -153,6 +158,8 @@ describe('dock half merge', () => {
     panelHeight: 32,
     plinthEnabled: false,
     plinthHeight: 0,
+      hideRowsTop: 0,
+      hideRowsBottom: 0,
     cornerJoin: 'miter' as const,
   }
 
@@ -222,6 +229,8 @@ describe('dock half merge', () => {
       panelHeight: 32,
       plinthEnabled: false,
       plinthHeight: 0,
+      hideRowsTop: 0,
+      hideRowsBottom: 0,
       cornerJoin: 'miter' as const,
       endBossEnd: 'full' as const,
       endBossStart: 'off' as const,
@@ -259,6 +268,8 @@ describe('dock half merge', () => {
       panelHeight: 32,
       plinthEnabled: false,
       plinthHeight: 0,
+      hideRowsTop: 0,
+      hideRowsBottom: 0,
       cornerJoin: 'miter' as const,
     }
     const left = studioWall({
@@ -306,6 +317,8 @@ describe('dock half merge', () => {
       panelHeight: 32,
       plinthEnabled: false,
       plinthHeight: 0,
+      hideRowsTop: 0,
+      hideRowsBottom: 0,
       cornerJoin: 'miter' as const,
     }
     const left = studioWall({
@@ -354,6 +367,8 @@ describe('dock half merge', () => {
       panelHeight: 32,
       plinthEnabled: false,
       plinthHeight: 0,
+      hideRowsTop: 0,
+      hideRowsBottom: 0,
       cornerJoin: 'miter' as const,
     }
     const left = studioWall({
@@ -397,6 +412,8 @@ describe('dock half merge', () => {
       panelHeight: 32,
       plinthEnabled: false,
       plinthHeight: 0,
+      hideRowsTop: 0,
+      hideRowsBottom: 0,
       cornerJoin: 'miter' as const,
     }
     const left = studioWall({
@@ -459,6 +476,8 @@ describe('bond stagger when panel width changes', () => {
     plinthEnabled: false,
     plinthHeight: 0,
     cornerJoin: 'miter' as const,
+    hideRowsTop: 0,
+    hideRowsBottom: 0,
   })
 
   it('hält den Läuferverband-Versatz auf einer Wand bei geänderter Steinbreite', () => {
@@ -516,6 +535,8 @@ describe('45° Verband-Ecke 0,5 / 1', () => {
       cornerJoin,
       plinthEnabled: false,
       plinthHeight: 0,
+      hideRowsTop: 0,
+      hideRowsBottom: 0,
     }
     const a = studioWall({
       id: 'a',
@@ -554,6 +575,8 @@ describe('45° Verband-Ecke 0,5 / 1', () => {
       cornerJoin: 'bond' as const,
       plinthEnabled: false,
       plinthHeight: 0,
+      hideRowsTop: 0,
+      hideRowsBottom: 0,
     }
     const header = 16
     const a = studioWall({
@@ -633,6 +656,8 @@ describe('45° Verband-Ecke 0,5 / 1', () => {
       cornerJoin: 'miter' as const,
       plinthEnabled: false,
       plinthHeight: 0,
+      hideRowsTop: 0,
+      hideRowsBottom: 0,
     }
     const a = studioWall({
       id: 'a24',
@@ -719,6 +744,8 @@ describe('45° Verband-Ecke 0,5 / 1', () => {
       taperDepth: 2,
       plinthEnabled: false,
       plinthHeight: 0,
+      hideRowsTop: 0,
+      hideRowsBottom: 0,
     }
     const miter = 16.57
     const a = studioWall({
@@ -838,6 +865,8 @@ describe('45° Verband-Ecke 0,5 / 1', () => {
       cornerJoin: 'miter' as const,
       plinthEnabled: false,
       plinthHeight: 0,
+      hideRowsTop: 0,
+      hideRowsBottom: 0,
     }
     const a = studioWall({
       id: 'a',
@@ -895,6 +924,8 @@ describe('45° Verband-Ecke 0,5 / 1', () => {
       cornerJoin: 'miter' as const,
       plinthEnabled: false,
       plinthHeight: 0,
+      hideRowsTop: 0,
+      hideRowsBottom: 0,
     }
     const a = studioWall({
       id: 'a',
@@ -940,6 +971,8 @@ describe('45° Verband-Ecke 0,5 / 1', () => {
       taperDepth: 2,
       plinthEnabled: false,
       plinthHeight: 0,
+      hideRowsTop: 0,
+      hideRowsBottom: 0,
     }
     const a = studioWall({
       id: 'a',
@@ -1073,9 +1106,12 @@ describe('Verbandsmuster gleichmäßig (wandweites Raster)', () => {
         joint: panelWidth === 24 ? 0.8 : 1.2,
         plinthEnabled: false,
         plinthHeight: 0,
+        hideRowsTop: 0,
+        hideRowsBottom: 0,
         cornerJoin: 'miter' as const,
       }
-      return studioWall({ id, width: 400, height: 128, panel })
+      // 384 = 8×48 = 16×24 — kein Rest, kein Stretch
+      return studioWall({ id, width: 384, height: 128, panel })
     }
     const w24 = mk('a24', 24, 8)
     const w48 = mk('a48', 48, 16)
@@ -1086,9 +1122,37 @@ describe('Verbandsmuster gleichmäßig (wandweites Raster)', () => {
       expect(cuts48.some((c) => Math.abs(c - j) < 0.05)).toBe(true)
     }
     expect(cuts24.some((c) => Math.abs(c - 24) < 0.05)).toBe(true)
-    // Rest am Ende: letzter Cut = 400, vorletzter = 384 (= 16×24 = 8×48)
-    expect(cuts24.at(-1)).toBe(400)
-    expect(cuts48.at(-1)).toBe(400)
+    expect(cuts24.at(-1)).toBe(384)
+    expect(cuts48.at(-1)).toBe(384)
+  })
+
+  it('Rest ≥ ½ Modul: weiterhin Rest nur am Ende (24er/48er teilen Vielfache)', () => {
+    const mk = (id: string, panelWidth: number, panelHeight: number) => {
+      const panel = {
+        ...DEFAULT_STUDIO_PANEL,
+        pattern: 'runningBond' as const,
+        panelWidth,
+        panelHeight,
+        joint: panelWidth === 24 ? 0.8 : 1.2,
+        plinthEnabled: false,
+        plinthHeight: 0,
+        hideRowsTop: 0,
+        hideRowsBottom: 0,
+        cornerJoin: 'miter' as const,
+      }
+      // 408 = 8×48 + 24 (≥ ½ von 48) → Rest am Ende, kein Stretch
+      return studioWall({ id, width: 408, height: 128, panel })
+    }
+    const w24 = mk('b24', 24, 8)
+    const w48 = mk('b48', 48, 16)
+    const cuts24 = masonryPatternCuts(w24, w24.panel!, [], 0)
+    const cuts48 = masonryPatternCuts(w48, w48.panel!, [], 0)
+    for (const j of [0, 48, 96, 144, 192, 240, 288, 336, 384]) {
+      expect(cuts24.some((c) => Math.abs(c - j) < 0.05)).toBe(true)
+      expect(cuts48.some((c) => Math.abs(c - j) < 0.05)).toBe(true)
+    }
+    expect(cuts24.at(-1)).toBe(408)
+    expect(cuts48.at(-1)).toBe(408)
     expect(cuts24.at(-2)).toBe(384)
     expect(cuts48.at(-2)).toBe(384)
   })
@@ -1336,6 +1400,8 @@ describe('Rechteckfenster: Reste über/unter dem Sturz', () => {
       joint: 0.8,
       plinthEnabled: false,
       plinthHeight: 0,
+      hideRowsTop: 0,
+      hideRowsBottom: 0,
       cornerJoin: 'miter' as const,
     }
     // Sturz bei y=140 → mittendrin in einer ~32-cm-Schicht (nicht auf der Fuge)
@@ -1377,6 +1443,8 @@ describe('Rechteckfenster: Reste über/unter dem Sturz', () => {
       joint: 0.8,
       plinthEnabled: false,
       plinthHeight: 0,
+      hideRowsTop: 0,
+      hideRowsBottom: 0,
       cornerJoin: 'miter' as const,
     }
     const opening = {

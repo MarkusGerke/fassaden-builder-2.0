@@ -64,14 +64,13 @@ describe('openingPanelSnap', () => {
     expect(xs).toContain(24)
   })
 
-  it('Nudge mit dx=48 cm läuft weiter als ein einzelner Kandidat-Schritt', () => {
+  it('Nudge mit dx=8 und dx=48 rastet auf 8-cm-Raster', () => {
     const wall = studioWall({ id: 'w', width: 384 })
     const opening = { x: 48, y: 64, width: 96, height: 96, type: 'window' as const }
     const once = snapOpeningMoveToMasonry(wall, [wall], opening, opening.x + 8, opening.y, 8, 0, 'nudge')
-    expect(once.x).toBeGreaterThan(opening.x)
+    expect(once.x).toBe(56)
     const far = snapOpeningMoveToMasonry(wall, [wall], opening, opening.x + 48, opening.y, 48, 0, 'nudge')
-    expect(far.x).toBeGreaterThan(once.x)
-    expect(far.x - opening.x).toBeGreaterThanOrEqual(48 - 0.1)
+    expect(far.x).toBe(96)
   })
 
   it('Kandidaten: Fuge, Steinmitte und Wandmitte', () => {
@@ -86,7 +85,7 @@ describe('openingPanelSnap', () => {
     expect(xs.some((x) => Math.abs(x - (384 / 2 - width / 2)) < 0.05)).toBe(true)
   })
 
-  it('45°-Wand: Wandmitte ist Snap-Ziel auch wenn nicht auf Fugenraster', () => {
+  it('45°-Wand: Align-Kandidaten enthalten Wandmitte; Verschieben rastet auf 8 cm', () => {
     const width = 128
     const wallW = PLAN_DIAGONAL_STEP * 12 // Länge wie früher 4×24√2; Mitte oft nicht auf Fugenraster
     const wall = studioWall({
@@ -107,20 +106,22 @@ describe('openingPanelSnap', () => {
     expect(xs.some((x) => Math.abs(x - centerX) < 0.05)).toBe(true)
 
     const opening = { x: 0, y: 32, width, height: 96, type: 'window' as const }
+    const proposed = Math.min(centerX + 2, Math.floor((wallW - width) / 8) * 8)
     const snapped = snapOpeningMoveToMasonry(
       wall,
       [wall],
       opening,
-      centerX + 2,
+      proposed,
       32,
-      centerX + 2,
+      proposed,
       0,
       'drag',
     )
-    expect(Math.abs(snapped.x + snapped.width / 2 - wallW / 2)).toBeLessThan(0.05)
+    expect(Math.abs(snapped.x / 8 - Math.round(snapped.x / 8))).toBeLessThan(0.05)
+    expect(snapped.x).toBeCloseTo(Math.round(proposed / 8) * 8, 5)
   })
 
-  it('Nudge springt zum nächsten Kandidaten; Drag immer auf Fuge', () => {
+  it('Nudge/Drag: Position immer 8-cm-Raster', () => {
     const wall = studioWall({ id: 'w', width: 384 })
     const opening = {
       x: 48,
@@ -129,21 +130,16 @@ describe('openingPanelSnap', () => {
       height: 96,
       type: 'window' as const,
     }
-    const full = openingPlacementCandidateXs(wall, [wall], 96, undefined, 'full')
-    const after48 = full.find((c) => c > 48 + 0.05)!
     const nudged = snapOpeningMoveToMasonry(wall, [wall], opening, 56, 32, 8, 0, 'nudge')
-    expect(nudged.x).toBe(after48)
+    expect(nudged.x).toBe(56)
 
-    // Nahe Fuge 48 → rastet
-    const nearFlush = snapOpeningMoveToMasonry(wall, [wall], opening, 48 + 4, 32, 4, 0, 'drag')
-    expect(nearFlush.x).toBe(48)
+    // 52 → round 56 (Math.round 6.5 → 7)
+    const near = snapOpeningMoveToMasonry(wall, [wall], opening, 48 + 4, 32, 4, 0, 'drag')
+    expect(near.x).toBe(56)
 
-    // Auch außerhalb des alten Magnet-Radius: nächste Fuge, kein Freilauf
-    const farX = 48 + DRAG_SNAP_MAGNET_CM + 2
+    const farX = 48 + DRAG_SNAP_MAGNET_CM + 2 // 57 → 56
     const far = snapOpeningMoveToMasonry(wall, [wall], opening, farX, 32, farX - 48, 0, 'drag')
-    const xs = openingPlacementCandidateXs(wall, [wall], 96, undefined, 'drag')
-    expect(xs.some((c) => Math.abs(c - far.x) < 0.05)).toBe(true)
-    expect(far.x).not.toBe(farX)
+    expect(far.x).toBe(56)
   })
 
   it('Drag-Kandidaten ohne Steinmitten; Nudge behält Steinmitte', () => {
@@ -231,7 +227,7 @@ describe('openingPanelSnap', () => {
     expect(moved.height).toBe(192)
   })
 
-  it('Drag snapt Position an Fugen ohne Breitenänderung', () => {
+  it('Drag snapt Position auf 8 cm ohne Breitenänderung', () => {
     const wall = studioWall({
       id: 'w24',
       width: 384,
@@ -255,9 +251,7 @@ describe('openingPanelSnap', () => {
       'drag',
     )
     expect(moved.width).toBe(80)
-    const xs = openingMasonryJambXs(wall, [wall])
-    // Position möglichst so, dass 80 auf Fugen passt — sonst nächster Laibungs-Kandidat
-    expect(xs.some((c) => Math.abs(c - moved.x) < 0.05) || moved.x >= 0).toBe(true)
+    expect(moved.x).toBe(48)
   })
 })
 
@@ -309,9 +303,8 @@ describe('gemeinsames Raster 24er + 48er Etagen', () => {
       0,
       'nudge',
     )
-    // Nudge: nächster Placement-Kandidat (hier Steinmitte 12); Breite bleibt 96.
-    const next = openingPlacementCandidateXs(lower, walls, 96).find((c) => c > 0.05)!
-    expect(moved.x).toBe(next)
+    // Verschieben: 8-cm-Raster (gemeinsames Cut-Raster gilt für Align/Maße).
+    expect(moved.x).toBe(8)
     expect(moved.width).toBe(96)
   })
 
@@ -383,5 +376,54 @@ describe('Multi-Zone Snap (48 unten / 24 oben)', () => {
     const xs = openingMasonryJambXs(wall, [wall])
     expect(xs).toContain(48)
     expect(xs).not.toContain(12)
+  })
+
+  it('Erker-Wand: Drag nutzt Fugen-Raster (nicht nur spärliche Flush-Positionen)', () => {
+    const panel = {
+      ...DEFAULT_STUDIO_PANEL,
+      pattern: 'runningBond' as const,
+      panelWidth: 48,
+      panelHeight: 24,
+      plinthEnabled: false,
+      plinthHeight: 0,
+      enabled: true,
+    }
+    const bayFront = studioWall({
+      id: 'bay-front',
+      width: 288,
+      height: 352,
+      panel,
+      bayParentId: 'bay-host',
+      bayRole: 'front',
+    })
+    const width = 96
+    const flush = openingFlushWidthPlacementXs(bayFront, [bayFront], width)
+    const cand = openingPlacementCandidateXs(bayFront, [bayFront], width, undefined, 'drag')
+    expect(cand.length).toBeGreaterThanOrEqual(flush.length)
+    const moved = snapOpeningMoveToMasonry(
+      bayFront,
+      [bayFront],
+      { x: 24, y: 128, width, height: 192, type: 'window' },
+      40,
+      128,
+      16,
+      0,
+      'drag',
+    )
+    // Erker: Verschieben auf 8-cm (40 → 40); Align behält Fugen-Kandidaten.
+    expect(moved.x).toBe(40)
+    expect(cand.length).toBeGreaterThan(0)
+    const plain = studioWall({ id: 'plain', width: 288, height: 352, panel })
+    const plainMoved = snapOpeningMoveToMasonry(
+      plain,
+      [plain],
+      { x: 24, y: 128, width, height: 192, type: 'window' },
+      48,
+      128,
+      8,
+      0,
+      'drag',
+    )
+    expect(plainMoved.x).toBe(48)
   })
 })

@@ -7,7 +7,7 @@ Außenbeleuchtung in **3D** und **Oben** als Schichtenmodell — näher an reale
 - **Bodenschatten:** eine Shadow-Map (PCSS in Render); kein zweiter Umbra-Pass am Boden (v0.7.330 / v2.0.99).
 - **Dämmerung:** goldene/blaue Stunde über physikalischen Himmel (Takram), kein harter Lichtwechsel.
 - **Nacht (v2.0.184):** Ohne Mond/Lampen sind Fassaden nahezu schwarz (minimales Ambient). Mondlicht ist kühl-bläulich und wirft leichte Schatten.
-- **Schattenfassade:** kühles Himmelslicht + warmes Bodenreflex-Licht von unten (nicht pechschwarz — gilt tagsüber).
+- **Schattenfassade:** kühles Himmelslicht + warmes Bodenreflex-Licht von unten (nicht pechschwarz — gilt tagsüber). **v2.0.312:** Gegenlicht dämpft vor allem Direktlicht; Hemisphere bleibt weitgehend (näher an Schlagschatten-Look, z. B. Erker-Schenkel vs. Wand).
 - **Slider:**
   - **Umgebungslicht** → Himmel-Fill (Hemisphere + SkyLightProbe)
   - **Schatten-Kontrast** → Licht/Schatten an Fassade und Himmel (**0,5…10**, v2.0.256 — höher = dunkler)

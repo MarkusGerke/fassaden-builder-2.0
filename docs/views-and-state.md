@@ -20,7 +20,7 @@ Wechsel via `setView(mode)` in `src/main.ts`. **Fassaden-Builder 2.0:** App-Star
 
 Beim Wechsel zur `'top'`-Ansicht wird die Kamera zentriert (`framePlanCameraToContent`, `planZoom = 1`).
 
-**Bearbeitung:** `isSceneEditView()` (`3d` \| `front` \| `top`) nutzt dieselben Pointer-Handler — Pick auf Meshes, Wand-Greifer, Öffnungs-Drag, Kontextmenü. Oben: wie 3D (⌘/Ctrl-Ziehen dreht Himmelsrichtung, ⌘/Ctrl+⇧ schwenkt), zusätzlich **Shift+LMB auf leerem Bereich** / Mittelmaus Pan; **Shift/Ctrl/Cmd+Klick auf Wand/Öffnung/Decke** = Mehrfachauswahl (v2.0.16). **v2.0.193:** Bei leerer Auswahl ersetzt **Shift+Ziehen** das Pan durch eine Rechteckauswahl (nur vollständig eingerahmte Objekte). Mausrad/`+`/`-` Zoom.
+**Bearbeitung:** `isSceneEditView()` (`3d` \| `front` \| `top`) nutzt dieselben Pointer-Handler — Pick auf Meshes, Wand-Greifer, Öffnungs-Drag, Kontextmenü. Oben: wie 3D (⌘/Ctrl-Ziehen dreht Himmelsrichtung, ⌘/Ctrl+⇧ schwenkt), zusätzlich **Shift+LMB auf leerem Bereich** / Mittelmaus Pan; **Ctrl/Cmd+Klick** = additive Mehrfachauswahl; **Shift+Klick auf Wände** = Fassadenseite bzw. kürzerer Umlauf inkl. Etagen (**v2.0.317 / v2.0.318**, `wallRangeSelect.ts`); Öffnungen weiter Shift/Ctrl additiv (v2.0.16). **v2.0.193:** Bei leerer Auswahl ersetzt **Shift+Ziehen** das Pan durch eine Rechteckauswahl (nur vollständig eingerahmte Objekte). Mausrad/`+`/`-` Zoom.
 
 3D- und Oben-Orbit: Cmd/Ctrl+LMB drehen, Cmd/Ctrl+Shift+LMB schwenken, RMB ohne Modifier = Kontextmenü. **`siteYawDeg`** gilt in 3D und Oben (`siteYawForView()`). Kamera ohne Dämpfung, Dirty-Rendering (v0.7.74), Orbit-Lite auch für Mausrad (v0.7.77). Siehe [ux.md](ux.md).
 
@@ -51,7 +51,7 @@ Toolbar-Buttons (dynamisch aus den vorhandenen `yawDeg`-Werten):
 
 **2D (SVG):** `FacadeSvgView.setElevation(filter)` filtert die dargestellten Wände. Das SVG-Layout nutzt weiterhin `wall.x`/`wall.y` — bei gefilterten Ansichten werden nur die Wände der Sicht gerendert.
 
-**2D (Ortho):** `applyFrontCameraView(bounds)` nutzt `getWallBounds(wallsForElevation())` statt aller Wände. **Zoom/Pan:** Mausrad zoomt zum Cursor (Wheel-Delta pro Frame gebündelt, exponentiell; Orbit-Lite während Navigation), **Doppelklick** zoomt 2× zum Klickpunkt mit weicher Animation (~280 ms, v2.0.21), **Rechtsklick** / Mittelmaus / **⇧**+Ziehen auf **leerem Bereich** verschiebt (Pan; bei leerer Auswahl ist ⇧+Ziehen Rechteckauswahl v2.0.193); **⇧/Ctrl/Cmd+Klick auf Objekt** = Mehrfachauswahl (v2.0.16). Front-Kamera-Layout wird gecacht — Zoom/Pan ohne Wand-Neuberechnung pro Frame (v2.0.21). **+** / **−** / **0** (Einpassen). State: `frontZoom`, `frontPanScreenX`, `frontPanScreenY`. Export-Capture nutzt `fitOnly: true` (immer Einpassen). Gesims- und Fenster-Werfschatten auf Paneeeln/Rahmen in 2D-Front (v0.7.344).
+**2D (Ortho):** `applyFrontCameraView(bounds)` nutzt `getWallBounds(wallsForElevation())` statt aller Wände. **Zoom/Pan:** Mausrad zoomt zum Cursor (Wheel-Delta pro Frame gebündelt, exponentiell; Orbit-Lite während Navigation), **Doppelklick** zoomt 2× zum Klickpunkt mit weicher Animation (~280 ms, v2.0.21), **Rechtsklick** / Mittelmaus / **⇧**+Ziehen auf **leerem Bereich** verschiebt (Pan; bei leerer Auswahl ist ⇧+Ziehen Rechteckauswahl v2.0.193); **Ctrl/Cmd+Klick** additiv, **Shift+Klick auf Wände** = Bereich inkl. Etagen (v2.0.317). Front-Kamera-Layout wird gecacht — Zoom/Pan ohne Wand-Neuberechnung pro Frame (v2.0.21). **+** / **−** / **0** (Einpassen). State: `frontZoom`, `frontPanScreenX`, `frontPanScreenY`. Export-Capture nutzt `fitOnly: true` (immer Einpassen). Gesims- und Fenster-Werfschatten auf Paneeeln/Rahmen in 2D-Front (v0.7.344).
 
 ---
 
@@ -77,7 +77,7 @@ interface PersistedAppState {
 
 Laden: `applyFacadeLoadPipeline` (`migrateFacadeSchema` → `clampFacadeState` inkl. `hydrateFacadeState` → ggf. Außenkanten-Fit nur bei Mehrheit `panelFlip: false` → `finalizeStudioGeometry`). Speichern setzt immer `FACADE_SCHEMA_VERSION`. Details: [migration.md](migration.md). Korrekturen an **bestehenden** Wänden: abgeleitete Werte jedes Load; persistierte Fehlstände als Schema-Step (v0.7.222 / Schema 11: invertierte Abzweig-Fugen). **v2.0.93:** Hard-Reload verschiebt keine Wand-Origins mehr über die alte „unverbundene Ringe“-Fit-Heuristik.
 
-**Teilen-Link (`#f=`):** Zusätzlich zu `facade` optional `scene` (Szene-Farben) und `viewYaw` (Kompass). Siehe [ux.md](ux.md#url-hash-live-srcutilssharets).
+**Teilen-Link (`#f=`):** Zusätzlich zu `facade` optional `scene` (Szene-Farben), `viewYaw` (Kompass), sowie ab **v2.0.313** `sun` und `bloom`. Showcase: Query `?view=showcase` + Hash. Siehe [ux.md](ux.md#url-hash-live-srcutilssharets) und [ux.md](ux.md#showcase-v20313).
 
 `scene` steuert die Neutral-Szenenfarben (Hintergrund/Kuppel, Boden). Defaults in `DEFAULT_SCENE_APPEARANCE` (beide `#E8E3DD`), normalisiert über `normalizeSceneAppearance` (migriert alte `#555555`/Weiß-Defaults). UI: `#scene-bg-color` / `#scene-ground-color` nur bei Neutral sichtbar (v2.0.209).
 
@@ -185,7 +185,7 @@ function commitStudioPanelPatch(patch) {
 
 Buttons `#edit-scope-element|type|floor|facade` in `#edit-scope-bar`. Bei Fassade: `#edit-scope-facade-yaws` (Himmelsrichtungen). Persistiert als `editScope` / `editFacadeYawFilter`. Ersetzt die frühere Checkbox `#studio-apply-all` (nur Paneele).
 
-**v2.0.233 / v2.0.234:** Nach einem Property-Edit mit Scope **Auswahl** oder **Etage** erscheint leise `#scope-propagate-offer` im `#scope-bar-slot` (an Stelle von „Gültig für“: Fade out → Angebot von unten, **5-s-Timer**, dann umgekehrt), wenn eine höhere Stufe mehr Ziele träfe. Übernahme: `propagateSelectionEdit` in `src/studio/scopePropagate.ts` (Deltas der Auswahl, Geometrie bleibt). Schließen, Timeout oder Scope-Wechsel blendet aus.
+**v2.0.233 / v2.0.234 / v2.0.321 / v2.0.322:** Nach einem Property-Edit mit Scope **Auswahl** oder **Etage** erscheint leise `#scope-propagate-offer` im `#scope-bar-slot` (an Stelle von „Gültig für“: Fade out → Angebot von unten, **5-s-Timer**, dann umgekehrt), wenn eine höhere Stufe mehr Ziele träfe. Übernahme: `propagateSelectionEdit` in `src/studio/scopePropagate.ts` (Deltas der Auswahl, Geometrie bleibt). **v2.0.321:** auch `wall.profiles` (Rahmenprofil je Kante). **v2.0.322:** Rahmenprofile auf alle **Fenster und Türen** der Stufe (ohne Maß-/Typ-Gleichheit); andere Opening-Felder weiter nur bei Typ+Maß. Schließen, Timeout oder Scope-Wechsel blendet aus.
 
 Gilt analog für Gesims, Wandfarben, Öffnungs-Profil, Fensterbank, Treppe, Rahmen/Glas — jeweils über `editWallTargets` oder `editOpeningTargets` / `scopedOpeningRefs()`.
 

@@ -44,13 +44,15 @@ export const PCSS_CONTACT_TEXELS_MIN = 0.5
 export const PCSS_CONTACT_TEXELS_MAX = 2
 
 /**
- * Distanz-Anti-Aliasing (v2.0.270): Deckt ein Bildschirmpixel mehrere Shadow-Texel ab
+ * Distanz-Anti-Aliasing (v2.0.270 / v2.0.314): Deckt ein Bildschirmpixel mehrere Shadow-Texel ab
  * (Rauszoomen), wird mindestens über diese Pixel-Fläche gefiltert — Radius = Footprint × Faktor
  * (0,5 → Filterdurchmesser = ein Pixel). Nah (Footprint < Texel) bleibt der Look unverändert;
  * auf Distanz verschwinden die punktierten Stein-/Fugen-/Glas-Raster (feine 4-cm-Selbstschatten,
  * die sonst pro Pixel zufällig getroffen werden). Kein Bias-/Weichheits-Tuning.
+ *
+ * v2.0.314: Faktor 1,0 (Durchmesser ≈ 2 Pixel) — Rest-Speckles nach Hart-Tap-/Umbra-Early-Out-Fix.
  */
-export const PCSS_FOOTPRINT_SCALE = 0.5
+export const PCSS_FOOTPRINT_SCALE = 1.0
 
 /** Mehr Samples = weniger sichtbares Poisson-Raster in der Penumbra (Three.js-Beispiel: 17). */
 export const PCSS_NUM_SAMPLES = 32
@@ -204,22 +206,36 @@ float pcssHardShadow( sampler2D shadowMap, const in vec2 uv, const in float zRec
  * identisch — der Hart-Tap ist nur frei von Slope-Bias, also lichtdicht am Kontakt).
  * Performance: Voll lit / voll Umbra brechen nach der Blocker-Suche ab (33 statt 97 Taps) —
  * nur die Penumbra zahlt den 64-Tap-Filter.
+ *
+ * v2.0.314 Distanz-Speckles: (1) Ohne Blocker darf der Hart-Tap auf Distanz nicht gewinnen —
+ * Bias-Selbstschatten flackert unter 1 Pixel; Suche ohne Treffer ⇒ lit. (2) Umbra-Early-Out
+ * nur nah — sonst färbt Distanz-AA-Suche (Nachbarsteine als „Blocker“) ganze Pixel schwarz.
  */
 float pcssGetShadow( sampler2D shadowMap, vec4 coords, const in float texelUv, const in vec2 slope, const in float footprint ) {
 	vec2 uv = coords.xy;
 	float zReceiver = coords.z;
 	float hard = pcssHardShadow( shadowMap, uv, zReceiver );
-	mat2 rot = pcssRotation( uv );
 	// Distanz-AA: mindestens über die Pixel-Fläche filtern (nah: Footprint < Texel → wirkungslos).
 	float aaRadius = footprint * PCSS_FOOTPRINT_SCALE;
+	// Nah: Zufallsrotation bricht Poisson-Muster. Fern: feste Basis — sonst flackert jeder
+	// Bildschirm-Pixel anders (fragmentierte Speckles trotz großem Filterradius, v2.0.314).
+	mat2 rot = aaRadius > texelUv * 1.5
+		? mat2( 1.0, 0.0, 0.0, 1.0 )
+		: pcssRotation( uv );
 	// Gleiche Skala wie der Filter — sonst weiche Umbra innen, harte Texel-Kante außen.
 	float searchRadius = max( pcssLightSizeUv * PCSS_PENUMBRA_SCALE * ( zReceiver - PCSS_NEAR_PLANE ) / zReceiver, aaRadius );
 	vec2 blocker = pcssFindBlocker( shadowMap, uv, zReceiver, searchRadius, rot, slope );
-	if ( blocker.x == -1.0 ) return hard;
+	if ( blocker.x == -1.0 ) {
+		// Nah: Hart-Tap (Kontakt/Bias). Fern: Suche leer ⇒ lit, kein ungefilterter Hart-Fleck.
+		float litBlend = smoothstep( texelUv * 0.25, texelUv * 2.0, aaRadius );
+		return mix( hard, 1.0, litBlend );
+	}
 	float penumbraRatio = pcssPenumbraSize( zReceiver, blocker.x );
-	float filterRadius = max( penumbraRatio * pcssLightSizeUv * PCSS_PENUMBRA_SCALE, aaRadius );
+	float penumbraRadius = penumbraRatio * pcssLightSizeUv * PCSS_PENUMBRA_SCALE;
+	float filterRadius = max( penumbraRadius, aaRadius );
 	// Alle Such-Taps verdeckt und Filterscheibe innerhalb der Suchscheibe → Kernschatten, kein Filter.
-	if ( blocker.y > float( ${PCSS_NUM_SAMPLES_INTERNAL} ) - 0.5 && filterRadius <= searchRadius ) return 0.0;
+	// Nur wenn die Penumbra (nicht Distanz-AA) die Radien treibt — sonst Nachbarstein-False-Umbra.
+	if ( blocker.y > float( ${PCSS_NUM_SAMPLES_INTERNAL} ) - 0.5 && filterRadius <= searchRadius && aaRadius <= penumbraRadius ) return 0.0;
 	float soft = pcssFilter( shadowMap, uv, zReceiver, filterRadius, rot, slope );
 	float contact = 1.0 - smoothstep( PCSS_CONTACT_TEXELS_MIN * texelUv, PCSS_CONTACT_TEXELS_MAX * texelUv, filterRadius );
 	return mix( soft, hard, contact );
@@ -332,6 +348,11 @@ function bindPcssLightSizeUniform(material: THREE.Material): boolean {
   if (material.userData.pcssLightSizeBound) return false
   material.userData.pcssLightSizeBound = true
   const prev = material.onBeforeCompile.bind(material)
+  const prevCacheKey =
+    typeof material.customProgramCacheKey === 'function'
+      ? material.customProgramCacheKey.bind(material)
+      : () => ''
+  material.customProgramCacheKey = () => `${prevCacheKey()}|pcss-dist-aa-314`
   material.onBeforeCompile = (shader, renderer) => {
     prev(shader, renderer)
     shader.uniforms.pcssLightSizeUv = pcssLightSizeUvUniform

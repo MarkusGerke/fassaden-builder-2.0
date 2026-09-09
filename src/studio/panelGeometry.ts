@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import type { Opening, StudioPanelConfig, Wall } from '../types/facade'
 import {
+  ARCH_CURVE_SEGMENTS,
   ARCH_MESH_SEGMENTS,
   archFanPolys,
   archHybridCourseYs,
@@ -20,6 +21,7 @@ import {
   mergeNarrowClipParts,
   minClipRemnantWidth,
   normalizeOpeningFill,
+  normalizePanelWrappedReveal,
   openingArchGeom,
   openingArchHybridMasonryEnabled,
   openingArchVoussoirsEnabled,
@@ -33,6 +35,7 @@ import {
   openingMaskPolyline,
   openingWallFaceMaskPolyline,
   openingMasonryRect,
+  openingArchSpringY,
   openingFillMode,
   openingPanelClearance,
   openingPanelClearanceFinish,
@@ -53,7 +56,13 @@ import {
   openingArchRusticationUsesCircleClip,
   rusticationSectorRMax,
 } from './archRustication'
-import { STUDIO_MASONRY, panelKindForPattern, studioPlinthActive } from './constants'
+import {
+  DEFAULT_STUDIO_PANEL,
+  STUDIO_MASONRY,
+  normalizeStudioPanel,
+  panelKindForPattern,
+  studioPlinthActive,
+} from './constants'
 import { bayWallSkirtDropCm } from './bayWindow'
 import { basementWindowEnabled } from './basementWindow'
 import { studioMiterLocalX } from './wallMiterX'
@@ -149,6 +158,565 @@ function panelDepthZs(
   const backZ = flip ? 0 : wall.depth
   const bodyFrontZ = flip ? -depth : wall.depth + depth
   return { flip, backZ, bodyFrontZ }
+}
+
+/** Optionale Gebäude-Fenstertiefe für Paneel-/Wrap-Geometrie (muss zur Laibung passen). */
+export type StudioPanelGeomOpts = {
+  windowDepthOffset?: number
+  treatAsBareWall?: boolean
+}
+
+/** Öffnung, deren äußere Laibung mit Paneelen verkleidet wird (Steine laufen um die Ecke). */
+function openingIsPanelWrapped(opening: Opening): boolean {
+  if (opening.hidden) return false
+  if (!normalizePanelWrappedReveal(opening.panelWrappedReveal).enabled) return false
+  if (!openingCutsWall(opening) || openingIsConch(opening)) return false
+  const fill = normalizeOpeningFill(opening.fill)
+  if (fill.mode === 'niche' || fill.mode === 'flush') return false
+  // Freiraum-Band (Paneel-Clearance) und Wrap schließen sich aus — Kanten lägen nicht auf der Maske.
+  return openingPanelClearance(opening) <= 0.05
+}
+
+/**
+ * Wrap-Kante: ein Segment der Öffnungsmaske (Wand-XY), an dem Fassadensteine mit
+ * 45°-Gehrung in die Öffnung laufen und ein Return-Stein bis `zSplit` angesetzt wird.
+ * `(nx, ny)` zeigt **in** die Öffnung (Richtung, in der der Return-Stein aufträgt).
+ */
+interface WrapSeg {
+  ax: number
+  ay: number
+  bx: number
+  by: number
+  nx: number
+  ny: number
+  zSplit: number
+}
+
+interface WrapMiterSpec {
+  segs: WrapSeg[]
+  /** Scharfe Masken-Ecken (Sturz/Laibung) — Return-Enden dort auf Gehrung schneiden. */
+  corners: Pt2[]
+}
+
+/** Punkte näher als das gelten als „auf der Maske“. ≥½ typische Fuge: Steine sitzen oft
+ *  `joint/2` über der Sturzlinie (Kachel beginnt erst nach der Lagerfuge), sonst fehlen
+ *  Sturz-Returns (v2.0.286). */
+const WRAP_EDGE_EPS_CM = 1.25
+/** Return-Ende näher als das an einer Masken-Ecke → 45°-Schnitt statt gerader Fuge. */
+const WRAP_CORNER_SNAP_CM = 1.6
+/** Return-Rücken sitzt so weit im Wandkörper (Clearance/Float-Spalt unsichtbar). */
+const WRAP_RETURN_BACK_OVERLAP_CM = 0.25
+
+/**
+ * Alle Wrap-Kanten einer Wand (ohne Sohlbank — dort liegt die Fensterbank, Putz bleibt).
+ * `null` = keine gewrappte Öffnung. `opts.windowDepthOffset` muss derselbe Wert sein
+ * wie bei `createStudioOpeningRevealGeometry`, sonst enden Returns nicht an der Fensterfront.
+ *
+ * Rechteck-Sturz (v2.0.286): `snapHoleToTileGrid` kann das Paneel-Loch nach oben auf die
+ * nächste Schicht aufweiten — Steine enden dann über der geometrischen Öffnungsoberkante.
+ * Die Wrap-Maske folgt dieser gesnappten Sturzlinie, sonst finden Sturz-Returns keine Kette
+ * (nur Laibungen) und Ecken-Gehrungen greifen nicht.
+ */
+function wrapMiterSpecForWall(
+  wall: Wall,
+  opts?: StudioPanelGeomOpts,
+  allWalls: Wall[] = [],
+): WrapMiterSpec | null {
+  if (!wallHasPanels(wall) || opts?.treatAsBareWall) return null
+  const panel = normalizeStudioPanel(wall.panel ?? DEFAULT_STUDIO_PANEL)
+  const tiles =
+    panel.enabled !== false && panel.pattern !== 'none'
+      ? layoutPanelTiles(wall, panel, allWalls)
+      : []
+  const segs: WrapSeg[] = []
+  const corners: Pt2[] = []
+  for (const opening of wall.openings) {
+    if (!openingIsPanelWrapped(opening)) continue
+    const zOuter = studioOpeningRevealOuterZ(wall, opening, {
+      treatAsBareWall: opts?.treatAsBareWall,
+    })
+    const zInner = studioOpeningRevealInnerZ(wall)
+    if (Math.abs(zOuter - zInner) < 0.35) continue
+    const zSplit = studioOpeningRevealColorSplitZ(
+      wall,
+      opening,
+      zOuter,
+      zInner,
+      opts?.windowDepthOffset,
+    )
+    if (Math.abs(zOuter - zSplit) < 0.35) continue
+    let poly = openingMaskPolyline(opening, PANEL_OPENING_CLEARANCE, ARCH_MESH_SEGMENTS)
+    const curved = openingHasCurvedMask(opening, PANEL_OPENING_CLEARANCE)
+    const round = openingHasRoundMask(opening)
+    // Rechteck: Sturz-Y auf gesnapptes Paneel-Loch heben (gleiche Logik wie Clip).
+    if (!curved && !round && tiles.length > 0) {
+      const rawHoles = openingHoles(opening, PANEL_OPENING_CLEARANCE)
+      for (const raw of rawHoles) {
+        const snapped = snapHoleToTileGrid(raw, tiles, MIN_PANEL_REMNANT, false)
+        const rawHead = raw.y + raw.height
+        const snapHead = snapped.y + snapped.height
+        if (snapHead <= rawHead + CLIP_EPS) continue
+        poly = poly.map((p) =>
+          Math.abs(p.y - rawHead) <= 0.55 ? { x: p.x, y: snapHead } : p,
+        )
+      }
+    }
+    const n = poly.length
+    if (n < 3) continue
+    const ccw = ringArea(poly) > 0
+    const sillY = opening.y + 0.5
+    const isSill = (i: number) => {
+      const a = poly[i]!
+      const b = poly[(i + 1) % n]!
+      return a.y <= sillY && b.y <= sillY
+    }
+    for (let i = 0; i < n; i += 1) {
+      if (isSill(i)) continue
+      const a = poly[i]!
+      const b = poly[(i + 1) % n]!
+      const dx = b.x - a.x
+      const dy = b.y - a.y
+      const len = Math.hypot(dx, dy)
+      if (len < 1e-4) continue
+      // Innen liegt bei CCW links (−dy, dx), bei CW rechts.
+      const s = ccw ? 1 : -1
+      segs.push({
+        ax: a.x,
+        ay: a.y,
+        bx: b.x,
+        by: b.y,
+        nx: (-dy / len) * s,
+        ny: (dx / len) * s,
+        zSplit,
+      })
+      // Ecke zwischen zwei Wrap-Segmenten (nicht an der Sohlbank).
+      const j = (i + 1) % n
+      if (isSill(j)) continue
+      const c = poly[(j + 1) % n]!
+      const ex = c.x - b.x
+      const ey = c.y - b.y
+      const elen = Math.hypot(ex, ey)
+      if (elen < 1e-4) continue
+      const cosT = (dx * ex + dy * ey) / (len * elen)
+      if (cosT < Math.cos((25 * Math.PI) / 180)) corners.push({ x: b.x, y: b.y })
+    }
+    // Explizite Sturz-/Kämpfer-Ecken (Gehrung Laibung↔Sturz), auch wenn die Polyline
+    // am Bogen flache Winkel hat und die cos-Schwelle verfehlt.
+    const masonry = openingMasonryRect(opening, PANEL_OPENING_CLEARANCE)
+    if (curved || round) {
+      const spring = openingArchSpringY(opening, PANEL_OPENING_CLEARANCE)
+      if (spring != null) {
+        corners.push({ x: masonry.x, y: spring }, { x: masonry.x + masonry.width, y: spring })
+      }
+    } else {
+      const headY = poly.reduce((m, p) => Math.max(m, p.y), masonry.y)
+      corners.push({ x: masonry.x, y: headY }, { x: masonry.x + masonry.width, y: headY })
+    }
+  }
+  return segs.length > 0 ? { segs, corners } : null
+}
+
+function segDist2D(px: number, py: number, s: WrapSeg): number {
+  const dx = s.bx - s.ax
+  const dy = s.by - s.ay
+  const l2 = dx * dx + dy * dy
+  let t = l2 > 1e-12 ? ((px - s.ax) * dx + (py - s.ay) * dy) / l2 : 0
+  t = Math.max(0, Math.min(1, t))
+  return Math.hypot(px - (s.ax + dx * t), py - (s.ay + dy * t))
+}
+
+/**
+ * Liegt der Punkt auf einer Wrap-Kante, die (Ecken-)Normale in die Öffnung — sonst `null`.
+ * An Masken-Ecken (zwei Kanten) Gehrungs-Normale (n1+n2)/(1+n1·n2), damit der Versatz
+ * beider Flächen gleich bleibt.
+ */
+function wrapInwardAt(spec: WrapMiterSpec, wx: number, wy: number): Pt2 | null {
+  let n1: WrapSeg | null = null
+  let n2: WrapSeg | null = null
+  for (const s of spec.segs) {
+    if (segDist2D(wx, wy, s) > WRAP_EDGE_EPS_CM) continue
+    if (!n1) n1 = s
+    else if (!n2 && Math.abs(s.nx * n1.nx + s.ny * n1.ny) < 0.999) n2 = s
+  }
+  if (!n1) return null
+  if (!n2) return { x: n1.nx, y: n1.ny }
+  const dot = n1.nx * n2.nx + n1.ny * n2.ny
+  const k = 1 / Math.max(0.2, 1 + dot)
+  return { x: (n1.nx + n2.nx) * k, y: (n1.ny + n2.ny) * k }
+}
+
+/**
+ * Sturz-Reihe an Wrap-Ecken teilen (v2.0.293): Ein Stein der Reihe direkt über dem Sturz,
+ * der über eine Laibungslinie (Masken-Ecke) hinausläuft, wird dort in zwei Steine mit
+ * Fuge `joint` geteilt. Sonst interpoliert die Wrap-Gehrung (Versatz nur am Kettenende
+ * auf der Maske) über die ganze Steinbreite → schräge Unterkante („Trapezschräge“) ohne
+ * Fugenabstand zum Laibungsstein darunter. Nach dem Teilen: Sturz-Teil über der Öffnung
+ * mit Gehrung + Return wie an den Seiten, Rest-Teil sitzt auf dem Laibungsstein.
+ * Bogen-/Outline-Teile bleiben unverändert (Kämpfer-Ecken werden vom Bogen-Clip gefasst).
+ */
+function splitHeadRowPartsAtWrapCorners(
+  rects: OpeningPoly[],
+  spec: WrapMiterSpec,
+  joint: number,
+): OpeningPoly[] {
+  if (spec.corners.length === 0) return rects
+  const g = Math.max(0, joint) / 2
+  const minPiece = 0.5
+  const out: OpeningPoly[] = []
+  for (const part of rects) {
+    const hasArc =
+      Boolean(part.outline && part.outline.length >= 3) ||
+      Boolean(part.bottomArc && part.bottomArc.length >= 2) ||
+      Boolean(part.topArc && part.topArc.length >= 2) ||
+      Boolean(part.polar)
+    if (hasArc || part.spandrelStrip) {
+      out.push(part)
+      continue
+    }
+    let pieces: OpeningPoly[] = [part]
+    for (const c of spec.corners) {
+      // Nur Reihe direkt über der Ecke (Unterkante auf der Sturzlinie).
+      if (Math.abs(part.y - c.y) > WRAP_EDGE_EPS_CM) continue
+      const next: OpeningPoly[] = []
+      for (const piece of pieces) {
+        const x0 = piece.x
+        const x1 = piece.x + piece.width
+        if (x0 < c.x - g - minPiece && x1 > c.x + g + minPiece) {
+          next.push({ ...piece, x: x0, width: c.x - g - x0 })
+          next.push({ ...piece, x: c.x + g, width: x1 - (c.x + g) })
+        } else {
+          next.push(piece)
+        }
+      }
+      pieces = next
+    }
+    out.push(...pieces)
+  }
+  return out
+}
+
+/** Ganze Kante (Anfang, Mitte, Ende) auf einer Wrap-Kante? */
+function edgeOnWrap(spec: WrapMiterSpec, ax: number, ay: number, bx: number, by: number): boolean {
+  return (
+    wrapInwardAt(spec, ax, ay) != null &&
+    wrapInwardAt(spec, bx, by) != null &&
+    wrapInwardAt(spec, (ax + bx) / 2, (ay + by) / 2) != null
+  )
+}
+
+function wrapSegAt(spec: WrapMiterSpec, wx: number, wy: number): WrapSeg | null {
+  let best: WrapSeg | null = null
+  let bestD = WRAP_EDGE_EPS_CM
+  for (const s of spec.segs) {
+    const d = segDist2D(wx, wy, s)
+    if (d <= bestD) {
+      bestD = d
+      best = s
+    }
+  }
+  return best
+}
+
+interface WrapPiece {
+  a: Pt2
+  b: Pt2
+  zSplit: number
+}
+
+/**
+ * Anteil einer Stein-Randkante, der auf einer Wrap-Kante liegt. Ganz auf der Maske
+ * (Bogen-Sehnen, Laibungskanten) → die Kante selbst; ragt sie über die Öffnung hinaus
+ * (Sturzstein über beide Laibungen), nur das kollineare Überlappungsstück.
+ */
+function wrapPieceOfEdge(a: Pt2, b: Pt2, spec: WrapMiterSpec): WrapPiece | null {
+  const mx = (a.x + b.x) / 2
+  const my = (a.y + b.y) / 2
+  if (edgeOnWrap(spec, a.x, a.y, b.x, b.y)) {
+    const s = wrapSegAt(spec, mx, my) ?? wrapSegAt(spec, a.x, a.y) ?? wrapSegAt(spec, b.x, b.y)
+    if (!s) return null
+    return { a, b, zSplit: s.zSplit }
+  }
+  const ex = b.x - a.x
+  const ey = b.y - a.y
+  const elen = Math.hypot(ex, ey)
+  if (elen < 0.5) return null
+  for (const s of spec.segs) {
+    const dx = s.bx - s.ax
+    const dy = s.by - s.ay
+    const len = Math.hypot(dx, dy)
+    if (len < 4) continue
+    const ux = dx / len
+    const uy = dy / len
+    // Kollinear: beide Endpunkte auf der Geraden, parallel.
+    const da = Math.abs((a.x - s.ax) * uy - (a.y - s.ay) * ux)
+    const db = Math.abs((b.x - s.ax) * uy - (b.y - s.ay) * ux)
+    if (da > WRAP_EDGE_EPS_CM || db > WRAP_EDGE_EPS_CM) continue
+    if (Math.abs((ex / elen) * uy - (ey / elen) * ux) > 0.02) continue
+    const ta = ((a.x - s.ax) * ux + (a.y - s.ay) * uy) / len
+    const tb = ((b.x - s.ax) * ux + (b.y - s.ay) * uy) / len
+    const lo = Math.max(0, Math.min(ta, tb))
+    const hi = Math.min(1, Math.max(ta, tb))
+    if ((hi - lo) * len < 0.5) continue
+    const pa = { x: s.ax + dx * lo, y: s.ay + dy * lo }
+    const pb = { x: s.ax + dx * hi, y: s.ay + dy * hi }
+    return ta <= tb ? { a: pa, b: pb, zSplit: s.zSplit } : { a: pb, b: pa, zSplit: s.zSplit }
+  }
+  return null
+}
+
+interface WrapChain {
+  pts: Pt2[]
+  zSplit: number
+}
+
+/** Zusammenhängende Randketten eines Stein-Rings auf der Wrap-Maske (Ring-Reihenfolge). */
+function wrapChainsOfRing(ring: Pt2[], spec: WrapMiterSpec): WrapChain[] {
+  const n = ring.length
+  if (n < 3) return []
+  const pieces: (WrapPiece | null)[] = []
+  for (let i = 0; i < n; i += 1) {
+    pieces.push(wrapPieceOfEdge(ring[i]!, ring[(i + 1) % n]!, spec))
+  }
+  const start = pieces.findIndex((piece) => piece == null)
+  if (start < 0) return []
+  const chains: WrapChain[] = []
+  let cur: WrapChain | null = null
+  for (let k = 1; k <= n; k += 1) {
+    const piece = pieces[(start + k) % n]
+    if (!piece) {
+      if (cur) chains.push(cur)
+      cur = null
+      continue
+    }
+    const last = cur?.pts[cur.pts.length - 1]
+    if (cur && last && almostSamePoint(last, piece.a, 0.05)) {
+      cur.pts.push(piece.b)
+    } else {
+      if (cur) chains.push(cur)
+      cur = { pts: [piece.a, piece.b], zSplit: piece.zSplit }
+    }
+  }
+  if (cur) chains.push(cur)
+  return chains.filter((c) => c.pts.length >= 2)
+}
+
+/**
+ * Return-Stein in der Laibung für **eine** Randkette eines Fassadensteins (Loft entlang
+ * der Kette, Querschnitt in (Tiefe-in-die-Öffnung d, Wand-Z)):
+ *
+ * - Körper d ∈ [−overlap, P], Außenseite = 45°-Gehrungsebene (komplementär zum
+ *   Fassadenstein in makeCoordAt), Innen bis `zSplit` (Fensterfront).
+ * - Trapez-Boss d ∈ [P, P+T]: außen läuft die Gehrung durch (flach), innen und an
+ *   den Kettenenden Einzug `chamfer` wie an der Fassade.
+ * - Kettenenden an Masken-Ecken (Sturz/Laibung) 45° geschnitten (Rahmen-Gehrung),
+ *   sonst gerade. Fugen kommen aus dem Stein-Raster (Sturz-Reihe an Wrap-Ecken
+ *   geteilt, siehe `splitHeadRowPartsAtWrapCorners`).
+ *
+ * Bogen: Stationen sind die Bogenpunkte des Steins → der Return folgt dem Bogen.
+ * Windung pro Fläche über Außen-Referenz (Querschnitt-Normale bzw. ±Tangente).
+ */
+function extrudeWrapReturn(
+  chain: WrapChain,
+  rect: Rect,
+  wall: Wall,
+  panel: StudioPanelConfig,
+  spec: WrapMiterSpec,
+  positions: number[],
+  normals: number[],
+  indices: number[],
+): boolean {
+  const pts = chain.pts
+  const m = pts.length
+  if (m < 2) return false
+  const P = Math.max(rect.depth ?? panel.projectDepth, 1e-6)
+  const T = Math.max(0, rect.taperDepth ?? panel.taperDepth ?? 0)
+  const taper = Math.max(0.005, Math.min(1, rect.taper ?? panel.taper ?? 1))
+  const chamfer = Math.max(0, (Math.min(panel.panelWidth, panel.panelHeight) / 2) * (1 - taper))
+  const { flip, backZ } = panelDepthZs(wall, panel, P)
+  const toward = flip ? -1 : 1
+  const zIn = chain.zSplit
+  const depthLen = toward * (backZ - zIn)
+  // Laibung muss den Stein aufnehmen (Körper + Boss + etwas Innenfläche).
+  if (depthLen < P + T + 0.4) return false
+  const ov = WRAP_RETURN_BACK_OVERLAP_CM
+  const zOf = (d: number) => backZ + toward * Math.max(0, d)
+
+  // Stationen: Inwärts-Normalen der Kettensegmente aus der Maske, an Knicken Gehrungs-Normale.
+  const segN: Pt2[] = []
+  for (let i = 0; i < m - 1; i += 1) {
+    const a = pts[i]!
+    const b = pts[i + 1]!
+    const n = wrapInwardAt(spec, (a.x + b.x) / 2, (a.y + b.y) / 2)
+    if (n) segN.push({ x: n.x, y: n.y })
+    else if (segN.length > 0) segN.push(segN[segN.length - 1]!)
+    else {
+      const dx = b.x - a.x
+      const dy = b.y - a.y
+      const l = Math.hypot(dx, dy) || 1
+      segN.push({ x: -dy / l, y: dx / l })
+    }
+  }
+  const stN: Pt2[] = []
+  for (let i = 0; i < m; i += 1) {
+    const n1 = segN[Math.max(0, i - 1)]!
+    const n2 = segN[Math.min(m - 2, i)]!
+    const dot = n1.x * n2.x + n1.y * n2.y
+    const k = 1 / Math.max(0.2, 1 + dot)
+    stN.push({ x: (n1.x + n2.x) * k, y: (n1.y + n2.y) * k })
+  }
+  let length = 0
+  for (let i = 0; i < m - 1; i += 1) length += Math.hypot(pts[i + 1]!.x - pts[i]!.x, pts[i + 1]!.y - pts[i]!.y)
+  if (length < 0.5) return false
+
+  // Tangenten an den Enden (zeigen in die Kette hinein).
+  const unit = (from: Pt2, to: Pt2): Pt2 => {
+    const dx = to.x - from.x
+    const dy = to.y - from.y
+    const l = Math.hypot(dx, dy) || 1
+    return { x: dx / l, y: dy / l }
+  }
+  const tStart = unit(pts[0]!, pts[1]!)
+  const tEnd = unit(pts[m - 1]!, pts[m - 2]!)
+  const nearCorner = (pt: Pt2) =>
+    spec.corners.some((c) => Math.hypot(c.x - pt.x, c.y - pt.y) <= WRAP_CORNER_SNAP_CM)
+  // Kettenenden exakt auf den Stein-Ecken (kein eigener Fugen-Offset): Die Fuge zur
+  // Nachbar-Ecke kommt aus dem Stein-Raster (Sturz-Reihe an Wrap-Ecken geteilt,
+  // `splitHeadRowPartsAtWrapCorners`) — Return und Fassadenstein teilen so dieselbe
+  // 45°-Gehrungsebene. v2.0.290/291 (joint-Offset nur am Return) verworfen: Versatz
+  // zwischen Return- und Stein-Gehrung, Fuge trotzdem nicht sichtbar.
+  const slantStart = nearCorner(pts[0]!) ? 1 : 0
+  const slantEnd = nearCorner(pts[m - 1]!) ? 1 : 0
+
+  // Körperfront muss übrig bleiben; Boss-Einzug entlang der Kette ggf. verkleinern.
+  const bodyAlong = length - (slantStart + slantEnd) * P
+  if (bodyAlong < 0.3) return false
+  let hasBoss = T > 1e-6
+  let cAlong = chamfer
+  // Boss: außen flach (Gehrung), innen Fase — cZ nur zur Fensterfront.
+  let cZ = Math.min(chamfer, Math.max(0, depthLen - (P + T) - 0.15))
+  if (hasBoss) {
+    const topAlong = length - (slantStart + slantEnd) * (P + T)
+    if (topAlong - 2 * cAlong < 0.15) cAlong = Math.max(0, (topAlong - 0.15) / 2)
+    if (topAlong < 0.3 || cZ < 0) hasBoss = false
+  }
+  if (!hasBoss) cZ = 0
+
+  // Querschnitt (d, z, Einzug entlang der Kette) — geschlossener, konvexer Ring.
+  // Wandecken-Gehrung: Außenkante (−ov, backZ) → (P, zOf(P)), komplementär zum
+  // 45°-Versatz des Fassadensteins in makeCoordAt. Boss außen flach.
+  type Cs = { d: number; z: number; along: number }
+  const cs: Cs[] = [
+    { d: -ov, z: backZ, along: 0 },
+    { d: P, z: zOf(P), along: 0 },
+  ]
+  if (hasBoss) {
+    cs.push({ d: P + T, z: zOf(P + T), along: cAlong })
+    cs.push({ d: P + T, z: zIn + toward * cZ, along: cAlong })
+  }
+  cs.push({ d: P, z: zIn, along: 0 })
+  cs.push({ d: -ov, z: zIn, along: 0 })
+  const K = cs.length
+
+  const halfH = wall.height / 2
+  const at = (i: number, c: Cs): THREE.Vector3 => {
+    const v = pts[i]!
+    const n = stN[i]!
+    let wx = v.x + n.x * c.d
+    let wy = v.y + n.y * c.d
+    if (i === 0) {
+      const r = slantStart * c.d + c.along
+      wx += tStart.x * r
+      wy += tStart.y * r
+    } else if (i === m - 1) {
+      const r = slantEnd * c.d + c.along
+      wx += tEnd.x * r
+      wy += tEnd.y * r
+    }
+    return v3(wallLocalX(wall, wx, c.z), wy - halfH, c.z)
+  }
+
+  // Windung: Fläche so drehen, dass die Normale zur Außen-Referenz zeigt.
+  const orientedQuad = (
+    a: THREE.Vector3,
+    b: THREE.Vector3,
+    c: THREE.Vector3,
+    d: THREE.Vector3,
+    outward: THREE.Vector3,
+  ) => {
+    const n = new THREE.Vector3().subVectors(c, a).cross(new THREE.Vector3().subVectors(d, b))
+    if (n.dot(outward) >= 0) addQuad(positions, normals, indices, a, b, c, d)
+    else addQuad(positions, normals, indices, a, d, c, b)
+  }
+  const orientedTri = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, outward: THREE.Vector3) => {
+    const n = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(c, a))
+    if (n.dot(outward) >= 0) addTri(positions, normals, indices, a, b, c)
+    else addTri(positions, normals, indices, a, c, b)
+  }
+
+  // Querschnitt-Orientierung in (d, z') mit z' = toward·(z − backZ) (nach außen positiv).
+  let area = 0
+  for (let k = 0; k < K; k += 1) {
+    const p0 = cs[k]!
+    const p1 = cs[(k + 1) % K]!
+    area += p0.d * (toward * (p1.z - backZ)) - p1.d * (toward * (p0.z - backZ))
+  }
+  const ccw = area > 0
+
+  // Mantelflächen
+  for (let i = 0; i < m - 1; i += 1) {
+    const nMid = {
+      x: (stN[i]!.x + stN[i + 1]!.x) / 2,
+      y: (stN[i]!.y + stN[i + 1]!.y) / 2,
+    }
+    for (let k = 0; k < K; k += 1) {
+      const c0 = cs[k]!
+      const c1 = cs[(k + 1) % K]!
+      const ed = c1.d - c0.d
+      const ez = toward * (c1.z - c0.z)
+      // 2D-Außennormale der Querschnittskante: CCW → rechts (ez, −ed), CW → links.
+      const o2 = ccw ? { d: ez, z: -ed } : { d: -ez, z: ed }
+      const outward = v3(nMid.x * o2.d, nMid.y * o2.d, toward * o2.z)
+      orientedQuad(at(i, c0), at(i + 1, c0), at(i + 1, c1), at(i, c1), outward)
+    }
+  }
+
+  // Stirnflächen an den Kettenenden: Körper (planar) als Fächer + Boss-Fase als Quad.
+  const cap = (i: number, tangentIn: Pt2) => {
+    const outward = v3(-tangentIn.x, -tangentIn.y, 0)
+    // cs: [A(−ov,back), F(P,miter), (E, D Boss), C(P,in), B(−ov,in)]
+    const bodyIdx = hasBoss ? [0, 1, K - 2, K - 1] : [0, 1, 2, 3]
+    const body = bodyIdx.map((k) => at(i, cs[k]!))
+    for (let t = 1; t < body.length - 1; t += 1) {
+      orientedTri(body[0]!, body[t]!, body[t + 1]!, outward)
+    }
+    if (hasBoss) {
+      orientedQuad(at(i, cs[1]!), at(i, cs[2]!), at(i, cs[3]!), at(i, cs[4]!), outward)
+    }
+  }
+  cap(0, tStart)
+  cap(m - 1, tEnd)
+  return true
+}
+
+/** Return-Steine aller Randketten eines Fassadensteins; liefert die Anzahl. */
+function appendWrapReturnsForPart(
+  rect: Rect,
+  wall: Wall,
+  panel: StudioPanelConfig,
+  spec: WrapMiterSpec,
+  positions: number[],
+  normals: number[],
+  indices: number[],
+): number {
+  if (rect.spandrelStrip) return 0
+  const ring = ringFromTile(rect) ?? (rect.width > CLIP_EPS && rect.height > CLIP_EPS ? rectAsRing(rect) : null)
+  if (!ring || ring.length < 3) return 0
+  let count = 0
+  const chains = wrapChainsOfRing(ring, spec)
+  for (const chain of chains) {
+    if (extrudeWrapReturn(chain, rect, wall, panel, spec, positions, normals, indices)) count += 1
+  }
+  return count
 }
 
 function rectsOverlap(a: Rect, b: Rect): boolean {
@@ -333,12 +901,59 @@ function topArcHasStone(arcY: number, yBot: number, eps = 0.05): boolean {
 
 /**
  * Max. Stützpunkte der Bogenkante für **Front**-Tessellation.
- * 128 Clip-Spalten als einzelne Quads erzeugen beim Rauszoomen vertikale Distanz-Zacken
- * (Tiefenpuffer, v2.0.166) — eine Earcut-Fläche mit ~24 Punkten bleibt glatt.
+ * Früher Douglas-Peucker (tol 0,85) + Cap 24 → lange Sehnen auf Paneelen, während der
+ * Fensterbogen `ARCH_MESH_SEGMENTS` gleichmäßige Facetten behielt. Jetzt: Clip-Punkte
+ * auf Mesh-Dichte (Stride CURVE→MESH), ohne DP — gleiche Rundung wie Rahmen/Laibung.
  */
-const ARC_FRONT_MAX_SAMPLES = 24
-/** Soffit unter der Kurve darf etwas feiner bleiben (dünne Leiste, weniger Fight). */
-const ARC_SOFFIT_MAX_SAMPLES = 48
+const ARC_FRONT_MAX_SAMPLES = ARCH_MESH_SEGMENTS
+/** Soffit: dieselbe Mesh-Dichte wie Front/Fensterbogen. */
+const ARC_SOFFIT_MAX_SAMPLES = ARCH_MESH_SEGMENTS
+
+/** Scharfe Knicke (Jamb/Ecke) — müssen beim Mesh-Dock-Stride erhalten bleiben. */
+function isSharpPolylineTurn(a: Pt2, b: Pt2, c: Pt2, cosMax = 0.25): boolean {
+  const abx = b.x - a.x
+  const aby = b.y - a.y
+  const bcx = c.x - b.x
+  const bcy = c.y - b.y
+  const lab = Math.hypot(abx, aby)
+  const lbc = Math.hypot(bcx, bcy)
+  if (lab < 0.05 || lbc < 0.05) return false
+  return (abx * bcx + aby * bcy) / (lab * lbc) < cosMax
+}
+
+/**
+ * Clip-Bögen (~`ARCH_CURVE_SEGMENTS`) auf die Fenster-Mesh-Dichte bringen.
+ * Kein Douglas-Peucker: der würde auf kurzen Paneel-Abschnitten fast alle Punkte
+ * weglassen und grobe Sehnen erzeugen (sichtbar neben dem feinen Blendrahmen).
+ * Scharfe Ecken (L-/Boss-Ringe) immer behalten — reiner Index-Stride zerstört sonst
+ * Rechtwinkel und erzeugt diagonale „beschädigte“ Paneele (v2.0.275).
+ */
+function arcSamplesForMeshDock(pts: Pt2[], maxSamples = ARCH_MESH_SEGMENTS): Pt2[] {
+  if (pts.length <= 2) return pts.map((p) => ({ x: p.x, y: p.y }))
+  const stride = Math.max(1, Math.round(ARCH_CURVE_SEGMENTS / Math.max(1, maxSamples)))
+  if (stride <= 1) return pts.map((p) => ({ x: p.x, y: p.y }))
+  const keep = new Uint8Array(pts.length)
+  keep[0] = 1
+  keep[pts.length - 1] = 1
+  for (let i = 1; i < pts.length - 1; i += 1) {
+    if (isSharpPolylineTurn(pts[i - 1]!, pts[i]!, pts[i + 1]!)) keep[i] = 1
+  }
+  for (let i = 0; i < pts.length; i += stride) keep[i] = 1
+  const out: Pt2[] = []
+  for (let i = 0; i < pts.length; i += 1) {
+    if (!keep[i]) continue
+    const p = pts[i]!
+    const prev = out[out.length - 1]
+    if (prev && Math.hypot(p.x - prev.x, p.y - prev.y) <= 1e-6) continue
+    out.push({ x: p.x, y: p.y })
+  }
+  const last = pts[pts.length - 1]!
+  const tail = out[out.length - 1]
+  if (!tail || Math.hypot(last.x - tail.x, last.y - tail.y) > 1e-6) {
+    out.push({ x: last.x, y: last.y })
+  }
+  return out
+}
 
 function filterArcStonePoints(
   arc: { x: number; y: number }[],
@@ -370,7 +985,7 @@ function arcCapFrontRing(
   const y1 = rect.y + rect.height
   const pts = filterArcStonePoints(arc, kind, y0, y1)
   if (pts.length < 2) return null
-  const sparse = sparsePolyline(pts, maxSamples, 0.85)
+  const sparse = arcSamplesForMeshDock(pts, maxSamples)
   if (sparse.length < 2) return null
   if (kind === 'bottom') {
     return ringCcw(
@@ -399,7 +1014,7 @@ function sparseArcForSoffit(
 ): Pt2[] {
   const pts = filterArcStonePoints(arc, kind, y0, y1)
   if (pts.length <= 2) return pts
-  return sparsePolyline(pts, ARC_SOFFIT_MAX_SAMPLES, 0.45)
+  return arcSamplesForMeshDock(pts, ARC_SOFFIT_MAX_SAMPLES)
 }
 
 /** Flat-/Arbeitsansicht: Bogenkappe als eine Frontfläche (nicht 128 Trapez-Spalten). */
@@ -538,14 +1153,21 @@ interface PanelMiter {
   end: boolean
   coverStart?: boolean
   coverEnd?: boolean
+  /** Paneel-umwickelte Öffnungen: Steine laufen mit 45°-Gehrung in die Laibung. */
+  wrap?: WrapMiterSpec | null
 }
 
-function panelMiterWithReturnCover(wall: Wall, allWalls: Wall[]): PanelMiter {
+function panelMiterWithReturnCover(
+  wall: Wall,
+  allWalls: Wall[],
+  opts?: StudioPanelGeomOpts,
+): PanelMiter {
   const miter = panelMiterEnds(wall, allWalls)
   return {
     ...miter,
     coverStart: miter.start && turningAdjacentWalls(wall, 'start', allWalls).some(wallHasPanels),
     coverEnd: miter.end && turningAdjacentWalls(wall, 'end', allWalls).some(wallHasPanels),
+    wrap: wrapMiterSpecForWall(wall, opts, allWalls),
   }
 }
 
@@ -800,19 +1422,35 @@ function makePanelPointFn(
 function makeCoordAt(
   wall: Wall,
   panel: StudioPanelConfig,
-  miter: { start: boolean; end: boolean },
+  miter: PanelMiter,
   holes: Rect[],
   projectDepth: number,
   backZ: number,
+  wrapRefZ = backZ,
 ): (wx: number, wy: number, z: number) => { x: number; y: number } {
   const openingMiter = panel.openingJoin === 'miter'
+  const wrap = miter.wrap ?? null
   const halfH = wall.height / 2
+  // Paneel-Wrap: äußere Kante wie Wandecke — **gleich** an Laibung und Sturz
+  // (achsparallele Inwärts-Normale). Am Bogen (|nx| und |ny| beide groß) kein Versatz.
   return (wx: number, wy: number, z: number) => {
     let wallX = wx
     let wallY = wy
     if (openingMiter && holes.length > 0) {
       wallX = applyOpeningMiterX(wx, z, holes, projectDepth, backZ)
       wallY = applyOpeningMiterY(wy, z, holes, projectDepth, backZ)
+    }
+    if (wrap) {
+      const inward = wrapInwardAt(wrap, wx, wy)
+      if (inward) {
+        const ax = Math.abs(inward.x)
+        const ay = Math.abs(inward.y)
+        if (ax < 0.35 || ay < 0.35) {
+          const shift = Math.abs(z - wrapRefZ)
+          wallX += inward.x * shift
+          wallY += inward.y * shift
+        }
+      }
     }
     const x = wallLocalX(wall, wallX, z, projectDepth, backZ, miter.start, miter.end)
     return { x, y: wallY - halfH }
@@ -1019,7 +1657,7 @@ function extrudeStone(
   rect: Rect,
   wall: Wall,
   panel: StudioPanelConfig,
-  miter: { start: boolean; end: boolean },
+  miter: PanelMiter,
   positions: number[],
   normals: number[],
   indices: number[],
@@ -1049,7 +1687,7 @@ function extrudeStone(
     Boolean(strip)
       ? []
       : holes
-  const coordAt = makeCoordAt(wall, panel, miter, miterHoles, projectDepth, backZ)
+  const coordAt = makeCoordAt(wall, panel, miter, miterHoles, projectDepth, backZ, zs.backZ)
 
   const p = makePanelPointFn(wall, coordAt)
 
@@ -1511,14 +2149,13 @@ function sparsePolyline(pts: Pt2[], maxN: number, tol = 1.6): Pt2[] {
 function remnantOutline(rect: Rect): Pt2[] | null {
   const fromTile = ringFromTile(rect)
   if (fromTile && fromTile.length >= 3) {
-    // Bogen-Silhouette: Front/Boss ausdünnen gegen Distanz-Zacken (128 Clip-Spalten),
-    // Extrados bleibt mit ~24 Punkten erkennbar (Voussoir-Dock am Clip, nicht an der Mesh-Kante).
+    // Bogen-Silhouette: Mesh-Dichte wie Fenster (kein DP mit großer Toleranz).
     const hasArc =
       (rect.bottomArc != null && rect.bottomArc.length >= 2) ||
       (rect.topArc != null && rect.topArc.length >= 2)
     if (hasArc) {
       return fromTile.length > ARC_FRONT_MAX_SAMPLES
-        ? simplifyClosedRing(fromTile, ARC_FRONT_MAX_SAMPLES, 0.85)
+        ? simplifyClosedRingMeshDock(fromTile, ARC_FRONT_MAX_SAMPLES)
         : fromTile
     }
     return fromTile.length > 16 ? simplifyClosedRing(fromTile, 16, 0.4) : fromTile
@@ -1543,6 +2180,19 @@ function simplifyClosedRing(ring: Pt2[], maxN: number, tol: number): Pt2[] {
   return out.length >= 3 ? out : src.slice(0, maxN)
 }
 
+/** Bogen-Ring: Stride auf Mesh-Dichte, ohne Douglas-Peucker (sonst Sehnen-Mismatch zum Rahmen). */
+function simplifyClosedRingMeshDock(ring: Pt2[], maxSamples = ARCH_MESH_SEGMENTS): Pt2[] {
+  const src = ringCcw(cleanRing(ring))
+  if (src.length <= 3) return src
+  const open = [...src, src[0]!]
+  const sparse = arcSamplesForMeshDock(open, maxSamples)
+  if (sparse.length >= 2 && almostSamePoint(sparse[0]!, sparse[sparse.length - 1]!)) {
+    sparse.pop()
+  }
+  const out = ringCcw(cleanRing(sparse))
+  return out.length >= 3 ? out : src
+}
+
 /**
  * Bossen als paralleler Einzug der Restform (Trapez → kleineres Trapez).
  * Gleiche Fase wie volle Wandsteine — Vertex-Paare 1:1, kein unabhängiges Resample.
@@ -1554,12 +2204,15 @@ function pinInsetToFlushPlanes(
   insetY: number,
   wall: Wall | undefined,
   jambs: Rect[] | undefined,
+  wrap?: WrapMiterSpec | null,
 ): Pt2 {
   let x = insetX
   let y = insetY
   if (!wall) return { x, y }
   if (outerX <= 1e-4 || outerX >= wall.width - 1e-4) x = outerX
   if (outerY <= 1e-4 || outerY >= wall.height - 1e-4) y = outerY
+  // Wrap-Kante (Laibung, Sturz, Bogen): Boss-Seite flach — die 45°-Gehrung läuft durch.
+  if (wrap && wrapInwardAt(wrap, outerX, outerY)) return { x: outerX, y: outerY }
   if (!jambs) return { x, y }
   for (const hole of jambs) {
     const inY =
@@ -1591,7 +2244,7 @@ function extrudeInsetRingFrustum(
   positions: number[],
   normals: number[],
   indices: number[],
-  flush?: { wall: Wall; jambs: Rect[] },
+  flush?: { wall: Wall; jambs: Rect[]; wrap?: WrapMiterSpec | null },
 ): boolean {
   if (chamfer <= 1e-6 || ring.length < 3) return false
   const outer = ringCcw(cleanRing(ring))
@@ -1599,16 +2252,25 @@ function extrudeInsetRingFrustum(
   const b = ringBounds(outer)
   if (Math.min(b.w, b.h) < REMNANT_BOSS_MIN_SIDE_CM) return false
 
+  // Dichte Bogen-Ringe (~100 pts nach Mesh-Dock) lassen offsetLoops ohne Deckfläche
+  // (tops=0) — sichtbare Löcher in der Boss-Front. Für den Einzug auf ≤40 mit Ecken.
+  const BOSS_RING_MAX = 40
+  const bossRing =
+    outer.length > BOSS_RING_MAX ? simplifyClosedRingForBoss(outer, BOSS_RING_MAX) : outer
+
   // Dieselbe Fase wie volle Steine (Breite + Tiefe, also gleicher Winkel) rundum.
   // Wo der Rest schmaler als zwei Fasen ist, treffen sich die Fasen in einem First
   // (t < chamfer) — kein Skalieren, kein steileres Mini-Trapez.
-  const surf = buildRemnantBossSurface(outer, chamfer, {
+  const surf = buildRemnantBossSurface(bossRing, chamfer, {
     pin: flush
-      ? (base, top) =>
-          pinInsetToFlushPlanes(base.x, base.y, top.x, top.y, flush.wall, flush.jambs)
+      ? (base, top) => pinInsetToFlushPlanes(base.x, base.y, top.x, top.y, flush.wall, flush.jambs, flush.wrap)
       : undefined,
   })
   if (!surf) return false
+
+  const usableTops = surf.tops.filter((top) => Math.abs(ringArea(top)) >= 0.05)
+  if (usableTops.length === 0) return false
+
   const zAt = (t: number) => baseZ + (frontZ - baseZ) * Math.min(1, Math.max(0, t / chamfer))
 
   for (const strip of surf.strips) {
@@ -1629,11 +2291,35 @@ function extrudeInsetRingFrustum(
     }
   }
 
-  for (const top of surf.tops) {
-    if (Math.abs(ringArea(top)) < 0.05) continue
+  for (const top of usableTops) {
     fillRingFront(top, p, frontZ, positions, normals, indices)
   }
   return true
+}
+
+/** Boss-Offset braucht wenige Stützpunkte; Ecken bleiben (sonst offene Fronten). */
+function simplifyClosedRingForBoss(ring: Pt2[], maxSamples: number): Pt2[] {
+  const src = ringCcw(cleanRing(ring))
+  if (src.length <= maxSamples) return src
+  const open = [...src, src[0]!]
+  const stride = Math.max(1, Math.ceil((open.length - 1) / maxSamples))
+  const keep = new Uint8Array(open.length)
+  keep[0] = 1
+  keep[open.length - 1] = 1
+  for (let i = 1; i < open.length - 1; i += 1) {
+    if (isSharpPolylineTurn(open[i - 1]!, open[i]!, open[i + 1]!)) keep[i] = 1
+  }
+  for (let i = 0; i < open.length; i += stride) keep[i] = 1
+  const out: Pt2[] = []
+  for (let i = 0; i < open.length - 1; i += 1) {
+    if (!keep[i]) continue
+    const p = open[i]!
+    const prev = out[out.length - 1]
+    if (prev && Math.hypot(p.x - prev.x, p.y - prev.y) <= 1e-6) continue
+    out.push({ x: p.x, y: p.y })
+  }
+  const cleaned = ringCcw(cleanRing(out))
+  return cleaned.length >= 3 ? cleaned : src
 }
 
 /** Reste schmaler als das: kein Boss (Krümel bleibt flache Steinfront). */
@@ -1694,7 +2380,7 @@ function extrudeRemnantTrapezoidBoss(
   positions: number[],
   normals: number[],
   indices: number[],
-  flush?: { wall: Wall; jambs: Rect[] },
+  flush?: { wall: Wall; jambs: Rect[]; wrap?: WrapMiterSpec | null },
 ): boolean {
   const ring = remnantOutline(rect)
   if (!ring) return false
@@ -1721,7 +2407,7 @@ function extrudeFrustum(
   rect: Rect,
   wall: Wall,
   panel: StudioPanelConfig,
-  miter: { start: boolean; end: boolean },
+  miter: PanelMiter,
   allWalls: Wall[],
   positions: number[],
   normals: number[],
@@ -1733,7 +2419,6 @@ function extrudeFrustum(
 
   const taper = Math.max(0.005, Math.min(1, rect.taper ?? panel.taper ?? 1))
   const { flip, backZ, bodyFrontZ } = panelDepthZs(wall, panel, Math.max(projectDepth, 1e-6))
-  const halfH = wall.height / 2
   const taperFrontZ = flip ? bodyFrontZ - taperDepth : bodyFrontZ + taperDepth
   // Gehrung bis zur Bossen-Front: sonst wandert die Kante bei taperDepth-Änderung nicht mit.
   const facadeDepth = Math.max(projectDepth + taperDepth, 1e-6)
@@ -1758,7 +2443,9 @@ function extrudeFrustum(
   }
   const jambs = openingJambBodyRects(wall)
   // Der Stein bleibt im Verband und wird von der Öffnung nur maskiert; die Restform
-  // bekommt rundum dieselbe Fase — auch an der Laibung. Bündig nur am Wandende.
+  // bekommt rundum dieselbe Fase — auch an der Laibung. Bündig nur am Wandende —
+  // **und** an Paneel-umwickelten Laibungen (dort läuft die 45°-Gehrung durch den Boss).
+  const wrap = miter.wrap ?? null
   const noJambFlush: Rect[] = []
   const x0Flush = rect.x
   const x1Flush = rect.x + rect.width
@@ -1766,17 +2453,21 @@ function extrudeFrustum(
   const y1Flush = rect.y + rect.height
   if (
     !rect.keepBossChamferStart &&
-    flushBossSide(wall, x0Flush, y0Flush, y1Flush, 'start', noJambFlush)
+    (flushBossSide(wall, x0Flush, y0Flush, y1Flush, 'start', noJambFlush) ||
+      (wrap != null && edgeOnWrap(wrap, x0Flush, y0Flush, x0Flush, y1Flush)))
   ) {
     atStart = true
   }
   if (
     !rect.keepBossChamferEnd &&
-    flushBossSide(wall, x1Flush, y0Flush, y1Flush, 'end', noJambFlush)
+    (flushBossSide(wall, x1Flush, y0Flush, y1Flush, 'end', noJambFlush) ||
+      (wrap != null && edgeOnWrap(wrap, x1Flush, y0Flush, x1Flush, y1Flush)))
   ) {
     atEnd = true
   }
-  const remnantFlush = { wall, jambs: noJambFlush }
+  const flatBottom = wrap != null && edgeOnWrap(wrap, x0Flush, y0Flush, x1Flush, y0Flush)
+  const flatTop = wrap != null && edgeOnWrap(wrap, x0Flush, y1Flush, x1Flush, y1Flush)
+  const remnantFlush = { wall, jambs: noJambFlush, wrap }
 
   if (rect.outline && rect.outline.length >= 3) {
     const polar = rect.polar
@@ -1829,8 +2520,6 @@ function extrudeFrustum(
   if (atEnd && (panel.pattern === 'strip' || x1 > wall.width + 0.2)) {
     x1 += dockPad
   }
-  const y0 = rect.y - halfH
-  const y1 = rect.y + rect.height - halfH
 
   const minFront = 0.05
   // Isotroper Kantenrücksprung — gleiche Maße an allen vier Seiten (Bossenprofil, kein Stretch).
@@ -1846,37 +2535,37 @@ function extrudeFrustum(
     tx1 = mid + minFront / 2
   }
 
-  let ty0 = rect.y + insetY
-  let ty1 = rect.y + rect.height - insetY
+  let ty0 = flatBottom ? rect.y : rect.y + insetY
+  let ty1 = flatTop ? rect.y + rect.height : rect.y + rect.height - insetY
   if (ty1 - ty0 < minFront) {
     const mid = rect.y + rect.height / 2
     ty0 = mid - minFront / 2
     ty1 = mid + minFront / 2
   }
-  const fy0 = ty0 - halfH
-  const fy1 = ty1 - halfH
 
-  const xAt = (wx: number, z: number) =>
-    wallLocalX(wall, wx, z, facadeDepth, backZ, miter.start, miter.end)
+  // Alle Punkte über `p` (Wand-XY → lokal): so greift auch die Wrap-Gehrung an
+  // Laibung/Sturz (Punkte auf der Maske wandern mit der Tiefe in die Öffnung).
+  const wy0 = rect.y
+  const wy1 = rect.y + rect.height
 
   // Basisquad (Steinfront)
-  const bx0 = xAt(x0, bodyFrontZ), bx1 = xAt(x1, bodyFrontZ)
-  const bb0 = v3(bx0, y0, bodyFrontZ), bb1 = v3(bx1, y0, bodyFrontZ)
-  const bt1 = v3(bx1, y1, bodyFrontZ), bt0 = v3(bx0, y1, bodyFrontZ)
+  const bb0 = p(x0, wy0, bodyFrontZ), bb1 = p(x1, wy0, bodyFrontZ)
+  const bt1 = p(x1, wy1, bodyFrontZ), bt0 = p(x0, wy1, bodyFrontZ)
 
   // Bossen-Einzug an gegherten Wandenden entlang der Front (auch wallX < 0 in der Keilzone).
   const tileAtWallStart = x0 <= 1e-4
   const tileAtWallEnd = x1 >= wall.width - 1e-4 || x1 >= wall.width - 1e-4
-  const fx0 =
-    !atStart && tileAtWallStart && miter.start
-      ? xAt(x0, taperFrontZ) + insetX
-      : xAt(tx0, taperFrontZ)
-  const fx1 =
-    !atEnd && tileAtWallEnd && miter.end
-      ? xAt(x1, taperFrontZ) - insetX
-      : xAt(tx1, taperFrontZ)
-  const fb0 = v3(fx0, fy0, taperFrontZ), fb1 = v3(fx1, fy0, taperFrontZ)
-  const ft1 = v3(fx1, fy1, taperFrontZ), ft0 = v3(fx0, fy1, taperFrontZ)
+  const topPt = (wx: number, wy: number, dx: number) => {
+    const v = p(wx, wy, taperFrontZ)
+    v.x += dx
+    return v
+  }
+  const startInset = !atStart && tileAtWallStart && miter.start
+  const endInset = !atEnd && tileAtWallEnd && miter.end
+  const fb0 = startInset ? topPt(x0, ty0, insetX) : topPt(tx0, ty0, 0)
+  const ft0 = startInset ? topPt(x0, ty1, insetX) : topPt(tx0, ty1, 0)
+  const fb1 = endInset ? topPt(x1, ty0, -insetX) : topPt(tx1, ty0, 0)
+  const ft1 = endInset ? topPt(x1, ty1, -insetX) : topPt(tx1, ty1, 0)
 
   // Vorderfläche des Trapez
   addQuad(positions, normals, indices, fb0, fb1, ft1, ft0)
@@ -1962,12 +2651,13 @@ export function createStudioPanelGeometry(
   panel: StudioPanelConfig,
   allWalls: Wall[] = [],
   precomputedTiles?: PanelTile[],
+  opts?: StudioPanelGeomOpts,
 ): THREE.BufferGeometry {
   if (panel.pattern === 'none' || panel.enabled === false) {
     return new THREE.BufferGeometry()
   }
   const tiles = precomputedTiles ?? layoutPanelTiles(wall, panel, allWalls)
-  return buildStudioPanelGeometry(wall, panel, tiles, allWalls, tiles)
+  return buildStudioPanelGeometry(wall, panel, tiles, allWalls, tiles, opts)
 }
 
 /**
@@ -1978,6 +2668,7 @@ export function createStudioPanelLowGeometry(
   wall: Wall,
   panel: StudioPanelConfig,
   allWalls: Wall[] = [],
+  opts?: StudioPanelGeomOpts,
 ): THREE.BufferGeometry {
   if (panel.enabled === false || panel.pattern === 'none') {
     return new THREE.BufferGeometry()
@@ -1985,7 +2676,7 @@ export function createStudioPanelLowGeometry(
   const band = visiblePanelRowRect(wall, panel, allWalls)
   if (!band) return new THREE.BufferGeometry()
   const tiles = [band]
-  return buildStudioPanelGeometry(wall, panel, tiles, allWalls)
+  return buildStudioPanelGeometry(wall, panel, tiles, allWalls, undefined, opts)
 }
 
 /**
@@ -1999,14 +2690,20 @@ export function createStudioPanelGeometriesByColorIndex(
   seedKey: string,
   allWalls: Wall[] = [],
   precomputedTiles?: PanelTile[],
+  opts?: StudioPanelGeomOpts,
 ): Array<{ stageIndex: number; geometry: THREE.BufferGeometry }> {
   if (panel.pattern === 'none' || panel.enabled === false || stageCount <= 1) {
-    return [{ stageIndex: 0, geometry: createStudioPanelGeometry(wall, panel, allWalls, precomputedTiles) }]
+    return [
+      {
+        stageIndex: 0,
+        geometry: createStudioPanelGeometry(wall, panel, allWalls, precomputedTiles, opts),
+      },
+    ]
   }
   const tiles = precomputedTiles ?? layoutPanelTiles(wall, panel, allWalls)
   if (tiles.length === 0) return [{ stageIndex: 0, geometry: new THREE.BufferGeometry() }]
   // Clip/Merge/Flush einmal über die ganze Wand, dann Reste nach Ursprungsstein einfärben.
-  const parts = prepareStudioPanelParts(wall, panel, tiles, tiles)
+  const parts = prepareStudioPanelParts(wall, panel, tiles, tiles, allWalls)
   const buckets = bucketPartsByColorIndex(parts.rects, seedKey, stageCount)
   const out: Array<{ stageIndex: number; geometry: THREE.BufferGeometry }> = []
   let archParts = parts.ringAndFan
@@ -2019,6 +2716,7 @@ export function createStudioPanelGeometriesByColorIndex(
         panel,
         { rects: buckets[i], ringAndFan: archParts, holes: parts.holes },
         allWalls,
+        opts,
       ),
     })
     archParts = []
@@ -2065,13 +2763,15 @@ function buildStudioPanelGeometry(
   tiles: PanelTile[],
   allWalls: Wall[],
   layoutTiles?: PanelTile[],
+  opts?: StudioPanelGeomOpts,
 ): THREE.BufferGeometry {
   if (tiles.length === 0) return new THREE.BufferGeometry()
   return extrudeStudioPanelParts(
     wall,
     panel,
-    prepareStudioPanelParts(wall, panel, tiles, layoutTiles),
+    prepareStudioPanelParts(wall, panel, tiles, layoutTiles, allWalls),
     allWalls,
+    opts,
   )
 }
 
@@ -2086,11 +2786,13 @@ function prepareStudioPanelParts(
   panel: StudioPanelConfig,
   tiles: PanelTile[],
   layoutTiles?: PanelTile[],
+  allWalls: Wall[] = [],
 ): StudioPanelParts {
   const holes = snapOpeningHolesToTileGrid(wall, panel, layoutTiles ?? tiles)
   const joint = panel.joint ?? 0.8
   const kind = panelKindForPattern(panel.pattern)
-  const { rowCuts } = visiblePanelRowRange(wall.height, panel)
+  const skirt = bayWallSkirtDropCm(wall, allWalls)
+  const { rowCuts } = visiblePanelRowRange(wall.height, panel, skirt)
   // Keine Zwickel-Spalten mehr in der Bogenkappe (v2.0.81–2.0.87): Jeder Stein bleibt in
   // Größe und Lage im Verband und wird vom Bogen nur maskiert — wie in der Reihe über dem
   // Scheitel. Die 16-cm-Spalten plus Schnitt am Scheitel zerlegten Schulter- und
@@ -2281,19 +2983,32 @@ function extrudeStudioPanelParts(
   panel: StudioPanelConfig,
   parts: StudioPanelParts,
   allWalls: Wall[],
+  opts?: StudioPanelGeomOpts,
 ): THREE.BufferGeometry {
   const positions: number[] = []
   const normals: number[] = []
   const indices: number[] = []
-  const miter = panelMiterWithReturnCover(wall, allWalls)
+  // Paneel-Wrap: Steine an gewrappten Öffnungen mit 45°-Gehrung in die Laibung; pro Stein
+  // ein Return-Stein aus seiner Randkette (Verband, Fugen, Bogen kommen vom Stein selbst).
+  const miter = panelMiterWithReturnCover(wall, allWalls, opts)
+  const zs = panelDepthZs(wall, panel, Math.max(panel.projectDepth, 1e-6))
+  // Sturz-Reihe an den Laibungslinien teilen (Fuge), damit Gehrung + Return dort wie an
+  // den Seiten enden und kein Stein schräg über die Ecke interpoliert.
+  const rects = miter.wrap
+    ? splitHeadRowPartsAtWrapCorners(parts.rects, miter.wrap, panel.joint ?? 0.8)
+    : parts.rects
 
-  for (const rect of [...parts.rects, ...parts.ringAndFan]) {
+  for (const rect of [...rects, ...parts.ringAndFan]) {
     extrudeStone(rect, wall, panel, miter, positions, normals, indices, parts.holes)
     const tileTaperDepth = rect.taperDepth ?? panel.taperDepth ?? 0
     if (tileTaperDepth > 1e-6) {
       extrudeFrustum(rect, wall, panel, miter, allWalls, positions, normals, indices)
     }
+    if (miter.wrap) {
+      appendWrapReturnsForPart(rect, wall, panel, miter.wrap, positions, normals, indices)
+    }
   }
+
 
   computeVertexNormals(positions, indices, normals)
 
@@ -2302,7 +3017,6 @@ function extrudeStudioPanelParts(
   geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3))
   geometry.setIndex(indices)
   geometry.computeBoundingSphere()
-  const zs = panelDepthZs(wall, panel, Math.max(panel.projectDepth, 1e-6))
   const toward = zs.flip ? -1 : 1
   const overlayZ = zs.bodyFrontZ + toward * 0.12
   attachDrawingArchPolylines(
@@ -2518,6 +3232,8 @@ export function createStudioPlinthGeometry(
  * Mörtel-Geometrie: Eine flache Platte über die gesamte Wandfläche (ohne Öffnungen),
  * Tiefe = jointDepth. Die Steine (projectDepth tiefer) verdecken die Mörtelplatte —
  * nur in den Fugen (Lücken zwischen Steinen) bleibt der Mörtel sichtbar.
+ * Bei Paneel-Wrap: Fugen an gewrappten Öffnungen reichen mit `backZ` bis zur Fensterfront
+ * (sonst Tunnel zur Laibung offen).
  * Liefert null wenn joint = 0 oder jointDepth = 0.
  */
 export function createStudioMortarGeometry(
@@ -2531,7 +3247,9 @@ export function createStudioMortarGeometry(
   if (joint <= 1e-6 || rawJointDepth <= 1e-6) return null
 
   const jointDepth = Math.max(0, rawJointDepth)
-  const { backZ, bodyFrontZ: mortarFrontZ } = panelDepthZs(wall, panel, jointDepth)
+  const zs = panelDepthZs(wall, panel, jointDepth)
+  const backZ = zs.backZ
+  const mortarFrontZ = zs.bodyFrontZ
   const projectDepth = Math.max(panel.projectDepth, 1e-6)
   const miter = panelMiterEnds(wall, allWalls)
 
@@ -2609,6 +3327,7 @@ export function createStudioMortarGeometry(
         const p = (wx: number, wy: number, z: number) => v3(xAt(wx, z), wy - halfH, z)
         fillRingFront(ring, p, mortarFrontZ, positions, normals, indices)
       }
+      const soffit = sparseArcForSoffit(topArc, 'top', rect.y, y1)
       for (let i = 0; i < soffit.length - 1; i += 1) {
         const a = soffit[i]!
         const b = soffit[i + 1]!
@@ -3475,6 +4194,8 @@ export function createStudioOpeningRevealGeometry(
   const skipSill = opening.y <= 0.5
   const outerIndices: number[] = []
   const innerIndices: number[] = []
+  /** Nur bei Wrap: Sohlbank-Außenquads (Putz, Fensterbank liegt auf) — Materialgruppe 2. */
+  const sillIndices: number[] = []
   const zSplit = studioOpeningRevealColorSplitZ(
     wall,
     opening,
@@ -3482,19 +4203,31 @@ export function createStudioOpeningRevealGeometry(
     zInner,
     opts?.windowDepthOffset,
   )
+  // Paneel-umwickelte Außenlaibung: die Außenfläche ist das **Mörtelbett** hinter den
+  // Return-Steinen (sichtbar nur in deren Fugen) — ab Wandaußenfläche, nicht ab Paneelfront
+  // (sonst Mörtelstreifen vor der Fassadenfuge). Sohlbank bleibt Putz (kein Return).
+  const wrapOuter =
+    openingIsPanelWrapped(opening) && wallHasPanels(wall) && !opts?.treatAsBareWall
+  const zOuterWrap = studioWallOuterLocalZ(wall)
   for (let i = 0; i < n; i += 1) {
     const a = poly[i]!
     const b = poly[(i + 1) % n]!
-    if (skipSill && a.y <= 0.5 && b.y <= 0.5) continue
-    addQuad(
-      positions,
-      normals,
-      outerIndices,
-      new THREE.Vector3(wallLocalX(wall, a.x, zOuter), localY(a.y, wall), zOuter),
-      new THREE.Vector3(wallLocalX(wall, b.x, zOuter), localY(b.y, wall), zOuter),
-      new THREE.Vector3(wallLocalX(wall, b.x, zSplit), localY(b.y, wall), zSplit),
-      new THREE.Vector3(wallLocalX(wall, a.x, zSplit), localY(a.y, wall), zSplit),
-    )
+    const sillSeg = a.y <= opening.y + 0.5 && b.y <= opening.y + 0.5
+    if (skipSill && sillSeg) continue
+    const outerTarget = wrapOuter && sillSeg ? sillIndices : outerIndices
+    const zStart = wrapOuter && !sillSeg ? zOuterWrap : zOuter
+    if (Math.abs(zStart - zSplit) >= 0.35) {
+      addQuad(
+        positions,
+        normals,
+        outerTarget,
+        new THREE.Vector3(wallLocalX(wall, a.x, zStart), localY(a.y, wall), zStart),
+        new THREE.Vector3(wallLocalX(wall, b.x, zStart), localY(b.y, wall), zStart),
+        new THREE.Vector3(wallLocalX(wall, b.x, zSplit), localY(b.y, wall), zSplit),
+        new THREE.Vector3(wallLocalX(wall, a.x, zSplit), localY(a.y, wall), zSplit),
+      )
+    }
+    if (Math.abs(zSplit - zInner) < 0.35) continue
     addQuad(
       positions,
       normals,
@@ -3537,19 +4270,32 @@ export function createStudioOpeningRevealGeometry(
     cap.dispose()
   }
 
-  computeVertexNormals(positions, [...outerIndices, ...innerIndices], normals)
+  const allIndices = [...outerIndices, ...innerIndices, ...sillIndices]
+  computeVertexNormals(positions, allIndices, normals)
   const geometry = new THREE.BufferGeometry()
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
   geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3))
-  if (outerIndices.length > 0) {
-    geometry.addGroup(0, outerIndices.length, 0)
+  if (wrapOuter) {
+    // Feste Gruppen-Indizes: 0 Mörtelbett (außen), 1 Innenlaibung, 2 Sohlbank-Putz.
+    if (outerIndices.length > 0) geometry.addGroup(0, outerIndices.length, 0)
+    if (innerIndices.length > 0) geometry.addGroup(outerIndices.length, innerIndices.length, 1)
+    if (sillIndices.length > 0) {
+      geometry.addGroup(outerIndices.length + innerIndices.length, sillIndices.length, 2)
+    }
+    geometry.userData.panelWrappedReveal = true
+  } else {
+    if (outerIndices.length > 0) {
+      geometry.addGroup(0, outerIndices.length, 0)
+    }
+    if (innerIndices.length > 0) {
+      const matIndex = outerIndices.length > 0 ? 1 : 0
+      geometry.addGroup(outerIndices.length, innerIndices.length, matIndex)
+    }
   }
-  if (innerIndices.length > 0) {
-    geometry.addGroup(outerIndices.length, innerIndices.length, 1)
-  }
-  geometry.setIndex([...outerIndices, ...innerIndices])
+  geometry.setIndex(allIndices)
   return geometry
 }
+
 
 /**
  * Konche: Halbzylinder unten + Viertelkugel (Kalotte) oben.
@@ -3753,9 +4499,10 @@ function clipFlatPanelTiles(
   panel: StudioPanelConfig,
   tiles: PanelTile[],
   layoutTiles?: PanelTile[],
+  allWalls: Wall[] = [],
 ): OpeningPoly[] {
   // Gleiche Pipeline wie High-LOD inkl. Rustika / Hybrid / taperedField.
-  const parts = prepareStudioPanelParts(wall, panel, tiles, layoutTiles)
+  const parts = prepareStudioPanelParts(wall, panel, tiles, layoutTiles, allWalls)
   return [...parts.rects, ...parts.ringAndFan]
 }
 
@@ -3772,7 +4519,7 @@ function buildStudioPanelFlatTileGeometry(
   const miter = panelMiterEnds(wall, allWalls)
   const joint = Math.max(0, panel.joint ?? 0.8)
   const halfJ = joint * 0.5
-  const rects = precomputedRects ?? clipFlatPanelTiles(wall, panel, tiles, layoutTiles)
+  const rects = precomputedRects ?? clipFlatPanelTiles(wall, panel, tiles, layoutTiles, allWalls)
   const positions: number[] = []
   const normals: number[] = []
   const indices: number[] = []
@@ -3886,7 +4633,7 @@ export function createStudioPanelFlatGeometriesByColorIndex(
     ]
   }
   // Clip einmal über die ganze Wand, Reste nach Ursprungsstein einfärben (wie High-LOD).
-  const rects = clipFlatPanelTiles(wall, panel, tiles, tiles)
+  const rects = clipFlatPanelTiles(wall, panel, tiles, tiles, allWalls)
   const buckets = bucketPartsByColorIndex(rects, seedKey, stageCount)
   const out: Array<{ stageIndex: number; geometry: THREE.BufferGeometry }> = []
   for (let i = 0; i < stageCount; i += 1) {

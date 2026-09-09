@@ -2336,6 +2336,11 @@ export function wallHasPanels(wall: Wall): boolean {
   return panel.enabled !== false && panel.pattern !== 'none'
 }
 
+/** Erker-Fläche (Front/Schenkel/Host-Segment mit bayWindow) — für Paneel-Gehrung. */
+export function isBaySurfaceWall(wall: Pick<Wall, 'bayRole' | 'bayParentId' | 'bayWindow'>): boolean {
+  return Boolean(wall.bayRole || wall.bayParentId || wall.bayWindow)
+}
+
 export function pointsMeet(
   a: { x: number; z: number },
   b: { x: number; z: number },
@@ -2947,6 +2952,9 @@ export function linkStudioWalls(state: FacadeState, wallIds: string[]): FacadeSt
  * Ohne Paneele/Mauerwerk auf dem Nachbarn: stumpf und bündig an der Plan-Kante
  * (kein Keil-Überstand). Der Wandkörper gehrt weiter über `miterStart`/`miterEnd`.
  * `bond`: Verband-Ecke ohne Trapez-Gehrung.
+ *
+ * **v2.0.303 stumpf am Erker → Ecken-Lücke (v2.0.304 rückgängig).** Stattdessen
+ * Erker-Paneele mit `projectDepth: 0`, damit sichtbare Front = `wall.width` bei Gehrung.
  */
 export function panelMiterEnds(wall: Wall, walls: Wall[]): { start: boolean; end: boolean } {
   const join = wall.panel?.cornerJoin ?? 'miter'
@@ -2955,10 +2963,11 @@ export function panelMiterEnds(wall: Wall, walls: Wall[]): { start: boolean; end
   }
   const startTurn = turningAdjacentWalls(wall, 'start', walls)
   const endTurn = turningAdjacentWalls(wall, 'end', walls)
-  return {
+  const result = {
     start: startTurn.some(wallHasPanels),
     end: endTurn.some(wallHasPanels),
   }
+  return result
 }
 
 /**
