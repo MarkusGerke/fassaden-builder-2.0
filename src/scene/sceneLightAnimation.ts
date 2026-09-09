@@ -14,6 +14,8 @@ export const BLAULICHT_FLASH_GAP_MS = 52
 export const BLAULICHT_FLASH2_ON_MS = 48
 /** Restintensität im Dunkeln (LED-Restglühen / Streulicht). */
 export const BLAULICHT_DARK_FACTOR = 0.02
+/** Blitz mindestens so lang, dass er bei niedriger FPS noch in einem Frame sichtbar ist. */
+export const BLAULICHT_FLASH_MAX_MS = 140
 
 export function normalizeSceneLightAnimation(raw: unknown): SceneLightAnimationId {
   if (raw === 'blaulicht') return 'blaulicht'
@@ -25,17 +27,25 @@ export function normalizeSceneLightAnimation(raw: unknown): SceneLightAnimationI
  * `phaseOffsetMs`: Versatz im Zyklus (mehrere Blaulichter gleichmäßig verteilt).
  * `none` → immer 1.
  */
+/** Blitzdauer an Frame-Zeit anpassen — bei ~6 FPS bleiben 48 ms-Impulse sonst unsichtbar. */
+export function blaulichtFlashDurationMs(frameMs = 16): number {
+  const dt = Number.isFinite(frameMs) && frameMs > 0 ? frameMs : 16
+  return Math.max(BLAULICHT_FLASH_ON_MS, Math.min(BLAULICHT_FLASH_MAX_MS, dt * 0.9))
+}
+
 export function sceneLightAnimationFactor(
   animation: SceneLightAnimationId | undefined,
   timeMs: number,
   phaseOffsetMs = 0,
+  frameMs = 16,
 ): number {
   if (animation !== 'blaulicht') return 1
   const shifted = timeMs + phaseOffsetMs
   const t = ((shifted % BLAULICHT_CYCLE_MS) + BLAULICHT_CYCLE_MS) % BLAULICHT_CYCLE_MS
-  const flash1End = BLAULICHT_FLASH_ON_MS
+  const flashOn = blaulichtFlashDurationMs(frameMs)
+  const flash1End = flashOn
   const gapEnd = flash1End + BLAULICHT_FLASH_GAP_MS
-  const flash2End = gapEnd + BLAULICHT_FLASH2_ON_MS
+  const flash2End = gapEnd + flashOn
   if (t < flash1End || (t >= gapEnd && t < flash2End)) return 1
   return BLAULICHT_DARK_FACTOR
 }

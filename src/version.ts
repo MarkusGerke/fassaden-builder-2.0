@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.334'
+export const APP_VERSION = '2.0.335'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,15 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.335',
+    date: '2026-09-09',
+    title: 'Tageszeit-Slider und Blaulicht flüssiger',
+    changes: [
+      'Tageszeit-Slider: Himmel und Licht sofort, Sonnen-Shadow-Map nur ~5×/s während des Ziehens — Tag/Nacht-Übergang flüssiger, Schatten beim Loslassen final',
+      'Blaulicht: Blitzdauer passt sich an niedrige FPS an (sichtbar statt stockend); stabile Shader-Lichtanzahl nur noch bei Blaulicht oder Licht-Modus',
+    ],
+  },
   {
     version: '2.0.334',
     date: '2026-09-09',

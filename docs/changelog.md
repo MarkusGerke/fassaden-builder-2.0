@@ -2,6 +2,10 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Tageszeit-Slider und Blaulicht (2026-09-09) — v2.0.335
+
+**Symptom:** Tageszeit-Slider Tag↔Nacht stockt (lange Hänger); zwei Blaulichter blinken bei ~6 FPS (~170 ms) ruckelig — FPS-Anzeige und Blink-Takt wirkten entkoppelt. **Ursachen:** (1) Sonnen-Scrub backte die 8192²-Shadow-Map **jedes** Lighting-Frame (v2.0.202) — Himmel kann nicht flüssig mitlaufen. (2) Blaulicht-Blitze nur 48 ms lang → bei 170 ms/Frame oft unsichtbar. (3) `stableLightCount` für **jedes** platzierte Licht erhöhte Fragment-Kosten dauerhaft. **Fix:** Shadow-Bake beim Scrub max. ~5×/s (`SUN_SCRUB_SHADOW_BAKE_MIN_MS` 200), final beim Loslassen; Blitzdauer skaliert mit Frame-Zeit; `stableLightCount` nur bei Blaulicht/Licht-Modus. Dateien: `main.ts`, `sceneLightAnimation.ts`, `sceneLightRuntime.ts`.
+
 ### Sonnenwinkel vs. Tageszyklus (2026-09-09) — v2.0.334
 
 **Symptom (Webspace vs. localhost):** Sonnenwinkel ließ sich nicht von der Tageszeit lösen; auf `fassaden.markusgerke.com` wirkte der Slider „tot“, lokal oft nicht — **gleicher Build** (v2.0.333), aber getrenntes `localStorage` pro Origin (Tageszyklus auf dem Webspace oft noch an). **Ursache:** `tickDayCycle` setzt `applySolarLook: true` und überschreibt `azimuth` jede Frame; manuelles Drehen am Slider wurde sofort zurückgesetzt. **Fix:** Manuelle Sonne (Winkel, Intensität, Weichheit, Farbtemperatur) schaltet `dayCycleEnabled` aus; Tageszyklus pausiert während Slider-Scrub. Dateien: `main.ts`, `index.html`. Docs: [ux.md](ux.md).

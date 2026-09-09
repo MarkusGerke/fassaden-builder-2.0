@@ -5,6 +5,7 @@ import {
   BLAULICHT_FLASH2_ON_MS,
   BLAULICHT_FLASH_GAP_MS,
   BLAULICHT_FLASH_ON_MS,
+  blaulichtFlashDurationMs,
   blaulichtPhaseOffsetMs,
   blaulichtPhaseOffsetsById,
   normalizeSceneLightAnimation,
@@ -17,6 +18,13 @@ describe('sceneLightAnimation', () => {
     expect(normalizeSceneLightAnimation(undefined)).toBe('none')
     expect(normalizeSceneLightAnimation('foo')).toBe('none')
     expect(normalizeSceneLightAnimation('blaulicht')).toBe('blaulicht')
+  })
+
+  it('verlängert Blitze bei niedriger FPS', () => {
+    expect(blaulichtFlashDurationMs(16)).toBe(BLAULICHT_FLASH_ON_MS)
+    expect(blaulichtFlashDurationMs(170)).toBeGreaterThan(BLAULICHT_FLASH_ON_MS)
+    expect(sceneLightAnimationFactor('blaulicht', 80, 0, 170)).toBe(1)
+    expect(sceneLightAnimationFactor('blaulicht', 360, 0, 170)).toBe(BLAULICHT_DARK_FACTOR)
   })
 
   it('Blaulicht: Doppelblitz mit langer Dunkelphase', () => {

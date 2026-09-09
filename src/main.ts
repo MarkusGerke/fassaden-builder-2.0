@@ -10748,6 +10748,12 @@ function applyPcssSoftnessLive() {
 const SUN_SHADOW_MAP_MIN_INTERVAL_MS = 120
 /** Auch bei Dauer-Scrub/Tageszyklus spätestens nach dieser Zeit einmal backen. */
 const SUN_SHADOW_MAP_MAX_LAG_MS = 280
+/**
+ * Sonnen-Scrub: Himmel/Licht jedes Frame, Shadow-Map gedrosselt (8192² pro Frame = Slider-Hänger).
+ * v2.0.202 backte jedes Frame — Schatten folgen leicht nach, Tag/Nacht-Übergang bleibt flüssig.
+ */
+const SUN_SCRUB_SHADOW_BAKE_MIN_MS = 200
+let sunScrubShadowBakeLastMs = 0
 let sunShadowMapTimer = 0
 let sunShadowMapQueued = false
 let sunShadowFirstQueueMs = 0
@@ -10825,6 +10831,14 @@ function sunLiveScrubActive(): boolean {
 let lastReflectionLightingKey = ''
 /** Hysterese für Key-Licht-Schatten (Sonne/Mond), vermeidet Shader-Flip an der Schwelle. */
 let keyCastShadowLatched = true
+
+/** Während Sonnen-Slider-Scrub: Licht sofort, Shadow-Map max. ~5×/s — Rest beim Loslassen. */
+function flushSunScrubShadowBake(force = false): void {
+  const now = performance.now()
+  if (!force && now - sunScrubShadowBakeLastMs < SUN_SCRUB_SHADOW_BAKE_MIN_MS) return
+  sunScrubShadowBakeLastMs = now
+  flushSunShadowMap({ reflections: false })
+}
 
 function flushSunShadowMap(opts?: {
   reflections?: boolean
@@ -11028,8 +11042,8 @@ function syncSceneLightRuntime(opts?: { flushShadows?: boolean; scheduleShadows?
     pointShadowMapSize: frontView ? POINT_SHADOW_MAP_FRONT : 2048,
     showMarkers: lightEditMode,
     bloomActive: bloomIsActive(),
-    // Konstante Shader-Lichtanzahl: Fade/Blinken/„Alle an“ ohne Programmwechsel (auch außerhalb Licht-Modus).
-    stableLightCount: lightEditMode || lights.length > 0,
+    // Konstante Lichtanzahl nur im Licht-Modus oder bei Blaulicht-Blinken — nicht für jedes statische Licht.
+    stableLightCount: lightEditMode || sceneLightsNeedLiveFrames(lights),
     // Vorrats-Reserven nur im Licht-Modus (DPR 1). Im Render kostet jedes gezählte Licht pro
     // Fragment in Haupt- und Transmission-Pass — 4 Reserven ≈ 5–12 ms/Frame beim Orbit (v2.0.260).
     padSpareLights: lightEditMode,
@@ -11457,8 +11471,8 @@ function applySunLighting(opts?: {
     flushSunShadowMap({ sceneLights: true, force: forceBake })
   } else if (live) {
     if (sunLiveScrubActive()) {
-      // Sofort 1×/Frame — Debounce ließ Schatten beim Scrub/Abspielen springen.
-      flushSunShadowMap({ reflections: false, force: forceBake })
+      // Himmel/Licht jedes Frame; Shadow-Map gedrosselt (siehe SUN_SCRUB_SHADOW_BAKE_MIN_MS).
+      flushSunScrubShadowBake(forceBake)
     } else if (forceBake) {
       flushSunShadowMap({ reflections: true, sceneLights: true, force: true })
     } else {
@@ -23079,6 +23093,7 @@ function bindSunSlider(
     if (sunSliderScrubbing) return
     sunSliderScrubbing = true
     sunScrubWorldBox = null
+    sunScrubShadowBakeLastMs = 0
     scrubStartTod = lastScheduleTimeOfDay ?? sunSettings.timeOfDay
   }
 
@@ -24885,6 +24900,8 @@ controls.addEventListener('end', () => {
 })
 
 let animateFramePrevMs = 0
+/** Geglättete Frame-Zeit für Blaulicht (48 ms-Blitze bei niedriger FPS sichtbar halten). */
+let smoothedFrameMs = 16
 
 function animate() {
   requestAnimationFrame(animate)
@@ -24896,6 +24913,7 @@ function animate() {
   const dayDt =
     animateFramePrevMs > 0 ? Math.max(0, Math.min(100, nowMs - animateFramePrevMs)) : 16
   animateFramePrevMs = nowMs
+  smoothedFrameMs = smoothedFrameMs * 0.82 + dayDt * 0.18
 
   if (!paused) {
     if (openingMotionPlayback) tickOpeningMotionPlayback(nowMs)
@@ -24914,7 +24932,11 @@ function animate() {
   const sceneLightAnim =
     !paused && sceneLightsNeedLiveFrames(normalizeSceneLights(state.sceneLights))
   if (sceneLightAnim) {
-    sceneLightRuntime.tickAnimations(animClock, normalizeSceneLights(state.sceneLights))
+    sceneLightRuntime.tickAnimations(
+      animClock,
+      normalizeSceneLights(state.sceneLights),
+      smoothedFrameMs,
+    )
   }
   const sceneLightLive = fadingLights || sceneLightAnim
   if (sceneLightLive) viewportDirty = true

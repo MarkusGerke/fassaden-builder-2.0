@@ -429,7 +429,7 @@ export class SceneLightRuntime {
    * Aktualisiert nur Intensitäten/Marker für Blink-Animationen.
    * @returns true wenn mindestens ein Licht animiert wurde.
    */
-  tickAnimations(timeMs: number, lights?: SceneLight[]): boolean {
+  tickAnimations(timeMs: number, lights?: SceneLight[], frameMs = 16): boolean {
     if (lights) {
       const phaseById = blaulichtPhaseOffsetsById(lights)
       for (const [id, entry] of this.entries) {
@@ -440,7 +440,7 @@ export class SceneLightRuntime {
     for (const entry of this.entries.values()) {
       if (entry.animation === 'none' || entry.fadeFactor < 0.001) continue
       any = true
-      this.applyAnimatedIntensity(entry, timeMs)
+      this.applyAnimatedIntensity(entry, timeMs, frameMs)
     }
     return any
   }
@@ -461,7 +461,7 @@ export class SceneLightRuntime {
         target > entry.fadeFactor
           ? Math.min(1, entry.fadeFactor + step)
           : Math.max(0, entry.fadeFactor - step)
-      this.applyAnimatedIntensity(entry, timeMs)
+      this.applyAnimatedIntensity(entry, timeMs, dtMs)
     }
     return any
   }
@@ -476,13 +476,13 @@ export class SceneLightRuntime {
     }
   }
 
-  private litFactor(entry: LightEntry, timeMs: number): number {
-    const anim = sceneLightAnimationFactor(entry.animation, timeMs, entry.phaseOffsetMs)
+  private litFactor(entry: LightEntry, timeMs: number, frameMs = 16): number {
+    const anim = sceneLightAnimationFactor(entry.animation, timeMs, entry.phaseOffsetMs, frameMs)
     return entry.fadeFactor * anim
   }
 
-  private applyAnimatedIntensity(entry: LightEntry, timeMs: number): void {
-    const factor = this.litFactor(entry, timeMs)
+  private applyAnimatedIntensity(entry: LightEntry, timeMs: number, frameMs = 16): void {
+    const factor = this.litFactor(entry, timeMs, frameMs)
     const usePoint = entry.beamMode === 'omni'
     const useDown = entry.beamMode === 'down' || entry.beamMode === 'upDown'
     const useUp = entry.beamMode === 'up' || entry.beamMode === 'upDown'
@@ -653,7 +653,8 @@ export class SceneLightRuntime {
     const useDown = beamMode === 'down' || beamMode === 'upDown'
     const useUp = beamMode === 'up' || beamMode === 'upDown'
 
-    entry.keepCounted = options.stableLightCount === true
+    entry.keepCounted =
+      options.stableLightCount === true || entry.animation === 'blaulicht'
     const counted = active || entry.keepCounted
     entry.point.visible = usePoint && counted
     entry.spotDown.visible = useDown && counted
