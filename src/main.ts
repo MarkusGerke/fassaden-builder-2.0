@@ -23245,9 +23245,19 @@ function syncAutoSceneLightsWithSun(
   planStatus.textContent = anyOn ? 'Lichter einblenden' : 'Lichter ausblenden'
 }
 
+/** Tageszyklus und manueller Sonnenwinkel schließen sich aus — sonst überschreibt jeder Frame den Azimut. */
+function pauseDayCycleForManualSunAdjust(): void {
+  if (sunSettings.dayCycleEnabled === false) return
+  sunSettings = { ...sunSettings, dayCycleEnabled: false }
+  animDayCycleInput.checked = false
+  planStatus.textContent = 'Tageszyklus aus — Sonne manuell verstellbar'
+  schedulePersistApp()
+}
+
 function tickDayCycle(now: number, dtMs: number): boolean {
   if (lightEditMode) return false
   if (sunPathAnimating) return false
+  if (sunSliderScrubbing) return false
   if (sunSettings.animationsPaused === true) return false
   if (sunSettings.dayCycleEnabled === false) return false
   if (dtMs <= 0) return false
@@ -23737,6 +23747,7 @@ bindSunSlider(
   sunAzimuthValue,
   (value) => {
     stopSunPathAnimation(false)
+    pauseDayCycleForManualSunAdjust()
     sunSettings.azimuth = ((value % 360) + 360) % 360
   },
   (value) => `${Math.round(value)}°`,
@@ -23746,6 +23757,7 @@ bindSunSlider(
   sunIntensityInput,
   sunIntensityValue,
   (value) => {
+    pauseDayCycleForManualSunAdjust()
     sunSettings.intensity = value
   },
   (value) => value.toFixed(1),
@@ -23754,6 +23766,7 @@ bindSunSlider(
 let sunSoftnessPersistTimer = 0
 
 sunSoftnessInput.addEventListener('input', () => {
+  pauseDayCycleForManualSunAdjust()
   const value = Number.parseFloat(sunSoftnessInput.value)
   sunSettings.shadowSoftness = value
   sunSoftnessValue.textContent = value.toFixed(1)
@@ -23796,6 +23809,7 @@ bindSunSlider(
   sunColorTempInput,
   sunColorTempValue,
   (value) => {
+    pauseDayCycleForManualSunAdjust()
     sunSettings.colorTemperature = value
   },
   (value) => `${Math.round(value)} K`,

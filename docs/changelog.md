@@ -2,6 +2,10 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Sonnenwinkel vs. Tageszyklus (2026-09-09) — v2.0.334
+
+**Symptom (Webspace vs. localhost):** Sonnenwinkel ließ sich nicht von der Tageszeit lösen; auf `fassaden.markusgerke.com` wirkte der Slider „tot“, lokal oft nicht — **gleicher Build** (v2.0.333), aber getrenntes `localStorage` pro Origin (Tageszyklus auf dem Webspace oft noch an). **Ursache:** `tickDayCycle` setzt `applySolarLook: true` und überschreibt `azimuth` jede Frame; manuelles Drehen am Slider wurde sofort zurückgesetzt. **Fix:** Manuelle Sonne (Winkel, Intensität, Weichheit, Farbtemperatur) schaltet `dayCycleEnabled` aus; Tageszyklus pausiert während Slider-Scrub. Dateien: `main.ts`, `index.html`. Docs: [ux.md](ux.md).
+
 ### All-Inkl Auto-Deploy (2026-09-09)
 
 **Betrieb:** GitHub Actions Workflow `.github/workflows/deploy-allinkl.yml` — bei Push auf `main` (oder manuell): `npm ci`, `npm run build`, FTPS-Upload von `dist/` nach All-Inkl. Secrets: `FTP_SERVER`, `FTP_USERNAME`, `FTP_PASSWORD`, `FTP_REMOTE_DIR`. Docs: [deploy-allinkl.md](deploy-allinkl.md).

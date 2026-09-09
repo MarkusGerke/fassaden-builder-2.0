@@ -53,6 +53,7 @@ Datei: [`.github/workflows/deploy-allinkl.yml`](../.github/workflows/deploy-alli
 | FTP-Verbindung fehlgeschlagen | FTPS, Port 21; Zugangsdaten aus KAS |
 | Leere Seite / 404 | `index.html` muss im Document Root der Subdomain liegen |
 | Alte Assets nach Deploy | Hard-Refresh; bei Bedarf `dangerous-clean-slate` prüfen |
+| Verhalten ≠ localhost | **Gleicher Code**, aber **eigenes `localStorage`** pro Domain (`fassaden…` vs. `127.0.0.1:5173`) — Projekt, Tageszyklus, Ansicht, Sonne getrennt. Zum Vergleichen: `.json` exportieren/importieren oder Einstellungen (Tageszyklus, 3D/Render) auf beiden Seiten prüfen |
 | Verzeichnisschutz weg | Schutz im KAS anlegen, nicht per Upload in `.htaccess` im `dist/` überschreiben |
 
 ## Dateien

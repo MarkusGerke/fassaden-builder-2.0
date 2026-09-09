@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.333'
+export const APP_VERSION = '2.0.334'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,15 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.334',
+    date: '2026-09-09',
+    title: 'Sonnenwinkel vs. Tageszyklus',
+    changes: [
+      'Manueller Sonnenwinkel (und Intensität/Weichheit/Farbtemperatur) schaltet den Tageszyklus aus — vorher wurde der Winkel jede Frame von der Uhrzeit überschrieben',
+      'Tageszyklus pausiert während Sonnen-Slider-Scrub',
+    ],
+  },
   {
     version: '2.0.333',
     date: '2026-09-09',
