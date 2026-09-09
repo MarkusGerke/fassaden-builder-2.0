@@ -17,7 +17,8 @@ jobs:
           cache: 'npm'
 
       - run: npm ci
-      - run: npm run build
+      # Nur Vite-Build — `npm run build` (tsc) schlägt in CI wegen *.test.ts fehl.
+      - run: npx vite build
 
       - name: Upload dist via FTPS
         uses: SamKirkland/FTP-Deploy-Action@v4.3.6

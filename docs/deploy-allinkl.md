@@ -42,7 +42,7 @@ Ohne diese vier Secrets schlägt der Workflow beim Upload fehl.
 Datei: [`.github/workflows/deploy-allinkl.yml`](../.github/workflows/deploy-allinkl.yml)
 
 - Trigger: Push auf `main`, optional `workflow_dispatch`
-- `npm ci` → `npm run build` → FTPS-Upload von `./dist/`
+- `npm ci` → `npx vite build` → FTPS-Upload von `./dist/` (ohne `tsc`, damit `*.test.ts` den Deploy nicht blockiert)
 - `dangerous-clean-slate: true`: Remote-Ziel wird vor Upload geleert (nur sicher, wenn der FTP-User **nur** das App-Verzeichnis sieht)
 
 ## Bekannte Fallstricke
