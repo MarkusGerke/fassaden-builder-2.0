@@ -112,7 +112,7 @@ Sonne (`DEFAULT_SUN_SETTINGS`): **heutiges Datum**, **13:15** (13,25 h), Sonnenw
 
 ### Szene-Farben (`SceneAppearance`, `src/utils/persistence.ts`)
 
-Im Akkordeon **Szene** (rechte Leiste) bei **Neutral** (Viewport-Wechsler Himmel | Neutral): **Hintergrund** und **Bodenfarbe**-Picker (v2.0.209; **v2.0.325:** sichtbarer Außenboden immer Steingrau, Picker ohne Effekt auf den Mesh). **Pfützen** (`#ground-puddles-enabled`): optionale Fassaden-Spiegelung, siehe [ground-puddles.md](ground-puddles.md). Ausgeblendet (IDs bleiben): Umgebung-Duplikat, Laub, „Alle drei“, Himmelsfarbe. Persistenz unter `PersistedAppState.scene` / `puddles`. Details: [stage-environment.md](stage-environment.md).
+Im Akkordeon **Szene** (rechte Leiste) bei **Neutral** (Viewport-Wechsler Himmel | Neutral): **Hintergrund** und **Bodenfarbe**-Picker (v2.0.209; **v2.0.325:** sichtbarer Außenboden immer Steingrau, Picker ohne Effekt auf den Mesh). **Pfützen** (`#ground-puddles-enabled` + `#ground-puddles-options`): Anzahl/Größe/Abstand/Spiegelung (v2.0.326), siehe [ground-puddles.md](ground-puddles.md). Ausgeblendet (IDs bleiben): Umgebung-Duplikat, Laub, „Alle drei“, Himmelsfarbe. Persistenz unter `PersistedAppState.scene` / `puddles`. Details: [stage-environment.md](stage-environment.md).
 
 | Input | Feld | Default | Wirkung |
 |---|---|---|---|
@@ -478,7 +478,7 @@ Auswahl darf die Aufriss-Skala nicht springen lassen: bei gleichem `contentKey` 
 Bei Wand-, Öffnungs-, Studio-, Dach- oder Decken-Auswahl:
 
 - **Unten** (`#library-dock` / `#opening-library` / `#library-mode`): **kontextuelle** Element-Bibliothek (siehe Grundgesetz). Tabs horizontal **oberhalb** der Kartenleiste (`#library-dock > .library-chrome`), Text **waagerecht** lesbar; kein Titel „Bibliothek“.
-- **Rechts** (`#selection-toolbar`): Werte, Farben, ±, Löschen. **Eine** Scroll-Spalte (`.selection-toolbar-panels`): Sektionsköpfe volle Breite als vertikaler Fächer — **gescrollte** Köpfe stapeln oben, **noch nicht erreichte** unten (`parkSettingsSectionHeads` per `translateY` in Band `[i·h … viewH−(n−i)·h]`; reines CSS-sticky reicht nicht unter dem Fold). **Leere** Sektionen ohne bedienbaren Inhalt (nur Label/Hinweis, ausgeblendete Controls) → Klasse `settings-section-empty`, kein Register (**v2.0.272**). Klick auf Kopf scrollt zur Sektion (Event-Delegation am Panel). Inhalte bleiben kompakt (kein `min-height`-Weißraum, kein `margin-top`); aktiver Kopf `.settings-section-head-active`. Keine separate untere Tab-Leiste (**v2.0.271** / Rail v2.0.269 entfernt). Kein `position:fixed` (v2.0.269: lag außerhalb). Analog Szene. **v2.0.65/267:** Paneele + Licht-Leiste Geschwister.
+- **Rechts** (`#selection-toolbar`): Scroll-Akkordeon (**v2.0.330**, [scrollable-settings-sections.md](scrollable-settings-sections.md)): Sektionsköpfe oben/unten gestapelt, Mitte = aktive Sektion, nur Scroll öffnet, Klick scrollt zur Sektion. Modul `src/ui/scrollableSettingsSections.ts` (Algorithmus wie [react-scrollable-accordion](https://github.com/andrii-maglovanyi/react-scrollable-accordion)). Leere Sektionen → `settings-section-empty`. Analog Szene.
 - Ohne Auswahl: rechts **immer** die Szeneneinstellungen (`#lighting-accordion`, Geschwister von `#selection-toolbar` unter `#ui-right` — nicht darin verschachtelt, sonst verschwindet die Szene mit `[hidden]` der Auswahl-Toolbar).
 - **`data-settings-inline-all`**: kein eigener Reiter, im aktiven rechten Panel mit sichtbar (Modell/Aktionen).
 - Tab-Wechsel filtert per CSS-Klasse `selection-tab-filtered-out` — bestehende `hidden`-Logik bleibt maßgeblich.

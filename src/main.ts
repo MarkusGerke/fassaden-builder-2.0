@@ -730,6 +730,7 @@ import {
 } from './lighting/lodSettings'
 import { closeContextMenu, showContextMenu, type MenuItem } from './ui/contextMenu'
 import { installFieldInfo } from './ui/fieldInfo'
+import { syncScrollableSettingsPanel } from './ui/scrollableSettingsSections'
 import { initReleaseNotesUi } from './ui/releaseNotes'
 import { initCreditsUi } from './ui/creditsDialog'
 import {
@@ -6520,6 +6521,19 @@ const bloomExposureNum = document.querySelector<HTMLInputElement>('#bloom-exposu
 const bloomExposureValue = document.querySelector<HTMLOutputElement>('#bloom-exposure-value')!
 const fogEnabledInput = document.querySelector<HTMLInputElement>('#fog-enabled')!
 const groundPuddlesEnabledInput = document.querySelector<HTMLInputElement>('#ground-puddles-enabled')!
+const groundPuddlesOptions = document.querySelector<HTMLDivElement>('#ground-puddles-options')!
+const groundPuddlesCount = document.querySelector<HTMLInputElement>('#ground-puddles-count')!
+const groundPuddlesCountNum = document.querySelector<HTMLInputElement>('#ground-puddles-count-num')!
+const groundPuddlesCountValue = document.querySelector<HTMLOutputElement>('#ground-puddles-count-value')!
+const groundPuddlesSize = document.querySelector<HTMLInputElement>('#ground-puddles-size')!
+const groundPuddlesSizeNum = document.querySelector<HTMLInputElement>('#ground-puddles-size-num')!
+const groundPuddlesSizeValue = document.querySelector<HTMLOutputElement>('#ground-puddles-size-value')!
+const groundPuddlesSpread = document.querySelector<HTMLInputElement>('#ground-puddles-spread')!
+const groundPuddlesSpreadNum = document.querySelector<HTMLInputElement>('#ground-puddles-spread-num')!
+const groundPuddlesSpreadValue = document.querySelector<HTMLOutputElement>('#ground-puddles-spread-value')!
+const groundPuddlesStrength = document.querySelector<HTMLInputElement>('#ground-puddles-strength')!
+const groundPuddlesStrengthNum = document.querySelector<HTMLInputElement>('#ground-puddles-strength-num')!
+const groundPuddlesStrengthValue = document.querySelector<HTMLOutputElement>('#ground-puddles-strength-value')!
 const perfOverlayEnabledInput = document.querySelector<HTMLInputElement>('#perf-overlay-enabled')!
 const lodEnabledInput = document.querySelector<HTMLInputElement>('#lod-enabled')!
 const lodOptions = document.querySelector<HTMLDivElement>('#lod-options')!
@@ -10499,6 +10513,10 @@ function syncGroundPuddles() {
     enabled: puddleSettings.enabled,
     view3d: currentView === '3d',
     orbitLite: orbitLite || orbitLitePointer,
+    count: puddleSettings.count,
+    size: puddleSettings.size,
+    spread: puddleSettings.spread,
+    strength: puddleSettings.strength,
     groundY: GROUND_Y,
     cx,
     cz,
@@ -17456,167 +17474,10 @@ function syncSelectionToolbarTabs() {
   }
 }
 
-const SETTINGS_STICK_TAB_REM = 2.15
-
-type SettingsHeadParkState = {
-  sections: HTMLElement[]
-  onScroll: () => void
-}
-
-const settingsHeadParkByPanel = new WeakMap<HTMLElement, SettingsHeadParkState>()
-
-function settingsStickHeadPx(): number {
-  const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize)
-  return SETTINGS_STICK_TAB_REM * (Number.isFinite(rootPx) && rootPx > 0 ? rootPx : 16)
-}
-
-function clearSettingsHeadFixedStyles(head: HTMLElement) {
-  head.classList.remove('settings-section-head-parked')
-  head.style.position = ''
-  head.style.top = ''
-  head.style.left = ''
-  head.style.right = ''
-  head.style.bottom = ''
-  head.style.width = ''
-  head.style.transform = ''
-  head.style.margin = ''
-  head.style.zIndex = ''
-}
-
-/** Aktiven Sektionskopf markieren: Abschnitt, dessen Kopf am oberen Stapel klebt. */
-function updateSettingsSectionHeadActive(panel: HTMLElement, sections: HTMLElement[]) {
-  const headH = settingsStickHeadPx()
-  const scrollTop = panel.scrollTop
-  let active = 0
-  for (let i = 0; i < sections.length; i++) {
-    const section = sections[i]!
-    // Kopf i klebt bei y = i·headH — darunter gilt der Abschnitt als aktiv.
-    if (section.offsetTop - scrollTop <= (i + 0.5) * headH) active = i
-  }
-  sections.forEach((section, index) => {
-    section
-      .querySelector<HTMLElement>(':scope > .settings-section-head')
-      ?.classList.toggle('settings-section-head-active', index === active)
-  })
-}
-
-/**
- * Fächer in einer Scroll-Spalte: gescrollte Köpfe stapeln oben, noch nicht erreichte unten.
- * Reines CSS-sticky reicht nicht (künftige Köpfe liegen unter dem Fold). Deshalb
- * `translateY` aus der natürlichen Position in den erlaubten Bandbereich
- * [index·h … viewH − (n−index)·h] — ohne min-height-Weißraum und ohne fixed außerhalb der Spalte.
- */
-function parkSettingsSectionHeads(panel: HTMLElement) {
-  const state = settingsHeadParkByPanel.get(panel)
-  if (!state) return
-  const sections = state.sections.filter(
-    (section) =>
-      section.isConnected &&
-      !section.hidden &&
-      !section.classList.contains('selection-tab-filtered-out') &&
-      settingsSectionVisibleForUi(section),
-  )
-  const total = sections.length
-  if (total === 0) return
-
-  const viewH = panel.clientHeight
-  const headH = settingsStickHeadPx()
-  const scrollTop = panel.scrollTop
-
-  sections.forEach((section, index) => {
-    const head = section.querySelector<HTMLElement>(':scope > .settings-section-head')
-    if (!head) return
-    clearSettingsHeadFixedStyles(head)
-    head.style.removeProperty('--stick-top')
-    head.style.removeProperty('--stick-bottom')
-    section.style.paddingTop = ''
-    section.style.minHeight = ''
-
-    const naturalY = section.offsetTop - scrollTop
-    const minY = index * headH
-    const maxY = Math.max(minY, viewH - (total - index) * headH)
-    const parkedY = Math.min(maxY, Math.max(minY, naturalY))
-    const dy = parkedY - naturalY
-    head.style.transform = dy === 0 ? '' : `translateY(${dy}px)`
-    head.style.zIndex = String(40 + index)
-    head.classList.toggle('settings-section-head-parked', dy !== 0)
-  })
-
-  updateSettingsSectionHeadActive(panel, sections)
-}
-
 function syncSettingsSectionStickyHeads(sections: HTMLElement[]) {
   const panel = sections[0]?.closest('.selection-toolbar-panels') as HTMLElement | null
   if (!panel) return
-  const toolbar = panel.parentElement
-  if (toolbar instanceof HTMLElement) {
-    toolbar.querySelector(':scope > .settings-tab-rail-bottom')?.remove()
-  }
-
-  // Köpfe nur für aktuelle Register; Reste entfernen (z. B. nach Leer-Ausblendung).
-  for (const orphan of panel.querySelectorAll<HTMLElement>('.settings-section > .settings-section-head')) {
-    const section = orphan.parentElement
-    if (!(section instanceof HTMLElement) || !sections.includes(section)) {
-      orphan.remove()
-    }
-  }
-
-  const total = sections.length
-  sections.forEach((section) => {
-    let head = section.querySelector<HTMLElement>(':scope > .settings-section-head')
-    if (!head) {
-      head = document.createElement('div')
-      head.className = 'settings-section-head'
-      section.insertBefore(head, section.firstChild)
-    }
-    clearSettingsHeadFixedStyles(head)
-    const label = section.dataset.settingsLabel ?? section.dataset.settingsSection ?? ''
-    if (head.textContent !== label) head.textContent = label
-    head.style.removeProperty('--stick-top')
-    head.style.removeProperty('--stick-bottom')
-    delete head.dataset.parkScrollBound
-  })
-
-  // Event-Delegation: Klick auf Register scrollt zur Sektion und öffnet sie im Fächer.
-  // (Pro-Kopf-Listener mit Closure auf altes Panel feuerte nach Re-Sync nicht mehr zuverlässig.)
-  if (!panel.dataset.settingsFanClickBound) {
-    panel.dataset.settingsFanClickBound = '1'
-    panel.addEventListener('click', (ev) => {
-      const raw = ev.target
-      if (!(raw instanceof Element)) return
-      const head = raw.closest('.settings-section-head')
-      if (!(head instanceof HTMLElement) || !panel.contains(head)) return
-      const target = head.parentElement
-      if (!(target instanceof HTMLElement) || !panel.contains(target)) return
-      const state = settingsHeadParkByPanel.get(panel)
-      const live = (state?.sections ?? []).filter(
-        (section) =>
-          section.isConnected &&
-          !section.hidden &&
-          !section.classList.contains('selection-tab-filtered-out') &&
-          !section.classList.contains('settings-section-empty') &&
-          settingsSectionVisibleForUi(section),
-      )
-      const idx = live.indexOf(target)
-      if (idx < 0) return
-      const headH = settingsStickHeadPx()
-      panel.scrollTo({ top: Math.max(0, target.offsetTop - idx * headH), behavior: 'smooth' })
-    })
-  }
-
-  let state = settingsHeadParkByPanel.get(panel)
-  if (!state) {
-    const onScroll = () => parkSettingsSectionHeads(panel)
-    panel.addEventListener('scroll', onScroll, { passive: true })
-    window.addEventListener('resize', onScroll)
-    state = { sections, onScroll }
-    settingsHeadParkByPanel.set(panel, state)
-  } else {
-    state.sections = sections
-  }
-  panel.style.scrollPaddingTop = `${Math.max(1, total) * SETTINGS_STICK_TAB_REM}rem`
-  panel.style.scrollPaddingBottom = `${Math.max(0, total - 1) * SETTINGS_STICK_TAB_REM}rem`
-  parkSettingsSectionHeads(panel)
+  syncScrollableSettingsPanel(panel, sections)
 }
 
 function syncStudioPanelColorControls(wall: Wall) {
@@ -24269,10 +24130,37 @@ function commitFogPatch(patch: Partial<FogSettings>) {
 
 function syncPuddleUi() {
   groundPuddlesEnabledInput.checked = puddleSettings.enabled
+  groundPuddlesOptions.hidden = !puddleSettings.enabled
+  groundPuddlesCount.value = String(puddleSettings.count)
+  groundPuddlesCountNum.value = String(puddleSettings.count)
+  groundPuddlesCountValue.textContent = String(puddleSettings.count)
+  groundPuddlesSize.value = String(puddleSettings.size)
+  groundPuddlesSizeNum.value = String(puddleSettings.size)
+  groundPuddlesSizeValue.textContent = puddleSettings.size.toFixed(2)
+  groundPuddlesSpread.value = String(puddleSettings.spread)
+  groundPuddlesSpreadNum.value = String(puddleSettings.spread)
+  groundPuddlesSpreadValue.textContent = puddleSettings.spread.toFixed(2)
+  groundPuddlesStrength.value = String(puddleSettings.strength)
+  groundPuddlesStrengthNum.value = String(puddleSettings.strength)
+  groundPuddlesStrengthValue.textContent = puddleSettings.strength.toFixed(2)
 }
 
 function commitPuddlePatch(patch: Partial<GroundPuddleSettings>) {
   puddleSettings = normalizeGroundPuddleSettings({ ...puddleSettings, ...patch })
+  // #region agent log
+  fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'c6b426' },
+    body: JSON.stringify({
+      sessionId: 'c6b426',
+      hypothesisId: 'A',
+      location: 'main.ts:commitPuddlePatch',
+      message: 'puddle patch committed',
+      data: { patch, puddleSettings, currentView },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {})
+  // #endregion
   syncPuddleUi()
   syncGroundPuddles()
   persistApp()
@@ -24538,6 +24426,34 @@ fogEnabledInput.addEventListener('change', () => {
 groundPuddlesEnabledInput.addEventListener('change', () => {
   commitPuddlePatch({ enabled: groundPuddlesEnabledInput.checked })
 })
+bindSceneDualControl(
+  groundPuddlesCount,
+  groundPuddlesCountNum,
+  groundPuddlesCountValue,
+  (value) => commitPuddlePatch({ count: Math.round(value) }),
+  (value) => String(Math.round(value)),
+)
+bindSceneDualControl(
+  groundPuddlesSize,
+  groundPuddlesSizeNum,
+  groundPuddlesSizeValue,
+  (value) => commitPuddlePatch({ size: value }),
+  (value) => value.toFixed(2),
+)
+bindSceneDualControl(
+  groundPuddlesSpread,
+  groundPuddlesSpreadNum,
+  groundPuddlesSpreadValue,
+  (value) => commitPuddlePatch({ spread: value }),
+  (value) => value.toFixed(2),
+)
+bindSceneDualControl(
+  groundPuddlesStrength,
+  groundPuddlesStrengthNum,
+  groundPuddlesStrengthValue,
+  (value) => commitPuddlePatch({ strength: value }),
+  (value) => value.toFixed(2),
+)
 
 if (localStorage.getItem('perf-overlay') === '1') {
   perfOverlayEnabledInput.checked = true

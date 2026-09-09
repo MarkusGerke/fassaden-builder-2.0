@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.325'
+export const APP_VERSION = '2.0.333'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,71 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.333',
+    date: '2026-09-09',
+    title: 'Scroll-Akkordeon wie react-scrollable-accordion',
+    changes: [
+      'Sektions-Reiter kleben lückenlos oben/unten und springen nicht mehr: Köpfe am nicht scrollenden Wrapper verankert, Sektionen in Tab-Reihenfolge, exakte Platzhalter',
+      'Klick auf einen Reiter scrollt exakt zur Sektion — auch zur letzten (End-Spacer)',
+    ],
+  },
+  {
+    version: '2.0.332',
+    date: '2026-09-09',
+    title: 'Scroll-Akkordeon ohne Lücken und Zittern',
+    changes: [
+      'Sektions-Reiter kleben wieder lückenlos wie react-scrollable-accordion — position:absolute, kein minHeight, initialOffsetTop nur einmal gemessen',
+    ],
+  },
+  {
+    version: '2.0.331',
+    date: '2026-09-09',
+    title: 'Sektions-Reiter wieder sichtbar',
+    changes: [
+      'Scroll-Akkordeon: Sektionsköpfe kleben wieder in der rechten Leiste — position:fixed wirkte mit transformiertem UI-Vorfahren doppelt versetzt',
+    ],
+  },
+  {
+    version: '2.0.330',
+    date: '2026-09-09',
+    title: 'Scroll-Akkordeon rechte Leiste',
+    changes: [
+      'Einstellungs-Sektionen: scrollgesteuertes Layout (Köpfe oben/unten, eine aktive Sektion in der Mitte, Klick scrollt)',
+    ],
+  },
+  {
+    version: '2.0.329',
+    date: '2026-09-09',
+    title: 'Sticky-Fächer oben und unten',
+    changes: [
+      'Rechte Leiste: Sektionsköpfe wieder oben/unten gestapelt; Parking per Panel-fixed + Spacer statt translateY (keine Lücken)',
+    ],
+  },
+  {
+    version: '2.0.328',
+    date: '2026-09-09',
+    title: 'Sticky-Sektionsköpfe ohne Lücken',
+    changes: [
+      'Rechte Leiste: Sektionsköpfe stapeln oben per CSS-sticky; noch nicht erreichte Register bleiben im Fluss (kein unteres Parking mehr)',
+    ],
+  },
+  {
+    version: '2.0.327',
+    date: '2026-09-09',
+    title: 'Pfützen wie three.js Wet-Floor',
+    changes: [
+      'Pfützen: Noise-Maske + ein Reflector (Look wie webgpu_materials_retroreflection-Boden), Dichte/Größe/Zone/Spiegelung',
+    ],
+  },
+  {
+    version: '2.0.326',
+    date: '2026-09-09',
+    title: 'Pfützen: Anzahl, Größe, Abstand',
+    changes: [
+      'Szene → Pfützen: Anzahl (1–8), Größe, Abstand vom Gebäude und Spiegelstärke einstellbar',
+    ],
+  },
   {
     version: '2.0.325',
     date: '2026-09-09',

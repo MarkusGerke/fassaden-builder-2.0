@@ -771,6 +771,42 @@ body {
   -webkit-overflow-scrolling: touch;
   padding: 0;
   background: #fff;
+  position: relative;
+}
+
+/* react-scrollable-accordion: Wrapper (nicht scrollend) ist Containing Block der absoluten Köpfe,
+   das scrollende Panel und die Sektionen bleiben unpositioniert. */
+.right-selection-toolbar.scrollable-settings-wrapper {
+  position: relative;
+  overflow: hidden;
+}
+
+.selection-toolbar-panels.scrollable-settings-panel {
+  position: static;
+  overflow-anchor: none;
+}
+
+.selection-toolbar-panels.scrollable-settings-panel .settings-section {
+  position: static;
+  margin: 0;
+  padding: 0;
+}
+
+.selection-toolbar-panels.scrollable-settings-panel > .settings-section-end-spacer {
+  flex: 0 0 auto;
+  width: 100%;
+  pointer-events: none;
+}
+
+.selection-toolbar-panels.scrollable-settings-panel #toolbar-opening,
+.selection-toolbar-panels.scrollable-settings-panel #toolbar-wall,
+.selection-toolbar-panels.scrollable-settings-panel #toolbar-studio,
+.selection-toolbar-panels.scrollable-settings-panel #toolbar-roof,
+.selection-toolbar-panels.scrollable-settings-panel #toolbar-ceiling,
+.selection-toolbar-panels.scrollable-settings-panel #toolbar-scene-light {
+  gap: 0;
+  padding-top: 0;
+  padding-bottom: 0;
 }
 
 .selection-toolbar-panels .settings-section {
@@ -790,7 +826,6 @@ body {
   padding: 0.45rem 0.85rem;
   background: #e4e4e4;
   border: none;
-  border-top: 1px solid #c8c8c8;
   border-bottom: 1px solid #c8c8c8;
   border-radius: 0;
   font-size: 0.78rem;
@@ -799,17 +834,27 @@ body {
   letter-spacing: 0.01em;
   display: flex;
   align-items: center;
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
+  box-shadow: none;
   cursor: pointer;
   user-select: none;
+  transform: none;
+}
+
+.selection-toolbar-panels.scrollable-settings-panel .settings-section > .settings-section-head {
+  border-top: none;
 }
 
 .selection-toolbar-panels .settings-section.settings-section-empty {
   display: none !important;
 }
 
+.selection-toolbar-panels .settings-section > .settings-section-head.settings-section-head-stuck-top,
 .selection-toolbar-panels .settings-section > .settings-section-head.settings-section-head-parked {
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.06), 0 2px 6px rgba(0, 0, 0, 0.08);
+  box-shadow: none;
+}
+
+.selection-toolbar-panels .settings-section > .settings-section-head.settings-section-head-stuck-bottom {
+  box-shadow: none;
 }
 
 .selection-toolbar-panels .settings-section > .settings-section-head:hover {
