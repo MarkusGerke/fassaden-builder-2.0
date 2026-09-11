@@ -2,6 +2,14 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### 3D/Fassade: flache Sonne (2026-09-11) — v2.0.357
+
+**Symptom:** 2D-Aufriss mit Schatten ok; **3D** und **Fassade** hell/blass, wenig Sonnenfeedback. **Hypothesen verworfen:** `setCladdingReceiveShadows` in Perspektive bereits an; `applySunLighting()` ohne `updateShadowMap` backt nach `startupShadowReady` normal — aber Orbit-Defer (`renderLitSceneFrame` löscht `needsUpdate`) und `applySceneAppearance({ updateShadowMap: false })` vor dem Ansichtwechsel ließen die Map leer/stale, bis man die Sonne bewegte. **Fix:** `setView` → 3D/`present`: `applySunLighting({ updateShadowMap: true, forceShadowBake: true })`; `bootstrapSceneLighting` ebenfalls `forceShadowBake`. Docs: `shadows.md`.
+
+### Webspace vs. localhost: Licht (2026-09-11) — v2.0.356
+
+**Nutzer:** Gleiche Sonnen-Slider, aber online flache Fassade ohne Schatten, Innen nicht dunkel. **Ursache:** `#f=`-Import setzte `currentView = 'front'` — Aufriss-Pipeline (Streiflicht-Gate, Ortho, kein volles 3D-Innenlicht). Localhost oft `3d` aus localStorage. **Fix:** `view` im Share-Payload; `resolveShareAppView` (legacy: `viewYaw`→Aufriss, sonst 3D); Persistenz lädt `present`/`top`. `index.html` Cache-Control. Docs: `deploy-allinkl.md`.
+
 ### Licht: zwei Sonnenwinkel (2026-09-11) — v2.0.355
 
 **Nutzer:** Ein „Sonnenwinkel“ drehte nur horizontal; Höhe fehlte als eigene Regelung neben Tageszeit. **Fix:** `#sun-elevation` (Höhe, −12°…70°); Azimut umbenannt „Himmelsrichtung“. Tageszyklus/Datum schreiben beide aus `resolveSunFromDate`. Dateien: `index.html`, `main.ts`, `sunLighting.ts`, `docs/celestial-sky.md`.

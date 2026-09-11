@@ -53,8 +53,9 @@ Datei: [`.github/workflows/deploy-allinkl.yml`](../.github/workflows/deploy-alli
 | FTP-Verbindung fehlgeschlagen | FTPS, Port 21; Zugangsdaten aus KAS |
 | Leere Seite / 404 | `index.html` muss im Document Root der Subdomain liegen |
 | Alte Assets nach Deploy | Hard-Refresh; bei Bedarf `dangerous-clean-slate` prüfen |
-| Verhalten ≠ localhost | **Gleicher Code**, aber **eigenes `localStorage`** pro Domain (`fassaden…` vs. `127.0.0.1:5173`) — Projekt, Tageszyklus, Ansicht, Sonne getrennt. Zum Vergleichen: `.json` exportieren/importieren oder Einstellungen (Tageszyklus, 3D/Render) auf beiden Seiten prüfen |
+| Verhalten ≠ localhost | **Gleicher Code**, aber **eigenes `localStorage`** pro Domain; **Teilen-Links** öffneten bis v2.0.355 fast immer den **2D-Aufriss** (weniger Schatten auf Paneele, anderes Innenlicht) — ab v2.0.356 steckt `view` im Link. Alte Links ohne `view`: Aufriss wenn `viewYaw`, sonst 3D. Version unter dem Titel prüfen; Hard-Refresh. |
 | Verzeichnisschutz weg | Schutz im KAS anlegen, nicht per Upload in `.htaccess` im `dist/` überschreiben |
+| `http://` ok, `https://` Zertifikatsfehler / kein Auto-Redirect | Port 443 liefert oft noch **\*.kasserver.com** statt Let's Encrypt für die Subdomain — im KAS **SSL-Schutz** explizit für `fassaden.…` aktivieren, Zertifikat ausstellen lassen, 15–60 Min. warten; dann optional HTTP→HTTPS-Umleitung im KAS. Prüfen: `curl -vI https://…` → `subjectAltName` muss die Subdomain enthalten. |
 
 ## Dateien
 

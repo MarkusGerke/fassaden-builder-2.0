@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.355'
+export const APP_VERSION = '2.0.357'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,24 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.357',
+    date: '2026-09-11',
+    title: '3D/Fassade: Sonnenschatten nach Ansichtwechsel',
+    changes: [
+      'Wechsel zu 3D oder Fassade backt die Sonnen-Shadow-Map sofort (trotz Orbit-Defer)',
+      'Erster Licht-Start nach Laden ebenfalls mit erzwungenem Bake',
+    ],
+  },
+  {
+    version: '2.0.356',
+    date: '2026-09-11',
+    title: 'Teilen-Link: gleiche 3D-Lichtansicht',
+    changes: [
+      'Share-Payload enthält Ansicht (3D/Fassade/Aufriss); neue Links nicht mehr nur Aufriss',
+      'index.html ohne Browser-Cache — Webspace lädt aktuellen Build',
+    ],
+  },
   {
     version: '2.0.355',
     date: '2026-09-11',

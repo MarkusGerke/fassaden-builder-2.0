@@ -110,7 +110,7 @@ function isEditorState(value: unknown): value is EditorState {
   )
 }
 
-function normalizeView(view: unknown): AppView {
+export function normalizeView(view: unknown): AppView {
   if (view === '3d') return '3d'
   if (view === 'present') return 'present'
   if (view === 'front') return 'front'

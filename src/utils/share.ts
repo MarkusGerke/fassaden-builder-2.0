@@ -4,6 +4,7 @@ import { applyFacadeLoadPipeline } from './facadeLoad'
 import {
   DEFAULT_SCENE_APPEARANCE,
   normalizeSceneAppearance,
+  type AppView,
   type SceneAppearance,
 } from './persistence'
 import { FACADE_SCHEMA_IMPORT_BASE, FACADE_SCHEMA_VERSION } from './schemaMigrations'
@@ -27,6 +28,8 @@ export interface SharePayload {
   schemaVersion?: number
   /** Szene-Farben (Hintergrund, Boden, Himmel, Strichstärke). */
   scene?: SceneAppearance
+  /** Aktive Ansicht beim Teilen (ohne `export`). */
+  view?: Exclude<AppView, 'export'>
   /** Kompass-/Seitenansicht in Grad (45°-Raster), nur bei `kind: 'yaw'`. */
   viewYaw?: number
   /** Licht- und Animations-Einstellungen (Showcase / Teilen). */
@@ -38,9 +41,24 @@ export interface SharePayload {
 export interface DecodedSharePayload {
   facade: FacadeState
   scene?: SceneAppearance
+  view?: Exclude<AppView, 'export'>
   viewYaw?: number
   sun?: SunSettings
   bloom?: BloomSettings
+}
+
+function normalizeShareView(value: unknown): Exclude<AppView, 'export'> | undefined {
+  if (value === '3d' || value === 'present' || value === 'front' || value === 'top') return value
+  return undefined
+}
+
+/** Ansicht aus Teilen-Link: explizites `view`, sonst Aufriss bei `viewYaw`, sonst 3D (v2.0.356). */
+export function resolveShareAppView(
+  decoded: Pick<DecodedSharePayload, 'view' | 'viewYaw'>,
+): Exclude<AppView, 'export'> {
+  if (decoded.view) return decoded.view
+  if (decoded.viewYaw !== undefined) return 'front'
+  return '3d'
 }
 
 function bytesToBase64Url(bytes: Uint8Array): string {
@@ -107,12 +125,14 @@ function normalizeSharePayload(raw: unknown): DecodedSharePayload | null {
   if (!isRecord(raw) || !isFacadeState(raw.facade)) return null
   const migrated = applyFacadeLoadPipeline(raw.facade as FacadeState, readSchemaVersion(raw))
   const scene = raw.scene != null ? normalizeSceneAppearance(raw.scene) : undefined
+  const view = normalizeShareView(raw.view)
   const viewYaw = normalizeViewYaw(raw.viewYaw)
   const sun = raw.sun != null ? normalizeSunSettings(raw.sun) : undefined
   const bloom = raw.bloom != null ? normalizeBloomSettings(raw.bloom) : undefined
   return {
     facade: migrated.facade,
     scene,
+    view,
     viewYaw,
     sun,
     bloom,
@@ -123,6 +143,7 @@ export function buildSharePayload(
   facade: FacadeState,
   extras?: {
     scene?: SceneAppearance
+    view?: Exclude<AppView, 'export'>
     viewYaw?: number
     sun?: SunSettings
     bloom?: BloomSettings
@@ -130,6 +151,7 @@ export function buildSharePayload(
 ): SharePayload {
   const payload: SharePayload = { facade, schemaVersion: FACADE_SCHEMA_VERSION }
   if (extras?.scene) payload.scene = extras.scene
+  if (extras?.view) payload.view = extras.view
   if (extras?.viewYaw !== undefined) payload.viewYaw = snapYawTo45(extras.viewYaw)
   if (extras?.sun) payload.sun = normalizeSunSettings(extras.sun)
   if (extras?.bloom) payload.bloom = normalizeBloomSettings(extras.bloom)

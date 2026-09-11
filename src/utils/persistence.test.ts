@@ -10,7 +10,7 @@ describe('normalizeSceneAppearance', () => {
       lineStrokeScale: 1,
     })
     expect(next.background).toBe('#E8E3DD')
-    expect(next.ground).toBe('#E8E3DD')
+    expect(next.ground).toBe('#7E848C')
     expect(next.skyReflection).toBe('#E8E3DD')
   })
 

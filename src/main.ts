@@ -219,6 +219,7 @@ import {
   DEFAULT_SCENE_APPEARANCE,
   loadPersistedState,
   normalizeSceneAppearance,
+  normalizeView,
   savePersistedState,
   type AppView,
   type SceneAppearance,
@@ -266,6 +267,7 @@ import {
   readFacadeFromLocationHash,
   scheduleFacadeHashWrite,
   isOwnLiveFacadeHash,
+  resolveShareAppView,
 } from './utils/share'
 import { openingDragFloatLocalZ, wallLocalToWorld } from './utils/liveDrag'
 import {
@@ -5245,8 +5247,11 @@ function sharePayloadFromApp() {
         animationsPaused: lightEditSunRestore.animationsPaused,
       }
     : sunSettings
+  const shareView: Exclude<AppView, 'export'> =
+    currentView === 'export' ? '3d' : currentView
   return buildSharePayload(state, {
     scene: sceneAppearance,
+    view: shareView,
     viewYaw: currentElevation.kind === 'yaw' ? currentElevation.yaw : undefined,
     sun: sunForShare,
     bloom: bloomSettings,
@@ -5565,7 +5570,7 @@ async function loadInitialState(): Promise<void> {
     if (fromHash) {
       state = fromHash.facade
       editor = createDefaultEditorState()
-      currentView = 'front'
+      currentView = resolveShareAppView(fromHash)
       if (fromHash.scene) sceneAppearance = normalizeSceneAppearance(fromHash.scene)
       if (fromHash.viewYaw !== undefined) {
         currentElevation = { kind: 'yaw', yaw: fromHash.viewYaw }
@@ -5589,7 +5594,7 @@ async function loadInitialState(): Promise<void> {
   if (persisted) {
     state = persisted.facade
     editor = persisted.editor
-    currentView = persisted.view === '3d' ? '3d' : 'front'
+    currentView = normalizeView(persisted.view)
     sunSettings = normalizeSunSettings(persisted.sun)
     if (persisted.editScope) editScope = persisted.editScope
     editFacadeYawFilter = normalizeFacadeYawFilter(persisted.editFacadeYawFilter)
@@ -11104,7 +11109,7 @@ function bootstrapSceneLighting(): Promise<void> {
   return Promise.all([atmosphereSky.load(renderer), facade.whenMeshesReady]).then(() => {
     syncCladdingReceiveShadows()
     startupShadowReady = true
-    applySunLighting({ updateShadowMap: true })
+    applySunLighting({ updateShadowMap: true, forceShadowBake: true })
     // Punktlicht-Cubes einmal warm (auch bei Tag/aus) — sonst hitcht die erste Dämmerung.
     const lights = normalizeSceneLights(state.sceneLights)
     if (lights.length > 0 && presentationMode === 'render') {
@@ -22632,7 +22637,13 @@ function setView(mode: AppView) {
 
   persistApp()
   syncSiteTransform()
-  applySunLighting()
+  // 2D-Aufriss wirkt oft kontrastreicher; Perspektive braucht frische Sonnen-Map nach Wechsel
+  // (Orbit-Defer, Appearance ohne Bake, Share-Link direkt in 3D).
+  if (mode === '3d' || mode === 'present') {
+    applySunLighting({ updateShadowMap: true, forceShadowBake: true })
+  } else {
+    applySunLighting()
+  }
 
   if (mode === 'top') {
     planZoom = 1

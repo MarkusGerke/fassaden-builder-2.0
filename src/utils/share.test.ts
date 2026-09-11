@@ -8,6 +8,7 @@ import {
   decodeFacadeHash,
   encodeFacadeHash,
   isShowcaseViewFromUrl,
+  resolveShareAppView,
   sharePayloadDefaults,
 } from './share'
 import { DEFAULT_SUN_SETTINGS } from './sunLighting'
@@ -40,6 +41,20 @@ describe('share payload', () => {
     expect(decoded!.facade.buildings.length).toBeGreaterThan(0)
     expect(decoded!.scene).toBeUndefined()
     expect(decoded!.viewYaw).toBeUndefined()
+  })
+
+  it('speichert die aktive Ansicht im Link', async () => {
+    const facade = createDefaultFacadeState()
+    const payload = buildSharePayload(facade, { view: '3d', sun: DEFAULT_SUN_SETTINGS })
+    const decoded = await decodeFacadeHash(await encodeFacadeHash(payload))
+    expect(decoded?.view).toBe('3d')
+    expect(resolveShareAppView(decoded!)).toBe('3d')
+  })
+
+  it('resolveShareAppView: legacy viewYaw → Aufriss, sonst 3D', () => {
+    expect(resolveShareAppView({ viewYaw: 90 })).toBe('front')
+    expect(resolveShareAppView({})).toBe('3d')
+    expect(resolveShareAppView({ view: 'present', viewYaw: 90 })).toBe('present')
   })
 
   it('liefert Hydrate-Defaults für fehlende Felder', () => {
