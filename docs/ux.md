@@ -529,6 +529,8 @@ Gilt für die **rechten Einstellungs-Register** bei jeder Objektauswahl (Wand, �
 
 Button `#ui-left-collapse` als **Fixed-Overlay** am linken Viewport-Rand (`grid-column: 1` mit `#ui`, damit keine vierte Grid-Spalte entsteht). Zustand in `localStorage` (`fassaden-builder-ui-left-collapsed`). Eingeklappt: Grid-Spalte 0, Griff „›“ bleibt sichtbar und klickbar. **v0.7.133:** `ResizeObserver` auf `#viewport-stage` setzt Canvas und Kamera auf die neue Breite — keine Lücke rechts in der Größe der Ebenenleiste.
 
+**v2.0.375 — Rechte Spalte:** analog `#ui-right-collapse` / `ui-right-collapsed` / `fassaden-builder-ui-right-collapsed`. Griff „›“ (einklappen) bzw. „‹“ (ausklappen) am rechten Rand. Beide Spalten können gleichzeitig eingeklappt sein.
+
 ### Inaktive Einstellungen ausblenden (v0.7.133)
 
 Checkbox oder Aktion aus → zugehörige Felder, Hinweise und Vorschauen `hidden`, nicht nur disabled. Steuerndes Element bleibt. Beispiel: Keilstein-Ring aus → SVG-Vorschau, Anzahl, Bogenstärke, Schenkel weg (`#opening-arch-voussoir-opts`).

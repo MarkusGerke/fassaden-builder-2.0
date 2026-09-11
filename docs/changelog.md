@@ -2,6 +2,14 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Rechte Einstellungen einklappbar (2026-09-11) — v2.0.375
+
+Wie die Ebenen links: Griff `#ui-right-collapse` (› / ‹), Klasse `ui-right-collapsed`, Persistenz `fassaden-builder-ui-right-collapsed`. Grid-Spalte 0, Griff bleibt am rechten Rand. Dateien: `index.html`, `style.css`, `main.ts`. Docs: [ux.md](ux.md).
+
+### Deploy All-Inkl inkrementell (2026-09-11) — v2.0.374
+
+`dangerous-clean-slate: false` im FTPS-Workflow — nur geänderte `dist/`-Dateien hochladen (Fonts/Hashes bleiben). Weniger Timeout-Risiko. Docs: [deploy-allinkl.md](deploy-allinkl.md).
+
 ### Fassaden-Scope hart; Doppelklick per Tap (2026-09-11) — v2.0.373
 
 **Fassade-Scope:** Front-Greifer ausgeblendet; `applyWallResizePreview` blockiert Front-Zug; SVG startet keinen Wand-Drag (`setWallsMoveAllowed`). **Doppelklick:** Native `dblclick` kam wegen `setPointerCapture` oft nicht an — manueller Doppel-Tap auf `pointerup` (`tryObjectFocusDoubleTap`). Dateien: `main.ts`, `FacadeSvgView.ts`.

@@ -5669,6 +5669,41 @@ uiLeftCollapseBtn.addEventListener('click', () => {
 })
 loadUiLeftCollapsed()
 
+const uiRightCollapseBtn = document.querySelector<HTMLButtonElement>('#ui-right-collapse')!
+const UI_RIGHT_COLLAPSED_KEY = 'fassaden-builder-ui-right-collapsed'
+
+function isUiRightCollapsed(): boolean {
+  return appRoot.classList.contains('ui-right-collapsed')
+}
+
+function setUiRightCollapsed(collapsed: boolean) {
+  appRoot.classList.toggle('ui-right-collapsed', collapsed)
+  uiRightCollapseBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true')
+  uiRightCollapseBtn.title = collapsed ? 'Rechte Spalte ausklappen' : 'Rechte Spalte einklappen'
+  uiRightCollapseBtn.textContent = collapsed ? '‹' : '›'
+  try {
+    localStorage.setItem(UI_RIGHT_COLLAPSED_KEY, collapsed ? '1' : '0')
+  } catch {
+    /* ignore */
+  }
+  requestAnimationFrame(() => {
+    window.dispatchEvent(new Event('resize'))
+  })
+}
+
+function loadUiRightCollapsed() {
+  try {
+    setUiRightCollapsed(localStorage.getItem(UI_RIGHT_COLLAPSED_KEY) === '1')
+  } catch {
+    setUiRightCollapsed(false)
+  }
+}
+
+uiRightCollapseBtn.addEventListener('click', () => {
+  setUiRightCollapsed(!isUiRightCollapsed())
+})
+loadUiRightCollapsed()
+
 /** Wand-Preset-Drag: ID für Preview (MIME ist im dragover oft leer). */
 let activeWallDragPresetId: string | null = null
 /** Während Wand-Preset-Drag: Taste R wechselt die Vorschau-Achse. */

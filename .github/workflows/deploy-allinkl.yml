@@ -30,4 +30,8 @@ jobs:
           port: 21
           local-dir: ./dist/
           server-dir: ${{ secrets.FTP_REMOTE_DIR }}
-          dangerous-clean-slate: true
+          # Inkrementell: unveränderte Vite-Assets (Fonts, gehashte Chunks) bleiben —
+          # schneller und weniger FTPS-Timeouts. FTP-User darf nur das App-Verzeichnis sehen.
+          # Alte, nicht mehr gebaute Chunks können liegen bleiben → ggf. gelegentlich manuell
+          # aufräumen oder vorübergehend auf true setzen.
+          dangerous-clean-slate: false

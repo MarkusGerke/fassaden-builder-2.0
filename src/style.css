@@ -76,6 +76,7 @@ body {
 #app.stage-view #ui,
 #app.stage-view #ui-right,
 #app.stage-view #ui-left-collapse,
+#app.stage-view #ui-right-collapse,
 #app.stage-view #viewport-chrome,
 #app.stage-view #scope-bar-slot,
 #app.stage-view #edit-scope-bar,
@@ -188,6 +189,18 @@ body {
   flex-direction: column;
   grid-column: 2;
   min-height: 0;
+}
+#app.showcase-view.ui-right-collapsed {
+  grid-template-columns: minmax(0, 1fr);
+}
+#app.showcase-view.ui-right-collapsed #ui-right {
+  display: none !important;
+}
+#app.showcase-view .ui-right-collapse-btn {
+  right: calc(280px - 1.35rem);
+}
+#app.showcase-view.ui-right-collapsed .ui-right-collapse-btn {
+  right: 0;
 }
 #app.showcase-view #lighting-accordion {
   display: flex !important;
@@ -3539,6 +3552,23 @@ input:disabled {
   min-width: 0;
 }
 
+/* Rechte Spalte einklappbar (wie Ebenen links) */
+#app.ui-right-collapsed {
+  grid-template-columns: 320px minmax(0, 1fr) 0px;
+}
+
+#app.ui-left-collapsed.ui-right-collapsed {
+  grid-template-columns: 0px minmax(0, 1fr) 0px;
+}
+
+#app.ui-right-collapsed #ui-right {
+  overflow: hidden;
+  border-left: none;
+  padding: 0 !important;
+  min-width: 0;
+  pointer-events: none;
+}
+
 .ui-left-collapse-btn {
   position: absolute;
   top: 0.55rem;
@@ -3570,6 +3600,37 @@ input:disabled {
   border-right: 1px solid #ccc;
   border-left: none;
   border-radius: 0 0.35rem 0.35rem 0;
+}
+
+.ui-right-collapse-btn {
+  position: fixed;
+  top: 0.55rem;
+  right: calc(340px - 1.35rem);
+  z-index: 50;
+  width: 1.35rem;
+  height: 1.8rem;
+  padding: 0;
+  border: 1px solid #ccc;
+  border-left: none;
+  border-radius: 0 0.35rem 0.35rem 0;
+  background: #f6f6f6;
+  color: #444;
+  font: inherit;
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.ui-right-collapse-btn:hover {
+  background: #eee;
+}
+
+#app.ui-right-collapsed .ui-right-collapse-btn {
+  right: 0;
+  border-left: 1px solid #ccc;
+  border-right: none;
+  border-radius: 0.35rem 0 0 0.35rem;
 }
 
 .opening-library-new {
@@ -4284,4 +4345,20 @@ html[data-ui-mode='simple'] [data-ui-level='advanced'] {
 
 #app.ui-left-collapsed #ui {
   pointer-events: none;
+}
+
+/* Einstellungen-Griff: fixed am rechten Viewport-Rand */
+#ui-right-collapse.ui-right-collapse-btn {
+  position: fixed;
+  top: 0.55rem;
+  right: calc(340px - 1.35rem);
+  z-index: 50;
+  pointer-events: auto;
+}
+
+#app.ui-right-collapsed #ui-right-collapse.ui-right-collapse-btn {
+  right: 0;
+  border-radius: 0.35rem 0 0 0.35rem;
+  border-right: none;
+  border-left: 1px solid #ccc;
 }
