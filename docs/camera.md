@@ -1,6 +1,23 @@
 # 3D-Kamera und Orbit
 
-Dieses Dokument beschreibt Perspektivkamera, OrbitControls und die eigene ⌘/Ctrl-Navigation in der 3D-Ansicht. Code: `src/main.ts`, Hilfsfunktionen in `src/gallery/galleryCamera.ts`.
+Dieses Dokument beschreibt Perspektivkamera, OrbitControls und die eigene ⌘/Ctrl-Navigation in der 3D-Ansicht. Code: `src/main.ts`, Hilfsfunktionen in `src/gallery/galleryCamera.ts`, Fassaden-Modus in `src/studio/presentCamera.ts`.
+
+---
+
+## Ansicht „Fassade“ (`present`, v2.0.348)
+
+Toolbar-Button **Fassade** zwischen 2D und 3D.
+
+| Aspekt | Verhalten |
+|---|---|
+| Rendering | Wie 3D (Perspektive, Himmel, Schatten, Bloom) — `render3dFrame` |
+| Orbit | **Aus** — keine freie Navigation |
+| Blickzentrum | Horizontal: Welt-AABB-Mitte des Baukörpers; vertikal: Mitte zwischen `minY` und `maxY` aller Studio-Wände |
+| Abstand | Aus FOV/Seitenverhältnis so, dass Fassadenbreite und -höhe ins Bild passen, plus **mindestens eine Geschosshöhe** (`activeWallHeight()`) Rand |
+| Kompass | Wie 2D: `setCompassYaw` → `currentElevation` + `syncPresentCamera()` (45°-Raster); Kamera `lookAt` auf Ziel (sonst bleibt 3D-Blickrichtung) |
+| Persistenz | `AppView` `'present'` in `persistence.ts` |
+
+Wechsel **3D → Fassade** übernimmt die sichtbare Himmelsrichtung wie **3D → 2D** (`viewedFacadeYaw`).
 
 ---
 

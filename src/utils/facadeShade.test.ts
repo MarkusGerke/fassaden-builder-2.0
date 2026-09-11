@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { describe, expect, it } from 'vitest'
 import {
   applyFacadeShadeShader,
+  applyInteriorShadeShader,
   facadeOutwardLocalZ,
   facadeShadeParamsFromSun,
   LABEL_SHADOW_COORD_Z_BIAS,
@@ -14,7 +15,8 @@ function stubShader() {
     uniforms: {} as Record<string, { value: unknown }>,
     vertexShader:
       '#include <common>\n#include <beginnormal_vertex>\n#include <shadowmap_vertex>\n',
-    fragmentShader: '#include <common>\n#include <lights_fragment_begin>\n',
+    fragmentShader:
+      '#include <common>\n#include <lights_fragment_begin>\n#include <lights_fragment_end>\n',
   }
 }
 
@@ -43,7 +45,6 @@ describe('facadeShade', () => {
     expect(shader.fragmentShader).toContain('vFacadeView')
     expect(shader.fragmentShader).toContain('#include <lights_fragment_begin>')
     expect(shader.fragmentShader).toContain('mix(1.0 - sideOrTop, 1.0, uLabelShade)')
-    expect(shader.fragmentShader).not.toContain('lights_fragment_end')
     expect(shader.vertexShader).not.toContain('vDirectionalShadowCoord[ 0 ].z -=')
   })
 
@@ -89,6 +90,15 @@ describe('facadeShade', () => {
     expect(night.directDim).toBe(1)
     expect(night.hemiDim).toBe(1)
     expect(night.labelDirectDim).toBe(1)
+    expect(night.interiorDirectDim).toBeLessThan(0.65)
+    expect(night.interiorHemiDim).toBeLessThan(0.35)
+  })
+
+  it('tagsüber stark gedämpftes Innen-Hemi', () => {
+    const day = facadeShadeParamsFromSun(DEFAULT_SUN_SETTINGS)
+    expect(day.interiorHemiDim).toBeLessThanOrEqual(0.07)
+    expect(day.interiorDirectDim).toBeLessThanOrEqual(0.05)
+    expect(day.interiorIndirectGain).toBeLessThanOrEqual(0.16)
   })
 
   it('setFacadeShadeParams schreibt Schrift-Uniforms', () => {
@@ -100,6 +110,7 @@ describe('facadeShade', () => {
       hemiDim: 0.5,
       interiorDirectDim: 0.2,
       interiorHemiDim: 0.4,
+      interiorIndirectGain: 0.12,
       labelDirectDim: 0.07,
       labelHemiDim: 0.15,
     })
@@ -108,6 +119,17 @@ describe('facadeShade', () => {
     expect(shader.uniforms.uLabelDirectDim.value).toBe(0.07)
     expect(shader.uniforms.uLabelHemiDim.value).toBe(0.15)
     setFacadeShadeParams(restore)
+  })
+
+  it('applyInteriorShadeShader hängt Innen-Uniforms ein', () => {
+    const mat = new THREE.MeshStandardMaterial()
+    applyInteriorShadeShader(mat)
+    const shader = stubShader()
+    mat.onBeforeCompile(shader as unknown as THREE.WebGLProgramParametersWithUniforms, {} as THREE.WebGLRenderer)
+    expect(shader.uniforms.uInteriorHemiDim).toBeDefined()
+    expect(shader.fragmentShader).toContain('uInteriorHemiDim')
+    expect(shader.fragmentShader).toContain('#include <lights_fragment_end>')
+    expect(shader.fragmentShader).toContain('uInteriorHemiDim * uInteriorHemiDim')
   })
 
   it('überspringt Glas', () => {

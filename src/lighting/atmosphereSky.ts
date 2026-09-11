@@ -326,11 +326,15 @@ export class AtmosphereSky {
     this.starsMaterial.worldToECEFMatrix.copy(this.worldToECEFMatrix)
     this.stars.setRotationFromMatrix(this.inertialToECEFMatrix)
 
-    // Key-Licht: Mondrichtung nachts (sonst bleibt die Sonne unter dem Horizont → flaches Grau).
-    if (celestial.activeLight === 'moon') {
+    // Key + SkyLightProbe: dieselbe Richtung wie resolveCelestialState (nicht physische Sonne unter 0°).
+    if (celestial.activeLight === 'night' && celestial.lightIntensity <= 1e-4) {
       this.sunLight.sunDirection.copy(this.moonDirection)
+      this.skyLightProbe.sunDirection.copy(this.moonDirection)
     } else {
-      this.sunLight.sunDirection.copy(this.sunDirection)
+      directionFromSolar(celestial.lightAzimuthDeg, celestial.lightElevationRad, _worldDir)
+      _worldDir.transformDirection(this.worldToECEFMatrix).normalize()
+      this.sunLight.sunDirection.copy(_worldDir)
+      this.skyLightProbe.sunDirection.copy(_worldDir)
     }
     this.sunLight.worldToECEFMatrix.copy(this.worldToECEFMatrix)
     if (opts?.lightDistance != null) {
@@ -343,8 +347,7 @@ export class AtmosphereSky {
     this.sunLight.update()
     applyDisplaySunColor(this.sunLight, celestial, opts?.intensityScale ?? 1)
 
-    // Welt-Position des DirectionalLight an aktiven Himmelskörper koppeln (Takram nutzt ECEF).
-    if (opts?.lightTarget && celestial.activeLight !== 'sun') {
+    if (opts?.lightTarget) {
       const dist = opts.lightDistance ?? this.sunLight.distance
       const dir = directionFromSolar(celestial.lightAzimuthDeg, celestial.lightElevationRad)
       this.sunLight.position.set(
@@ -355,10 +358,6 @@ export class AtmosphereSky {
       this.sunLight.target.position.copy(opts.lightTarget)
       this.sunLight.target.updateMatrixWorld()
     }
-
-    this.skyLightProbe.sunDirection.copy(
-      celestial.activeLight === 'moon' ? this.moonDirection : this.sunDirection,
-    )
     this.skyLightProbe.worldToECEFMatrix.copy(this.worldToECEFMatrix)
     if (opts?.lightTarget) {
       this.skyLightProbe.position.copy(opts.lightTarget)

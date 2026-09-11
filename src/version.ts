@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.335'
+export const APP_VERSION = '2.0.355'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,188 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.355',
+    date: '2026-09-11',
+    title: 'Zwei Sonnenwinkel zur Tageszeit',
+    changes: [
+      'Sonnenwinkel Himmelsrichtung (horizontal) und Höhe (vertikal) getrennt steuerbar',
+      'Tageszeit/Datum setzen beide Winkel aus dem Berlin-Sonnenstand',
+    ],
+  },
+  {
+    version: '2.0.354',
+    date: '2026-09-11',
+    title: 'Sonnenflecken auf Innenboden',
+    changes: [
+      'Geschoss-Boden (nicht Decke) zusätzlich Außen-Layer — dirLight wie Innenwände',
+      'Decken weiter nur Innen-Layer (keine Fassadenstreifen)',
+    ],
+  },
+  {
+    version: '2.0.353',
+    date: '2026-09-11',
+    title: 'Innen: Sonnenflecken wieder sichtbar',
+    changes: [
+      'Innen-Shader dämpft nur noch Indirect (Hemi/Env), nicht Direct',
+      'Sonnenlicht durch Öffnungen und Punktlicht bleiben voll',
+    ],
+  },
+  {
+    version: '2.0.352',
+    date: '2026-09-11',
+    title: 'Innenraum: Shader-Dim greift wirklich',
+    changes: [
+      'Innen-Dämpfung nach lights_fragment_end (Hemisphere war vorher ungedimmt)',
+      'dirLightIndoor ohne 0,28-Floor bei Bibliotheks-Punktlicht',
+    ],
+  },
+  {
+    version: '2.0.351',
+    date: '2026-09-11',
+    title: 'Innenraum dunkler ohne Fensterlicht',
+    changes: [
+      'Keine Cube-EnvMap mehr auf Innenwänden und Etagenplatten',
+      'Innen-Shader v3: Hemi quadratisch + interiorIndirectGain',
+    ],
+  },
+  {
+    version: '2.0.350',
+    date: '2026-09-11',
+    title: 'Innenraum: weniger Himmels-Fill',
+    changes: [
+      'Hemisphere/Bounce nur Außen-Layer; Innen-Dim nicht mehr auf 1 bei Nacht',
+      'Stärkere Innen-Shader- und EnvMap-Dämpfung tagsüber',
+    ],
+  },
+  {
+    version: '2.0.349',
+    date: '2026-09-11',
+    title: 'Innenraum: weniger Tageslicht-Fill',
+    changes: [
+      'Innen-Shader dämpft Direct/Hemi (uInteriorDirectDim / uInteriorHemiDim)',
+      'Schwächere EnvMap auf Innenwänden und Etagenplatten',
+    ],
+  },
+  {
+    version: '2.0.348',
+    date: '2026-09-11',
+    title: 'Ansicht „Fassade“ (3D zentriert)',
+    changes: [
+      'Neuer Modus zwischen 2D und 3D: volle 3D-Darstellung, Gebäude horizontal und vertikal zentriert',
+      'Randabstand mindestens eine Geschosshöhe; Kompass dreht die Fassade wie im 2D-Aufriss',
+    ],
+  },
+  {
+    version: '2.0.347',
+    date: '2026-09-11',
+    title: '2D-Aufriss: Takram-Himmel stabil',
+    changes: [
+      'OrthographicCamera zeigt Takram-Sky nicht — Hintergrund-Pass mit Perspektiv-Hilfskamera (Layer 4)',
+      'Unter Y=0 weiter FrontUndergroundCap; kein erneutes Clear über den Himmel',
+    ],
+  },
+  {
+    version: '2.0.346',
+    date: '2026-09-11',
+    title: '2D-Aufriss: gleicher Himmel wie 3D',
+    changes: [
+      '2D nutzt wieder AtmosphereSky (wie 3D), kein separater CelestialSky-Dom',
+      'Unter Welt-Y 0: FrontUndergroundCap mit Untergrundfarbe',
+    ],
+  },
+  {
+    version: '2.0.345',
+    date: '2026-09-11',
+    title: '2D-Aufriss: Sonne und Y=0',
+    changes: [
+      'Aufriss-Hintergrund: CelestialSky mit Sonnenscheibe (kein Takram-Verlauf ohne Sonne)',
+      'Untergrundfarbe unter Welt-Y 0 (Fundament), nicht unter GROUND_Y −0,5 cm',
+    ],
+  },
+  {
+    version: '2.0.344',
+    date: '2026-09-11',
+    title: '2D-Aufriss: Himmel wie 3D',
+    changes: [
+      'Landschafts-Modus: 2D-Aufriss nutzt denselben Atmosphären-Himmel und Tageslicht wie 3D',
+      'Unter dem Fundament (Bodenebene): Untergrundfarbe; darüber Himmel statt flachem Hintergrund',
+    ],
+  },
+  {
+    version: '2.0.343',
+    date: '2026-09-11',
+    title: 'Abend: Fassade folgt Sonnenweg',
+    changes: [
+      'Nach Untergang dämpft Key-Licht und Glas-IBL mit der Sonnenhöhe (−1,5°…−11°) — kein heller Mond-Key mehr bis ~20:40 bei weggeblichenem Sonnenball',
+      'Ab etwa −11° Sonnenhöhe: Key aus, Sternennacht wie zuvor',
+    ],
+  },
+  {
+    version: '2.0.342',
+    date: '2026-09-11',
+    title: 'Dämmerung: Takram-Key am Horizont',
+    changes: [
+      'SunDirectionalLight und SkyLightProbe nutzen die gleiche Key-Richtung wie resolveCelestialState (nicht die physische Sonne unter 0°)',
+      'Key-Position der DirectionalLight auch bei Sonnen-Key; weniger flaches Grau/Sprung an 19:09→19:10',
+      'Gegenlicht-Shader an der Fassade: weicher Übergang statt harter Schwelle bei ~1,15°',
+    ],
+  },
+  {
+    version: '2.0.341',
+    date: '2026-09-11',
+    title: 'Dämmerung: Fill und IBL ohne Cut',
+    changes: [
+      'Hemisphere-/Himmels-Fill bleibt in der bürgerlichen Dämmerung auf Sonnen-Stimmung (kein Mond-Cap bei twilight < 0,62)',
+      'Glas-EnvMap wechselt weich von Tages-Zwielicht auf Mond (nicht hart bei activeLight moon)',
+      'Sonnen-Key-Elevation am Horizont ohne 0°-Knick; Mond-Richtung erst bei höherem moonMix',
+    ],
+  },
+  {
+    version: '2.0.340',
+    date: '2026-09-11',
+    title: 'Dämmerung: weiches Fassadenlicht',
+    changes: [
+      'Zwielicht-Faktor (Sonnenhöhe −12°…+6°) korrigiert — keine falsche Nacht bei leicht negativem Sonnenstand',
+      'Sonnen-/Mond-Key und Himmels-Ambient überlappen beim Untergang/Aufgang statt hart bei 0° Horizont umzuschalten',
+      'Mond-Key bleibt bei tiefer Nacht aktiv (Mischung zur Sonne nur in der Dämmerungszone)',
+    ],
+  },
+  {
+    version: '2.0.339',
+    date: '2026-09-11',
+    title: 'Lichter mit Sonne: weicher Dämmerung',
+    changes: [
+      '„Lichter mit Sonne“ schaltet nicht mehr exakt am Horizont um — Hysterese (−1,2° / +0,8° Sonnenhöhe) plus bestehendes Ein-/Ausblenden (Fade)',
+      'Beim ersten Sonnenauf-/untergang kein sofortiger Punktlicht-Shadow-Bake; Sonnen-Schatten weiter debounced',
+    ],
+  },
+  {
+    version: '2.0.338',
+    date: '2026-09-11',
+    title: 'Ausblenden: kein Nachblinken, kein UI-Hänger',
+    changes: [
+      'Manuelles Ein/Aus nur über `enabled`: Fade springt sofort, kein Shadow-Bake in dem Moment — Blaulicht wird nicht mehr von `tickAnimations` nachgezogen',
+      'Fallback-Pfad `applyState` bei Licht-Änderungen ohne reinen Licht-Only-Pfad ebenfalls abgedeckt',
+    ],
+  },
+  {
+    version: '2.0.337',
+    date: '2026-09-11',
+    title: 'Ausblenden ohne Nachblinken',
+    changes: [
+      'Blaulicht (und andere Lichter): manuelles Ausblenden stoppt den Doppelblitz sofort — kein Nachblinken mehr, während die Ebene schon ausgegraut ist',
+      'Auto-Sonne: Ausblenden bei Tag weiter mit weichem Fade, aber ohne Blaulicht-Raster',
+    ],
+  },
+  {
+    version: '2.0.336',
+    date: '2026-09-11',
+    title: 'Lichter ein-/ausblenden ohne UI-Freeze',
+    changes: [
+      'Ein- und Ausblenden (Ebenenbaum, „Alle Lichter an“, Toolbar) blockiert die Oberfläche nicht mehr mehrere Sekunden — Shader-Lichtanzahl bleibt bei platzierten Lichtern konstant (ohne Vorrats-Reserven außer Licht-Modus)',
+    ],
+  },
   {
     version: '2.0.335',
     date: '2026-09-09',

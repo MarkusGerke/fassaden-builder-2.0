@@ -65,7 +65,7 @@ import {
   normalizeOpeningInteriorShade,
 } from './windows/openingExtras'
 import { applyMeshColor, applyOrthographicGlassSeeThrough, applyRenderExteriorSurfaceLook, applyRenderInteriorSurfaceLook, applySurfaceFinish, applyWorkModeSurfaceLook, createTintedMaterial, ensureShadowDepthMaterial, getExteriorEnvFillFactor, getGlassEnvironment, markWindowFrameSurface, materialIsGlassLike } from './utils/threeColors'
-import { applyFacadeShadeShader, facadeOutwardLocalZ } from './utils/facadeShade'
+import { applyFacadeShadeShader, applyInteriorShadeShader, facadeOutwardLocalZ } from './utils/facadeShade'
 import { openingGlassConfig } from './utils/glassConfig'
 import { DEFAULT_STUDIO_PANEL } from './studio/constants'
 import { layoutPanelTiles } from './studio/panelLayout'
@@ -718,11 +718,11 @@ export class FacadeController {
         child.layers.set(SHADOW_LAYER_EXTERIOR)
         continue
       }
-      // Sichtbare Platten: nur Innen-Layer (keine Fassadenstreifen). Sonne: sunCeilingOccluder.
+      // Boden: Innen+Außen (Sonnenflecken); Decke nur Innen. Sonne von oben: sunCeilingOccluder.
       // Bei Raum-Okklusion immer casten (auch wenn unsichtbar — Backup neben AABB-Okkludern).
       child.castShadow = child.visible || enable
       child.receiveShadow = child.visible
-      child.layers.set(SHADOW_LAYER_INTERIOR)
+      this.syncIndoorSlabLightLayers(child)
       if (enable) {
         child.customDistanceMaterial = this.shadowDistanceMaterial
       } else if (child.customDistanceMaterial === this.shadowDistanceMaterial) {
@@ -914,6 +914,7 @@ export class FacadeController {
   private finishInteriorMaterial(material: THREE.MeshStandardMaterial): void {
     if (this.isPerfPresentation()) return
     applyRenderInteriorSurfaceLook(material)
+    applyInteriorShadeShader(material)
   }
 
   /** Rahmen/Sprossen: gleiche Außen-EnvMap wie Wand/Laibung — sonst wirken Weiß-Rahmen dumpfer. */
@@ -1774,14 +1775,21 @@ export class FacadeController {
     })
     material.userData.interiorWallSurface = true
     material.userData.skipFacadeShade = true
-    const glassEnv = getGlassEnvironment()
-    if (glassEnv) {
-      material.envMap = glassEnv
-      const base = 0.42
-      material.userData.baseEnvMapIntensity = base
-      material.envMapIntensity = base * getExteriorEnvFillFactor()
-    }
+    material.envMap = null
+    material.envMapIntensity = 0
+    applyInteriorShadeShader(material)
     return material
+  }
+
+  /**
+   * Boden: Innen + Außen-Layer — Außen-Sonne (dirLight) wie bei Innenwänden.
+   * Decke nur Innen (v2.0.100: keine Etagenstreifen auf der Fassade).
+   */
+  private syncIndoorSlabLightLayers(mesh: THREE.Mesh): void {
+    mesh.layers.set(SHADOW_LAYER_INTERIOR)
+    if (mesh.userData.indoorRole === 'floor') {
+      mesh.layers.enable(SHADOW_LAYER_EXTERIOR)
+    }
   }
 
   rebuildIndoorFloor() {
@@ -1841,9 +1849,7 @@ export class FacadeController {
       const mesh = new THREE.Mesh(geo, material)
       mesh.rotation.x = -Math.PI / 2
       mesh.position.set(0, y, 0)
-      // Nur Innen-Layer: Außen-Sonne (Layer 0) soll keine Etagenstreifen auf der Fassade werfen.
-      // Sonne wird über unsichtbare sunCeilingOccluder (Innenkante, Layer 0) blockiert.
-      mesh.layers.set(SHADOW_LAYER_INTERIOR)
+      this.syncIndoorSlabLightLayers(mesh)
       mesh.receiveShadow = true
       mesh.userData.indoorRole = role
       mesh.userData.kind = role === 'ceiling' ? 'ceiling' : 'floor'
@@ -2493,7 +2499,7 @@ export class FacadeController {
       }
       mesh.castShadow = mesh.visible
       mesh.receiveShadow = mesh.visible
-      mesh.layers.set(SHADOW_LAYER_INTERIOR)
+      this.syncIndoorSlabLightLayers(mesh)
     }
   }
 

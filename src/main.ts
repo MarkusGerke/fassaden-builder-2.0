@@ -365,6 +365,10 @@ import {
   fitDirectionalShadowCamera,
   formatTimeOfDay,
   normalizeSunSettings,
+  elevationRadFromSliderDeg,
+  sunElevationDegFromSettings,
+  SUN_ELEVATION_SLIDER_MAX_DEG,
+  SUN_ELEVATION_SLIDER_MIN_DEG,
   dayCycleSceneHoursPerRealSec,
   clampDayCycleRealMinutes,
   SHADOW_BIAS,
@@ -373,6 +377,7 @@ import {
   SHADOW_LAYER_EXTERIOR,
   SHADOW_LAYER_INTERIOR,
   BLOOM_LAYER,
+  ATMOSPHERE_SKY_LAYER,
   SHADOW_MAP_SIZE,
   SHADOW_MAP_SIZE_INDOOR,
   shadowMapSizeForPresentation,
@@ -519,6 +524,7 @@ import {
   normalizeOpeningInteriorShade,
 } from './windows/openingExtras'
 import { facadeOutward, facadeSunIsGrazing, wallsForYaw, wallElevationAlong, type ElevationFilter } from './studio/elevation'
+import { computePresentCameraFrame } from './studio/presentCamera'
 import { normalizeYawDeg, snapYawTo1, snapYawTo45, solarAzimuthToWallYaw, viewedFacadeYaw, wallCompassLabel, wallDockAxisFromFacadeYaw, yawFromCompassSvgPoint } from './studio/compass'
 import { panelCourseCount, visiblePanelRowRange, layoutPanelTiles } from './studio/panelLayout'
 import { APP_VERSION } from './version'
@@ -620,6 +626,7 @@ import {
   updateGroundMoodUniformValues,
 } from './lighting/groundMood'
 import { AtmosphereSky, SKY_DISPLAY_EXPOSURE_BLOOM, SKY_DISPLAY_EXPOSURE_PLAIN } from './lighting/atmosphereSky'
+import { FrontUndergroundCap } from './lighting/frontUndergroundCap'
 import {
   disablePcssShadows,
   enablePcssShadows,
@@ -628,6 +635,7 @@ import {
   updatePcssShadowParameters,
 } from './lighting/pcssShadows'
 import {
+  autoSceneLightsWantNight,
   exteriorEnvFillFromCelestial,
   prepareCelestialShadowBox,
   resolveCelestialState,
@@ -678,6 +686,7 @@ import {
   duplicateSceneLight,
   kelvinToHex,
   facadeStateDiffersOnlyBySceneLights,
+  sceneLightsDiffersOnlyByEnabled,
   normalizeSceneLightState,
   normalizeSceneLights,
   removeSceneLight,
@@ -885,7 +894,12 @@ const _sceneLightHit = new THREE.Vector3()
 const _sceneLightAnchor = new THREE.Vector3()
 const atmosphereSky = new AtmosphereSky()
 scene.add(atmosphereSky.root)
+atmosphereSky.root.traverse((o) => o.layers.enable(ATMOSPHERE_SKY_LAYER))
 atmosphereSky.attachLights(scene)
+/** 2D-Aufriss: Untergrund unter Welt-Y=0 (Takram-Himmel wie 3D). */
+const frontUndergroundCap = new FrontUndergroundCap()
+scene.add(frontUndergroundCap.mesh)
+frontUndergroundCap.mesh.visible = false
 const dirLight = atmosphereSky.sunLight
 dirLight.castShadow = true
 dirLight.layers.set(SHADOW_LAYER_EXTERIOR)
@@ -908,6 +922,7 @@ camera.position.set(400, 250, 500)
 camera.layers.enable(SHADOW_LAYER_EXTERIOR)
 camera.layers.enable(SHADOW_LAYER_INTERIOR)
 camera.layers.enable(BLOOM_LAYER)
+camera.layers.enable(ATMOSPHERE_SKY_LAYER)
 
 // Dev-Hook für Performance-Diagnose in der Konsole (nur Vite-Dev, nicht im Build).
 if (import.meta.env.DEV) {
@@ -1026,6 +1041,9 @@ const frontCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 3000)
 frontCamera.layers.enable(SHADOW_LAYER_EXTERIOR)
 frontCamera.layers.enable(SHADOW_LAYER_INTERIOR)
 frontCamera.layers.enable(BLOOM_LAYER)
+/** Gleiche Blickrichtung wie Aufriss, aber Perspektive — Takram-Himmel wie in 3D. */
+const frontSkyCamera = new THREE.PerspectiveCamera(50, 1, 1, 5000)
+frontSkyCamera.layers.set(ATMOSPHERE_SKY_LAYER)
 const topCamera = new THREE.OrthographicCamera(0, 1, 1, 0, 1, 200)
 topCamera.layers.enable(SHADOW_LAYER_EXTERIOR)
 topCamera.layers.enable(SHADOW_LAYER_INTERIOR)
@@ -1328,13 +1346,12 @@ siteOffset.add(studioSphere)
 const hemiLight = new THREE.HemisphereLight(0xffffff, 0x3a3a3a, 0.32)
 hemiLight.position.set(0, 500, 0)
 hemiLight.layers.enable(SHADOW_LAYER_EXTERIOR)
-hemiLight.layers.enable(SHADOW_LAYER_INTERIOR)
+// Kein Himmels-Fill auf Interior-Layer — sonst wirkt der Raum wie im Freien (v2.0.350).
 scene.add(hemiLight)
 
 const bounceDirLight = new THREE.DirectionalLight(0xffffff, 0.2)
 bounceDirLight.castShadow = false
 bounceDirLight.layers.enable(SHADOW_LAYER_EXTERIOR)
-bounceDirLight.layers.enable(SHADOW_LAYER_INTERIOR)
 scene.add(bounceDirLight)
 bounceDirLight.target.position.set(192, 224, 0)
 scene.add(bounceDirLight.target)
@@ -1488,8 +1505,12 @@ let labelDragBase: FacadeState | null = null
 let editor: EditorState = createDefaultEditorState()
 let currentView: AppView = 'front'
 
+function isPerspectiveSceneView(): boolean {
+  return currentView === '3d' || currentView === 'present'
+}
+
 function isSceneEditView(): boolean {
-  return currentView === '3d' || currentView === 'front' || currentView === 'top'
+  return currentView === '3d' || currentView === 'present' || currentView === 'front' || currentView === 'top'
 }
 
 /** Grundstücksdrehung gilt in allen Szenen-Ansichten (3D + Oben), nicht nur Perspektive. */
@@ -1540,7 +1561,95 @@ function atmosphereSkyWanted(line = currentRenderStyle === 'line'): boolean {
     !isStudioStage(stageEnvironment) &&
     !presentationUsesWorkLikeShading(presentationMode) &&
     !line &&
-    (currentView === '3d' || currentView === 'top')
+    (currentView === '3d' || currentView === 'present' || currentView === 'top' || currentView === 'front')
+  )
+}
+
+function presentCompassYaw(): number {
+  if (currentElevation.kind === 'yaw') return currentElevation.yaw
+  if (currentElevation.kind === 'wall') {
+    return getWall(state, currentElevation.wallId)?.yawDeg ?? 0
+  }
+  const studio = getAllWalls(state).find(isStudioWall)
+  return studio?.yawDeg ?? 0
+}
+
+function syncPresentCamera() {
+  if (currentView !== 'present') return
+  const walls = getAllWalls(state).filter(isStudioWall)
+  const width = Math.max(1, viewportRenderWidth())
+  const height = Math.max(1, viewportRenderHeight())
+  const yawDeg = presentCompassYaw()
+  const frame = computePresentCameraFrame({
+    walls,
+    yawDeg,
+    fovDeg: camera.fov,
+    aspect: width / height,
+    storeyHeight: activeWallHeight(),
+  })
+  if (!frame) return
+  const outward = facadeOutward(yawDeg, true)
+  controls.target.set(frame.lookX, frame.lookY, frame.lookZ)
+  camera.position.set(
+    frame.lookX + outward.x * frame.distance,
+    frame.lookY,
+    frame.lookZ + outward.z * frame.distance,
+  )
+  camera.lookAt(frame.lookX, frame.lookY, frame.lookZ)
+  camera.updateMatrixWorld()
+  camera.near = 1
+  camera.far = Math.max(5000, frame.distance * 4)
+  camera.updateProjectionMatrix()
+}
+
+function frontLandscapeSkyWanted(line = currentRenderStyle === 'line'): boolean {
+  return atmosphereSkyWanted(line) && currentView === 'front'
+}
+
+function syncFrontSkyCamera() {
+  const w = Math.max(1, viewportRenderWidth())
+  const h = Math.max(1, viewportRenderHeight())
+  frontSkyCamera.aspect = w / h
+  frontCamera.updateMatrixWorld()
+  frontSkyCamera.position.copy(frontCamera.position)
+  frontSkyCamera.quaternion.copy(frontCamera.quaternion)
+  frontSkyCamera.fov = camera.fov
+  frontSkyCamera.updateProjectionMatrix()
+  frontSkyCamera.updateMatrixWorld()
+}
+
+function renderFrontSkyBackdropIfNeeded(line: boolean): boolean {
+  if (
+    currentView !== 'front' ||
+    !frontLandscapeSkyWanted(line) ||
+    !atmosphereSky.ready
+  ) {
+    return false
+  }
+  syncFrontSkyCamera()
+  renderer.autoClear = true
+  renderer.clear()
+  renderer.render(scene, frontSkyCamera)
+  renderer.autoClear = false
+  renderer.clearDepth()
+  return true
+}
+
+function syncFrontUndergroundCap(activeCamera: THREE.Camera = getActiveCamera()) {
+  const line = currentRenderStyle === 'line'
+  if (!frontLandscapeSkyWanted(line)) {
+    frontUndergroundCap.setVisible(false)
+    return
+  }
+  const sceneColors = sceneColorsForLighting()
+  const base = getFrontViewBase()
+  frontUndergroundCap.setVisible(true)
+  frontUndergroundCap.sync(
+    activeCamera,
+    sceneColors.ground,
+    base?.lookX ?? 0,
+    base?.lookZ ?? 0,
+    viewportRenderHeight(),
   )
 }
 
@@ -1796,7 +1905,7 @@ function pickGroundGridFromClient(clientX: number, clientY: number): { gx: numbe
   pointerNdc.x = ((clientX - rect.left) / rect.width) * 2 - 1
   pointerNdc.y = -((clientY - rect.top) / rect.height) * 2 + 1
   raycaster.setFromCamera(pointerNdc, getActiveCamera())
-  const floorY = currentView === '3d' ? 0 : activeFloorWorldY()
+  const floorY = isPerspectiveSceneView() ? 0 : activeFloorWorldY()
   const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -floorY)
   const hit = new THREE.Vector3()
   if (!raycaster.ray.intersectPlane(plane, hit)) return null
@@ -3275,7 +3384,7 @@ function trySwapDraftWallSegmentAtClick(event: PointerEvent): boolean {
   // Nur Tab Wände + Preset. Erster Klick wählt die Wand (Farben/Mauerwerk);
   // Tausch nur bei erneutem Klick auf bereits markierte Wand.
   if (!isDraftWallModuleEdit() || !armedLibraryWallPresetId || libraryTab !== 'walls') return false
-  if (currentView !== '3d' && currentView !== 'front') return false
+  if (!(isPerspectiveSceneView() || currentView === 'front')) return false
   if (!canEditActiveBuildingNow()) return false
 
   const target = resolveWallLocalXForSegmentSwap(event)
@@ -3338,7 +3447,7 @@ function armedWallSplitSegmentCm(): number | null {
 }
 
 function wallSplitModeActive(): boolean {
-  if (currentView !== '3d' && currentView !== 'front') return false
+  if (!(isPerspectiveSceneView() || currentView === 'front')) return false
   if (armedWallSplitSegmentCm() == null) return false
   if (editor.selectedWallIds.length > 0 || editor.selectedOpenings.length > 0) return false
   if (editor.selectedSceneLightId || (editor.selectedSceneLightIds?.length ?? 0) > 0) return false
@@ -3350,7 +3459,7 @@ function clearWallSplitHover() {
   wallSplitHover = null
   clearWallDockSceneGhost()
   markViewportDirty()
-  if (currentView === '3d') render3dFrame()
+  if (isPerspectiveSceneView()) render3dFrame()
 }
 
 /** Orange Segment-Marker auf jeder Etage des Stapels (wandlokal, volle Höhe). */
@@ -3391,7 +3500,7 @@ function drawWallSplitGhost(stack: Wall[], range: { startCm: number; endCm: numb
     wallDockGhostGroup.add(group)
   }
   markViewportDirty()
-  if (currentView === '3d') render3dFrame()
+  if (isPerspectiveSceneView()) render3dFrame()
 }
 
 function resolveWallSplitTarget(event: { clientX: number; clientY: number }): {
@@ -5199,7 +5308,7 @@ function schedulePersistApp() {
 function bloomIsActive(): boolean {
   return (
     bloomSettings.enabled &&
-    (currentView === '3d' || currentView === 'front') &&
+    (currentView === '3d' || currentView === 'present' || currentView === 'front') &&
     currentRenderStyle !== 'line'
   )
 }
@@ -5294,6 +5403,7 @@ function applyPresentationMode() {
   syncPresentationModeUi()
   const line = currentRenderStyle === 'line'
   atmosphereSky.setVisible(atmosphereSkyWanted(line))
+  syncFrontUndergroundCap(getActiveCamera())
   const colors = sceneColorsForLighting()
   const bg = colors.background
   applySceneBackground(scene, renderer, bg)
@@ -5324,7 +5434,7 @@ function setEditPresentationEnabled(enabled: boolean) {
 let fogAppliedKey = ''
 
 function applyFogToScene() {
-  if (!fogSettings.enabled || currentView !== '3d') {
+  if (!fogSettings.enabled || !isPerspectiveSceneView()) {
     if (scene.fog) scene.fog = null
     fogAppliedKey = 'off'
     return
@@ -5361,7 +5471,7 @@ function renderLitSceneFrame(activeCamera: THREE.Camera) {
   const roomOcclusion = sceneLightRoomOcclusionActive()
   dirLightIndoor.visible = roomOcclusion
   if (roomOcclusion) {
-    dirLightIndoor.intensity = Math.max(0.28, hemiLight.intensity * 0.9)
+    dirLightIndoor.intensity = indoorSceneLightFillIntensity()
     dirLightIndoor.color.copy(dirLight.color)
   }
   renderer.autoClear = true
@@ -5380,6 +5490,7 @@ function renderLitSceneFrame(activeCamera: THREE.Camera) {
   }
   const line = currentRenderStyle === 'line'
   atmosphereSky.setVisible(atmosphereSkyWanted(line))
+  syncFrontUndergroundCap(activeCamera)
   // Licht-Modus: kein EnvMap-Bake (6 Cube-Renders + PMREM nach jedem Orbit-Ende ≈ 1 s Hänger).
   // Die vorhandene EnvMap bleibt gebunden; beim Verlassen wird neu gebacken.
   if (
@@ -5413,8 +5524,9 @@ function renderLitSceneFrame(activeCamera: THREE.Camera) {
   renderPass.camera = activeCamera
   if (bloomOn) {
     composer.renderToScreen = false
-    renderer.autoClear = true
     renderer.setRenderTarget(null)
+    const frontSkyBackdrop = renderFrontSkyBackdropIfNeeded(line)
+    renderer.autoClear = !frontSkyBackdrop
     renderer.render(scene, activeCamera)
     renderer.autoClear = false
     try {
@@ -5431,7 +5543,8 @@ function renderLitSceneFrame(activeCamera: THREE.Camera) {
       renderer.autoClear = true
     }
   } else {
-    renderer.autoClear = true
+    const frontSkyBackdrop = renderFrontSkyBackdropIfNeeded(line)
+    renderer.autoClear = !frontSkyBackdrop
     renderer.render(scene, activeCamera)
   }
 }
@@ -6314,11 +6427,12 @@ const studioTrimBandsList = document.querySelector<HTMLDivElement>('#studio-trim
 const studioTrimBandAdd = document.querySelector<HTMLButtonElement>('#studio-trim-band-add')!
 const viewBtnTop = document.querySelector<HTMLButtonElement>('#view-btn-top')!
 const viewBtnFront = document.querySelector<HTMLButtonElement>('#view-btn-front')!
+const viewBtnPresent = document.querySelector<HTMLButtonElement>('#view-btn-present')!
 const viewBtn3d = document.querySelector<HTMLButtonElement>('#view-btn-3d')!
 const viewBtnExport = document.querySelector<HTMLButtonElement>('#view-btn-export')!
 const viewBtnColor = document.querySelector<HTMLButtonElement>('#view-btn-color')!
 const viewBtnLine = document.querySelector<HTMLButtonElement>('#view-btn-line')!
-const viewModeButtons = [viewBtnTop, viewBtnFront, viewBtn3d, viewBtnExport]
+const viewModeButtons = [viewBtnTop, viewBtnFront, viewBtnPresent, viewBtn3d, viewBtnExport]
 const renderStyleButtons = [viewBtnColor, viewBtnLine]
 let currentRenderStyle: 'color' | 'line' = 'color'
 const navHelpButton = document.querySelector<HTMLButtonElement>('#nav-help-btn')!
@@ -6380,6 +6494,7 @@ const SHOWCASE_VIEW_MODE = !STAGE_VIEW_MODE && applyShowcaseViewModeFromUrl()
 const sunDateInput = document.querySelector<HTMLInputElement>('#sun-date')!
 const sunTimeInput = document.querySelector<HTMLInputElement>('#sun-time')!
 const sunAzimuthInput = document.querySelector<HTMLInputElement>('#sun-azimuth')!
+const sunElevationInput = document.querySelector<HTMLInputElement>('#sun-elevation')!
 const animPausedInput = document.querySelector<HTMLInputElement>('#anim-paused')!
 const animDayCycleInput = document.querySelector<HTMLInputElement>('#anim-day-cycle')!
 const animDayCycleMinutesInput = document.querySelector<HTMLInputElement>('#anim-day-cycle-minutes')!
@@ -6404,6 +6519,7 @@ const sunAmbientInput = document.querySelector<HTMLInputElement>('#sun-ambient')
 const sunShadowContrastInput = document.querySelector<HTMLInputElement>('#sun-shadow-contrast')!
 const sunShadowDensityInput = document.querySelector<HTMLInputElement>('#sun-shadow-density')!
 const sunAzimuthValue = document.querySelector<HTMLOutputElement>('#sun-azimuth-value')!
+const sunElevationValue = document.querySelector<HTMLOutputElement>('#sun-elevation-value')!
 const sunTimeValue = document.querySelector<HTMLOutputElement>('#sun-time-value')!
 const sunIntensityValue = document.querySelector<HTMLOutputElement>('#sun-intensity-value')!
 const sunSoftnessValue = document.querySelector<HTMLOutputElement>('#sun-softness-value')!
@@ -7603,7 +7719,10 @@ function setCompassYaw(yaw: number) {
   applyElevation()
   updateViewCompass()
   syncCladdingReceiveShadows()
-  if (currentView === '3d') {
+  if (currentView === 'present') {
+    syncPresentCamera()
+    markViewportDirty()
+  } else if (currentView === '3d') {
     orbitCameraToYaw(snapped, getAllWalls(state))
   } else if (currentView === 'top') {
     topViewYawDeg = snapped
@@ -7717,8 +7836,7 @@ function commitAllSceneLightsEnabled(enabled: boolean): void {
   if (next === state) {
     // Zustand schon so — trotzdem Auto blockieren und UI/Runtime angleichen.
     syncIndoorFillForSceneLights()
-    syncSceneLightRuntime({ scheduleShadows: true })
-    sceneLightRuntime.snapFadesToEnabled()
+    syncSceneLightRuntime({ scheduleShadows: false, snapFadeToEnabled: true })
     syncAllSceneLightsEnabledControl()
     renderLayerList()
     markViewportDirty()
@@ -7729,8 +7847,7 @@ function commitAllSceneLightsEnabled(enabled: boolean): void {
   editHistory.record(currentSnapshot())
   state = next
   syncIndoorFillForSceneLights()
-  syncSceneLightRuntime({ scheduleShadows: true })
-  sceneLightRuntime.snapFadesToEnabled()
+  syncSceneLightRuntime({ scheduleShadows: false, snapFadeToEnabled: true })
   schedulePersistApp()
   syncAllSceneLightsEnabledControl()
   renderLayerList()
@@ -10147,7 +10264,7 @@ async function addOpeningTemplateToSelection(
 
 function pickWallAtClient(clientX: number, clientY: number): { wallId: string; localX: number; localY: number } | null {
   // 2D-Front nutzt die 3D-Canvas (SVG ist display:none) — Raycast wie in 3D.
-  if (currentView !== '3d' && currentView !== 'front') return null
+  if (!(isPerspectiveSceneView() || currentView === 'front')) return null
 
   const rect = canvas.getBoundingClientRect()
   const ndc = new THREE.Vector2(
@@ -10422,7 +10539,7 @@ function syncGroundDepthForView() {
 function groundSizeForView(): { size: number; cx: number; cz: number } {
   const planSize = PLAN_VIEW_SIZE + PLAN_GRID
   const studio = sitePlanBounds()
-  const extra = currentView === '3d' ? SHADOW_GROUND_MAX_LENGTH : 0
+  const extra = isPerspectiveSceneView() ? SHADOW_GROUND_MAX_LENGTH : 0
   if (!studio) {
     const frustumSpan = currentView === 'top' ? planFrustumSpan() : 0
     const base = planSize + GROUND_MARGIN * 2
@@ -10511,7 +10628,7 @@ function syncGroundPuddles() {
   const { cx, cz } = groundSizeForView()
   groundPuddleRuntime.sync({
     enabled: puddleSettings.enabled,
-    view3d: currentView === '3d',
+    view3d: isPerspectiveSceneView(),
     orbitLite: orbitLite || orbitLitePointer,
     count: puddleSettings.count,
     size: puddleSettings.size,
@@ -10532,10 +10649,20 @@ function buildingSpanForStudioFloor(): number {
 
 /** Flacher Bühnenboden + optional Kugel — Sichtbarkeit je Umgebung und Ansicht. */
 function syncStageMeshVisibility() {
-  const showStage = currentView !== 'front'
   const studio = isStudioStage(stageEnvironment)
-  ground.visible = showStage
-  studioSphere.visible = showStage && studio
+  const line = currentRenderStyle === 'line'
+  if (currentView === 'front') {
+    ground.visible = false
+    studioSphere.visible = false
+    return
+  }
+  if (currentView === 'present') {
+    ground.visible = true
+    studioSphere.visible = studio
+    return
+  }
+  ground.visible = true
+  studioSphere.visible = studio
 }
 
 function getActiveCamera(): THREE.Camera {
@@ -10602,8 +10729,6 @@ function applyFrontCameraView(opts?: {
 
 function syncFrontView() {
   applyFrontCameraView()
-  ground.visible = false
-  studioSphere.visible = false
   canvas.style.left = ''
   canvas.style.top = ''
   canvas.style.width = ''
@@ -10612,6 +10737,10 @@ function syncFrontView() {
   const height = viewportRenderHeight()
   applyRendererPixelRatio()
   renderer.setSize(width, height)
+  atmosphereSky.setVisible(atmosphereSkyWanted())
+  syncFrontUndergroundCap(frontCamera)
+  viewport.style.background = sceneColorsForLighting().background
+  syncStageMeshVisibility()
   markViewportDirty()
 }
 
@@ -10636,20 +10765,33 @@ function applyTodaySunDate() {
   )
 }
 
+function syncSunAngleSlidersFromSettings(): void {
+  sunAzimuthInput.value = String(Math.round(sunSettings.azimuth))
+  sunAzimuthValue.textContent = `${Math.round(sunSettings.azimuth)}°`
+  const elevDeg = sunElevationDegFromSettings(sunSettings)
+  const elevStep = 0.5
+  const elevClamped = Math.min(
+    SUN_ELEVATION_SLIDER_MAX_DEG,
+    Math.max(SUN_ELEVATION_SLIDER_MIN_DEG, elevDeg),
+  )
+  const elevRounded = Math.round(elevClamped / elevStep) * elevStep
+  sunElevationInput.value = String(elevRounded)
+  sunElevationValue.textContent = `${elevRounded.toFixed(1)}°`
+}
+
 function syncSunUi() {
   sunSettings = syncSunSettingsFromSolar(sunSettings, { applySolarLook: false })
   sunDateInput.value = dateInputValue(sunSettings.month, sunSettings.day)
   sunTimeInput.min = '0'
   sunTimeInput.max = '24'
   sunTimeInput.value = String(sunSettings.timeOfDay)
-  sunAzimuthInput.value = String(Math.round(sunSettings.azimuth))
+  syncSunAngleSlidersFromSettings()
   sunIntensityInput.value = String(sunSettings.intensity)
   sunSoftnessInput.value = String(sunSettings.shadowSoftness)
   sunColorTempInput.value = String(sunSettings.colorTemperature)
   sunAmbientInput.value = String(sunSettings.ambient)
   sunShadowContrastInput.value = String(sunSettings.shadowContrast)
   sunShadowDensityInput.value = String(sunSettings.shadowDensity)
-  sunAzimuthValue.textContent = `${Math.round(sunSettings.azimuth)}°`
   sunTimeValue.textContent = formatTimeOfDay(sunSettings.timeOfDay)
   sunIntensityValue.textContent = sunSettings.intensity.toFixed(1)
   sunSoftnessValue.textContent = sunSettings.shadowSoftness.toFixed(1)
@@ -10715,7 +10857,7 @@ function syncCladdingReceiveShadows() {
     facade.setCladdingReceiveShadows(false)
     return
   }
-  if (currentView === '3d') {
+  if (isPerspectiveSceneView()) {
     facade.setCladdingReceiveShadows(true)
     return
   }
@@ -10740,7 +10882,7 @@ function applyPcssSoftnessLive() {
     scene,
   )
   markViewportDirty()
-  if (currentView === '3d') render3dFrame()
+  if (isPerspectiveSceneView()) render3dFrame()
   else if (currentView === 'front') renderLitSceneFrame(frontCamera)
   else if (currentView === 'top') renderLitSceneFrame(topCamera)
 }
@@ -10989,14 +11131,14 @@ function bootstrapSceneLighting(): Promise<void> {
 
 function sceneLightRoomOcclusionActive(): boolean {
   if (presentationMode !== 'render') return false
-  if (currentView !== '3d' && currentView !== 'front') return false
+  if (!(isPerspectiveSceneView() || currentView === 'front')) return false
   return normalizeSceneLights(state.sceneLights).some((item) => item.enabled)
 }
 
 /** Okkluder-Meshes behalten solange Lichter existieren — kein Dawn/Dusk-Rebuild-Hitch. */
 function sceneLightOccludersWanted(): boolean {
   if (presentationMode !== 'render') return false
-  if (currentView !== '3d' && currentView !== 'front') return false
+  if (!(isPerspectiveSceneView() || currentView === 'front')) return false
   return normalizeSceneLights(state.sceneLights).length > 0
 }
 
@@ -11028,7 +11170,22 @@ function sceneLightsActive(): boolean {
   return normalizeSceneLights(state.sceneLights).some((item) => item.enabled)
 }
 
-function syncSceneLightRuntime(opts?: { flushShadows?: boolean; scheduleShadows?: boolean }): void {
+/**
+ * Gezählte Punkt-/Spotlichter im Shader konstant halten — Ein/Aus ohne Programm-Rebuild (~5 s UI-Freeze).
+ * Vorrats-Reserven (`padSpareLights`) nur im Licht-Modus (v2.0.260); hier nur inaktive Slots mit Intensität 0.
+ * v2.0.335 hatte `stableLightCount` nur bei Blaulicht — Ausblenden normaler Lichter löste Rebuild aus.
+ */
+function sceneLightShaderCountStable(
+  lights: ReturnType<typeof normalizeSceneLights>,
+): boolean {
+  return lightEditMode || lights.length > 0
+}
+
+function syncSceneLightRuntime(opts?: {
+  flushShadows?: boolean
+  scheduleShadows?: boolean
+  snapFadeToEnabled?: boolean
+}): void {
   // Licht-Modus: keine Cube-Shadows — sonst stocken Orbit, Zoom und jedes CRUD.
   const roomOcclusion = lightEditMode ? false : sceneLightRoomOcclusionActive()
   const lightsActive = sceneLightsActive()
@@ -11042,11 +11199,11 @@ function syncSceneLightRuntime(opts?: { flushShadows?: boolean; scheduleShadows?
     pointShadowMapSize: frontView ? POINT_SHADOW_MAP_FRONT : 2048,
     showMarkers: lightEditMode,
     bloomActive: bloomIsActive(),
-    // Konstante Lichtanzahl nur im Licht-Modus oder bei Blaulicht-Blinken — nicht für jedes statische Licht.
-    stableLightCount: lightEditMode || sceneLightsNeedLiveFrames(lights),
+    stableLightCount: sceneLightShaderCountStable(lights),
     // Vorrats-Reserven nur im Licht-Modus (DPR 1). Im Render kostet jedes gezählte Licht pro
     // Fragment in Haupt- und Transmission-Pass — 4 Reserven ≈ 5–12 ms/Frame beim Orbit (v2.0.260).
     padSpareLights: lightEditMode,
+    snapFadeToEnabled: opts?.snapFadeToEnabled === true,
   })
   if (!facadeReady) return
   // Okkluder an Existenz der Lichter koppeln (nicht an enabled) — Dämmerung ohne Mesh-Rebuild.
@@ -11080,11 +11237,16 @@ function scheduleSoftPersistLeaves(): void {
   }, 600)
 }
 
+/** Schwaches Innen-Fill nur für Punktlicht-Okkluder — kein 0,28-Floor (v2.0.352). */
+function indoorSceneLightFillIntensity(): number {
+  return THREE.MathUtils.clamp(hemiLight.intensity * 0.05, 0, 0.07)
+}
+
 function syncIndoorFillForSceneLights(): void {
   // Immer sichtbar (Intensität 0 wenn aus) — kein NUM_DIR_LIGHTS-Shader-Wechsel bei Dämmerung.
   if (sceneLightRoomOcclusionActive()) {
     dirLightIndoor.visible = true
-    dirLightIndoor.intensity = Math.max(0.28, hemiLight.intensity * 0.9)
+    dirLightIndoor.intensity = indoorSceneLightFillIntensity()
     dirLightIndoor.color.copy(dirLight.color)
   } else {
     dirLightIndoor.visible = true
@@ -11317,7 +11479,8 @@ function applySunLighting(opts?: {
   /** Shadow-Bake trotz Orbit-Lite-Hold (nach Verschieben/Rebuild). */
   forceShadowBake?: boolean
 }) {
-  setFacadeShadeParams(facadeShadeParamsFromSun(sunSettings))
+  const facadeShade = facadeShadeParamsFromSun(sunSettings)
+  setFacadeShadeParams(facadeShade)
   syncCladdingReceiveShadows()
   const preCelestial = resolveCelestialState(sunSettings)
   const live = opts?.live === true
@@ -11416,7 +11579,7 @@ function applySunLighting(opts?: {
   // Immer visible (Intensität 0 wenn aus) — kein Shader-NUM_DIR_LIGHTS-Wechsel.
   if (sceneLightRoomOcclusionActive()) {
     dirLightIndoor.visible = true
-    dirLightIndoor.intensity = Math.max(0.28, hemiLight.intensity * 0.9)
+    dirLightIndoor.intensity = indoorSceneLightFillIntensity()
     dirLightIndoor.color.copy(dirLight.color)
   } else {
     dirLightIndoor.visible = true
@@ -11534,8 +11697,12 @@ function applyState(nextState: FacadeState, nextEditor = editor) {
     facade.setState(state, { rebuildBuildingIds: [] })
     facade.setEditor(editor)
     syncIndoorFillForSceneLights()
+    const enabledOnly = sceneLightsDiffersOnlyByEnabled(prevState, nextState)
     // Im Licht-Modus keine Shadow-Bakes (CRUD/Drag bleibt flüssig).
-    syncSceneLightRuntime({ scheduleShadows: !lightEditMode })
+    syncSceneLightRuntime({
+      scheduleShadows: !lightEditMode && !enabledOnly,
+      snapFadeToEnabled: enabledOnly,
+    })
     syncLeafRuntime()
     if (currentView === 'front') syncFrontView()
     if (currentView === 'export') {
@@ -11641,7 +11808,11 @@ function applyState(nextState: FacadeState, nextEditor = editor) {
   } else if (lightsChanged) {
     // Licht-only (Fallback): kein Sonnen-/EnvMap-/Boden-Pfad; Schatten verzögert.
     syncIndoorFillForSceneLights()
-    syncSceneLightRuntime({ scheduleShadows: true })
+    const enabledOnly = sceneLightsDiffersOnlyByEnabled(prevState, state)
+    syncSceneLightRuntime({
+      scheduleShadows: !enabledOnly,
+      snapFadeToEnabled: enabledOnly,
+    })
     syncLeafRuntime()
   } else {
     syncSiteTransform()
@@ -21553,7 +21724,7 @@ canvas.addEventListener('pointerdown', (event) => {
   if (hit?.sceneLightId) {
     const light = sceneLightById(state, hit.sceneLightId)
     selectSceneLight(hit.sceneLightId, additive || event.shiftKey)
-    if (light && (currentView === '3d' || currentView === 'front')) {
+    if (light && (isPerspectiveSceneView() || currentView === 'front')) {
       drag3dSceneLight = {
         lightId: hit.sceneLightId,
         planeY: light.y,
@@ -22351,6 +22522,7 @@ function applyElevation() {
   resetFrontNav()
   svgView.setElevation(currentElevation)
   if (currentView === 'front') syncFrontView()
+  else if (currentView === 'present') syncPresentCamera()
   applySunLighting({ updateShadowMap: true })
   updateViewCompass()
 }
@@ -22363,6 +22535,8 @@ function updateViewCompass() {
     const lookX = controls.target.x - camera.position.x
     const lookZ = controls.target.z - camera.position.z
     yaw = viewedFacadeYaw(lookX, lookZ)
+  } else if (currentView === 'present') {
+    yaw = presentCompassYaw()
   } else if (currentView === 'top') {
     yaw = topViewYawDeg
   } else if (currentElevation.kind === 'yaw') {
@@ -22408,8 +22582,8 @@ function setView(mode: AppView) {
     exportChromeSnapshot = null
   }
 
-  // Kompassausrichtung 3D ↔ 2D-Aufriss beibehalten.
-  if (previousView === '3d' && mode === 'front') {
+  // Kompassausrichtung 3D ↔ 2D-Aufriss / Fassade beibehalten.
+  if (previousView === '3d' && (mode === 'front' || mode === 'present')) {
     const lookX = controls.target.x - camera.position.x
     const lookZ = controls.target.z - camera.position.z
     currentElevation = { kind: 'yaw', yaw: snapYawTo45(viewedFacadeYaw(lookX, lookZ)) }
@@ -22425,10 +22599,12 @@ function setView(mode: AppView) {
   }
   const app = document.getElementById('app')
   viewport.classList.toggle('view-front', mode === 'front')
+  viewport.classList.toggle('view-present', mode === 'present')
   viewport.classList.toggle('view-3d', mode === '3d')
   viewport.classList.toggle('view-top', mode === 'top')
   viewport.classList.toggle('view-export', mode === 'export')
   app?.classList.toggle('view-front', mode === 'front')
+  app?.classList.toggle('view-present', mode === 'present')
   app?.classList.toggle('view-3d', mode === '3d')
   app?.classList.toggle('view-top', mode === 'top')
   app?.classList.toggle('view-export', mode === 'export')
@@ -22442,7 +22618,7 @@ function setView(mode: AppView) {
   exportSidebar.hidden = mode !== 'export'
   uiRightMain.hidden = mode === 'export'
 
-  if (mode === 'front' || mode === '3d' || mode === 'top') {
+  if (mode === 'front' || mode === 'present' || mode === '3d' || mode === 'top') {
     applySceneAppearance()
     setFacadeMeshesVisible(true)
   }
@@ -22465,7 +22641,7 @@ function setView(mode: AppView) {
     updateGroundPlane()
   }
 
-  if (mode === 'front' || mode === '3d' || mode === 'top') {
+  if (mode === 'front' || mode === 'present' || mode === '3d' || mode === 'top') {
     resizeCanvasView()
   }
 
@@ -22476,15 +22652,24 @@ function setView(mode: AppView) {
 
   updateViewCompass()
 
+  if (mode === 'present') {
+    updateGroundPlane()
+    ensureDefaultElevation()
+    syncPresentCamera()
+  }
+
   if (mode === '3d') {
     updateGroundPlane()
     if (!cameraInitialized) {
       initCameraTarget()
       focusCameraExterior(getAllWalls(state))
-    } else if (previousView === 'front' && currentElevation.kind === 'yaw') {
-      // Aufriss → 3D: gleiche Fassadenrichtung beibehalten (Abstand behalten).
+    } else if (
+      (previousView === 'front' || previousView === 'present') &&
+      currentElevation.kind === 'yaw'
+    ) {
+      // Aufriss/Fassade → 3D: gleiche Fassadenrichtung beibehalten (Abstand behalten).
       orbitCameraToYaw(currentElevation.yaw, getAllWalls(state))
-    } else if (previousView !== '3d' && previousView !== 'front') {
+    } else if (previousView !== '3d' && previousView !== 'front' && previousView !== 'present') {
       focusCameraExterior(getAllWalls(state))
     }
   }
@@ -22517,7 +22702,7 @@ function applyLineStrokeScale() {
   facade.setLineStrokeScale(scale)
   floorPlanView.setLineStrokeScale(scale)
   rebuildFloorPlanOverlay()
-  if (currentView === '3d') {
+  if (isPerspectiveSceneView()) {
     facade.setLineResolution(viewportRenderWidth(), viewportRenderHeight())
   }
 }
@@ -22534,6 +22719,9 @@ viewBtnTop.addEventListener('click', () => {
 })
 viewBtnFront.addEventListener('click', () => {
   setView('front')
+})
+viewBtnPresent.addEventListener('click', () => {
+  setView('present')
 })
 viewBtn3d.addEventListener('click', () => {
   setView('3d')
@@ -23010,7 +23198,7 @@ async function toggleLightEditMode(): Promise<void> {
   } finally {
     lightModeTransition = false
     markViewportDirty()
-    if (currentView === '3d') render3dFrame()
+    if (isPerspectiveSceneView()) render3dFrame()
     else if (currentView === 'front') renderLitSceneFrame(frontCamera)
     else if (currentView === 'top') renderLitSceneFrame(topCamera)
     hideLightModeLoading()
@@ -23224,7 +23412,7 @@ function syncAutoSceneLightsWithSun(
   // Manuelles Alle ein-/ausblenden hat Vorrang vor Auto-Sonne und Schedule.
   if (sceneLightsManualHold !== null) return
   const celestial = resolveCelestialState(sunSettings)
-  const night = !celestial.sunAboveHorizon
+  const night = autoSceneLightsWantNight(celestial.sun.elevationRad, lastAutoLightNight)
   const autoSun = sunSettings.autoSceneLightsWithSun !== false
   const lights = normalizeSceneLights(state.sceneLights)
   if (lights.length === 0) {
@@ -23252,7 +23440,9 @@ function syncAutoSceneLightsWithSun(
   if (next === state) return
   state = next
   syncIndoorFillForSceneLights()
-  syncSceneLightRuntime({ scheduleShadows: true })
+  // Kein sofortiger Punktlicht-Cube-Bake — debounced Sonnen-Shadow reicht für den ersten Übergang.
+  syncSceneLightRuntime({ scheduleShadows: false })
+  scheduleShadowMapUpdate({ reflections: false })
   schedulePersistApp()
   if (opts?.updateLayerList !== false) renderUi({ skipLayerList: false })
   markViewportDirty()
@@ -23286,8 +23476,7 @@ function tickDayCycle(now: number, dtMs: number): boolean {
     dayCycleUiAccumMs = 0
     sunTimeInput.value = String(sunSettings.timeOfDay)
     sunTimeValue.textContent = formatTimeOfDay(sunSettings.timeOfDay)
-    sunAzimuthInput.value = String(Math.round(sunSettings.azimuth))
-    sunAzimuthValue.textContent = `${Math.round(sunSettings.azimuth)}°`
+    syncSunAngleSlidersFromSettings()
     sunColorTempInput.value = String(sunSettings.colorTemperature)
     sunColorTempValue.textContent = `${Math.round(sunSettings.colorTemperature)} K`
     sunSoftnessInput.value = String(sunSettings.shadowSoftness)
@@ -23435,8 +23624,7 @@ function smoothstep01(t: number): number {
 function syncSunPathPlaybackUi() {
   sunTimeInput.value = String(sunSettings.timeOfDay)
   sunTimeValue.textContent = formatTimeOfDay(sunSettings.timeOfDay)
-  sunAzimuthInput.value = String(Math.round(sunSettings.azimuth))
-  sunAzimuthValue.textContent = `${Math.round(sunSettings.azimuth)}°`
+  syncSunAngleSlidersFromSettings()
   sunColorTempInput.value = String(sunSettings.colorTemperature)
   sunColorTempValue.textContent = `${Math.round(sunSettings.colorTemperature)} K`
   sunSoftnessInput.value = String(sunSettings.shadowSoftness)
@@ -23745,8 +23933,7 @@ bindSunSlider(
     stopSunPathAnimation(false)
     sunSettings.timeOfDay = value
     sunSettings = syncSunSettingsFromSolar(sunSettings, { applySolarLook: true })
-    sunAzimuthInput.value = String(Math.round(sunSettings.azimuth))
-    sunAzimuthValue.textContent = `${Math.round(sunSettings.azimuth)}°`
+    syncSunAngleSlidersFromSettings()
     sunColorTempInput.value = String(sunSettings.colorTemperature)
     sunColorTempValue.textContent = `${Math.round(sunSettings.colorTemperature)} K`
     sunSoftnessInput.value = String(sunSettings.shadowSoftness)
@@ -23766,6 +23953,17 @@ bindSunSlider(
     sunSettings.azimuth = ((value % 360) + 360) % 360
   },
   (value) => `${Math.round(value)}°`,
+)
+
+bindSunSlider(
+  sunElevationInput,
+  sunElevationValue,
+  (value) => {
+    stopSunPathAnimation(false)
+    pauseDayCycleForManualSunAdjust()
+    sunSettings.elevationRad = elevationRadFromSliderDeg(value)
+  },
+  (value) => `${value.toFixed(1)}°`,
 )
 
 bindSunSlider(
@@ -23845,15 +24043,17 @@ function applySceneAppearance(override?: Partial<SceneAppearance>) {
       }
     : sceneColorsForLighting()
   const bg = colors.background
-  const groundColor = GROUND_STONE_GRAY
+  const studio = isStudioStage(stageEnvironment)
+  const groundColor = line ? '#ffffff' : studio ? GROUND_STONE_GRAY : colors.ground
   const skyColor = colors.sky
   groundMat.color.set(groundColor)
-  studioSphereMat.color.set(isStudioStage(stageEnvironment) ? bg : groundColor)
+  studioSphereMat.color.set(studio ? bg : groundColor)
   setGlassSkyReflectionColor(skyColor)
   setGlassGroundReflectionColor(groundColor)
   atmosphereSky.setGroundAlbedo(groundColor)
   applySceneBackground(scene, renderer, bg)
   atmosphereSky.setVisible(atmosphereSkyWanted(line))
+  syncFrontUndergroundCap(getActiveCamera())
   viewport.style.background = bg
   svgContainer.style.background = bg
   applyStageEnvironmentVisuals()
@@ -24087,7 +24287,7 @@ function commitLodSettings(next: LodSettings) {
   facade.setLodSettings(lodSettings)
   syncLodUi()
   persistApp()
-  if (currentView === '3d') {
+  if (isPerspectiveSceneView()) {
     facade.updatePerformanceLod(camera, viewportRenderHeight())
     render3dFrame()
   }
@@ -24144,7 +24344,7 @@ function commitBloomPatch(patch: Partial<BloomSettings>) {
   persistApp()
   syncSceneLightRuntime()
   markViewportDirty()
-  if (currentView === '3d') render3dFrame()
+  if (isPerspectiveSceneView()) render3dFrame()
   else if (currentView === 'front') renderLitSceneFrame(frontCamera)
 }
 
@@ -24154,7 +24354,7 @@ function commitFogPatch(patch: Partial<FogSettings>) {
   syncFogUi()
   persistApp()
   markViewportDirty()
-  if (currentView === '3d') render3dFrame()
+  if (isPerspectiveSceneView()) render3dFrame()
 }
 
 function syncPuddleUi() {
@@ -24176,25 +24376,11 @@ function syncPuddleUi() {
 
 function commitPuddlePatch(patch: Partial<GroundPuddleSettings>) {
   puddleSettings = normalizeGroundPuddleSettings({ ...puddleSettings, ...patch })
-  // #region agent log
-  fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'c6b426' },
-    body: JSON.stringify({
-      sessionId: 'c6b426',
-      hypothesisId: 'A',
-      location: 'main.ts:commitPuddlePatch',
-      message: 'puddle patch committed',
-      data: { patch, puddleSettings, currentView },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {})
-  // #endregion
   syncPuddleUi()
   syncGroundPuddles()
   persistApp()
   markViewportDirty()
-  if (currentView === '3d') render3dFrame()
+  if (isPerspectiveSceneView()) render3dFrame()
 }
 
 /** Slider/Num: Live-Preview bei input, History-Commit bei change. */
@@ -24536,7 +24722,7 @@ lodPresetQualityBtn.addEventListener('click', () => {
 
 lodForceHighBtn.addEventListener('click', () => {
   facade.forceAllHighDetail()
-  if (currentView === '3d') render3dFrame()
+  if (isPerspectiveSceneView()) render3dFrame()
 })
 
 lodSimplifyFacadeInput.addEventListener('change', () => {
@@ -24783,14 +24969,14 @@ function resizeCanvasView() {
     syncTopView()
     return
   }
-  if (currentView === '3d') {
+  if (currentView === '3d' || currentView === 'present') {
     canvas.style.left = ''
     canvas.style.top = ''
     canvas.style.width = ''
     canvas.style.height = ''
     syncStageMeshVisibility()
     syncGroundDepthForView()
-    syncCameraDistanceLimits()
+    if (currentView === '3d') syncCameraDistanceLimits()
     const width = viewportRenderWidth()
     const height = viewportRenderHeight()
     applyRendererPixelRatio()
@@ -24801,12 +24987,13 @@ function resizeCanvasView() {
     if (currentRenderStyle === 'line') {
       facade.setLineResolution(width, height)
     }
+    if (currentView === 'present') syncPresentCamera()
     markViewportDirty()
   }
 }
 
 window.addEventListener('resize', () => {
-  if (currentView === 'front' || currentView === '3d' || currentView === 'top') {
+  if (currentView === 'front' || currentView === 'present' || currentView === '3d' || currentView === 'top') {
     resizeCanvasView()
   }
   positionToolbar()
@@ -24929,14 +25116,10 @@ function animate() {
   }
 
   const fadingLights = !paused && sceneLightRuntime.tickFades(dayDt, animClock)
-  const sceneLightAnim =
-    !paused && sceneLightsNeedLiveFrames(normalizeSceneLights(state.sceneLights))
+  const sceneLightsNorm = normalizeSceneLights(state.sceneLights)
+  const sceneLightAnim = !paused && sceneLightsNeedLiveFrames(sceneLightsNorm)
   if (sceneLightAnim) {
-    sceneLightRuntime.tickAnimations(
-      animClock,
-      normalizeSceneLights(state.sceneLights),
-      smoothedFrameMs,
-    )
+    sceneLightRuntime.tickAnimations(animClock, sceneLightsNorm, smoothedFrameMs)
   }
   const sceneLightLive = fadingLights || sceneLightAnim
   if (sceneLightLive) viewportDirty = true
@@ -24969,8 +25152,8 @@ function animate() {
   let perfT0 = 0
   if (perfOn) perfT0 = markPerfFrameStart()
   let perfRendered = false
-  if (currentView === '3d') {
-    if (facade.consumeWallLabelsShadowDirty()) {
+  if (currentView === '3d' || currentView === 'present') {
+    if (currentView === '3d' && facade.consumeWallLabelsShadowDirty()) {
       if (orbitLite || orbitLitePointer) {
         deferOrbitShadowBake({ sun: true })
       } else {
@@ -24982,8 +25165,9 @@ function animate() {
       return
     }
     viewportDirty = false
-    if (isGalleryModeActive()) syncGalleryNavigationFeel()
+    if (currentView === '3d' && isGalleryModeActive()) syncGalleryNavigationFeel()
     if (
+      currentView === '3d' &&
       lodSettings.enabled &&
       !orbitLite &&
       !openingMotionPlayback &&
@@ -24991,6 +25175,7 @@ function animate() {
     ) {
       facade.updatePerformanceLod(camera, viewportRenderHeight())
     }
+    if (currentView === 'present') syncPresentCamera()
     render3dFrame()
     perfRendered = true
     updateViewCompass()

@@ -120,6 +120,7 @@
           <div class="view-mode-toggle" role="group" aria-label="Ansicht">
             <button type="button" class="preset-btn view-mode-btn" data-chrome="top" id="view-btn-top" hidden>Oben</button>
             <button type="button" class="preset-btn view-mode-btn active" data-chrome="front" id="view-btn-front">2D</button>
+            <button type="button" class="preset-btn view-mode-btn" data-chrome="present" id="view-btn-present" title="Perspektive: Gebäude zentriert, Kompass wie 2D">Fassade</button>
             <button type="button" class="preset-btn view-mode-btn" data-chrome="3d" id="view-btn-3d">3D</button>
             <button type="button" class="preset-btn view-mode-btn" data-chrome="export" id="view-btn-export" title="Export-Modus: Ansichten nebeneinander">Export</button>
           </div>
@@ -2140,14 +2141,21 @@
                 </label>
                 <input id="sun-time" type="range" min="0" max="23.9833333333" step="0.0166666667" value="13.25" />
                 <p class="toolbar-hint compact-hint">0:00–23:59 — auch Nacht/Dämmerung; realistischer Sonnen- und Mondstand.</p>
-                <p class="toolbar-hint compact-hint">Realistischer Sonnenstand für das gewählte Datum (Berlin) — überschreibt Winkel, Weichheit, Intensität und Farbtemperatur.</p>
+                <p class="toolbar-hint compact-hint">Realistischer Sonnenstand für das gewählte Datum (Berlin) — überschreibt beide Sonnenwinkel, Weichheit, Intensität und Farbtemperatur.</p>
 
                 <label class="slider-label">
-                  <span>Sonnenwinkel</span>
+                  <span>Sonnenwinkel (Himmelsrichtung)</span>
                   <output id="sun-azimuth-value">210°</output>
                 </label>
                 <input id="sun-azimuth" type="range" min="0" max="360" step="1" value="210" />
-                <p class="toolbar-hint compact-hint" id="sun-azimuth-hint">0°=N, 90°=O. Manuell verstellbar; schaltet den Tageszyklus aus. Datum/Tageszeit setzt den realistischen Stand wieder.</p>
+                <p class="toolbar-hint compact-hint" id="sun-azimuth-hint">Horizontal am Himmelskreis: 0°=N, 90°=O. Manuell; schaltet den Tageszyklus aus. Datum/Tageszeit setzt wieder.</p>
+
+                <label class="slider-label">
+                  <span>Sonnenwinkel (Höhe)</span>
+                  <output id="sun-elevation-value">35°</output>
+                </label>
+                <input id="sun-elevation" type="range" min="-12" max="70" step="0.5" value="35" />
+                <p class="toolbar-hint compact-hint" id="sun-elevation-hint">Vertikal über dem Horizont: 0°=flach, höher=Mittagshöhe. Manuell; Datum/Tageszeit setzt wieder.</p>
 
                 <label class="slider-label">
                   <span>Sonnenlicht</span>

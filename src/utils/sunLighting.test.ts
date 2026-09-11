@@ -14,7 +14,9 @@ import {
   shadowSoftnessFromElevation,
   sunFromTargetDirection,
   sunRayDirectionFromSettings,
+  elevationRadFromSliderDeg,
   syncSunSettingsFromSolar,
+  sunElevationDegFromSettings,
   TIME_OF_DAY_MAX,
 } from './sunLighting'
 import { facadeOutward } from '../studio/elevation'
@@ -44,6 +46,17 @@ describe('expandBoxByGroundShadow', () => {
     const out = expandBoxByGroundShadow(box, ray, 0, 50)
     const dz = 50 / Math.SQRT2
     expect(out.min.z).toBeCloseTo(-50 - dz, 5)
+  })
+})
+
+describe('sun elevation slider helpers', () => {
+  it('roundtrips Grad ↔ elevationRad', () => {
+    const rad = elevationRadFromSliderDeg(42)
+    expect(sunElevationDegFromSettings({ ...DEFAULT_SUN_SETTINGS, elevationRad: rad })).toBeCloseTo(42, 5)
+  })
+
+  it('klemmt unter Horizont', () => {
+    expect(elevationRadFromSliderDeg(-90)).toBeCloseTo(elevationRadFromSliderDeg(-12), 8)
   })
 })
 

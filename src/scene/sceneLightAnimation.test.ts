@@ -10,6 +10,7 @@ import {
   blaulichtPhaseOffsetsById,
   normalizeSceneLightAnimation,
   sceneLightAnimationFactor,
+  sceneLightAnimationFactorWhenLit,
   sceneLightsNeedLiveFrames,
 } from './sceneLightAnimation'
 
@@ -63,6 +64,12 @@ describe('sceneLightAnimation', () => {
     // Versatz: Licht B ist hell wenn A dunkel (Mitte des Zyklus)
     expect(sceneLightAnimationFactor('blaulicht', 0, map.get('a'))).toBe(1)
     expect(sceneLightAnimationFactor('blaulicht', 0, map.get('b'))).toBe(BLAULICHT_DARK_FACTOR)
+  })
+
+  it('kein Blink-Muster beim Ausblenden (enabled aus)', () => {
+    expect(sceneLightAnimationFactorWhenLit(false, 'blaulicht', 0)).toBe(1)
+    expect(sceneLightAnimationFactorWhenLit(false, 'blaulicht', 200)).toBe(1)
+    expect(sceneLightAnimationFactorWhenLit(true, 'blaulicht', 200)).toBe(BLAULICHT_DARK_FACTOR)
   })
 
   it('erkennt Live-Frames nur bei aktivem Blinken', () => {

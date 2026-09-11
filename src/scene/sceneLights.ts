@@ -232,6 +232,23 @@ function stateWithoutSceneLights(state: FacadeState): unknown {
 }
 
 /** True wenn sich nur `sceneLights` / `sceneLightGroups` geändert haben — kein Grundriss-/Fassaden-Pfad. */
+/** Nur `enabled` geändert (gleiche Lichter, sonst identisch) — kein Shadow-Bake, Fade sofort. */
+export function sceneLightsDiffersOnlyByEnabled(prev: FacadeState, next: FacadeState): boolean {
+  const prevLights = normalizeSceneLights(prev.sceneLights)
+  const nextLights = normalizeSceneLights(next.sceneLights)
+  if (prevLights.length !== nextLights.length) return false
+  let enabledChanged = false
+  for (const n of nextLights) {
+    const p = prevLights.find((item) => item.id === n.id)
+    if (!p) return false
+    if (p.enabled !== n.enabled) enabledChanged = true
+    const { enabled: _pe, ...pr } = p
+    const { enabled: _ne, ...nr } = n
+    if (JSON.stringify(pr) !== JSON.stringify(nr)) return false
+  }
+  return enabledChanged
+}
+
 export function facadeStateDiffersOnlyBySceneLights(
   prev: FacadeState,
   next: FacadeState,

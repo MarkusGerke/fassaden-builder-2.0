@@ -113,6 +113,24 @@ export const DEFAULT_SUN_ELEVATION_RAD = solarPosition(
   DEFAULT_SUN_TIME_OF_DAY,
 ).elevationRad
 
+/** UI-Slider Sonnenhöhe (Grad über Horizont; negativ = knapp unter Horizont). */
+export const SUN_ELEVATION_SLIDER_MIN_DEG = -12
+export const SUN_ELEVATION_SLIDER_MAX_DEG = 70
+
+export function sunElevationDegFromSettings(settings: SunSettings): number {
+  const rad = Number.isFinite(settings.elevationRad) ? settings.elevationRad : DEFAULT_SUN_ELEVATION_RAD
+  return THREE.MathUtils.radToDeg(rad)
+}
+
+export function elevationRadFromSliderDeg(deg: number): number {
+  const clamped = THREE.MathUtils.clamp(
+    deg,
+    SUN_ELEVATION_SLIDER_MIN_DEG,
+    SUN_ELEVATION_SLIDER_MAX_DEG,
+  )
+  return THREE.MathUtils.degToRad(clamped)
+}
+
 export const DEFAULT_SUN_SETTINGS: SunSettings = {
   azimuth: DEFAULT_SUN_AZIMUTH,
   elevationRad: DEFAULT_SUN_ELEVATION_RAD,
@@ -195,6 +213,8 @@ export const SHADOW_LAYER_EXTERIOR = 0
 export const SHADOW_LAYER_INTERIOR = 1
 /** Nur diese Layer-Objekte erzeugen Bloom (Glühbirnen-Marker) — nicht die ganze Szene. */
 export const BLOOM_LAYER = 2
+/** Takram-Himmel/Sterne — im 2D-Aufriss per Perspektiv-Pass, Ortho zeigt sonst nur Flächenfarbe. */
+export const ATMOSPHERE_SKY_LAYER = 4
 /**
  * Nur Cube-Shadow der Bibliotheks-Punktlichter (nicht Sonne, nicht Hauptkamera).
  * Unsichtbare Raum-Dichtungen: keine Extra-Flächen im Bild, kein Z-Fighting.

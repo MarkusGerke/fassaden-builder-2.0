@@ -30,7 +30,7 @@ Lichter drehen mit dem Grundstück (`siteOffset`).
 - **Abstrahlung:** Alle Richtungen · nur unten · nur oben · unten und oben (`beamMode`).
 - **Winkel:** Spot-Halbwinkel 10…90° (`beamAngleDownDeg` / `beamAngleUpDeg`); Zeilen ausgeblendet, wenn der Modus sie nicht braucht.
 - Manuelle Änderung an Abstrahlung/Winkel löst die Preset-Markierung (`preset: undefined`); Preset-Karte setzt Werte neu.
-- **Blaulicht:** feste Farbe (kein Kelvin), Animation `animation: 'blaulicht'` (Doppelblitz 500 ms Zyklus); Checkbox **Blaulicht blinken** in der Toolbar; Live-Frames solange aktiv (`sceneLightAnimation.ts`).
+- **Blaulicht:** feste Farbe (kein Kelvin), Animation `animation: 'blaulicht'` (Doppelblitz 500 ms Zyklus); Checkbox **Blaulicht blinken** in der Toolbar; Live-Frames solange aktiv (`sceneLightAnimation.ts`). **v2.0.337:** Manuelles Ausblenden stoppt den Blitz sofort (kein Nachblinken während Fade); Auto-Sonne nutzt weiter weichen Fade ohne Raster (`sceneLightAnimationFactorWhenLit`).
 - **v2.0.126 — Phasen:** Mehrere aktive Blaulichter teilen den Zyklus gleichmäßig (`blaulichtPhaseOffsetsById`) — gleicher Abstand, versetzt zueinander.
 - **v2.0.126 — Gruppen:** `FacadeState.sceneLightGroups` + `SceneLight.groupId`; Ebenenbaum mit Gruppenzeilen.
 - Defaults: `src/scene/sceneLightPresets.ts`. Runtime: `src/lighting/sceneLightRuntime.ts` (Group + Point + SpotDown + SpotUp).
@@ -87,7 +87,7 @@ Im **Render**-Modus (3D/Front) ist die Okklusion **automatisch aktiv**, sobald m
 | Abfall | `2` | Three.js `decay` (0–3); höher = schnelleres Abklingen mit Entfernung |
 | Licht an | an | Zielzustand; Intensität = Watt × Animation × **Fade** |
 | Einblenden / Ausblenden (ms) | `800` / `1200` | Weiches An/Aus (`fadeInMs` / `fadeOutMs`); kein Shadow-Rebake pro Frame |
-| Uhrzeiten Ein/Aus | leer | `DaySchedule`; parallel zu „Lichter mit Sonne“: `desiredOn = (autoSun && Nacht) \|\| scheduleSaysOn`. Leer = nur Sonne |
+| Uhrzeiten Ein/Aus | leer | `DaySchedule`; parallel zu „Lichter mit Sonne“: `desiredOn = (autoSun && Nacht) \|\| scheduleSaysOn`. **v2.0.339:** Nacht nicht exakt am Horizont (`sunAboveHorizon`), sondern Hysterese −1,2° / +0,8° Sonnenhöhe + Fade — weicher als harter Cut. Leer = nur Sonne |
 | Schatten werfen | an | Cube-Shadows im Render-Modus (2D/3D); Wände, Rahmen, Verkleidung, Geschossplatten |
 
 ## Datenmodell

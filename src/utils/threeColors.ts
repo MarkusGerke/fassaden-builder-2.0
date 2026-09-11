@@ -79,8 +79,8 @@ export function syncEnvMapFillIntensities(root: THREE.Object3D): void {
         material.userData.baseEnvMapIntensity = base
         material.envMapIntensity = scaledEnvIntensity(base)
       } else if (material.userData.interiorWallSurface === true) {
-        material.userData.baseEnvMapIntensity = 0.55
-        material.envMapIntensity = scaledEnvIntensity(0.55)
+        material.envMap = null
+        material.envMapIntensity = 0
       }
     }
   })
@@ -139,7 +139,11 @@ export function bindMaterialsToGlassEnv(root: THREE.Object3D) {
                 : 1.8
         assignEnv(base)
       } else if (material.userData.interiorWallSurface === true) {
-        assignEnv(0.55, { minIntensity: true })
+        if (material.envMap) {
+          material.envMap = null
+          material.envMapIntensity = 0
+          material.needsUpdate = true
+        }
       } else if (material.userData.forceExteriorEnv === true) {
         // Finish-bewusste Basis aus applyRenderExteriorSurfaceLook bevorzugen.
         const storedBase = material.userData.baseEnvMapIntensity
@@ -414,19 +418,13 @@ export function applyRenderExteriorSurfaceLook(material: THREE.MeshStandardMater
   material.needsUpdate = true
 }
 
-/** Render-Modus: Innenwände nehmen Punktlicht und EnvMap-Fill sichtbar auf. */
+/** Render-Modus: Innen ohne Cube-Env — sonst wirkt der Raum wie die Außen-IBL (v2.0.351). */
 export function applyRenderInteriorSurfaceLook(material: THREE.MeshStandardMaterial): void {
   material.userData.interiorWallSurface = true
-  const env = getGlassEnvironment()
-  const base = 0.55
-  if (env) {
-    material.envMap = env
-    material.envMapIntensity = rememberBaseEnvIntensity(material, base)
-  } else {
-    material.userData.baseEnvMapIntensity = base
-    material.envMapIntensity = scaledEnvIntensity(base)
-  }
-  material.roughness = Math.min(material.roughness, 0.86)
+  material.envMap = null
+  material.envMapIntensity = 0
+  delete material.userData.baseEnvMapIntensity
+  material.roughness = Math.min(material.roughness, 0.92)
   material.needsUpdate = true
 }
 

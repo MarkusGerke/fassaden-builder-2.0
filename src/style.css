@@ -2308,11 +2308,13 @@ button:hover {
   cursor: default;
 }
 
-#viewport.view-3d #svg-view {
+#viewport.view-3d #svg-view,
+#viewport.view-present #svg-view {
   display: none;
 }
 
-#viewport.view-3d #three-canvas {
+#viewport.view-3d #three-canvas,
+#viewport.view-present #three-canvas {
   position: absolute;
   inset: 0;
   width: 100% !important;

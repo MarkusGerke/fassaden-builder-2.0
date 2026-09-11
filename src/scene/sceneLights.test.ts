@@ -6,6 +6,7 @@ import {
   createSceneLightGroup,
   duplicateSceneLight,
   facadeStateDiffersOnlyBySceneLights,
+  sceneLightsDiffersOnlyByEnabled,
   normalizeSceneLightState,
   normalizeSceneLights,
   sceneLightDisplayName,
@@ -132,6 +133,14 @@ describe('sceneLights', () => {
     expect(normalizeSceneLights(state.sceneLights).every((l) => !l.enabled)).toBe(true)
     state = setAllSceneLightsEnabled(state, true)
     expect(normalizeSceneLights(state.sceneLights).every((l) => l.enabled)).toBe(true)
+  })
+
+  it('erkennt reines enabled-Toggle', () => {
+    const { state, lightId } = addSceneLight(createDefaultFacadeState())
+    const off = updateSceneLight(state, lightId, { enabled: false })
+    expect(sceneLightsDiffersOnlyByEnabled(state, off)).toBe(true)
+    const moved = updateSceneLight(state, lightId, { x: 12 })
+    expect(sceneLightsDiffersOnlyByEnabled(state, moved)).toBe(false)
   })
 
   it('erkennt reine Licht-Diffs (kein Fassaden-Pfad nötig)', () => {

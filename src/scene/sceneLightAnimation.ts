@@ -33,6 +33,20 @@ export function blaulichtFlashDurationMs(frameMs = 16): number {
   return Math.max(BLAULICHT_FLASH_ON_MS, Math.min(BLAULICHT_FLASH_MAX_MS, dt * 0.9))
 }
 
+/**
+ * Blink-Muster nur bei eingeschaltetem Licht — beim Ausblenden nur noch `fadeFactor` (keine 3–4 Blitze).
+ */
+export function sceneLightAnimationFactorWhenLit(
+  enabled: boolean,
+  animation: SceneLightAnimationId | undefined,
+  timeMs: number,
+  phaseOffsetMs = 0,
+  frameMs = 16,
+): number {
+  if (!enabled) return 1
+  return sceneLightAnimationFactor(animation, timeMs, phaseOffsetMs, frameMs)
+}
+
 export function sceneLightAnimationFactor(
   animation: SceneLightAnimationId | undefined,
   timeMs: number,

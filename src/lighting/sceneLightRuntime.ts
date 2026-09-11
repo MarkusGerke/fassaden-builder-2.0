@@ -24,7 +24,7 @@ import {
 } from '../scene/sceneLights'
 import {
   normalizeSceneLightAnimation,
-  sceneLightAnimationFactor,
+  sceneLightAnimationFactorWhenLit,
   blaulichtPhaseOffsetsById,
   type SceneLightAnimationId,
 } from '../scene/sceneLightAnimation'
@@ -135,6 +135,8 @@ export interface SceneLightRuntimeSyncOptions {
    * echte Anzahl zurückgesetzt (der Licht-Modus-Wechsel kompiliert ohnehin hinter dem Overlay).
    */
   padSpareLights?: boolean
+  /** Fade sofort auf `enabled` (manuell ein/aus) — kein Nachblinken / kein 1,2 s-Fade. */
+  snapFadeToEnabled?: boolean
 }
 
 function configureShadowLayers(light: THREE.Light): void {
@@ -219,6 +221,9 @@ export class SceneLightRuntime {
     }
     this.enforceShadowBudget()
     this.syncSpareLights(options.stableLightCount === true, options.padSpareLights === true)
+    if (options.snapFadeToEnabled === true) {
+      this.snapFadesToEnabled(options.timeMs ?? performance.now())
+    }
   }
 
   /**
@@ -438,7 +443,7 @@ export class SceneLightRuntime {
     }
     let any = false
     for (const entry of this.entries.values()) {
-      if (entry.animation === 'none' || entry.fadeFactor < 0.001) continue
+      if (!entry.enabled || entry.animation === 'none' || entry.fadeFactor < 0.001) continue
       any = true
       this.applyAnimatedIntensity(entry, timeMs, frameMs)
     }
@@ -477,7 +482,13 @@ export class SceneLightRuntime {
   }
 
   private litFactor(entry: LightEntry, timeMs: number, frameMs = 16): number {
-    const anim = sceneLightAnimationFactor(entry.animation, timeMs, entry.phaseOffsetMs, frameMs)
+    const anim = sceneLightAnimationFactorWhenLit(
+      entry.enabled,
+      entry.animation,
+      timeMs,
+      entry.phaseOffsetMs,
+      frameMs,
+    )
     return entry.fadeFactor * anim
   }
 
@@ -628,7 +639,12 @@ export class SceneLightRuntime {
 
     const color = new THREE.Color(spec.color)
     const timeMs = options.timeMs ?? performance.now()
-    const animFactor = sceneLightAnimationFactor(entry.animation, timeMs, entry.phaseOffsetMs)
+    const animFactor = sceneLightAnimationFactorWhenLit(
+      entry.enabled,
+      entry.animation,
+      timeMs,
+      entry.phaseOffsetMs,
+    )
     const litFactor = entry.fadeFactor * animFactor
     const active = litFactor > 0.001
     const inten = wattsToThreeIntensity(spec.intensity) * litFactor

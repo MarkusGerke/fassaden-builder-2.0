@@ -18,6 +18,8 @@ export interface FacadeShadeParams {
   hemiDim: number
   interiorDirectDim: number
   interiorHemiDim: number
+  /** Zusätzliche Skala auf Indirect (Hemi/Env-Anteil im Lichtpass). */
+  interiorIndirectGain: number
   /** Schrift: Direct-Restlicht auf der Schattenseite (stärker als Wand). */
   labelDirectDim: number
   /** Schrift: Hemisphere-Restlicht auf der Schattenseite (stärker als Wand). */
@@ -41,6 +43,7 @@ const shadeUniforms = {
   uHemiDim: { value: 0.42 },
   uInteriorDirectDim: { value: 0.22 },
   uInteriorHemiDim: { value: 0.38 },
+  uInteriorIndirectGain: { value: 0.16 },
   uLabelDirectDim: { value: 0.06 },
   uLabelHemiDim: { value: 0.18 },
 }
@@ -50,42 +53,89 @@ export function setFacadeShadeParams(params: FacadeShadeParams): void {
   shadeUniforms.uHemiDim.value = params.hemiDim
   shadeUniforms.uInteriorDirectDim.value = params.interiorDirectDim
   shadeUniforms.uInteriorHemiDim.value = params.interiorHemiDim
+  shadeUniforms.uInteriorIndirectGain.value = params.interiorIndirectGain
   shadeUniforms.uLabelDirectDim.value = params.labelDirectDim
   shadeUniforms.uLabelHemiDim.value = params.labelHemiDim
 }
 
+const FACADE_SHADE_FULL: FacadeShadeParams = {
+  directDim: 1,
+  hemiDim: 1,
+  interiorDirectDim: 1,
+  interiorHemiDim: 1,
+  interiorIndirectGain: 1,
+  labelDirectDim: 1,
+  labelHemiDim: 1,
+}
+
+/** Nacht: Außen ohne Gegenlicht-Dim; Innen nie volles Hemi (Punktlicht über moderate Direct-Dim). */
+const INTERIOR_SHADE_NIGHT: Pick<
+  FacadeShadeParams,
+  'interiorDirectDim' | 'interiorHemiDim' | 'interiorIndirectGain'
+> = {
+  interiorDirectDim: 0.42,
+  interiorHemiDim: 0.18,
+  interiorIndirectGain: 0.22,
+}
+
 /** Leitet Abdunklungsstärke aus Sonnen-Slidern ab (Wände + stärkere Schrift-Werte). */
 export function facadeShadeParamsFromSun(settings: SunSettings): FacadeShadeParams {
-  // Nachts / unter Horizont: kein Gegenlicht-Dim — sonst dämpfen Punktlichter mit (Wände grau).
-  if (!Number.isFinite(settings.elevationRad) || settings.elevationRad <= 0.02) {
+  const elev = settings.elevationRad
+  // Unter Horizont / sehr flach: kein Gegenlicht-Dim — weicher Übergang statt Knick bei ~1,15° (v2.0.342).
+  if (!Number.isFinite(elev)) return FACADE_SHADE_FULL
+  const shadeWeight = THREE.MathUtils.smoothstep(
+    elev,
+    THREE.MathUtils.degToRad(-0.5),
+    THREE.MathUtils.degToRad(2.5),
+  )
+  if (shadeWeight <= 0.001) {
     return {
-      directDim: 1,
-      hemiDim: 1,
-      interiorDirectDim: 1,
-      interiorHemiDim: 1,
-      labelDirectDim: 1,
-      labelHemiDim: 1,
+      ...FACADE_SHADE_FULL,
+      ...INTERIOR_SHADE_NIGHT,
     }
   }
   const ambientNorm = THREE.MathUtils.clamp(settings.ambient / 0.65, 0.25, 1.4)
   const invContrast = 1 / Math.max(0.5, settings.shadowContrast)
   const densityBoost = 1 + settings.shadowDensity * 0.35
-  // Ambient auf Gegenlicht-Flächen: Schlagschatten (PCSS) behalten volles Hemi —
-  // früher ~0,39 → Erker-Schenkel/Nordfassade pechschwarzer als angrenzende Wand im Schlagschatten.
-  // Realistisch: kein Direktlicht, Himmel/Bodenreflex bleiben (leicht durch Kontrast gedämpft).
   const hemiContrast = Math.pow(invContrast, 0.25)
-  return {
-    // Contrast bis 10: Direct dimmen mit — hohe Werte = deutlich dunklere Schattenseite.
+  const shaded: FacadeShadeParams = {
     directDim: THREE.MathUtils.clamp((0.05 + 0.08 * ambientNorm) * invContrast * densityBoost, 0.01, 0.35),
     hemiDim: THREE.MathUtils.clamp((0.78 + 0.16 * ambientNorm) * hemiContrast, 0.55, 0.94),
-    interiorDirectDim: THREE.MathUtils.clamp((0.14 + 0.12 * ambientNorm) * densityBoost, 0.1, 0.38),
-    interiorHemiDim: THREE.MathUtils.clamp(0.3 + 0.22 * ambientNorm, 0.25, 0.58),
+    interiorDirectDim: THREE.MathUtils.clamp((0.012 + 0.012 * ambientNorm) * densityBoost, 0.008, 0.05),
+    interiorHemiDim: THREE.MathUtils.clamp(0.028 + 0.028 * ambientNorm, 0.02, 0.07),
+    interiorIndirectGain: THREE.MathUtils.clamp(0.1 + 0.06 * ambientNorm, 0.08, 0.16),
     labelDirectDim: THREE.MathUtils.clamp(
       (0.03 + 0.05 * ambientNorm) * invContrast * densityBoost,
       0.015,
       0.14,
     ),
     labelHemiDim: THREE.MathUtils.clamp((0.28 + 0.18 * ambientNorm) * hemiContrast, 0.18, 0.55),
+  }
+  if (shadeWeight >= 0.999) return shaded
+  return {
+    directDim: THREE.MathUtils.lerp(FACADE_SHADE_FULL.directDim, shaded.directDim, shadeWeight),
+    hemiDim: THREE.MathUtils.lerp(FACADE_SHADE_FULL.hemiDim, shaded.hemiDim, shadeWeight),
+    interiorDirectDim: THREE.MathUtils.lerp(
+      INTERIOR_SHADE_NIGHT.interiorDirectDim,
+      shaded.interiorDirectDim,
+      shadeWeight,
+    ),
+    interiorHemiDim: THREE.MathUtils.lerp(
+      INTERIOR_SHADE_NIGHT.interiorHemiDim,
+      shaded.interiorHemiDim,
+      shadeWeight,
+    ),
+    interiorIndirectGain: THREE.MathUtils.lerp(
+      INTERIOR_SHADE_NIGHT.interiorIndirectGain,
+      shaded.interiorIndirectGain,
+      shadeWeight,
+    ),
+    labelDirectDim: THREE.MathUtils.lerp(
+      FACADE_SHADE_FULL.labelDirectDim,
+      shaded.labelDirectDim,
+      shadeWeight,
+    ),
+    labelHemiDim: THREE.MathUtils.lerp(FACADE_SHADE_FULL.labelHemiDim, shaded.labelHemiDim, shadeWeight),
   }
 }
 
@@ -226,6 +276,46 @@ uniform float uLabelHemiDim;`,
           reflectedLight.indirectSpecular *= mix(1.0, mix(1.0, hemiAmt, uLabelShade), dim);
         }`,
       )
+  }
+  material.needsUpdate = true
+}
+
+/** Nur Indirect dämpfen — Direct = Sonne durch Öffnungen + Punktlicht unangetastet (v2.0.353). */
+const interiorShadePatch = `
+        {
+          float hemiIn = uInteriorHemiDim * uInteriorHemiDim * uInteriorIndirectGain;
+          reflectedLight.indirectDiffuse *= hemiIn;
+          reflectedLight.indirectSpecular *= hemiIn;
+        }`
+
+/** Innenflächen: kein volles Himmels-Hemi/Env — nur gedämpftes Restlicht (Fenster). */
+export function applyInteriorShadeShader(material: THREE.MeshStandardMaterial): void {
+  if (material.userData.skipInteriorShade === true) return
+  if (material.userData.interiorShadeHooked) return
+  material.userData.interiorShadeHooked = true
+  const prevKey = material.customProgramCacheKey?.bind(material)
+  material.customProgramCacheKey = () =>
+    `${prevKey ? prevKey() : ''}|interior-shade-v5`
+  const prevCompile = material.onBeforeCompile
+  material.onBeforeCompile = (shader, renderer) => {
+    prevCompile?.(shader, renderer)
+    const frag = shader.fragmentShader
+    const hasLightsEnd = frag.includes('#include <lights_fragment_end>')
+    if (!hasLightsEnd) return
+    shader.uniforms.uInteriorHemiDim = shadeUniforms.uInteriorHemiDim
+    shader.uniforms.uInteriorIndirectGain = shadeUniforms.uInteriorIndirectGain
+    shader.fragmentShader = frag
+      .replace(
+        '#include <common>',
+        `#include <common>
+uniform float uInteriorHemiDim;
+uniform float uInteriorIndirectGain;`,
+      )
+      .replace(
+        '#include <lights_fragment_end>',
+        `#include <lights_fragment_end>${interiorShadePatch}`,
+      )
+    material.userData.interiorShadeApplied = true
   }
   material.needsUpdate = true
 }

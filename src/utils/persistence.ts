@@ -38,7 +38,7 @@ import {
 } from './sunLighting'
 const STORAGE_KEY = 'fassaden-builder-state-v6'
 
-export type AppView = 'front' | '3d' | 'top' | 'export'
+export type AppView = 'front' | 'present' | '3d' | 'top' | 'export'
 
 export interface SceneAppearance {
   background: string
@@ -112,6 +112,7 @@ function isEditorState(value: unknown): value is EditorState {
 
 function normalizeView(view: unknown): AppView {
   if (view === '3d') return '3d'
+  if (view === 'present') return 'present'
   if (view === 'front') return 'front'
   if (view === 'top') return 'top'
   if (view === 'export') return 'export'

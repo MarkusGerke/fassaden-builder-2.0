@@ -67,7 +67,38 @@ function twilightFromSunElevation(elevationRad: number): number {
   const elevDeg = (elevationRad * 180) / Math.PI
   if (elevDeg >= 6) return 0
   if (elevDeg <= -12) return 1
-  return THREE.MathUtils.smoothstep(elevDeg, 6, -12)
+  // 0 bei Tag (+6°), 1 bei −12° — edge0 < edge1 (Three.js smoothstep sonst 0 in der ganzen Nacht).
+  return 1 - THREE.MathUtils.smoothstep(elevDeg, -12, 6)
+}
+
+/**
+ * Nach Sonnenuntergang: Key/IBL an sichtbare Nacht koppeln (Mond-Key allein sonst ~0,35 bis tw≈1).
+ * 0° → 1, etwa −11° → 0 (weich über −1,5°…−11°).
+ */
+export function exteriorKeyDimAfterSunset(sunElevationRad: number): number {
+  if (sunElevationRad >= 0) return 1
+  const elevDeg = (sunElevationRad * 180) / Math.PI
+  return THREE.MathUtils.smoothstep(elevDeg, -11, -1.5)
+}
+
+/** Sonne tiefer: Bibliotheks-Lichter an (Lichter mit Sonne). */
+export const SCENE_LIGHTS_NIGHT_ON_ELEV_DEG = -1.2
+/** Sonne höher: Bibliotheks-Lichter aus — Hysterese dazwischen, kein Flip exakt am Horizont. */
+export const SCENE_LIGHTS_NIGHT_OFF_ELEV_DEG = 0.8
+
+/**
+ * „Lichter mit Sonne“: weicher Übergang statt `sunAboveHorizon` (±0,02°).
+ * `previousNight === null` → Fallback wie Horizont (elev ≤ 0°).
+ */
+export function autoSceneLightsWantNight(
+  sunElevationRad: number,
+  previousNight: boolean | null,
+): boolean {
+  const elevDeg = (sunElevationRad * 180) / Math.PI
+  if (elevDeg <= SCENE_LIGHTS_NIGHT_ON_ELEV_DEG) return true
+  if (elevDeg >= SCENE_LIGHTS_NIGHT_OFF_ELEV_DEG) return false
+  if (previousNight === null) return elevDeg <= 0
+  return previousNight
 }
 
 function sunLightIntensity(elevationRad: number, userIntensity: number): number {
@@ -103,26 +134,55 @@ export function resolveCelestialState(settings: SunSettings): CelestialState {
   const moonAboveHorizon = moon.elevationRad > 0.02
   const twilightFactor = twilightFromSunElevation(sun.elevationRad)
 
+  const moonEligible = moon.elevationRad > 0 && moonIllumination > 0.08
+  const moonI = moonEligible
+    ? moonLightIntensity(moon.elevationRad, moonIllumination, settings.intensity)
+    : 0
+  const sunHandoff = THREE.MathUtils.smoothstep(
+    sun.elevationRad,
+    THREE.MathUtils.degToRad(-3),
+    THREE.MathUtils.degToRad(1.2),
+  )
+  let sunI = 0
+  if (sun.elevationRad > THREE.MathUtils.degToRad(-3.5)) {
+    const keyElevRad =
+      sun.elevationRad > 0
+        ? Math.max(sun.elevationRad, THREE.MathUtils.degToRad(0.15))
+        : THREE.MathUtils.degToRad(0.45) * sunHandoff
+    if (keyElevRad > 1e-6) sunI = sunLightIntensity(keyElevRad, settings.intensity)
+  }
+  const moonMix = moonEligible
+    ? 1 -
+      THREE.MathUtils.smoothstep(
+        sun.elevationRad,
+        THREE.MathUtils.degToRad(-4),
+        THREE.MathUtils.degToRad(2),
+      )
+    : 0
+
   let activeLight: CelestialState['activeLight'] = 'night'
   let lightAzimuthDeg = sun.azimuthDeg
-  let lightElevationRad = Math.max(0, sun.elevationRad)
-  let lightIntensity = 0
-  let lightColorTemp = MOONLIGHT_COLOR_TEMP
+  let lightElevationRad = Math.max(0.02, sun.elevationRad)
+  let lightIntensity = sunI * (1 - moonMix) + moonI * moonMix
+  let lightColorTemp = settings.colorTemperature
 
-  if (sun.elevationRad > 0) {
-    activeLight = 'sun'
-    lightAzimuthDeg = sun.azimuthDeg
-    lightElevationRad = sun.elevationRad
-    lightIntensity = sunLightIntensity(sun.elevationRad, settings.intensity)
-    lightColorTemp = settings.colorTemperature
-  } else if (moon.elevationRad > 0 && moonIllumination > 0.08) {
-    activeLight = 'moon'
-    lightAzimuthDeg = moon.azimuthDeg
-    lightElevationRad = moon.elevationRad
-    lightIntensity = moonLightIntensity(moon.elevationRad, moonIllumination, settings.intensity)
-    lightColorTemp = MOONLIGHT_COLOR_TEMP
+  if (lightIntensity > 1e-4) {
+    if (moonMix > 0.68) {
+      activeLight = 'moon'
+      lightAzimuthDeg = moon.azimuthDeg
+      lightElevationRad = moon.elevationRad
+      lightColorTemp = MOONLIGHT_COLOR_TEMP
+    } else {
+      activeLight = 'sun'
+      lightAzimuthDeg = sun.azimuthDeg
+      lightElevationRad = Math.max(0.02, sun.elevationRad)
+      lightColorTemp = THREE.MathUtils.lerp(
+        settings.colorTemperature,
+        MOONLIGHT_COLOR_TEMP,
+        moonMix,
+      )
+    }
   } else {
-    // Sternennacht: kein Key-Licht — nur minimales Ambient (in lightingMood).
     lightIntensity = 0
     lightColorTemp = MOONLIGHT_COLOR_TEMP
     if (moon.elevationRad > -0.15) {
@@ -131,19 +191,26 @@ export function resolveCelestialState(settings: SunSettings): CelestialState {
     }
   }
 
-  let skyAmbientFactor: number
-  if (sun.elevationRad > 0) {
-    skyAmbientFactor = THREE.MathUtils.lerp(
-      THREE.MathUtils.clamp(settings.ambient / 0.32, 0.2, 2),
-      0.12 + 0.25 * moonIllumination,
-      twilightFactor,
-    )
-  } else if (activeLight === 'moon') {
-    // Schwaches kühles Himmelsfill — Mond-Key und Schatten bleiben lesbar.
-    skyAmbientFactor = 0.028 + 0.035 * moonIllumination
-  } else {
-    // Fast schwarz ohne Lichtquelle (kein Mittelgrau durch Ambient).
-    skyAmbientFactor = 0.01
+  const dayAmbient = THREE.MathUtils.clamp(settings.ambient / 0.32, 0.2, 2)
+  const moonSkyFill = 0.028 + 0.035 * moonIllumination
+  // Ein Kurvenzug Tag↔Nacht über twilightFactor — kein Sprung bei sun.elevationRad ≤ 0 (v2.0.340).
+  let skyAmbientFactor = THREE.MathUtils.lerp(dayAmbient, 0.01, twilightFactor)
+  let postSunsetDim = exteriorKeyDimAfterSunset(sun.elevationRad)
+  // Tiefe Nacht: schwacher Mond-Key (Mitternacht), ohne Abend-„Taglicht“ bis 20:40.
+  if (moonEligible && sun.elevationRad <= THREE.MathUtils.degToRad(-14)) {
+    postSunsetDim = Math.max(postSunsetDim, 0.15)
+  }
+  if (sun.elevationRad < 0) {
+    lightIntensity *= postSunsetDim
+    skyAmbientFactor *= postSunsetDim
+  }
+  if (activeLight === 'moon' && lightIntensity > 1e-4) {
+    skyAmbientFactor = Math.max(skyAmbientFactor, moonSkyFill * postSunsetDim)
+  }
+
+  if (lightIntensity <= 1e-4) {
+    activeLight = 'night'
+    lightIntensity = 0
   }
 
   return {
@@ -165,8 +232,12 @@ export function resolveCelestialState(settings: SunSettings): CelestialState {
 /** EnvMap-Stärke für Paneel/Glas: Tag voll, Mond gedämpft, Sternennacht fast aus. */
 export function exteriorEnvFillFromCelestial(celestial: CelestialState): number {
   if (celestial.activeLight === 'night') return 0.05
-  if (celestial.activeLight === 'moon') return 0.22 + 0.18 * celestial.moonIllumination
-  return THREE.MathUtils.lerp(1, 0.42, celestial.twilightFactor)
+  const postSunsetDim = exteriorKeyDimAfterSunset(celestial.sun.elevationRad)
+  const dayEnv = THREE.MathUtils.lerp(1, 0.42, celestial.twilightFactor) * postSunsetDim
+  if (celestial.activeLight === 'sun') return dayEnv
+  const moonEnv = (0.22 + 0.18 * celestial.moonIllumination) * postSunsetDim
+  const moonEnvBlend = THREE.MathUtils.smoothstep(celestial.twilightFactor, 0.48, 0.9)
+  return THREE.MathUtils.lerp(dayEnv, moonEnv, moonEnvBlend)
 }
 
 /** Himmelsfarben: Nutzer-Szenenfarben bleiben die Basis, Nacht dunkelt sie nur ab. */
@@ -213,6 +284,9 @@ uniform float uSunVisible;
 uniform float uMoonVisible;
 uniform float uMoonIllum;
 uniform float uStars;
+uniform float uElevHorizonNdc;
+uniform vec3 uUndergroundColor;
+uniform float uViewportHeight;
 varying vec3 vWorldDir;
 
 float hash(vec3 p) {
@@ -220,6 +294,11 @@ float hash(vec3 p) {
 }
 
 void main() {
+  float fragNdcY = gl_FragCoord.y / max(uViewportHeight, 1.0) * 2.0 - 1.0;
+  if (uElevHorizonNdc > -1.99 && fragNdcY < uElevHorizonNdc) {
+    gl_FragColor = vec4(uUndergroundColor, 1.0);
+    return;
+  }
   vec3 dir = normalize(vWorldDir);
   float h = clamp(dir.y, -1.0, 1.0);
   vec3 sky = mix(uHorizonColor, uZenithColor, pow(max(h, 0.0), 0.65));
@@ -246,6 +325,14 @@ void main() {
 
 /** Großer Himmelsdom mit Sonne, Mond und Sternen. */
 const _camWorld = new THREE.Vector3()
+const _horizonProj = new THREE.Vector3()
+
+/** Welt-Y (z. B. 0 = Fundament) → NDC-y der Front-/Ortho-Kamera. */
+export function worldYNdcAt(camera: THREE.Camera, x: number, y: number, z: number): number {
+  _horizonProj.set(x, y, z)
+  _horizonProj.project(camera)
+  return _horizonProj.y
+}
 
 export class CelestialSky {
   readonly root = new THREE.Group()
@@ -264,6 +351,9 @@ export class CelestialSky {
       uMoonVisible: { value: 0 },
       uMoonIllum: { value: 1 },
       uStars: { value: 0 },
+      uElevHorizonNdc: { value: -2 },
+      uUndergroundColor: { value: new THREE.Color('#3a3a3a') },
+      uViewportHeight: { value: 720 },
     }
     const mat = new THREE.ShaderMaterial({
       uniforms: this.uniforms,
@@ -271,6 +361,7 @@ export class CelestialSky {
       fragmentShader: skyFragmentShader,
       side: THREE.BackSide,
       depthWrite: false,
+      depthTest: false,
       fog: false,
       toneMapped: false,
     })
@@ -294,6 +385,13 @@ export class CelestialSky {
   /** Dom zentrieren (typisch Kamera-XZ + Gebäude-Y). */
   placeAt(x: number, y: number, z: number) {
     this.root.position.set(x, y, z)
+  }
+
+  /** 2D-Aufriss: Untergrundfarbe unter Welt-Y=0 (NDC-Schnitt), kein Himmel darunter. */
+  setElevationGroundClip(horizonNdcY: number | null, undergroundHex: string, viewportHeight = 720) {
+    this.uniforms.uElevHorizonNdc.value = horizonNdcY ?? -2
+    ;(this.uniforms.uUndergroundColor.value as THREE.Color).set(undergroundHex)
+    this.uniforms.uViewportHeight.value = Math.max(1, viewportHeight)
   }
 
   update(celestial: CelestialState, palette: SkyPalette) {

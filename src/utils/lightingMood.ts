@@ -57,16 +57,20 @@ export function resolveLightingMood(
   const density = THREE.MathUtils.clamp(settings.shadowDensity, 0, 1)
   const ambientNorm = THREE.MathUtils.clamp(settings.ambient / 0.65, 0.25, 1.4)
   const twilight = celestial.twilightFactor
-  const isDay = celestial.activeLight === 'sun'
-  const isMoon = celestial.activeLight === 'moon'
   const isDeepNight = celestial.activeLight === 'night'
+  const civilTwilight =
+    twilight < 0.62 && celestial.sun.elevationRad > THREE.MathUtils.degToRad(-5.5)
+  const isMoon = celestial.activeLight === 'moon' && !civilTwilight
+  const isDay = celestial.activeLight === 'sun' || (celestial.activeLight === 'moon' && civilTwilight)
 
   let skyIntensity = Math.max(
     0.005,
     (settings.ambient / contrast) * celestial.skyAmbientFactor,
   )
   if (isDeepNight) skyIntensity = Math.min(skyIntensity, 0.014)
-  else if (isMoon) skyIntensity = Math.min(skyIntensity, 0.042)
+  else if (celestial.activeLight === 'moon' && !civilTwilight) {
+    skyIntensity = Math.min(skyIntensity, 0.042)
+  }
 
   const groundUser = new THREE.Color(sceneGroundHex)
   const sunTint = kelvinToColor(celestial.lightColorTemp)

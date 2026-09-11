@@ -2,9 +2,89 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Licht: zwei Sonnenwinkel (2026-09-11) — v2.0.355
+
+**Nutzer:** Ein „Sonnenwinkel“ drehte nur horizontal; Höhe fehlte als eigene Regelung neben Tageszeit. **Fix:** `#sun-elevation` (Höhe, −12°…70°); Azimut umbenannt „Himmelsrichtung“. Tageszyklus/Datum schreiben beide aus `resolveSunFromDate`. Dateien: `index.html`, `main.ts`, `sunLighting.ts`, `docs/celestial-sky.md`.
+
+### Innenraum: Sonne auf Boden (2026-09-11) — v2.0.354
+
+**Nutzer:** Sonnenlicht nur auf Innenwände, Boden bleibt dunkel. **Ursache:** Geschoss-Böden nur `SHADOW_LAYER_INTERIOR`; Außen-Sonne (`dirLight`) nur Layer Exterior — Wände haben beide Layer. **Fix:** `syncIndoorSlabLightLayers` — **Boden** Innen+Außen, **Decke** nur Innen (v2.0.100 Streifen). Datei: `FacadeController.ts`.
+
+### Innenraum: Sonne durch Fenster (2026-09-11) — v2.0.353
+
+**Nutzer:** Nach v2.0.352 Innen nur noch dunkel, kein Sonnenschein durch Öffnungen. **Ursache (IL1/IL2):** Patch skalierte auch `reflectedLight.direct*` mit `interiorDirectDim` ≈ 0,03 — Sonne und Punktlicht landen in Direct. **Fix:** Innen-Patch nur noch `indirectDiffuse/Specular` (Shader v5). **Nicht:** Direct wieder global dämpfen.
+
+### Innenraum: Shader nach Hemi-Pass (2026-09-11) — v2.0.352
+
+**Nutzer:** Innen trotz v2.0.349–351 hell (auch Sonnenuntergang). **Ursache:** `applyInteriorShadeShader` patchte direkt nach `lights_fragment_begin` — Hemisphere/IBL landet erst in `lights_fragment_end` auf `reflectedLight`, Uniforms wirkten nicht. Zusätzlich `dirLightIndoor` min. **0,28** bei aktivem Bibliotheks-Punktlicht. **Fix:** Patch nach `lights_fragment_end` (v4); Fill `clamp(hemi×0,05, 0…0,07)`. **Versuch verworfen:** nur Uniforms/Dims senken ohne Shader-Reihenfolge (Logs IL1 zeigten Werte, kein visueller Effekt). Dateien: `facadeShade.ts`, `main.ts`.
+
+### Innenraum: keine IBL, stärkere Dämpfung (2026-09-11) — v2.0.351
+
+**Nutzer:** Innen weiter zu hell ohne direktes Fensterlicht. **Ursache:** Cube-EnvMap auf Innenflächen + lineare Hemi-Dim; Wand-Mesh Layer 0 bekommt volles Hemisphere. **Fix:** Innen-`envMap` aus; `interiorIndirectGain` + quadratisches Hemi im Shader (v3). Dateien: `facadeShade.ts`, `threeColors.ts`, `FacadeController.ts`.
+
+### Innenraum: Himmels-Fill reduziert (2026-09-11) — v2.0.350
+
+**Nutzer:** Innen weiter zu hell ohne direktes Fensterlicht. **Ursache:** `facadeShadeParamsFromSun` setzte bei Niedrig-Sonne `interior*Dim` auf **1** (wie Außen-Punktlicht); Hemisphere + Bounce auf Interior-Layer. **Fix:** eigene `INTERIOR_SHADE_NIGHT`; tagsüber ~0,04–0,11 Hemi-Dim; Hemi/Bounce nur Layer Exterior; EnvMap 0,14 / 0,10. Dateien: `facadeShade.ts`, `main.ts`, `threeColors.ts`.
+
+### Innenraum: weniger Tageslicht-Fill (2026-09-11) — v2.0.349
+
+**Nutzer:** Innenbereich wirkt zu hell bei nur indirektem Licht. **Ursache:** Hemisphere + EnvMap (0,42–0,55) auf Layer Interior; `interiorDirectDim`/`interiorHemiDim` im Außen-Gegenlicht-Shader deklariert, aber nie auf Innenmaterialien angewendet (`skipFacadeShade`). **Fix:** `applyInteriorShadeShader`, niedrigere Env-Basis, strengere `facadeShadeParamsFromSun`-Innenfaktoren. Dateien: `facadeShade.ts`, `FacadeController.ts`, `threeColors.ts`.
+
+### Ansicht „Fassade“: 3D zentriert (2026-09-11) — v2.0.348
+
+**Nutzer:** Modus wie 3D, Kamera immer in horizontaler Gebäudemitte und vertikaler Etagenmitte; Mindest-Rand eine Geschosshöhe; Kompass wie 2D. **Umsetzung:** `AppView` `present`, `computePresentCameraFrame`, Toolbar **Fassade**, Orbit aus. **Fix:** `syncPresentCamera` setzte nur `position`, nicht `lookAt` → Ecke/Himmel; `camera.lookAt` + `updateMatrixWorld`. Dateien: `main.ts`, `presentCamera.ts`, `persistence.ts`, `index.html`, `docs/camera.md`.
+
+### 2D-Aufriss: Takram-Himmel stabil (2026-09-11) — v2.0.347
+
+**Nutzer:** Zwei Aufriss-Zustände — einmal Sonnenuntergangs-Verlauf + dunkler Untergrund, einmal **flach orange-braun** mit schwarzer Linie. **Ursache:** Takram-`SkyMaterial`/`AtmosphereSky` ist auf **OrthographicCamera** oft unsichtbar; dann bleibt nur `scene.background` (Horizontfarbe der Sonnenstimmung) + `FrontUndergroundCap`-Linie. **Fix:** Himmel nur auf `ATMOSPHERE_SKY_LAYER` (4); Aufriss rendert zuerst `frontSkyCamera` (Perspektive, gleiche Pose), danach Ortho ohne Clear. Dateien: `main.ts`, `sunLighting.ts`.
+
+### 2D-Aufriss: gleicher Himmel wie 3D (2026-09-11) — v2.0.346
+
+**Nutzer:** Hintergrund wieder grau; Wunsch: 3D-Ansicht duplizieren. **Ursache v2.0.345:** separater `CelestialSky` statt Takram, oft unsichtbar → `scene.background` grau. **Fix:** `AtmosphereSky` auch im Aufriss; `FrontUndergroundCap` nur unter Y=0. Dateien: `main.ts`, `frontUndergroundCap.ts`.
+
+### 2D-Aufriss: Sonne und Fundament-Y (2026-09-11) — v2.0.345
+
+**Nutzer:** Schnittlinie nicht auf Y=0; unter Haus noch Himmel; nur Verläufe ohne Sonne. **Fix:** Im Aufriss Takram aus, `CelestialSky`-Dom mit Scheibe; NDC-Clip bei **Welt-Y 0** + Untergrundfarbe (`setElevationGroundClip`). Dateien: `celestialSky.ts`, `main.ts`.
+
+### 2D-Aufriss: Himmel wie 3D (2026-09-11) — v2.0.344
+
+**Nutzer:** 2D-Hintergrund wie 3D (Himmel, Sonne); nur unter Fundament **Untergrundfarbe**. **Umsetzung:** `atmosphereSkyWanted` inkl. `front`; Bodenplatte im Aufriss sichtbar (`syncStageMeshVisibility`); `groundMat` im Himmel-Modus aus `sceneAppearance.ground`. Dateien: `main.ts`, `docs/celestial-sky.md`.
+
+### Abend: Fassade nach Sonnenweg (2026-09-11) — v2.0.343
+
+**Symptom:** Am **11.09.** um **~19:57** Sonne am Himmel weg, Fassade noch deutlich beleuchtet; erst **~20:41** wirkt alles dunkel. **Runtime (tsx):** Mond-Key ~0,37 + Env ~0,43 bei Sonnenhöhe −6,6° — unabhängig vom sichtbaren Sonnenball. **Fix:** `exteriorKeyDimAfterSunset` (smoothstep −1,5°…−11°) auf Key, `skyAmbientFactor`, Env-Fill; Key &lt; 1e−4 → `activeLight: night`. Datei: `celestialSky.ts`.
+
+### Dämmerung: Takram-Key (2026-09-11) — v2.0.342
+
+**Symptom (nach v2.0.341, weiter reproduziert):** Cut auf der Fassade um Horizont — Debug-Ingest auf Production leer. **Hypothese H-takram-keydir:** `atmosphereSky` ließ bei `activeLight: sun` Takram `SunDirectionalLight`/`SkyLightProbe` auf **physische** Sonnenrichtung (unter 0°) zeigen, während Key-Intensität/Richtung aus `resolveCelestialState` (`lightElevationRad` ≥ 0,02) kam → diskontinuierliche Streulicht-Aufhellung. **Fix:** Key-Richtung + Lichtposition immer aus `celestial.lightAzimuthDeg`/`lightElevationRad`; `facadeShade` smoothstep am Horizont. Dateien: `atmosphereSky.ts`, `facadeShade.ts`.
+
+### Dämmerung: Fill und IBL (2026-09-11) — v2.0.341
+
+**Symptom (nach v2.0.340):** Um **19:09→19:10** weiter spürbarer Cut auf der Fassade; Logs lokal leer (Production ohne Debug-Ingest). **Runtime (tsx):** `skyAmbient` glatt, aber **`mood.skyIntensity` 0,42→0,042** und **`exteriorEnvFill` ~0,81→0,40** sobald `activeLight` auf Mond springt (~19:17); Key-Intensität am Horizont noch Knick. **Fix:** `lightingMood` — bürgerliche Dämmerung (`twilight < 0,62`, Sonne > −5,5°) behält Tages-Fill; `exteriorEnvFillFromCelestial` mischt über `twilightFactor`; Sonnen-Key mit Mindest-Elevation / Handoff. Dateien: `lightingMood.ts`, `celestialSky.ts`.
+
+### Dämmerung: weiches Fassadenlicht (2026-09-11) — v2.0.340
+
+**Symptom:** Harte Cuts beim Licht auf der Fassade um **19:09→19:10** (Sonnenuntergang) und um **03:24→03:25** (astronomische Morgendämmerung). **Ursachen (Runtime/Modell):** (1) `twilightFromSunElevation` mit falscher `smoothstep`-Kantenreihenfolge → Zwielicht in der Nacht teils 0. (2) `skyAmbientFactor` sprang bei `sun.elevationRad ≤ 0` von Tages-Zwielicht auf Mond-/Nachtwert (~1,3→0,06). (3) `moonMix` fiel unter −3,5° Sonnenhöhe auf 0 → Mond-Key nachts aus. **Fix:** korrigiertes Zwielicht `1 - smoothstep(−12°, +6°)`; Sonnen-/Mond-Key mit `sunHandoff`/`moonMix`; ein Ambient-Kurvenzug über `twilightFactor`. Dateien: `celestialSky.ts`, Tests `celestialSky.test.ts`.
+
+### Lichter mit Sonne: Dämmerung (2026-09-11) — v2.0.339
+
+**Symptom:** Harter Cut bei Sonnenauf-/untergang; erster Übergang träge, danach flüssiger. **Ursachen:** (1) `desiredOn` an `sunAboveHorizon` (±0,02°) — alle Lichter gleichzeitig. (2) Erster Horizont-Cross: Punktlicht-Shadow-Bake + EnvMap-Key (`activeLight` Sonne→Mond/Nacht) — danach gecacht. **Fix:** `autoSceneLightsWantNight` mit Hysterese; Auto-Sonne ohne sofortigen Cube-Bake (`scheduleShadowMapUpdate` debounced). Himmel/Key-Licht wechselt weiter diskret (`activeLight`) — Dämmerung über `twilightFactor`. Dateien: `celestialSky.ts`, `main.ts`.
+
+### Ausblenden: Nachblinken + UI (2026-09-11) — v2.0.338
+
+**Symptom (weiterhin nach v2.0.337):** Ausblenden schneller, aber Blaulicht blinkte 3–4× nach grauer Ebenenzeile; UI teils eingefroren. **Ursachen:** (1) `tickAnimations` aktualisierte **ausgeschaltete** Blaulichter weiter, solange `fadeFactor` > 0 und anderes Blaulicht aktiv war. (2) Fallback `applyState` bei `lightsChanged` ohne `snapFadesToEnabled`. (3) `scheduleShadows` bei reinem `enabled`-Toggle löste unnötige Shadow-Arbeit aus. **Fix:** `sceneLightsDiffersOnlyByEnabled` → `snapFadeToEnabled` + kein Shadow-Schedule; `tickAnimations` nur bei `entry.enabled`; Master „Alle Lichter“ ohne Shadow-Schedule. Dateien: `sceneLights.ts`, `sceneLightRuntime.ts`, `main.ts`.
+
+### Ausblenden ohne Nachblinken (2026-09-11) — v2.0.337
+
+**Symptom:** Nach schnellem Ausblenden (v2.0.336) blinkte Blaulicht noch 3–4×, Ebenenzeile war schon ausgegraut. **Ursache:** `fadeOut` (~1,2 s) lief weiter mit aktivem `blaulicht`-Muster (`sceneLightAnimationFactor` auch bei `enabled: false`). **Fix:** `sceneLightAnimationFactorWhenLit` — Blink nur bei `enabled`; manuelles Aus per `applyState` → `snapFadesToEnabled`. Dateien: `sceneLightAnimation.ts`, `sceneLightRuntime.ts`, `main.ts`.
+
+### Lichter ein-/ausblenden ohne UI-Freeze (2026-09-11) — v2.0.336
+
+**Symptom:** Licht ausblenden/einblenden dauerte mehrere Sekunden, UI eingefroren. **Ursache (Logs v2.0.335):** `stableLightCount` nur bei Blaulicht/Licht-Modus — normales Ausblenden änderte die Shader-Lichtanzahl → synchrone Neukompilierung aller Materialprogramme (~4–6 s, `renderer.info.programs` sprang z. B. 81→149). **Fix:** `sceneLightShaderCountStable`: sobald Lichter platziert sind, bleiben inaktive Slots gezählt (Intensität 0); **keine** Vorrats-Reserven außer Licht-Modus (`padSpareLights` unverändert). Datei: `main.ts`. Docs: [performance.md](performance.md).
+
 ### Tageszeit-Slider und Blaulicht (2026-09-09) — v2.0.335
 
-**Symptom:** Tageszeit-Slider Tag↔Nacht stockt (lange Hänger); zwei Blaulichter blinken bei ~6 FPS (~170 ms) ruckelig — FPS-Anzeige und Blink-Takt wirkten entkoppelt. **Ursachen:** (1) Sonnen-Scrub backte die 8192²-Shadow-Map **jedes** Lighting-Frame (v2.0.202) — Himmel kann nicht flüssig mitlaufen. (2) Blaulicht-Blitze nur 48 ms lang → bei 170 ms/Frame oft unsichtbar. (3) `stableLightCount` für **jedes** platzierte Licht erhöhte Fragment-Kosten dauerhaft. **Fix:** Shadow-Bake beim Scrub max. ~5×/s (`SUN_SCRUB_SHADOW_BAKE_MIN_MS` 200), final beim Loslassen; Blitzdauer skaliert mit Frame-Zeit; `stableLightCount` nur bei Blaulicht/Licht-Modus. Dateien: `main.ts`, `sceneLightAnimation.ts`, `sceneLightRuntime.ts`.
+**Symptom:** Tageszeit-Slider Tag↔Nacht stockt (lange Hänger); zwei Blaulichter blinken bei ~6 FPS (~170 ms) ruckelig — FPS-Anzeige und Blink-Takt wirkten entkoppelt. **Ursachen:** (1) Sonnen-Scrub backte die 8192²-Shadow-Map **jedes** Lighting-Frame (v2.0.202) — Himmel kann nicht flüssig mitlaufen. (2) Blaulicht-Blitze nur 48 ms lang → bei 170 ms/Frame oft unsichtbar. (3) `stableLightCount` für **jedes** platzierte Licht erhöhte Fragment-Kosten dauerhaft. **Fix:** Shadow-Bake beim Scrub max. ~5×/s (`SUN_SCRUB_SHADOW_BAKE_MIN_MS` 200), final beim Loslassen; Blitzdauer skaliert mit Frame-Zeit; `stableLightCount` nur bei Blaulicht/Licht-Modus (**teilweise zurückgenommen v2.0.336** — Ein/Aus ohne Rebuild). Dateien: `main.ts`, `sceneLightAnimation.ts`, `sceneLightRuntime.ts`.
 
 ### Sonnenwinkel vs. Tageszyklus (2026-09-09) — v2.0.334
 
