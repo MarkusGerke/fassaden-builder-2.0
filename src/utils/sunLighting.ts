@@ -32,6 +32,11 @@ export interface SunSettings {
   shadowContrast: number
   /** 0…1: Hemisphere-Bodenfarbe dunkler (Schatten-Tiefe). */
   shadowDensity: number
+  /**
+   * 0…1: Schattenseite der Fassade und Innenraum dunkler (v2.0.364).
+   * 0 = kein zusätzliches Dim, 1 = fast schwarz. Wirkt nicht auf Boden-Schlagschatten.
+   */
+  shadeDepth: number
   /** Monat 1–12 (Berlin-Sonnenverlauf). */
   month: number
   /** Tag im Monat 1–31. */
@@ -97,6 +102,37 @@ export function intensityFromElevation(elevationRad: number): number {
  * Manueller Höhen-Slider: Key-Intensität, Weichheit und Farbtemperatur an die gewählte
  * Höhe koppeln (wie Tageszeit mit `applySolarLook`), ohne Uhrzeit/Azimut zu überschreiben.
  */
+/** Nach Abend/Tageszyklus: hohe Höhe, aber intensity ~0,04 — kein Key-Licht/Schatten bis Slider bewegt. */
+/**
+ * Persist/Tageszyklus: Uhrzeit sagt Nacht, gespeicherte `elevationRad` noch Tag (oder umgekehrt).
+ * Ohne Korrektur bleibt Tag-Hemisphere bei Mitternacht — Haus gleich hell.
+ */
+export function reconcileSunElevationWithTime(settings: SunSettings): SunSettings {
+  const solar = resolveSunFromDate(settings)
+  const stored = settings.elevationRad
+  if (!Number.isFinite(stored)) return settings
+  const nightSolar = solar.elevationRad < THREE.MathUtils.degToRad(-2)
+  const daySolar = solar.elevationRad > THREE.MathUtils.degToRad(3)
+  const nightStored = stored < THREE.MathUtils.degToRad(-1)
+  const dayStored = stored > THREE.MathUtils.degToRad(3)
+  if ((nightSolar && dayStored) || (daySolar && nightStored)) {
+    const fixed = syncSunSettingsFromSolar(settings, { applySolarLook: true })
+    return fixed
+  }
+  return settings
+}
+
+export function repairStaleSunIntensity(settings: SunSettings): SunSettings {
+  if (
+    Number.isFinite(settings.elevationRad) &&
+    settings.elevationRad > THREE.MathUtils.degToRad(2) &&
+    settings.intensity <= 0.08
+  ) {
+    return applyManualSunElevationLook(settings)
+  }
+  return settings
+}
+
 export function applyManualSunElevationLook(settings: SunSettings): SunSettings {
   const elev = settings.elevationRad
   if (!Number.isFinite(elev)) return settings
@@ -119,16 +155,18 @@ export function applyManualSunElevationLook(settings: SunSettings): SunSettings 
 
 export const DEFAULT_SUN_TIME_OF_DAY = 13.25
 export const DEFAULT_SUN_AZIMUTH = 210
-export const DEFAULT_SUN_INTENSITY = 3.9
-export const DEFAULT_SUN_SHADOW_SOFTNESS = 2.5
-export const DEFAULT_SUN_COLOR_TEMP = 4500
-export const DEFAULT_SUN_AMBIENT = 0.53
-export const DEFAULT_SUN_SHADOW_CONTRAST = 1.4
+export const DEFAULT_SUN_INTENSITY = 3.0
+export const DEFAULT_SUN_SHADOW_SOFTNESS = 2.0
+export const DEFAULT_SUN_COLOR_TEMP = 3500
+export const DEFAULT_SUN_AMBIENT = 0.05
+export const DEFAULT_SUN_SHADOW_CONTRAST = 0.5
 /** Slider `#sun-shadow-contrast`: Minimum. */
 export const SUN_SHADOW_CONTRAST_MIN = 0.5
 /** Slider-Maximum — höher = deutlich dunklere Schatten (v2.0.256: 10, zuvor 5). */
 export const SUN_SHADOW_CONTRAST_MAX = 10
 export const DEFAULT_SUN_SHADOW_DENSITY = 0.7
+/** Slider `#sun-shade-depth`: Schattenseite Fassade + Innenraum (v2.0.364). */
+export const DEFAULT_SUN_SHADE_DEPTH = 0.75
 
 const today = todayMonthDay()
 /** Sonnenhöhe für Standard-Tageszeit (Berlin, heutiges Datum). */
@@ -165,6 +203,7 @@ export const DEFAULT_SUN_SETTINGS: SunSettings = {
   ambient: DEFAULT_SUN_AMBIENT,
   shadowContrast: DEFAULT_SUN_SHADOW_CONTRAST,
   shadowDensity: DEFAULT_SUN_SHADOW_DENSITY,
+  shadeDepth: DEFAULT_SUN_SHADE_DEPTH,
   month: today.month,
   day: today.day,
   animUseTime: false,
@@ -539,6 +578,10 @@ export function normalizeSunSettings(
       typeof value.shadowDensity === 'number'
         ? THREE.MathUtils.clamp(value.shadowDensity, 0, 1)
         : base.shadowDensity,
+    shadeDepth:
+      typeof value.shadeDepth === 'number'
+        ? THREE.MathUtils.clamp(value.shadeDepth, 0, 1)
+        : base.shadeDepth,
     month,
     day,
     ...migrateLegacyAnim(value, base),
@@ -574,7 +617,9 @@ export function normalizeSunSettings(
   if (merged.shadowSoftness >= 7.5 && elevSoft < 4) {
     merged.shadowSoftness = elevSoft
   }
-  return syncSunSettingsFromSolar(merged, { applySolarLook: false })
+  return repairStaleSunIntensity(
+    reconcileSunElevationWithTime(syncSunSettingsFromSolar(merged, { applySolarLook: false })),
+  )
 }
 
 /** Welt-AABB des Baukörpers inkl. Innenraum (für Shadow-Frustum und Sonnenziel). */

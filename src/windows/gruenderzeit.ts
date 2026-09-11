@@ -1676,7 +1676,8 @@ export function createGruenderzeitWindowMesh(
     })
     applySurfaceFinish(mat, frameFinish)
     markWindowFrameSurface(mat)
-    mat.userData.skipFacadeShade = true
+    // v2.0.365: Gegenlicht-Shader im Normalen-Modus statt Skip (Slider „Schatten-Tiefe“).
+    mat.userData.facadeShadeNormalMode = true
     return mat
   }
   const wood = makeWood(frameColor)

@@ -24,6 +24,21 @@ let glassEnvMap: THREE.Texture | null = null
  */
 let exteriorEnvFillFactor = 1
 
+/**
+ * Glas-EnvMap-Basis (v2.0.366: 2,6 → 1,0; v2.0.368: Klarglas 1,25 — weniger „blass“ als 2,6,
+ * Innenraum bleibt sichtbar). Clearcoat in `applyGlassLook` nicht mehr 1,0 auf Klarglas.
+ */
+export const GLASS_ENV_BASE_CLEAR = 1.25
+export const GLASS_ENV_BASE_SEE_THROUGH = 1.0
+export const GLASS_ENV_BASE_TINTED = 0.8
+
+function glassEnvBaseFor(material: THREE.MeshStandardMaterial): number {
+  if (material instanceof THREE.MeshPhysicalMaterial && material.transmission > 0.5) {
+    return GLASS_ENV_BASE_CLEAR
+  }
+  return material.transparent ? GLASS_ENV_BASE_SEE_THROUGH : GLASS_ENV_BASE_TINTED
+}
+
 export function setGlassEnvironment(map: THREE.Texture | null) {
   glassEnvMap = map
 }
@@ -61,17 +76,13 @@ export function syncEnvMapFillIntensities(root: THREE.Object3D): void {
       if (!material.envMap && !isGlassLike(material)) continue
 
       const stored = material.userData.baseEnvMapIntensity as number | undefined
-      if (typeof stored === 'number' && Number.isFinite(stored)) {
+      const staleGlassBase = isGlassLike(material) && typeof stored === 'number' && stored > GLASS_ENV_BASE_CLEAR + 1e-6
+      if (typeof stored === 'number' && Number.isFinite(stored) && !staleGlassBase) {
         material.envMapIntensity = scaledEnvIntensity(stored)
         continue
       }
       if (isGlassLike(material)) {
-        const base =
-          material instanceof THREE.MeshPhysicalMaterial && material.transmission > 0.5
-            ? 2.6
-            : material.transparent
-              ? 2.4
-              : 1.8
+        const base = glassEnvBaseFor(material)
         material.userData.baseEnvMapIntensity = base
         material.envMapIntensity = scaledEnvIntensity(base)
       } else if (material.userData.forceExteriorEnv === true) {
@@ -129,14 +140,12 @@ export function bindMaterialsToGlassEnv(root: THREE.Object3D) {
       }
 
       if (isGlassLike(material)) {
+        const stored = material.userData.baseEnvMapIntensity
+        // Alt-Basis > neue Obergrenze (2,6 aus früheren Sessions) nicht weiterschleppen.
         const base =
-          typeof material.userData.baseEnvMapIntensity === 'number'
-            ? material.userData.baseEnvMapIntensity
-            : material instanceof THREE.MeshPhysicalMaterial && material.transmission > 0.5
-              ? 2.6
-              : material.transparent
-                ? 2.4
-                : 1.8
+          typeof stored === 'number' && stored <= GLASS_ENV_BASE_CLEAR + 1e-6
+            ? stored
+            : glassEnvBaseFor(material)
         assignEnv(base)
       } else if (material.userData.interiorWallSurface === true) {
         if (material.envMap) {
@@ -218,8 +227,11 @@ export function applyGlassLook(material: THREE.MeshPhysicalMaterial, config: Ope
   material.roughness = config.roughness
   material.ior = config.ior
   if (glassEnvMap) {
-    material.clearcoat = 1
-    material.clearcoatRoughness = Math.min(0.06, config.roughness + 0.01)
+    // Volles Clearcoat + weiße Transmission = milchige „blasse“ Scheibe (v2.0.368).
+    material.clearcoat = clear ? 0.62 : 1
+    material.clearcoatRoughness = clear
+      ? Math.min(0.12, config.roughness + 0.04)
+      : Math.min(0.06, config.roughness + 0.01)
   } else {
     material.clearcoat = 0
     material.clearcoatRoughness = 1
@@ -232,12 +244,14 @@ export function applyGlassLook(material: THREE.MeshPhysicalMaterial, config: Ope
     material.color.set('#ffffff')
     material.transparent = false
     material.opacity = 1
-    material.transmission = config.transmission > 0.08 ? config.transmission : 0.96
+    material.transmission = config.transmission > 0.08 ? config.transmission : 0.92
     material.thickness = Math.min(config.thickness, 0.25)
-    material.roughness = Math.min(config.roughness, 0.02)
+    material.roughness = Math.min(config.roughness, 0.035)
     material.attenuationColor.set('#ffffff')
     material.attenuationDistance = Infinity
-    material.envMapIntensity = glassEnvMap ? rememberBaseEnvIntensity(material, 2.6) : 0
+    material.envMapIntensity = glassEnvMap
+      ? rememberBaseEnvIntensity(material, GLASS_ENV_BASE_CLEAR)
+      : 0
   } else if (seeThrough) {
     material.color.set(tint)
     material.transparent = true
@@ -245,7 +259,9 @@ export function applyGlassLook(material: THREE.MeshPhysicalMaterial, config: Ope
     material.transmission = 0
     material.thickness = config.thickness
     material.attenuationDistance = Infinity
-    material.envMapIntensity = glassEnvMap ? rememberBaseEnvIntensity(material, 2.4) : 0
+    material.envMapIntensity = glassEnvMap
+      ? rememberBaseEnvIntensity(material, GLASS_ENV_BASE_SEE_THROUGH)
+      : 0
   } else {
     material.color.set(tint)
     material.transparent = false
@@ -254,7 +270,9 @@ export function applyGlassLook(material: THREE.MeshPhysicalMaterial, config: Ope
     material.thickness = config.thickness
     material.attenuationColor.set('#ffffff')
     material.attenuationDistance = Math.max(24, config.thickness * 12)
-    material.envMapIntensity = glassEnvMap ? rememberBaseEnvIntensity(material, 1.8) : 0
+    material.envMapIntensity = glassEnvMap
+      ? rememberBaseEnvIntensity(material, GLASS_ENV_BASE_TINTED)
+      : 0
   }
   material.needsUpdate = true
 }

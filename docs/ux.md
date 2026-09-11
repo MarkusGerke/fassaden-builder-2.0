@@ -245,7 +245,7 @@ Yaw-Konvention überall gleich: **0=N, 90=W, 180=S, 270=O** (gegen Uhrzeigersinn
 | Etage | alle Studio-Wände aller `floorIndex`-Werte der Auswahl (Multi-Etagen) | alle Öffnungen dieser Etagen |
 | Fassade | alle Studio-Wände **desselben Hauses** (0°/45°/90°, jede Etage); optional gefiltert auf gewählte Himmelsrichtungen (`#edit-scope-facade-yaws`) | **alle** Öffnungen auf diesen Wänden (gleicher Yaw-Filter), **inkl. Kellerfenster und Türen** (**v2.0.266** — kein Keller-Paritätsfilter mehr bei Fassade; Etage/Typ/Auswahl behalten Parität) |
 
-Wenn **Fassade** aktiv ist: Chip-Leiste daneben mit **Alle** plus den im Haus vorhandenen Richtungen (`wallCompassLabel`). Kein Chip / Alle = gesamtes Haus. Mehrfachauswahl möglich. Persistenz: `editFacadeYawFilter` neben `editScope`.
+Wenn **Fassade** aktiv ist: Chip-Leiste daneben mit **Alle** plus den im Haus vorhandenen Richtungen (`wallCompassLabel`). Kein Chip / Alle = gesamtes Haus. Mehrfachauswahl möglich. Persistenz: `editFacadeYawFilter` neben `editScope`. **v2.0.372 / v2.0.373:** Im Fassaden-Scope sind Wand-/Haus-Verschieben gesperrt (3D-Drag, Front-Greifer ausgeblendet, SVG-Zug startet nicht, Preview-Block) — Maße/Farben/Dekor weiter änderbar.
 
 Nicht verknüpfte Wände unter **Auswahl** werden nie still über Nachbarschaft oder Gruppe mitbearbeitet — nur explizit markierte IDs.
 
@@ -334,7 +334,11 @@ Z-Fighting: Beide Ebenen teilen `backZ = 0` an der Wandaußenfläche — zu flac
 
 ### Paneel-Reihen ausblenden (v0.7.108)
 
-Unter **Höhe** im Tab Paneele: **Reihen unten ausblenden** / **Reihen oben ausblenden** (`#studio-hide-rows-bottom`, `#studio-hide-rows-top`). Ganzzahlige Schichten (0 = alle sichtbar); 1 = eine Reihe ohne Paneele/Mörtel, nur nackter Wandkörper. Unabhängig vom Sockel (Sockel clippt weiterhin cm-basiert von unten). Maximalwert = Gesamtreihen − 1. **v0.7.227:** Im oberen Freistreifen bleibt die Außenfläche auf voller Tiefe — der Wandkörper wirft weiter Schatten (keine Einsenkung der Außenfläche). **v0.7.134/135:** Ist die Wandbeschriftung aktiv, rückt sie in den oberen Freistreifen — auch wenn der Streifen niedriger als die Schrifthöhe ist (dann an der Wandoberkante). **v0.7.159:** Zierbänder im ausgeblendeten oberen Streifen werden ebenfalls auf die nackte Wand gelegt (`syncWallDecorToTopBareBand`).
+Unter **Höhe** im Tab Paneele: **Reihen unten ausblenden** / **Reihen oben ausblenden** (`#studio-hide-rows-bottom`, `#studio-hide-rows-top`). Ganzzahlige Schichten (0 = alle sichtbar); 1 = eine Reihe ohne Paneele/Mörtel, nur nackter Wandkörper. Default **0** (v2.0.372; früher Streifen-Preset 3). Unabhängig vom Sockel (Sockel clippt weiterhin cm-basiert von unten). Maximalwert = Gesamtreihen − 1. **v0.7.227:** Im oberen Freistreifen bleibt die Außenfläche auf voller Tiefe — der Wandkörper wirft weiter Schatten (keine Einsenkung der Außenfläche). **v0.7.134/135:** Ist die Wandbeschriftung aktiv, rückt sie in den oberen Freistreifen — auch wenn der Streifen niedriger als die Schrifthöhe ist (dann an der Wandoberkante). **v0.7.159:** Zierbänder im ausgeblendeten oberen Streifen werden ebenfalls auf die nackte Wand gelegt (`syncWallDecorToTopBareBand`).
+
+### Doppelklick-Zoom (v2.0.372 / v2.0.373)
+
+**3D:** Doppelklick auf Wand/Öffnung speichert die aktuelle Kamera und zoomt frontal/nah (bildschirmfüllend); zweiter Doppelklick stellt die Übersicht wieder her. **Front/Oben:** erster Doppelklick zoomt unter dem Cursor hinein, zweiter stellt Zoom/Pan wieder her. **v2.0.373:** Erkennung per manuellem Doppel-Tap auf `pointerup` — native `dblclick` wird durch `setPointerCapture` (Wandzug/Orbit) oft unterdrückt.
 
 ### Wandbeschriftung (v0.7.109)
 
@@ -350,7 +354,7 @@ Tab **Schrift** (`data-settings-section="label"`): Checkbox, Textfeld mit **Spei
 - Bei Teil-Fokus (`part !== 'group'`): rechte Toolbar zeigt **nur** den passenden Reiter (andere `.settings-section` per `hidden`; verschachtelte Sektionen zählen nur wenn kein Vorfahre ausgeblendet ist). Maße/Aktionen und irrelevante Farben ausgeblendet. **Ausnahme Paneele (`cladding`):** **v2.0.156** / v0.7.227 — **wie Wand ganz** (alle Bibliothek-Tabs und Studio-Reiter); nur 3D-Highlight bleibt auf dem Paneel.
 - **v0.7.176:** Anklicken in 3D behält Teil-Fokus für Profil, Bänke, Verdachung, Konsolen, Treppe, Gesims, Sockel, Paneele, Schrift. Rahmen/Glas → Ganz-Öffnung (`group`). **v2.0.230:** Bei jedem Objekt-Klick startet rechts der Tab **Übersicht** (`selectionToolbarTab = 'all'`); alle Sektionen sichtbar. Nutzer kann danach in Maße/Farben/… wechseln (Sticky bleibt für denselben Toolbar-Typ).
 - 3D-Highlight: Treppe = Stufen-Meshes orange (kein flaches Overlay in der Sockelzone); Wand-Teil = markierte Meshes + Overlay. **v2.0.205 / v2.0.206:** Gesims/Sockel/Zierband und Öffnungs-Teil Profile/Bänke/Verdachung orange per unbeleuchtetem `#ff6600` (`selectedUnlitMaterial`, `toneMapped: false`) — Standard-Material wirkte unter Tone-Mapping dunkelrot. Öffnungs-Overlay folgt der Maske (`openingForShellCut` + `openingWallFaceMaskPolyline`).
-- **Verschieben (v2.0.156 / v2.0.171 / v2.0.173 / v2.0.174 / v2.0.175 / v2.0.177 / v2.0.187 / v2.0.320):** Ghost, Hilfslinien und Pick-Ebene auf derselben Fassadentiefe (`OPENING_DRAG_FLOAT_CM` = 4 cm) und derselben Maskenkontur — Orange = Linien = Loch nach Drop. **v2.0.171:** kein Shadow-Bake beim Zug-Start (Sockel/Gesims). **v2.0.173 / v2.0.320:** beim Loslassen `live` (kein Profil-Grau); Schatten-Map ab v2.0.320 sofort forcen. **v2.0.174:** Profile/Bänke sofort mit Außen-EnvMap. **v2.0.175 / v2.0.177:** matte Rahmen kurz ohne Env (gegen Grau). **v2.0.187:** Rahmen wieder mit Außen-EnvMap + Facade-Shade wie Wand/Laibung (sonst dumpferes Weiß).
+- **Verschieben (v2.0.156 / v2.0.171 / v2.0.173 / v2.0.174 / v2.0.175 / v2.0.177 / v2.0.187 / v2.0.320):** Ghost, Hilfslinien und Pick-Ebene auf derselben Fassadentiefe (`OPENING_DRAG_FLOAT_CM` = 4 cm) und derselben Maskenkontur — Orange = Linien = Loch nach Drop. **v2.0.171:** kein Shadow-Bake beim Zug-Start (Sockel/Gesims). **v2.0.173 / v2.0.320:** beim Loslassen `live` (kein Profil-Grau); Schatten-Map ab v2.0.320 sofort forcen. **v2.0.174:** Profile/Bänke sofort mit Außen-EnvMap. **v2.0.175 / v2.0.177:** matte Rahmen kurz ohne Env (gegen Grau). **v2.0.187:** Rahmen wieder mit Außen-EnvMap + Facade-Shade wie Wand/Laibung (sonst dumpferes Weiß). **v2.0.372:** jeder Geometrie-Rebuild (nicht nur Öffnungs-Zug) nutzt `live` + sofort `bindMaterialsToGlassEnv` — kein kurzes Abdunkeln nach Änderung/Abwahl.
 
 - 3D: `tagPickable(..., { openingPart })` an Rahmen, Profil-Sweeps, Leibung (`trim`), Bänke, Verdachung, Treppe, Gitter, Freiraum-Kappe; Raycast inkl. `profileGroup`. Pick-Priorität: **Treppe vor Öffnung vor Verkleidung**; Treffer im Öffnungsloch auf Paneel/Wand zählen als Fenster.
 - 2D: Bank/Treppe/Verdachung mit `data-opening-part` pickbar; Öffnungspfade `pointer-events: all`.
@@ -789,7 +793,7 @@ Reiter **Rollläden** bei Fenster/Tür **immer** sichtbar; Checkbox standardmä�
 
 ## Standardfarben
 
-Neue Elemente: Wand, Paneele, Profile, Rahmen, Türen → `#ffffff`. Neue Fenster/Türen: **physisches Glas** (`glassMode: 'physical'`, IOR 1,52, Transmission 0, dunkles Klarglas plus Szenen-EnvMap). Alt-Saves: Hydrate setzt unveränderte Defaults nach (Klarglas-Transmission 0,9/0,96/0,42 → 0; Fensterbank 20/32/… → 16 cm). Gespeicherte **abweichende** Nutzerwerte bleiben.
+Neue Elemente: Wand, Paneele, Profile, Rahmen, Türen → `#ffffff`. Neue Fenster/Türen: **physisches Glas** (`glassMode: 'physical'`, IOR 1,52, Transmission 0), Standard-Glasfarbe **#575757** plus Szenen-EnvMap. Sonnen-Slider-Defaults v2.0.369: Sonne 3,0, Ambient 0,05, Kontrast 0,5, Schatten-Tiefe 0,75, Weichheit 2,0, 3500 K. Alt-Saves: Hydrate setzt unveränderte Defaults nach (Klarglas-Transmission 0,9/0,96/0,42 → 0; Fensterbank 20/32/… → 16 cm). Gespeicherte **abweichende** Nutzerwerte bleiben.
 
 ---
 

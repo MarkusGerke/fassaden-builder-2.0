@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   applyFacadeShadeShader,
   applyInteriorShadeShader,
+  applyShadeDepth,
   facadeOutwardLocalZ,
   facadeShadeParamsFromSun,
   LABEL_SHADOW_COORD_Z_BIAS,
@@ -44,8 +45,53 @@ describe('facadeShade', () => {
     expect(shader.fragmentShader).not.toContain('normalMatrix *')
     expect(shader.fragmentShader).toContain('vFacadeView')
     expect(shader.fragmentShader).toContain('#include <lights_fragment_begin>')
-    expect(shader.fragmentShader).toContain('mix(1.0 - sideOrTop, 1.0, uLabelShade)')
+    expect(shader.fragmentShader).toContain('sideOrTop * 0.82')
+    expect(shader.fragmentShader).toContain('horizExtra')
     expect(shader.vertexShader).not.toContain('vDirectionalShadowCoord[ 0 ].z -=')
+  })
+
+  it('Indirect-Dim sitzt vor lights_fragment_end (v2.0.364 — vorher wirkungslos)', () => {
+    const mat = new THREE.MeshStandardMaterial()
+    applyFacadeShadeShader(mat, 1)
+    const shader = stubShader()
+    mat.onBeforeCompile(shader as unknown as THREE.WebGLProgramParametersWithUniforms, {} as THREE.WebGLRenderer)
+    const frag = shader.fragmentShader
+    const indirectAt = frag.indexOf('irradiance *= facadeIndirect')
+    const endAt = frag.indexOf('#include <lights_fragment_end>')
+    const beginAt = frag.indexOf('#include <lights_fragment_begin>')
+    expect(indirectAt).toBeGreaterThan(beginAt)
+    expect(indirectAt).toBeLessThan(endAt)
+    expect(frag).toContain('iblIrradiance *= facadeIndirect')
+    expect(frag).not.toContain('reflectedLight.indirectDiffuse *= mix')
+  })
+
+  it('Normalen-Modus für Rahmen: Uniform 1, Shader nutzt geometryNormal (v2.0.365)', () => {
+    const mat = new THREE.MeshStandardMaterial()
+    mat.userData.facadeShadeNormalMode = true
+    applyFacadeShadeShader(mat, 1)
+    expect(mat.userData.facadeShadeApplied).toBe(true)
+    const shader = stubShader()
+    mat.onBeforeCompile(shader as unknown as THREE.WebGLProgramParametersWithUniforms, {} as THREE.WebGLRenderer)
+    expect(shader.uniforms.uNormalBacklit.value).toBe(1)
+    expect(shader.fragmentShader).toContain('geometryNormal, uNormalBacklit')
+    const plain = new THREE.MeshStandardMaterial()
+    applyFacadeShadeShader(plain, 1)
+    const shader2 = stubShader()
+    plain.onBeforeCompile(shader2 as unknown as THREE.WebGLProgramParametersWithUniforms, {} as THREE.WebGLRenderer)
+    expect(shader2.uniforms.uNormalBacklit.value).toBe(0)
+  })
+
+  it('Schatten-Tiefe: 0 unverändert, 1 fast schwarz, Default dunkler als roh', () => {
+    const raw = facadeShadeParamsFromSun({ ...DEFAULT_SUN_SETTINGS, shadeDepth: 0 })
+    expect(applyShadeDepth(raw, 0)).toEqual(raw)
+    const deep = applyShadeDepth(raw, 1)
+    expect(deep.hemiDim).toBeLessThan(raw.hemiDim * 0.1)
+    expect(deep.interiorDirectDim).toBeCloseTo(raw.interiorDirectDim * 0.7, 6)
+    expect(deep.interiorHemiDim).toBeLessThan(raw.interiorHemiDim * 0.1)
+    const def = facadeShadeParamsFromSun(DEFAULT_SUN_SETTINGS)
+    expect(def.hemiDim).toBeLessThan(raw.hemiDim)
+    expect(def.interiorDirectDim).toBeLessThan(raw.interiorDirectDim)
+    expect(def.hemiDim).toBeGreaterThan(0.2)
   })
 
   it('Schrift-Shader dimmt die Front und setzt Shadow-Z-Bias', () => {
@@ -57,7 +103,8 @@ describe('facadeShade', () => {
     expect(shader.uniforms.uLabelShade.value).toBe(1)
     expect(shader.fragmentShader).toContain('uLabelDirectDim')
     expect(shader.fragmentShader).toContain('uLabelHemiDim')
-    expect(shader.fragmentShader).toContain('mix(1.0 - sideOrTop, 1.0, uLabelShade)')
+    expect(shader.fragmentShader).toContain('sideOrTop * 0.82')
+    expect(shader.fragmentShader).toContain('horizExtra')
     expect(shader.vertexShader).toContain(
       `vDirectionalShadowCoord[ 0 ].z -= ${LABEL_SHADOW_COORD_Z_BIAS.toFixed(4)}`,
     )
@@ -70,15 +117,20 @@ describe('facadeShade', () => {
   })
 
   it('Schrift-Dim ist klar dunkler als Wand-Dim (Defaults)', () => {
-    const params = facadeShadeParamsFromSun(DEFAULT_SUN_SETTINGS)
+    const params = facadeShadeParamsFromSun({
+      ...DEFAULT_SUN_SETTINGS,
+      shadowContrast: 1.4,
+      ambient: 0.53,
+      shadeDepth: 0,
+    })
     expect(params.labelHemiDim).toBeLessThan(params.hemiDim)
     expect(params.labelDirectDim).toBeLessThan(params.directDim)
     expect(params.labelHemiDim).toBeGreaterThanOrEqual(0.18)
     expect(params.labelHemiDim).toBeLessThanOrEqual(0.55)
   })
 
-  it('Gegenlicht behält starkes Himmels-Fill (näher an Schlagschatten)', () => {
-    const params = facadeShadeParamsFromSun(DEFAULT_SUN_SETTINGS)
+  it('Gegenlicht behält starkes Himmels-Fill (Rohkurve, Schatten-Tiefe 0)', () => {
+    const params = facadeShadeParamsFromSun({ ...DEFAULT_SUN_SETTINGS, shadeDepth: 0 })
     // Direktlicht stark gedimmt, Ambient weitgehend erhalten (v2.0.312).
     expect(params.directDim).toBeLessThan(0.25)
     expect(params.hemiDim).toBeGreaterThanOrEqual(0.55)
@@ -87,18 +139,24 @@ describe('facadeShade', () => {
 
   it('nachts kein Gegenlicht-Dim (Punktlicht bleibt hell)', () => {
     const night = facadeShadeParamsFromSun({ ...DEFAULT_SUN_SETTINGS, elevationRad: -0.2 })
-    expect(night.directDim).toBe(1)
-    expect(night.hemiDim).toBe(1)
-    expect(night.labelDirectDim).toBe(1)
+    expect(night.directDim).toBeLessThan(0.35)
+    expect(night.hemiDim).toBeLessThan(0.25)
+    expect(night.labelDirectDim).toBeLessThan(0.2)
     expect(night.interiorDirectDim).toBeLessThan(0.65)
-    expect(night.interiorHemiDim).toBeLessThan(0.35)
+    expect(night.interiorHemiDim).toBeLessThan(0.45)
+    expect(night.interiorHemiDim).toBeGreaterThan(0.08)
   })
 
-  it('tagsüber stark gedämpftes Innen-Hemi', () => {
-    const day = facadeShadeParamsFromSun(DEFAULT_SUN_SETTINGS)
-    expect(day.interiorHemiDim).toBeLessThanOrEqual(0.07)
-    expect(day.interiorDirectDim).toBeLessThanOrEqual(0.05)
-    expect(day.interiorIndirectGain).toBeLessThanOrEqual(0.16)
+  it('tagsüber Innen-Fill: Weiß lesbar, Sonne durch Öffnung sichtbar (v2.0.367)', () => {
+    const day = facadeShadeParamsFromSun({ ...DEFAULT_SUN_SETTINGS, shadeDepth: 0 })
+    // Produkt hemi×gain ≈ 0,18…0,35 — Weiß bleibt hellgrau, nicht pechschwarz.
+    expect(day.interiorHemiDim * day.interiorIndirectGain).toBeGreaterThanOrEqual(0.14)
+    expect(day.interiorHemiDim * day.interiorIndirectGain).toBeLessThanOrEqual(0.4)
+    expect(day.interiorDirectDim).toBeGreaterThanOrEqual(0.5)
+    expect(day.interiorDirectDim).toBeLessThanOrEqual(0.85)
+    const deep = facadeShadeParamsFromSun({ ...DEFAULT_SUN_SETTINGS, shadeDepth: 1 })
+    expect(deep.interiorDirectDim).toBeGreaterThanOrEqual(0.4)
+    expect(deep.interiorHemiDim).toBeLessThan(day.interiorHemiDim * 0.2)
   })
 
   it('setFacadeShadeParams schreibt Schrift-Uniforms', () => {
@@ -129,7 +187,9 @@ describe('facadeShade', () => {
     expect(shader.uniforms.uInteriorHemiDim).toBeDefined()
     expect(shader.fragmentShader).toContain('uInteriorHemiDim')
     expect(shader.fragmentShader).toContain('#include <lights_fragment_end>')
-    expect(shader.fragmentShader).toContain('uInteriorHemiDim * uInteriorHemiDim')
+    expect(shader.fragmentShader).toContain('uInteriorHemiDim * uInteriorIndirectGain')
+    expect(shader.fragmentShader).not.toContain('uInteriorHemiDim * uInteriorHemiDim')
+    expect(shader.fragmentShader).toContain('uInteriorDirectDim')
   })
 
   it('überspringt Glas', () => {

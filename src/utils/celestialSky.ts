@@ -236,6 +236,10 @@ export function exteriorEnvFillFromCelestial(celestial: CelestialState): number 
   const dayEnv = THREE.MathUtils.lerp(1, 0.42, celestial.twilightFactor) * postSunsetDim
   if (celestial.activeLight === 'sun') return dayEnv
   const moonEnv = (0.22 + 0.18 * celestial.moonIllumination) * postSunsetDim
+  // Sonne unter Horizont: nicht dayEnv nur weil twilightFactor < 0,48 (v2.0.363 — Log: envFill 0,72 bei Mond).
+  if (celestial.sun.elevationRad <= THREE.MathUtils.degToRad(-0.5)) {
+    return moonEnv
+  }
   const moonEnvBlend = THREE.MathUtils.smoothstep(celestial.twilightFactor, 0.48, 0.9)
   return THREE.MathUtils.lerp(dayEnv, moonEnv, moonEnvBlend)
 }

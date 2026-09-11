@@ -122,6 +122,18 @@ describe('celestialSky', () => {
     expect(exteriorKeyDimAfterSunset(late.sun.elevationRad)).toBeLessThan(0.05)
   })
 
+  it('Mond, Sonne unter Horizont: Env-Fill nicht Tag-Niveau (v2.0.363)', () => {
+    const c = resolveCelestialState({
+      ...DEFAULT_SUN_SETTINGS,
+      month: 9,
+      day: 11,
+      timeOfDay: 19 + 26 / 60,
+      elevationRad: THREE.MathUtils.degToRad(-2),
+    })
+    expect(c.activeLight).toBe('moon')
+    expect(exteriorEnvFillFromCelestial(c)).toBeLessThan(0.45)
+  })
+
   it('Sonnenuntergang: Env-Fill ohne Sprung (19:16→19:18)', () => {
     const doy = dayOfYearFromMonthDay(9, 11)
     const envAt = (tod: number) => {

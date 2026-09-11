@@ -24,6 +24,25 @@ describe('lightingMood', () => {
     expect(mood.keyShadowSoftness).toBeGreaterThan(0.5)
   })
 
+  it('Mond in bürgerlicher Dämmerung: begrenztes Himmel-Fill', () => {
+    const celestial = resolveCelestialState({
+      ...DEFAULT_SUN_SETTINGS,
+      month: 9,
+      day: 11,
+      timeOfDay: 19 + 26 / 60,
+      elevationRad: THREE.MathUtils.degToRad(-2),
+    })
+    expect(celestial.activeLight).toBe('moon')
+    const palette = skyPaletteFromCelestial(celestial, '#3a6084', '#888', '#666')
+    const mood = resolveLightingMood(
+      { ...DEFAULT_SUN_SETTINGS, month: 9, day: 11, ambient: 0.53, shadowContrast: 1.4 },
+      celestial,
+      palette,
+      '#888',
+    )
+    expect(mood.skyIntensity).toBeLessThanOrEqual(0.1)
+  })
+
   it('Nacht: Bounce nahe null', () => {
     const solar = solarPosition(dayOfYearFromMonthDay(12, 21), 23)
     const celestial = resolveCelestialState({

@@ -2,6 +2,69 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Fassaden-Scope hart; Doppelklick per Tap (2026-09-11) — v2.0.373
+
+**Fassade-Scope:** Front-Greifer ausgeblendet; `applyWallResizePreview` blockiert Front-Zug; SVG startet keinen Wand-Drag (`setWallsMoveAllowed`). **Doppelklick:** Native `dblclick` kam wegen `setPointerCapture` oft nicht an — manueller Doppel-Tap auf `pointerup` (`tryObjectFocusDoubleTap`). Dateien: `main.ts`, `FacadeSvgView.ts`.
+
+### Fassaden-Scope, Doppelklick-Zoom, Defaults (2026-09-11) — v2.0.372
+
+1. **Gültig für → Fassade:** Wand-/Haus-Verschieben (3D-Drag, Front-Greifer, SVG, Grundriss) gesperrt — nur Eigenschaften ändern.
+2. **Doppelklick:** In 3D bildschirmfüllend auf Wand/Öffnung zoomen (Kamera speichern); zweiter Doppelklick stellt die Übersicht wieder her. Front/Oben: Zoom rein / zurück.
+3. **Reihen oben ausblenden:** Default `hideRowsTop` **0** (`DEFAULT_STUDIO_PANEL` + Streifen-Preset).
+4. **Dunkelflash nach Rebuild/Abwahl:** Geometrie-Commit nutzt wie Öffnungs-Zug `applySunLighting({ live: true })` + sofort `bindMaterialsToGlassEnv` — kein `invalidateShadowMaterials` mehr. Dateien: `main.ts`, `constants.ts`.
+
+### Boden/Decke beim Haus-Verschieben; horizontale Facetten dunkler (2026-09-11) — v2.0.371
+
+**Symptom:** Beim Verschieben des Hauses (3D-Wandzug oder Grundriss-Drag) blieben Boden/Decke an alter Position; horizontale Flächen im Schatten weiter zu hell (v2.0.370 reichte nicht). **Fix:** `applyLiveWallOffsets` transliert `indoorFloorGroup`-Meshes mit (`FacadeController`). Grundriss: `tryStartBuildingDrag` / `offsetBuildingByGrid` wieder an Pointer gebunden (`main.ts`). Gegenlicht: `dimMask` 0,82 + zusätzliche Indirect-Dimmung für `facadeSideOrTop` (Cache `facade-backlit-v14`). Dateien: `facadeShade.ts`, `FacadeController.ts`, `main.ts`.
+
+### Horizontale Lichtkanten im Schatten zu hell (2026-09-11) — v2.0.370
+
+**Symptom:** Horizontale Kanten (Gesims, Sturz, Stein-Fugen) im Schatten mit deutlich zu viel Streulicht. **Ursache:** Gegenlicht-Shader `dimMask = 1.0 - sideOrTop` → bei `sideOrTop ≈ 1` keine Abdunklung (Hemi/Env voll, v2.0.312). **Fix:** `dimMask = 1.0 - sideOrTop * 0.45` — Kanten ~55 % der Schattenseiten-Dimmung; Rahmen-Normalen-Modus unverändert. Cache `facade-backlit-v13`. Datei: `facadeShade.ts`.
+
+### Licht- & Glas-Defaults (2026-09-11) — v2.0.369
+
+**Nutzer-Vorgabe (Screenshot):** `DEFAULT_GLASS_COLOR` **#575757** (Palette, neue Öffnungen). Sonne: Intensität **3,0**, Ambient **0,05**, Schatten-Kontrast **0,5**, Schatten-Tiefe **0,75**, Weichheit **2,0**, Farbtemperatur **3500 K** (`sunLighting.ts`, `index.html`). Checkbox **„Alle Lichter an“** ohne `checked`. Gespeicherte Projekte behalten ihre Werte.
+
+### Klarglas wirkte blass/milchig (2026-09-11) — v2.0.368
+
+**Warum:** Standard-Glasfarbe „transparent“ → physisches Klarglas mit `color` **#ffffff**, Transmission **~0,96**, `attenuationDistance` ∞ (Licht dahinter ungetönt). Darüber lag **Clearcoat 1** + Cube-EnvMap-Spiegelung (v2.0.366 Basis 1,0) — ohne Tone-Mapping wirkt die Scheibe wie eine helle, kontrastlose Milchglasschicht, nicht wie dunkles Floatglas (`PHYSICAL_CLEAR_GLASS_COLOR` gilt nur für getöntes Glas, nicht für den Klarglas-Zweig). **Fix:** Klarglas Clearcoat **0,62**, etwas mehr Rauheit, Default-Transmission **0,92**, Env-Basis **1,25**. Innenraum-Durchsicht bleibt. Datei: `threeColors.ts`.
+
+### Innen Weiß wirkte dunkelgrau (2026-09-11) — v2.0.367
+
+**Symptom:** Boden und Innenwandfarbe dunkelgrau, obwohl `#ffffff` gewählt. **Ursache:** Innen-Shader `hemiIn = hemiDim² × gain` mit hemiDim ~0,02 / gain ~0,06 → Produkt **≈0** — Albedo Weiß, aber kein Streulicht. **Fix:** Formel `hemiDim × gain` (Floor 0,04), Tag-Basis hemi ~0,32–0,48 / gain ~0,55–0,75; Shader-Cache `interior-shade-v8`. Sonne durch Öffnungen unverändert. Datei: `facadeShade.ts`.
+
+### Glas zu hell, Innen rabenschwarz (2026-09-11) — v2.0.366
+
+**Symptom:** „Innen komplett hell“ → tatsächlich (Nutzer-Sichtung) **Innen rabenschwarz, Fensterglas viel zu hell**. **Runtime-Audit:** 16 Innen-Materialien `interiorShadeApplied`, 0 Punktlichter, `indoorFill` 0 — Innen-Shader wirkt; Glas-Materialien `envMapIntensity` **2,60** (+ Clearcoat 1, kein Tone-Mapping) → Himmel-Spiegelung überstrahlt die Scheibe; `interiorDirectDim` 0,13 bei Slider 0,81 → Sonnenfleck innen weg. **Verworfen:** I1 (Innen-Shader nicht kompiliert), I2 (Punktlicht/Fill/EnvMap innen) — durch Audit widerlegt. **Fix:** Glas-Basis `GLASS_ENV_BASE_*` 2,6/2,4/1,8 → **1,0/1,0/0,8** (`applyGlassLook`, `syncEnvMapFillIntensities`, `bindMaterialsToGlassEnv`; Alt-Basis > 1,0 wird verworfen). `applyShadeDepth`: Innen-Direct nur `1 − 0,3·d` (Streulicht weiter `1 − 0,92·d`); Tag-Basis `interiorDirectDim` 0,28+0,1·a → **0,6+0,15·a** — Sonne durch Öffnung/Glas bleibt sichtbar. Dateien: `threeColors.ts`, `facadeShade.ts`.
+
+### Schatten-Tiefe: Fensterrahmen (2026-09-11) — v2.0.365
+
+**Symptom:** Slider änderte Paneele/Wand, nicht Rahmen/Sprossen/Bänke. **Ursache:** alle Rahmen-Materialien `skipFacadeShade = true` (`finishOpeningFrameTree`, `gruenderzeit.ts`, `windowLod.ts`) — der Objekt-Z-Gegenlicht-Test passte nicht zu den lokalen Rahmen-Achsen (Rahmen in der Sonne dunkelgrau). **Fix:** `FacadeShadeOptions.normalBacklit` / `userData.facadeShadeNormalMode`: Gegenlicht aus `geometryNormal · sunDir` ohne Seiten-Ausnahme (Uniform `uNormalBacklit`, Cache-Key `facade-backlit-v12`). Sonnenseitige Flächen (N·L > 0) bleiben ungedimmt. Innenraum: siehe Audit-Log (offen).
+
+### Schatten-Tiefe-Slider + Schattenseite tag-hell (2026-09-11) — v2.0.364
+
+**Symptom:** Fassade auf der sonnenabgewandten Seite und Innenraum viel zu hell. **Runtime (13:35, 46°):** `keyLi` 1,75, `hemiInt` 0,63, Wand `envMapIntensity` 0,58 × `envFill` 1, `facadeHemiDim` 0,84, ToneMapping aus. **Ursache:** Der Gegenlicht-Shader skalierte `reflectedLight.indirectDiffuse` direkt nach `lights_fragment_begin` — dort noch **0** (Three r183 addiert Hemi/IBL erst in `lights_fragment_end`). Hemi-Dim (`hemiDim`) war seit Einführung **wirkungslos**; nur Direct wurde gedimmt. **Fix:** Indirect-Patch vor `lights_fragment_end` auf `irradiance`/`iblIrradiance`/`radiance` (Cache-Key `facade-backlit-v11`). **Neu:** `SunSettings.shadeDepth` (Slider `#sun-shade-depth`, Default **0,5**) skaliert `hemiDim`/`directDim`/Innen-Dims (`applyShadeDepth`); Innen-Direct-Floor 0,12 → 0,02. Boden-Schlagschatten unverändert. Dateien: `facadeShade.ts`, `sunLighting.ts`, `main.ts`, `index.html`.
+
+### Nacht: EnvMap blieb bei ~72 % (2026-09-11) — v2.0.363
+
+**Runtime:** Mond, `elevDeg` −2 → `envFill` **0,72**, `hemiInt` **0,34** (wie Tag). **Ursache:** `exteriorEnvFillFromCelestial` lieferte `dayEnv`, solange `twilightFactor < 0,48`; Hemi-Cap für Mond nur ohne `civilTwilight`. **Fix:** Sonne ≤ −0,5° → `moonEnv`; Mond-Hemi-Cap auch in Dämmerung (~0,1). Dateien: `celestialSky.ts`, `lightingMood.ts`.
+
+### Nacht genauso hell wie Tag (2026-09-11) — v2.0.362
+
+**Symptom:** Bei Nacht/Tageszyklus Haus wie am Tag. **Ursache:** `timeOfDay` Nacht, aber gespeicherte `elevationRad` noch Tag → volles Tag-Licht; Fassaden-Shader `FACADE_SHADE_FULL` bei tiefer Höhe. **Fix:** `reconcileSunElevationWithTime` beim Load/`syncSunUi`; `EXTERIOR_SHADE_NIGHT`. Dateien: `sunLighting.ts`, `facadeShade.ts`.
+
+### Fassade reagiert nicht auf Sonne (2026-09-11) — v2.0.361
+
+**Symptom:** Außenwand einheitlich hell/weiß, Sonnen-Slider kaum Wirkung. **Runtime:** Key ~0,21 vs Hemi ~0,63 (`__fbDebug`). **Ursache:** `celestial.lightIntensity` enthält schon `sunSettings.intensity`, `applySunLighting` multiplizierte zusätzlich `intensity/2.4`. **Fix:** Display-Scale nur noch Studio-Faktor. `main.ts`, `atmosphereSky.ts`.
+
+### Fassade weiß ohne Schatten (2026-09-11) — v2.0.360
+
+**Symptom:** 3D/Fassade flach hell, keine Schlagschatten. **Ursache:** Nach Abend/Tageszyklus `intensity` ~0,04 bei hoher `elevationRad` — Key-Licht zu schwach; `keyCastShadowLatched` blieb aus (Schwelle `lightIntensity>0,08` auch bei Tag-Sonne). **Versuch verworfen:** nur Shadow-Bake erzwingen ohne Intensität/Latch. **Fix:** `repairStaleSunIntensity` beim Load/`syncSunUi`; Sonnen-`castShadow` an `mood.keyCastShadow`; Map-Bake wenn Schatten wieder an. Dateien: `sunLighting.ts`, `main.ts`.
+
+### Innenraum zu hell in Öffnung (2026-09-11) — v2.0.359
+
+**Symptom:** Laibung/Innen hinter Fenster fast so hell wie Fassade. **Ursache:** v2.0.353 dämpfte nur Indirect; volles Direct + Hemi wirkten wie Außen. **Versuch verworfen:** nur Indirect weiter senken ohne Direct (blieb flach hell). **Fix:** `interior-shade-v6` — Indirect enger, `interiorDirectDim` ~0,24–0,44 tagsüber. Datei: `facadeShade.ts`.
+
 ### Sonnenhöhe ohne Licht (2026-09-11) — v2.0.358
 
 **Symptom:** Nach v2.0.355 wirkte Fassade/Innen flach, obwohl Himmelsrichtung/Höhe „Tag“ zeigten — lokal und online. **Ursache:** Tageszeit/Tageszyklus setzt Intensität/Weichheit/Farbtemperatur (`applySolarLook`); **Höhen-Slider** nur `elevationRad` — nach Abend blieb z. B. Sonnenlicht **0,04** bei manuell hoher Höhe → kaum Key-Licht/Schatten. **Versuch verworfen:** nur Shadow-Bake (v2.0.357) ohne Slider-Kopplung. **Fix:** `applyManualSunElevationLook` am Höhen-Slider. Docs: `docs/celestial-sky.md`.

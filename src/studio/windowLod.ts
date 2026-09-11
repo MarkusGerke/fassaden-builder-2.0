@@ -123,7 +123,8 @@ export function createSimpleWindowMesh(
     frameFinish,
   )
   markWindowFrameSurface(frameMat)
-  frameMat.userData.skipFacadeShade = true
+  // v2.0.365: Gegenlicht-Shader im Normalen-Modus statt Skip (Slider „Schatten-Tiefe“).
+  frameMat.userData.facadeShadeNormalMode = true
   const t = Math.min(FRAME_THICK, width * 0.12, height * 0.12)
   const depth = 3
   const form = resolveGlazingForm(glazingArch)

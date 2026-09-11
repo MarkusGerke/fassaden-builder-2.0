@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.358'
+export const APP_VERSION = '2.0.373'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,139 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.373',
+    date: '2026-09-11',
+    title: 'Fassaden-Scope: kein Wandzug; Doppelklick greift',
+    changes: [
+      'Gültig für Fassade: Front-Greifer ausgeblendet, SVG-Wandzug startet nicht, Preview-Zug blockiert',
+      'Doppelklick-Zoom über manuellen Doppel-Tap (Pointer-Capture hatte native dblclick unterdrückt)',
+    ],
+  },
+  {
+    version: '2.0.372',
+    date: '2026-09-11',
+    title: 'Fassaden-Scope, Doppelklick-Zoom, Defaults',
+    changes: [
+      'Im Modus „Gültig für: Fassade“ lassen sich Wände nicht mehr verschieben',
+      'Doppelklick zoomt bildschirmfüllend auf das Objekt, nochmal Doppelklick zurück zur Übersicht',
+      '„Reihen oben ausblenden“ Standard jetzt 0 (alle Reihen sichtbar)',
+      'Nach Änderung/Abwahl kein kurzes Abdunkeln der Wand mehr (EnvMap sofort, kein Material-Invalidate)',
+    ],
+  },
+  {
+    version: '2.0.371',
+    date: '2026-09-11',
+    title: 'Boden/Decke mitziehen, Schatten-Flächen',
+    changes: [
+      'Beim Verschieben des Hauses (3D oder Grundriss) folgen Boden und Decke live mit',
+      'Horizontale Flächen im Schatten dunkler (stärkere Gegenlicht-Maske + Indirect)',
+    ],
+  },
+  {
+    version: '2.0.370',
+    date: '2026-09-11',
+    title: 'Horizontale Kanten im Schatten',
+    changes: [
+      'Gesims/Sturz/Fugen-Kanten im Schatten weniger aufgehellt (Gegenlicht-Maske 45 % statt 0)',
+    ],
+  },
+  {
+    version: '2.0.369',
+    date: '2026-09-11',
+    title: 'Licht- & Glas-Defaults',
+    changes: [
+      'Neue Fenster: Glasfarbe #575757',
+      'Sonne/Licht-Slider: Sonne 3,0, Ambient 0,05, Kontrast 0,5, Schatten-Tiefe 0,75, Weichheit 2,0, 3500 K',
+      '„Alle Lichter an“ standardmäßig aus',
+    ],
+  },
+  {
+    version: '2.0.368',
+    date: '2026-09-11',
+    title: 'Klarglas weniger blass',
+    changes: [
+      'Weniger milchige Scheibe: Clearcoat/Env moderat, Transmission 0,92',
+    ],
+  },
+  {
+    version: '2.0.367',
+    date: '2026-09-11',
+    title: 'Innen: Weiß bleibt Weiß',
+    changes: [
+      'Boden/Innenwand nicht mehr dunkelgrau trotz Farbwahl Weiß (Innen-Streulicht war ≈0)',
+    ],
+  },
+  {
+    version: '2.0.366',
+    date: '2026-09-11',
+    title: 'Glas dunkler, Sonne innen sichtbar',
+    changes: [
+      'Fensterglas: Himmel-Spiegelung deutlich reduziert (EnvMap 2,6 → 1,0) — Innenraum durch Glas sichtbar',
+      'Schatten-Tiefe dimmt innen nur Streulicht; Sonne durch Öffnungen/Glas bleibt (Direct 0,6+)',
+    ],
+  },
+  {
+    version: '2.0.365',
+    date: '2026-09-11',
+    title: 'Schatten-Tiefe: Fensterrahmen',
+    changes: [
+      'Rahmen, Sprossen, Bänke folgen dem Slider (Gegenlicht aus Flächennormale statt Objekt-Z)',
+    ],
+  },
+  {
+    version: '2.0.364',
+    date: '2026-09-11',
+    title: 'Schatten-Tiefe (Fassade & Innen)',
+    changes: [
+      'Neuer Slider „Schatten-Tiefe“: Schattenseite der Fassade und Innenraum dunkler/heller',
+      'Fix: Hemi/EnvMap-Dim auf der Schattenseite war wirkungslos (Shader-Patch vor lights_fragment_end)',
+    ],
+  },
+  {
+    version: '2.0.363',
+    date: '2026-09-11',
+    title: 'Nacht: Env/Hemi runter',
+    changes: [
+      'Mond unter Horizont: EnvMap-Fill nicht mehr Tag (~0,72)',
+      'Hemi-Cap auch in bürgerlicher Dämmerung',
+    ],
+  },
+  {
+    version: '2.0.362',
+    date: '2026-09-11',
+    title: 'Nacht nicht wie Tag',
+    changes: [
+      'Sonnenhöhe an Uhrzeit bei Widerspruch (Persist/Tageszyklus)',
+      'Fassaden-Shade nachts gedämpft statt vollem Hemi',
+    ],
+  },
+  {
+    version: '2.0.361',
+    date: '2026-09-11',
+    title: 'Sonnenlicht nicht doppelt gedämpft',
+    changes: [
+      'Key-Light-Intensität: Slider nicht zweimal (celestial × intensity/2.4) — Fassade reagiert wieder auf Sonne',
+    ],
+  },
+  {
+    version: '2.0.360',
+    date: '2026-09-11',
+    title: 'Fassade: Schatten wieder',
+    changes: [
+      'Sonnen-Key nach Reload: veraltete Intensität (~0,04) bei hoher Höhe repariert',
+      'castShadow bei Tag nicht mehr an lightIntensity>0,08 gekoppelt (nur Mond)',
+    ],
+  },
+  {
+    version: '2.0.359',
+    date: '2026-09-11',
+    title: 'Innenraum dunkler',
+    changes: [
+      'Innen-Shader v6: weniger Hemi/Env, Direct moderat gedämpft (Laibung nicht wie Außen)',
+      'Sonnenfleck durch Öffnungen bleibt sichtbar',
+    ],
+  },
   {
     version: '2.0.358',
     date: '2026-09-11',

@@ -15,6 +15,8 @@ import {
   sunFromTargetDirection,
   sunRayDirectionFromSettings,
   applyManualSunElevationLook,
+  reconcileSunElevationWithTime,
+  repairStaleSunIntensity,
   elevationRadFromSliderDeg,
   syncSunSettingsFromSolar,
   sunElevationDegFromSettings,
@@ -101,6 +103,43 @@ describe('shadowRadiusFromSoftness', () => {
     expect(shadowRadiusFromSoftness(2.5)).toBeCloseTo(2.5, 5)
     expect(shadowRadiusFromSoftness(8)).toBe(8)
     expect(shadowRadiusFromSoftness(0.5)).toBe(0.5)
+  })
+})
+
+describe('reconcileSunElevationWithTime', () => {
+  it('korrigiert Tages-Höhe bei Nacht-Uhrzeit', () => {
+    const mismatched = {
+      ...DEFAULT_SUN_SETTINGS,
+      month: 6,
+      day: 21,
+      timeOfDay: 0.5,
+      elevationRad: THREE.MathUtils.degToRad(45),
+      intensity: 2.4,
+    }
+    const fixed = reconcileSunElevationWithTime(mismatched)
+    expect(fixed.elevationRad).toBeLessThan(0)
+    expect(fixed.intensity).toBeLessThan(0.2)
+  })
+})
+
+describe('repairStaleSunIntensity', () => {
+  it('repariert hohe Höhe mit Abend-Intensität beim Laden', () => {
+    const stale = {
+      ...DEFAULT_SUN_SETTINGS,
+      elevationRad: THREE.MathUtils.degToRad(40),
+      intensity: 0.04,
+    }
+    const fixed = repairStaleSunIntensity(stale)
+    expect(fixed.intensity).toBeGreaterThan(1)
+  })
+
+  it('lässt bewusst gedimmte Tag-Intensität in Ruhe', () => {
+    const dim = {
+      ...DEFAULT_SUN_SETTINGS,
+      elevationRad: THREE.MathUtils.degToRad(40),
+      intensity: 1.2,
+    }
+    expect(repairStaleSunIntensity(dim).intensity).toBe(1.2)
   })
 })
 

@@ -155,7 +155,7 @@ export const DEFAULT_STUDIO_PANEL: StudioPanelConfig = {
   plinthProfileFlipOutward: false,
   plinthProfileFlipForward: false,
   hideRowsBottom: 0,
-  hideRowsTop: 3,
+  hideRowsTop: 0,
 }
 
 /**
@@ -172,7 +172,7 @@ export function studioPanelDefaultsForPattern(
         panelHeight: 32,
         projectDepth: 4,
         hideRowsBottom: 0,
-        hideRowsTop: 3,
+        hideRowsTop: 0,
       }
     case 'runningBond':
     case 'runningBondThird':

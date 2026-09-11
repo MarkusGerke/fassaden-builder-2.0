@@ -2162,24 +2162,31 @@
 
                 <label class="slider-label">
                   <span>Sonnenlicht</span>
-                  <output id="sun-intensity-value">3.9</output>
+                  <output id="sun-intensity-value">3.0</output>
                 </label>
-                <input id="sun-intensity" type="range" min="0.3" max="8" step="0.1" value="3.9" />
+                <input id="sun-intensity" type="range" min="0.3" max="8" step="0.1" value="3.0" />
                 <p class="toolbar-hint compact-hint">Manuell verstellbar; wird bei Datum/Tageszeit wieder aus dem Sonnenstand gesetzt.</p>
 
                 <label class="slider-label">
                   <span>Umgebungslicht</span>
-                  <output id="sun-ambient-value">0.53</output>
+                  <output id="sun-ambient-value">0.05</output>
                 </label>
-                <input id="sun-ambient" type="range" min="0.05" max="1.2" step="0.01" value="0.53" />
+                <input id="sun-ambient" type="range" min="0.05" max="1.2" step="0.01" value="0.05" />
                 <p class="toolbar-hint compact-hint">Himmel-Fill — hellt Schatten und Rückseiten auf (nicht die Schattenkante).</p>
 
                 <label class="slider-label">
                   <span>Schatten-Kontrast</span>
-                  <output id="sun-shadow-contrast-value">1.40</output>
+                  <output id="sun-shadow-contrast-value">0.50</output>
                 </label>
-                <input id="sun-shadow-contrast" type="range" min="0.5" max="10" step="0.05" value="1.4" />
+                <input id="sun-shadow-contrast" type="range" min="0.5" max="10" step="0.05" value="0.5" />
                 <p class="toolbar-hint compact-hint">Wie stark Sonne und Schatten auseinanderliegen — höher = dunklere Schatten (bis 10).</p>
+
+                <label class="slider-label">
+                  <span>Schatten-Tiefe (Fassade &amp; Innen)</span>
+                  <output id="sun-shade-depth-value">0.75</output>
+                </label>
+                <input id="sun-shade-depth" type="range" min="0" max="1" step="0.01" value="0.75" />
+                <p class="toolbar-hint compact-hint">Schattenseite der Fassade und Innenraum dunkler (rechts) oder heller (links). Boden-Schlagschatten bleibt.</p>
 
                 <div id="sun-shadow-density-block" hidden>
                 <label class="slider-label">
@@ -2193,21 +2200,21 @@
                 <div id="sun-softness-block">
                 <label class="slider-label">
                   <span>Schatten-Weichheit</span>
-                  <output id="sun-softness-value">2.5</output>
+                  <output id="sun-softness-value">2.0</output>
                 </label>
-                <input id="sun-softness" type="range" min="0.5" max="8" step="0.5" value="2.5" />
+                <input id="sun-softness" type="range" min="0.5" max="8" step="0.5" value="2.0" />
                 <p class="toolbar-hint compact-hint">Nur Darstellung Render — sichtbar an Boden, Wandkörper und Dach (nicht an Ziegel-Paneele).</p>
                 </div>
 
                 <label class="slider-label">
                   <span>Farbtemperatur</span>
-                  <output id="sun-color-temp-value">4500 K</output>
+                  <output id="sun-color-temp-value">3500 K</output>
                 </label>
-                <input id="sun-color-temp" type="range" min="2700" max="8000" step="100" value="4500" />
+                <input id="sun-color-temp" type="range" min="2700" max="8000" step="100" value="3500" />
                 <p class="toolbar-hint compact-hint">Manuell verstellbar; wird bei Datum/Tageszeit wieder aus dem Sonnenstand gesetzt.</p>
 
                 <label class="toolbar-check" id="view-all-scene-lights-row">
-                  <input id="view-all-scene-lights" type="checkbox" checked />
+                  <input id="view-all-scene-lights" type="checkbox" />
                   Alle Lichter an
                 </label>
                 <p class="toolbar-hint compact-hint">Schaltet alle platzierten Punktlichter mit einem Klick ein oder aus.</p>

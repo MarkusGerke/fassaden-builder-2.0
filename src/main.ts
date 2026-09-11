@@ -368,6 +368,8 @@ import {
   formatTimeOfDay,
   normalizeSunSettings,
   applyManualSunElevationLook,
+  reconcileSunElevationWithTime,
+  repairStaleSunIntensity,
   elevationRadFromSliderDeg,
   sunElevationDegFromSettings,
   SUN_ELEVATION_SLIDER_MAX_DEG,
@@ -1234,6 +1236,7 @@ function endNav3d(event?: PointerEvent): 'drag' | 'click' | false {
 }
 
 function handleNav3dClick(event: PointerEvent) {
+  if (tryObjectFocusDoubleTap(event)) return
   const hit = pickFromEvent(event)
   if (!hit) {
     selectWall(null, true)
@@ -3980,13 +3983,19 @@ function updateWallResizeGizmos() {
   }
   const showSideGrips =
     walls.length === 1 && !wall.bayWindow && !wall.bayParentId && !wall.bayRole
-  const frontLocked = frontGripLockedForSelection(
-    wallResizeDrag ? (wallResizeDrag.moveWallIds ?? [wall.id]) : editor.selectedWallIds,
-  )
+  const frontLocked =
+    editScope === 'facade' ||
+    frontGripLockedForSelection(
+      wallResizeDrag ? (wallResizeDrag.moveWallIds ?? [wall.id]) : editor.selectedWallIds,
+    )
   let anyVisible = false
   for (const grip of ['left', 'right', 'top', 'front'] as const) {
     const el = host.querySelector<HTMLElement>(`.wall-resize-grip[data-grip="${grip}"]`)
     if (!el) continue
+    if (grip === 'front' && editScope === 'facade') {
+      el.hidden = true
+      continue
+    }
     if (grip !== 'front' && !showSideGrips) {
       el.hidden = true
       continue
@@ -4117,6 +4126,10 @@ function applyWallResizePreview(
   const floorDelta = floorDeltaFromGrab(drag, clientX, clientY)
 
   if (drag.grip === 'front' && floorDelta) {
+    if (editScope === 'facade') {
+      planStatus.textContent = 'Im Fassaden-Modus keine Wand verschieben'
+      return drag.baseState
+    }
     const out = facadeOutward(wall.yawDeg ?? 0, wall.panelFlip ?? true)
     const along = floorDelta.dx * out.x + floorDelta.dz * out.z
     const step = frontMoveStepCm(wall)
@@ -4400,6 +4413,10 @@ function beginWallResizeDrag(wall: Wall, grip: WallResizeGrip, event: PointerEve
     return
   }
   if (grip === 'front' && frontGripLockedForSelection(editor.selectedWallIds)) return
+  if (grip === 'front' && editScope === 'facade') {
+    planStatus.textContent = 'Im Fassaden-Modus keine Wand verschieben'
+    return
+  }
   const building = activeBuilding()
   const wallEnd = grip === 'left' || grip === 'right' ? visualSideToWallEnd(wall, grip) : undefined
   const corner =
@@ -6524,6 +6541,8 @@ const sunColorTempInput = document.querySelector<HTMLInputElement>('#sun-color-t
 const sunAmbientInput = document.querySelector<HTMLInputElement>('#sun-ambient')!
 const sunShadowContrastInput = document.querySelector<HTMLInputElement>('#sun-shadow-contrast')!
 const sunShadowDensityInput = document.querySelector<HTMLInputElement>('#sun-shadow-density')!
+const sunShadeDepthInput = document.querySelector<HTMLInputElement>('#sun-shade-depth')!
+const sunShadeDepthValue = document.querySelector<HTMLOutputElement>('#sun-shade-depth-value')!
 const sunAzimuthValue = document.querySelector<HTMLOutputElement>('#sun-azimuth-value')!
 const sunElevationValue = document.querySelector<HTMLOutputElement>('#sun-elevation-value')!
 const sunTimeValue = document.querySelector<HTMLOutputElement>('#sun-time-value')!
@@ -7184,6 +7203,178 @@ function startViewZoomAnim(view: 'front' | 'top', to: ViewZoomAnimTarget) {
   }
   beginViewNavLite()
   tickViewZoomAnim()
+}
+
+/** Doppelklick 3D: Objekt-Fokus speichern / Übersicht wiederherstellen. */
+let objectFocusBookmark: {
+  target: THREE.Vector3
+  position: THREE.Vector3
+} | null = null
+/** Doppelklick Front/Oben: Zoom-Stand vor dem Hineinzoomen. */
+let orthoFocusBookmark: ViewZoomAnimTarget | null = null
+/**
+ * Native `dblclick` kommt oft nicht an: pointerdown setzt `setPointerCapture`
+ * (Wand-Zug / Orbit-Nav) und unterbricht die Click-Sequenz. Deshalb manueller Doppel-Tap.
+ */
+const VIEWPORT_DBLCLICK_MS = 450
+const VIEWPORT_DBLCLICK_PX = 14
+let lastViewportTap: { t: number; x: number; y: number } | null = null
+
+function consumeViewportDoubleTap(clientX: number, clientY: number): boolean {
+  const now = performance.now()
+  const prev = lastViewportTap
+  lastViewportTap = { t: now, x: clientX, y: clientY }
+  if (!prev) return false
+  if (now - prev.t > VIEWPORT_DBLCLICK_MS) return false
+  if (Math.hypot(clientX - prev.x, clientY - prev.y) > VIEWPORT_DBLCLICK_PX) return false
+  lastViewportTap = null
+  return true
+}
+
+function captureObjectFocusBookmark() {
+  objectFocusBookmark = {
+    target: controls.target.clone(),
+    position: camera.position.clone(),
+  }
+}
+
+function restoreObjectFocusBookmark() {
+  if (!objectFocusBookmark) return false
+  controls.target.copy(objectFocusBookmark.target)
+  camera.position.copy(objectFocusBookmark.position)
+  objectFocusBookmark = null
+  if (isGalleryModeActive()) applyGalleryOrbitTuning()
+  else syncCameraDistanceLimits()
+  controls.update()
+  markViewportDirty()
+  return true
+}
+
+/** Kamera frontal und nah an Wand(en) — bildschirmfüllender Fokus. */
+function focusCameraFillOnWalls(walls: Wall[]) {
+  if (walls.length === 0) return
+  const bounds = galleryFocusBounds(walls)
+  if (!bounds) return
+  const { cx, cy, cz, span } = bounds
+  const seed = walls[0]!
+  const out = facadeOutward(seed.yawDeg ?? 0, seed.panelFlip ?? true)
+  // Näher als Überblick: Wandhöhe / Spannweite, aber über minDistance (60).
+  const dist = Math.max(span * 0.55, seed.height * 0.75, 120)
+  controls.target.set(cx, cy, cz)
+  camera.position.set(
+    cx + out.x * dist,
+    cy + Math.min(span * 0.08, seed.height * 0.06),
+    cz + out.z * dist,
+  )
+  if (isGalleryModeActive()) applyGalleryOrbitTuning()
+  else {
+    syncCameraDistanceLimits()
+    // Kurzer Fokus darf näher als der Site-Überblick sein.
+    controls.minDistance = Math.min(controls.minDistance, 40)
+  }
+  controls.update()
+  markViewportDirty()
+}
+
+function applyFrontOrthoFocusZoom(clientX: number, clientY: number) {
+  if (orthoFocusBookmark) {
+    const restore = orthoFocusBookmark
+    orthoFocusBookmark = null
+    startViewZoomAnim('front', restore)
+    planStatus.textContent = 'Übersicht'
+    return
+  }
+  orthoFocusBookmark = {
+    frontZoom: frontZoom,
+    frontPanX: frontPanScreenX,
+    frontPanY: frontPanScreenY,
+  }
+  const { nx, ny } = canvasNdcFromClient(clientX, clientY)
+  const { halfW, halfH } = frontFrustumHalfExtents()
+  const factor = DBLCLICK_ZOOM_FACTOR
+  const nextPan = zoomPanOffsetsAtCursor({
+    nx,
+    ny,
+    factor,
+    panX: frontPanScreenX,
+    panY: frontPanScreenY,
+    halfW,
+    halfH,
+  })
+  startViewZoomAnim('front', {
+    frontZoom: clampFrontZoom(frontZoom * factor),
+    frontPanX: nextPan.panX,
+    frontPanY: nextPan.panY,
+  })
+  planStatus.textContent = 'Doppelklick: zurück zur Übersicht'
+}
+
+function applyTopOrthoFocusZoom(clientX: number, clientY: number) {
+  if (orthoFocusBookmark) {
+    const restore = orthoFocusBookmark
+    orthoFocusBookmark = null
+    startViewZoomAnim('top', restore)
+    planStatus.textContent = 'Übersicht'
+    return
+  }
+  orthoFocusBookmark = {
+    planZoom: planZoom,
+    planOffsetX: planOffsetX,
+    planOffsetZ: planOffsetZ,
+  }
+  startViewZoomAnim('top', planZoomTargetAtClient(clientX, clientY, DBLCLICK_ZOOM_FACTOR))
+  planStatus.textContent = 'Doppelklick: zurück zur Übersicht'
+}
+
+/**
+ * Doppelklick-Aktion: Fokus auf Objekt bzw. Übersicht wiederherstellen.
+ * @returns true wenn eine Aktion ausgeführt wurde
+ */
+function applyObjectFocusFromEvent(event: { clientX: number; clientY: number }): boolean {
+  if (currentView === 'front') {
+    applyFrontOrthoFocusZoom(event.clientX, event.clientY)
+    return true
+  }
+  if (currentView === 'top') {
+    applyTopOrthoFocusZoom(event.clientX, event.clientY)
+    return true
+  }
+  if (currentView !== '3d') return false
+
+  if (restoreObjectFocusBookmark()) {
+    planStatus.textContent = 'Übersicht'
+    return true
+  }
+
+  const hit = pickFromEvent(event)
+  const wallId = hit?.wallId ?? pickWallAtClient(event.clientX, event.clientY)?.wallId
+  if (!wallId) return false
+  const wall = getWall(state, wallId)
+  if (!wall) return false
+
+  captureObjectFocusBookmark()
+  if (hit?.openingId) {
+    selectOpening(wallId, hit.openingId, false, hit.openingPart)
+  } else {
+    selectWall(wallId, false, hit?.wallPart ?? 'group', hit?.bandId, hit?.labelId)
+  }
+  const bayIds = bayWallSelectionIds(getAllWalls(state), wallId)
+  const focusWalls =
+    bayIds && bayIds.length > 1
+      ? bayIds.map((id) => getWall(state, id)).filter((w): w is Wall => Boolean(w))
+      : [wall]
+  focusCameraFillOnWalls(focusWalls)
+  planStatus.textContent = 'Doppelklick: zurück zur Übersicht'
+  return true
+}
+
+/** true, wenn dieser Tap der zweite eines Doppelklicks war und Fokus greift. */
+let objectFocusHandledAt = 0
+function tryObjectFocusDoubleTap(event: { clientX: number; clientY: number }): boolean {
+  if (!consumeViewportDoubleTap(event.clientX, event.clientY)) return false
+  const ok = applyObjectFocusFromEvent(event)
+  if (ok) objectFocusHandledAt = performance.now()
+  return ok
 }
 
 function planZoomTargetAtClient(
@@ -10786,7 +10977,9 @@ function syncSunAngleSlidersFromSettings(): void {
 }
 
 function syncSunUi() {
-  sunSettings = syncSunSettingsFromSolar(sunSettings, { applySolarLook: false })
+  sunSettings = repairStaleSunIntensity(
+    syncSunSettingsFromSolar(sunSettings, { applySolarLook: false }),
+  )
   sunDateInput.value = dateInputValue(sunSettings.month, sunSettings.day)
   sunTimeInput.min = '0'
   sunTimeInput.max = '24'
@@ -10798,6 +10991,8 @@ function syncSunUi() {
   sunAmbientInput.value = String(sunSettings.ambient)
   sunShadowContrastInput.value = String(sunSettings.shadowContrast)
   sunShadowDensityInput.value = String(sunSettings.shadowDensity)
+  sunShadeDepthInput.value = String(sunSettings.shadeDepth)
+  sunShadeDepthValue.textContent = sunSettings.shadeDepth.toFixed(2)
   sunTimeValue.textContent = formatTimeOfDay(sunSettings.timeOfDay)
   sunIntensityValue.textContent = sunSettings.intensity.toFixed(1)
   sunSoftnessValue.textContent = sunSettings.shadowSoftness.toFixed(1)
@@ -11513,27 +11708,35 @@ function applySunLighting(opts?: {
   )
   const mood = resolveLightingMood(sunSettings, preCelestial, palette, sceneColors.ground)
   const studio = isStudioStage(stageEnvironment)
-  const intensityScale =
-    THREE.MathUtils.clamp(sunSettings.intensity / 2.4, 0.15, 3.5) *
-    (studio ? STUDIO_KEY_INTENSITY_SCALE : 1)
+  // Slider steckt schon in `resolveCelestialState` / `sunLightIntensity` — nicht nochmal × intensity/2.4 (v2.0.361).
+  const intensityScale = studio ? STUDIO_KEY_INTENSITY_SCALE : 1
   // Licht-Modus (00:00): kein Sonnen-/Mondschatten. Der Mond wirft sonst PCSS mit 96 Taps
   // auf eine 8192²-Map — bei Intensität 0,01 unsichtbar, kostete aber ~95 ms/Frame.
   // Hysterese: vermeidet Shader-Flip (USE_SHADOWMAP) an der Elevations-Schwelle.
   const moonKey = preCelestial.activeLight === 'moon'
+  const sunKey = preCelestial.activeLight === 'sun'
   const wantKeyCast =
     mood.keyCastShadow &&
     !lightEditMode &&
-    preCelestial.lightIntensity > (moonKey ? 0.04 : 0.08)
+    (sunKey || preCelestial.lightIntensity > (moonKey ? 0.04 : 0.08))
   if (wantKeyCast) keyCastShadowLatched = true
-  else if (!mood.keyCastShadow || preCelestial.lightIntensity < (moonKey ? 0.025 : 0.05)) {
+  else if (
+    !mood.keyCastShadow ||
+    (!sunKey && preCelestial.lightIntensity < (moonKey ? 0.025 : 0.05))
+  ) {
     keyCastShadowLatched = false
   }
+  const hadKeyShadow = dirLight.castShadow
   lastCelestialState = atmosphereSky.update(sunSettings, {
     intensityScale,
     castShadow: keyCastShadowLatched && !lightEditMode,
     lightTarget: target,
     lightDistance: Math.max(900, distance),
   })
+  if (dirLight.castShadow && !hadKeyShadow) {
+    dirLight.shadow.needsUpdate = true
+    renderer.shadowMap.needsUpdate = true
+  }
   const skyFill = mood.skyIntensity * (studio ? STUDIO_AMBIENT_BOOST : 1)
   atmosphereSky.skyLightProbe.intensity = skyFill
   hemiLight.intensity = skyFill
@@ -11800,16 +12003,11 @@ function applyState(nextState: FacadeState, nextEditor = editor) {
     syncSiteTransform()
     updateGroundPlane()
     syncCameraDistanceLimits()
-    if (openingDragCommit) {
-      // Live-Licht: kein Material-Invalidate (grau). Schatten sofort forcen — sonst
-      // Orbit-Lite-Hold (~1 s) + Debounce lassen den alten Werfschatten stehen (v2.0.320).
-      applySunLighting({ live: true, forceShadowBake: true })
-      bindMaterialsToGlassEnv(scene)
-      syncSceneLightRuntime()
-    } else {
-      applySunLighting({ updateShadowMap: true, forceShadowBake: true })
-      syncSceneLightRuntime()
-    }
+    // Live-Licht: kein Material-Invalidate (grau/dunkel nach Rebuild oder Abwahl).
+    // Schatten forcen — sonst Orbit-Lite-Hold + Debounce lassen alte Maps stehen (v2.0.320/372).
+    applySunLighting({ live: true, forceShadowBake: true })
+    bindMaterialsToGlassEnv(scene)
+    syncSceneLightRuntime()
     syncLeafRuntime()
   } else if (lightsChanged) {
     // Licht-only (Fallback): kein Sonnen-/EnvMap-/Boden-Pfad; Schatten verzögert.
@@ -20734,7 +20932,16 @@ profileExtentForwardInput.addEventListener('change', () => {
   })
 })
 
+svgView.setWallsMoveAllowed(() => editScope !== 'facade')
 svgView.setWallsMoveHandler((positions, commit) => {
+  if (editScope === 'facade') {
+    if (commit) {
+      finishDragUndo()
+      wallMoveDragBase = null
+    }
+    planStatus.textContent = 'Im Fassaden-Modus keine Wand verschieben'
+    return
+  }
   if (commit) {
     finishDragUndo()
     wallMoveDragBase = null
@@ -21509,6 +21716,7 @@ function offsetStudioWallsByGrid(
 
 function tryStartBuildingDrag(event: PointerEvent): boolean {
   if (floorPlanMode === 'draw') return false
+  if (editScope === 'facade') return false
   const grid = pickPlanGridFromEvent(event)
   if (!grid) return false
   const picked = floorPlanView.pickBuildingAtGrid(state.buildings, grid.gx, grid.gz)
@@ -21695,6 +21903,18 @@ canvas.addEventListener('pointerdown', (event) => {
       canvas.setPointerCapture(event.pointerId)
       return
     }
+    if (
+      event.button === 0 &&
+      !event.shiftKey &&
+      !(event.metaKey || event.ctrlKey || modKeyHeld) &&
+      floorPlanMode !== 'draw'
+    ) {
+      if (tryStartBuildingDrag(event)) {
+        beginDragUndo()
+        canvas.setPointerCapture(event.pointerId)
+        return
+      }
+    }
   }
   if (event.button !== 0 || !isSceneEditView()) return
 
@@ -21850,6 +22070,11 @@ canvas.addEventListener('pointerdown', (event) => {
         pointerDown = { x: event.clientX, y: event.clientY, additive, rangeSelect }
         return
       }
+      // Fassaden-Scope: nur Eigenschaften ändern, Geometrie nicht verschieben.
+      if (editScope === 'facade') {
+        pointerDown = { x: event.clientX, y: event.clientY, additive, rangeSelect }
+        return
+      }
       const grid = pickGroundGridFromClient(event.clientX, event.clientY)
       const canBaySlide =
         canSlideBaySegment(activeBuilding().walls, hit.wallId) && !event.shiftKey
@@ -21893,6 +22118,8 @@ canvas.addEventListener('pointerdown', (event) => {
           lastFacadeAlongX: facadeAlong,
         }
         drag3dWallMoved = false
+        beginDragUndo()
+        wallMoveDragBase = drag3dWallMove.startState
         canvas.setPointerCapture(event.pointerId)
         return
       }
@@ -21947,6 +22174,57 @@ canvas.addEventListener('pointermove', (event) => {
     return
   }
 
+  if (planBuildingDrag) {
+    if (editScope === 'facade') {
+      planStatus.textContent = 'Im Fassaden-Modus keine Wand verschieben'
+      return
+    }
+    planBuildingDragMoved = true
+    const grid = pickPlanGridFromEvent(event)
+    if (!grid) return
+    let dgx = grid.gx - planBuildingDrag.startGx
+    let dgz = grid.gz - planBuildingDrag.startGz
+    const previewBounds = {
+      minGx: planBuildingDrag.startBounds.minGx + dgx,
+      maxGx: planBuildingDrag.startBounds.maxGx + dgx,
+      minGz: planBuildingDrag.startBounds.minGz + dgz,
+      maxGz: planBuildingDrag.startBounds.maxGz + dgz,
+    }
+    const guides = collectBuildingGuides(
+      planBuildingDrag.startState.buildings,
+      planBuildingDrag.buildingId,
+      previewBounds,
+    )
+    const snapped = snapBuildingOffset(planBuildingDrag.startBounds, dgx, dgz, guides)
+    dgx = snapped.dgx
+    dgz = snapped.dgz
+    floorPlanView.showBuildingGuides(
+      collectBuildingGuides(planBuildingDrag.startState.buildings, planBuildingDrag.buildingId, {
+        minGx: planBuildingDrag.startBounds.minGx + dgx,
+        maxGx: planBuildingDrag.startBounds.maxGx + dgx,
+        minGz: planBuildingDrag.startBounds.minGz + dgz,
+        maxGz: planBuildingDrag.startBounds.maxGz + dgz,
+      }),
+    )
+    if (dgx === 0 && dgz === 0) return
+    const next = offsetBuildingByGrid(
+      planBuildingDrag.startState,
+      planBuildingDrag.buildingId,
+      dgx,
+      dgz,
+    )
+    const building = next.buildings.find((b) => b.id === planBuildingDrag!.buildingId)
+    const wallIds = (building?.walls ?? []).map((w) => w.id)
+    previewMeshDrag(
+      next,
+      { ...editor, selectedBuildingId: planBuildingDrag.buildingId },
+      () => {
+        facade.applyLiveWallOffsets(planBuildingDrag!.startState, state, wallIds)
+      },
+    )
+    return
+  }
+
   if (currentView === '3d' && moveNav3d(event)) return
   if (currentView === 'top' && moveNav3d(event)) return
 
@@ -21995,6 +22273,10 @@ canvas.addEventListener('pointermove', (event) => {
   }
 
   if (isSceneEditView() && drag3dWallMove) {
+    if (editScope === 'facade') {
+      planStatus.textContent = 'Im Fassaden-Modus keine Wand verschieben'
+      return
+    }
     const dist2 =
       (event.clientX - drag3dWallMove.startClientX) ** 2 +
       (event.clientY - drag3dWallMove.startClientY) ** 2
@@ -22221,41 +22503,13 @@ canvas.addEventListener('pointermove', (event) => {
 })
 
 canvas.addEventListener('dblclick', (event) => {
-  if (currentView === 'front' && event.button === 0) {
-    event.preventDefault()
-    const { nx, ny } = canvasNdcFromClient(event.clientX, event.clientY)
-    const { halfW, halfH } = frontFrustumHalfExtents()
-    const factor = DBLCLICK_ZOOM_FACTOR
-    const nextPan = zoomPanOffsetsAtCursor({
-      nx,
-      ny,
-      factor,
-      panX: frontPanScreenX,
-      panY: frontPanScreenY,
-      halfW,
-      halfH,
-    })
-    startViewZoomAnim('front', {
-      frontZoom: clampFrontZoom(frontZoom * factor),
-      frontPanX: nextPan.panX,
-      frontPanY: nextPan.panY,
-    })
-    return
-  }
-  if (currentView === 'top' && event.button === 0) {
-    event.preventDefault()
-    startViewZoomAnim('top', planZoomTargetAtClient(event.clientX, event.clientY, DBLCLICK_ZOOM_FACTOR))
-    return
-  }
-  if (currentView !== '3d' || !isGalleryModeActive() || event.button !== 0) return
-  const hit = pickWallAtClient(event.clientX, event.clientY)
-  if (!hit) return
-  const wall = getWall(state, hit.wallId)
-  if (!wall) return
+  // Fallback: wenn die Browser-Click-Sequenz doch ankommt (ohne Pointer-Capture).
+  // Nach manuellem Doppel-Tap auf pointerup nicht nochmal ausführen (sonst Fokus→sofort Übersicht).
+  if (event.button !== 0) return
+  if (currentView !== '3d' && currentView !== 'front' && currentView !== 'top') return
+  if (performance.now() - objectFocusHandledAt < 500) return
   event.preventDefault()
-  selectWall(hit.wallId, false)
-  focusGalleryOnWalls([wall], true)
-  planStatus.textContent = 'Galerie: Orbit um die gewählte Wand'
+  applyObjectFocusFromEvent(event)
 })
 
 canvas.addEventListener('pointerleave', () => {
@@ -22291,6 +22545,16 @@ canvas.addEventListener('pointerup', (event) => {
   }
   if (currentView === 'top' && planPanActive) {
     planPanActive = false
+    if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId)
+    return
+  }
+  if (planBuildingDrag) {
+    if (planBuildingDragMoved) {
+      commitDragFromBase(planBuildingDrag.startState, editor, 'Haus verschoben')
+    }
+    planBuildingDrag = null
+    planBuildingDragMoved = false
+    floorPlanView.clearBuildingGuides()
     if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId)
     return
   }
@@ -22351,6 +22615,18 @@ canvas.addEventListener('pointerup', (event) => {
         false,
         hit?.wallPart ?? editor.selectedWallPart ?? 'group',
       )
+      if (tryObjectFocusDoubleTap(event)) {
+        drag3dWallMove = null
+        drag3dWallMoved = false
+        wallMoveDragBase = null
+        drag3dWallPlane = null
+        clearWallDockPreview()
+        facade.clearOpeningGuides()
+        svgView.clearOpeningGuides()
+        if (currentView === '3d') controls.enabled = true
+        if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId)
+        return
+      }
     }
     drag3dWallMove = null
     drag3dWallMoved = false
@@ -22421,6 +22697,19 @@ canvas.addEventListener('pointerup', (event) => {
         drag3dPendingSelect.shiftKey,
         drag3dPendingSelect.openingPart,
       )
+      if (tryObjectFocusDoubleTap(event)) {
+        drag3dPendingSelect = null
+        drag3dMoved = false
+        facade.clearOpeningGuides()
+        svgView.clearOpeningGuides()
+        clearPlacementGridOverlay()
+        drag3dOpening = null
+        openingDragBase = null
+        drag3dWallPlane = null
+        if (currentView === '3d') controls.enabled = true
+        if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId)
+        return
+      }
     } else if (drag3dMoved) {
       commitDragFromBase(openingDragBase)
     }
@@ -22454,7 +22743,10 @@ canvas.addEventListener('pointerup', (event) => {
   if (trySwapDraftWallSegmentAtClick(event)) return
   // Auswahl schon auf pointerdown (z. B. obere Etage ohne Boden-Drag): nicht erneut
   // picken — Deckenkante / Leertreffer würde die Wand sonst sofort wieder abwählen.
-  if (keepDownSelection) return
+  if (keepDownSelection) {
+    tryObjectFocusDoubleTap(event)
+    return
+  }
   const hit = pickFromEvent(event)
   if (lightEditMode) {
     if (hit?.sceneLightId) selectSceneLight(hit.sceneLightId, additive)
@@ -24038,6 +24330,15 @@ bindSunSlider(
 )
 
 bindSunSlider(
+  sunShadeDepthInput,
+  sunShadeDepthValue,
+  (value) => {
+    sunSettings.shadeDepth = value
+  },
+  (value) => value.toFixed(2),
+)
+
+bindSunSlider(
   sunColorTempInput,
   sunColorTempValue,
   (value) => {
@@ -25461,6 +25762,10 @@ wallResizeGizmos?.addEventListener(
     const grip = gripEl?.dataset.grip as WallResizeGrip | undefined
     if (!grip) return
     if (grip === 'front' && gripEl?.classList.contains('is-locked')) return
+    if (grip === 'front' && editScope === 'facade') {
+      planStatus.textContent = 'Im Fassaden-Modus keine Wand verschieben'
+      return
+    }
     const wall = selectedStudioWallsForGizmos()[0] ?? selectedStudioWallForResize()
     if (!wall) return
     beginWallResizeDrag(wall, grip, event)

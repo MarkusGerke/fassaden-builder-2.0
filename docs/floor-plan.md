@@ -48,6 +48,7 @@ Im Grundriss (`navigate` / `edit`): Klick auf die Haus-Fläche (AABB) wählt das
 - Snap und Hilfslinien: `collectBuildingGuides` / `snapBuildingOffset` in `src/studio/buildingGuides.ts`.
 - Anzeige: Self-Linien cyan, Align-Linien orange (`FloorPlanView.showBuildingGuides`) — analog zu Fenster-Hilfslinien.
 - Verschiebung: `offsetBuildingByGrid` (Plan-Knoten + Studio-`originX`/`originZ`).
+- Live-Preview: Wände und **Boden/Decke** (`indoorFloorGroup`) per `applyLiveWallOffsets` mittranslatieren — Geometrie-Rebuild erst beim Loslassen (`commitDragFromBase`).
 
 ### Drehen (±45°)
 

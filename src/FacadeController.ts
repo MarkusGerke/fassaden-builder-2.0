@@ -932,8 +932,10 @@ export class FacadeController {
         if (!(mat instanceof THREE.MeshStandardMaterial)) continue
         if (materialIsGlassLike(mat)) continue
         markWindowFrameSurface(mat)
-        // Gegenlicht-Shade macht weiße Rahmen trotz Sonne dunkelgrau — überspringen.
-        mat.userData.skipFacadeShade = true
+        // Gegenlicht per Objekt-Z machte weiße Rahmen trotz Sonne dunkelgrau (lokale Achsen
+        // ≠ Wand-Außenrichtung). v2.0.365: Normalen-Modus (N·L) — Schattenseite folgt „Schatten-Tiefe“.
+        delete mat.userData.skipFacadeShade
+        mat.userData.facadeShadeNormalMode = true
         this.finishExteriorMaterial(mat)
         // Matt-Weiß etwas heller / weniger rau als reine Wand.
         if (mat.roughness > 0.55) mat.roughness = 0.55
@@ -1383,9 +1385,31 @@ export class FacadeController {
   /** Ganze Wände während pointermove: alle Meshes der Wand-IDs mitziehen. */
   applyLiveWallOffsets(base: FacadeState, next: FacadeState, wallIds: string[]) {
     this.state = next
+    const buildingIds = new Set<string>()
+    let slabWorld = { x: 0, y: 0, z: 0 }
     for (const wallId of wallIds) {
       const world = wallWorldDeltaFromStates(base, next, wallId)
+      slabWorld = world
       this.offsetLiveRoots((obj) => obj.userData.wallId === wallId, world)
+      const wall = findWall(next, wallId)
+      if (wall?.buildingId) buildingIds.add(wall.buildingId)
+    }
+    if (buildingIds.size > 0 && (slabWorld.x !== 0 || slabWorld.y !== 0 || slabWorld.z !== 0)) {
+      this.offsetLiveIndoorSlabs(buildingIds, slabWorld)
+    }
+  }
+
+  /** Boden/Decke/Okkluder: Geometrie liegt in Welt-XZ — beim Live-Wandzug mittranslatieren. */
+  private offsetLiveIndoorSlabs(
+    buildingIds: Set<string>,
+    world: { x: number; y: number; z: number },
+  ) {
+    for (const child of this.indoorFloorGroup.children) {
+      if (!(child instanceof THREE.Mesh)) continue
+      const buildingId = child.userData.buildingId as string | undefined
+      if (!buildingId || !buildingIds.has(buildingId)) continue
+      const rest = this.captureLiveRest(child)
+      child.position.set(rest.x + world.x, rest.y + world.y, rest.z + world.z)
     }
   }
 

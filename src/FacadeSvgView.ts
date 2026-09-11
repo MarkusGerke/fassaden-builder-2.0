@@ -74,6 +74,8 @@ export class FacadeSvgView {
   private onOpeningSelect: OpeningSelectHandler | null = null
   private onWallSelect: WallSelectHandler | null = null
   private onWallsMove: WallsMoveHandler | null = null
+  /** Wenn false, startet kein Wand-Zug (nur Auswahl) — z. B. Gültig-für Fassade. */
+  private wallsMoveAllowed: (() => boolean) | null = null
   private onOpeningsMove: OpeningsMoveHandler | null = null
   private onContextMenu: ContextMenuHandler | null = null
   private frozenViewBox: string | null = null
@@ -158,6 +160,10 @@ export class FacadeSvgView {
 
   setWallsMoveHandler(handler: WallsMoveHandler) {
     this.onWallsMove = handler
+  }
+
+  setWallsMoveAllowed(allowed: (() => boolean) | null) {
+    this.wallsMoveAllowed = allowed
   }
 
   setOpeningsMoveHandler(handler: OpeningsMoveHandler) {
@@ -1102,6 +1108,11 @@ export class FacadeSvgView {
     }
 
     if (wallId) {
+      // Nur Auswahl, kein Zug (z. B. Fassaden-Scope).
+      if (this.wallsMoveAllowed && !this.wallsMoveAllowed()) {
+        this.onWallSelect?.(wallId, additive, rangeSelect)
+        return
+      }
       const wallIds = this.wallIdsForDrag(wallId, additive)
       const rect = this.svg.getBoundingClientRect()
       const viewBox = this.svg.viewBox.baseVal

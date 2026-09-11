@@ -11,14 +11,14 @@ export const DEFAULT_CLADDING_COLOR_V1 = '#ffffff'
 export const DEFAULT_CLADDING_COLOR_V2 = '#ffffff'
 export const DEFAULT_FRAME_COLOR = '#ffffff'
 export const DEFAULT_DOOR_COLOR = '#ffffff'
-export const DEFAULT_GLASS_COLOR = 'transparent'
+export const DEFAULT_GLASS_COLOR = '#575757'
 export const DEFAULT_PROFILE_COLOR = '#ffffff'
 
 export const WALL_COLORS = ['#ffffff', '#f5f5f5', '#e0e0e0', '#f0e6d8', '#e8dcc8', '#4a4a4a'] as const
 export const CLADDING_COLORS = ['#ffffff', '#cccccc', '#e8dcc8', '#c4704b', '#6b705c', '#4a4a4a'] as const
 export const FRAME_COLORS = ['#ffffff', '#4a4a4a', '#6b4f3a', '#1a1a1a', '#2d4a3e'] as const
 export const TRANSPARENT_GLASS = 'transparent'
-export const GLASS_COLORS = [TRANSPARENT_GLASS, '#6fa3c4', '#a8d4e6', '#87ceeb', '#4a6a7a', '#c8e6f5'] as const
+export const GLASS_COLORS = [DEFAULT_GLASS_COLOR, TRANSPARENT_GLASS, '#6fa3c4', '#a8d4e6', '#87ceeb', '#4a6a7a', '#c8e6f5'] as const
 
 export function isTransparentGlass(color: string | undefined): boolean {
   return color === TRANSPARENT_GLASS || color === 'none' || color === '#00000000'

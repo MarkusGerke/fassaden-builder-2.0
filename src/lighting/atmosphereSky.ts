@@ -145,7 +145,7 @@ function patchSkyDisplayToneMap(material: SkyMaterial): void {
   }
 }
 
-/** Anzeige-Sonne: Kelvin-Slider färbt das Key-Light; Intensität bleibt celestial × Slider. */
+/** Anzeige-Sonne: Kelvin aus celestial; Intensität = celestial (Slider dort) × optional Studio-Skala. */
 export function applyDisplaySunColor(
   light: THREE.DirectionalLight,
   celestial: CelestialState,

@@ -5,13 +5,13 @@ import {
 } from './constants'
 
 describe('studioPanelDefaultsForPattern', () => {
-  it('Streifen: 64×32, 3 Reihen oben aus', () => {
+  it('Streifen: 64×32, Reihen oben sichtbar', () => {
     expect(studioPanelDefaultsForPattern('strip')).toEqual({
       panelWidth: 64,
       panelHeight: 32,
       projectDepth: 4,
       hideRowsBottom: 0,
-      hideRowsTop: 3,
+      hideRowsTop: 0,
     })
   })
 
@@ -49,7 +49,7 @@ describe('DEFAULT_STUDIO_PANEL', () => {
     expect(DEFAULT_STUDIO_PANEL.pattern).toBe('strip')
     expect(DEFAULT_STUDIO_PANEL.panelWidth).toBe(64)
     expect(DEFAULT_STUDIO_PANEL.panelHeight).toBe(32)
-    expect(DEFAULT_STUDIO_PANEL.hideRowsTop).toBe(3)
+    expect(DEFAULT_STUDIO_PANEL.hideRowsTop).toBe(0)
     expect(DEFAULT_STUDIO_PANEL.plinthHeight).toBe(64)
     expect(DEFAULT_STUDIO_PANEL.plinthDepth).toBe(8)
   })

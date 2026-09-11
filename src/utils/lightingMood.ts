@@ -68,8 +68,9 @@ export function resolveLightingMood(
     (settings.ambient / contrast) * celestial.skyAmbientFactor,
   )
   if (isDeepNight) skyIntensity = Math.min(skyIntensity, 0.014)
-  else if (celestial.activeLight === 'moon' && !civilTwilight) {
-    skyIntensity = Math.min(skyIntensity, 0.042)
+  else if (celestial.activeLight === 'moon') {
+    const moonCap = civilTwilight ? 0.1 : 0.042
+    skyIntensity = Math.min(skyIntensity, moonCap)
   }
 
   const groundUser = new THREE.Color(sceneGroundHex)
