@@ -6,7 +6,7 @@ Physikalischer Himmel in **3D** und **Oben** (Bruneton Precomputed Atmospheric S
 
 - **Datum** startet immer mit dem **heutigen Tag** (Berlin-Sonnenstand). Manuell änderbar.
 - **Tageszeit** (`#sun-time`): fest **0:00–24:00** — goldene Stunde, blaue Stunde, Nacht.
-- **Sonnenwinkel (Himmelsrichtung)** (`#sun-azimuth`): horizontal am Himmelskreis (0°=N, 90°=O). **Sonnenwinkel (Höhe)** (`#sun-elevation`): vertikal über dem Horizont (−12°…70°). Beide manuell; **Datum/Tageszeit** setzt Azimut und Elevation aus Berlin wieder. Manuell schaltet den Tageszyklus aus.
+- **Sonnenwinkel (Himmelsrichtung)** (`#sun-azimuth`): horizontal am Himmelskreis (0°=N, 90°=O). **Sonnenwinkel (Höhe)** (`#sun-elevation`): vertikal über dem Horizont (−12°…70°). Beide manuell; **Datum/Tageszeit** setzt Azimut, Elevation, Intensität, Weichheit und Farbtemperatur aus Berlin wieder. **v2.0.358:** Höhen-Slider zieht Intensität/Weichheit/Farbtemperatur wie Tageszeit mit — sonst nach Abend/Tageszyklus hohe Höhe bei Sonnenlicht ≈ 0. Manuell schaltet den Tageszyklus aus.
 - **Dämmerung:** weicher Übergang Tag↔Nacht durch Streuungsmodell (kein harter Sonne/Mond-Pop).
 - Bei Nacht: Sterne (Yale BSC5), Mond mit Phase aus Datum.
 - **Szenenfarben**

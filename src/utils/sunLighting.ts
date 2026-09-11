@@ -93,6 +93,30 @@ export function intensityFromElevation(elevationRad: number): number {
   return Math.round((1.0 + 2.5 * t) * 10) / 10
 }
 
+/**
+ * Manueller Höhen-Slider: Key-Intensität, Weichheit und Farbtemperatur an die gewählte
+ * Höhe koppeln (wie Tageszeit mit `applySolarLook`), ohne Uhrzeit/Azimut zu überschreiben.
+ */
+export function applyManualSunElevationLook(settings: SunSettings): SunSettings {
+  const elev = settings.elevationRad
+  if (!Number.isFinite(elev)) return settings
+  if (elev <= THREE.MathUtils.degToRad(-0.5)) {
+    return settings
+  }
+  if (elev <= 0) {
+    return {
+      ...settings,
+      intensity: Math.max(0.04, settings.intensity * 0.08),
+    }
+  }
+  return {
+    ...settings,
+    intensity: intensityFromElevation(elev),
+    shadowSoftness: shadowSoftnessFromElevation(elev),
+    colorTemperature: colorTempFromElevation(elev),
+  }
+}
+
 export const DEFAULT_SUN_TIME_OF_DAY = 13.25
 export const DEFAULT_SUN_AZIMUTH = 210
 export const DEFAULT_SUN_INTENSITY = 3.9

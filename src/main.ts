@@ -367,6 +367,7 @@ import {
   fitDirectionalShadowCamera,
   formatTimeOfDay,
   normalizeSunSettings,
+  applyManualSunElevationLook,
   elevationRadFromSliderDeg,
   sunElevationDegFromSettings,
   SUN_ELEVATION_SLIDER_MAX_DEG,
@@ -23973,6 +23974,13 @@ bindSunSlider(
     stopSunPathAnimation(false)
     pauseDayCycleForManualSunAdjust()
     sunSettings.elevationRad = elevationRadFromSliderDeg(value)
+    sunSettings = applyManualSunElevationLook(sunSettings)
+    sunIntensityInput.value = String(sunSettings.intensity)
+    sunIntensityValue.textContent = sunSettings.intensity.toFixed(1)
+    sunSoftnessInput.value = String(sunSettings.shadowSoftness)
+    sunSoftnessValue.textContent = sunSettings.shadowSoftness.toFixed(1)
+    sunColorTempInput.value = String(sunSettings.colorTemperature)
+    sunColorTempValue.textContent = `${Math.round(sunSettings.colorTemperature)} K`
   },
   (value) => `${value.toFixed(1)}°`,
 )

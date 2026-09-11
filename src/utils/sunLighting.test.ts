@@ -14,11 +14,13 @@ import {
   shadowSoftnessFromElevation,
   sunFromTargetDirection,
   sunRayDirectionFromSettings,
+  applyManualSunElevationLook,
   elevationRadFromSliderDeg,
   syncSunSettingsFromSolar,
   sunElevationDegFromSettings,
   TIME_OF_DAY_MAX,
 } from './sunLighting'
+import { colorTempFromElevation } from './solar'
 import { facadeOutward } from '../studio/elevation'
 
 describe('expandBoxByGroundShadow', () => {
@@ -99,6 +101,24 @@ describe('shadowRadiusFromSoftness', () => {
     expect(shadowRadiusFromSoftness(2.5)).toBeCloseTo(2.5, 5)
     expect(shadowRadiusFromSoftness(8)).toBe(8)
     expect(shadowRadiusFromSoftness(0.5)).toBe(0.5)
+  })
+})
+
+describe('applyManualSunElevationLook', () => {
+  it('hebt Intensität/Weichheit bei Tag-Höhe an (nach Abend/Tageszyklus)', () => {
+    const nightish = {
+      ...DEFAULT_SUN_SETTINGS,
+      elevationRad: THREE.MathUtils.degToRad(35),
+      intensity: 0.04,
+      shadowSoftness: 8,
+      colorTemperature: 4200,
+    }
+    const day = applyManualSunElevationLook(nightish)
+    expect(day.intensity).toBe(intensityFromElevation(nightish.elevationRad))
+    expect(day.shadowSoftness).toBe(shadowSoftnessFromElevation(nightish.elevationRad))
+    expect(day.colorTemperature).toBe(colorTempFromElevation(nightish.elevationRad))
+    expect(day.azimuth).toBe(nightish.azimuth)
+    expect(day.timeOfDay).toBe(nightish.timeOfDay)
   })
 })
 

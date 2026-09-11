@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.357'
+export const APP_VERSION = '2.0.358'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,15 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.358',
+    date: '2026-09-11',
+    title: 'Sonnenhöhe: Licht wieder mitziehen',
+    changes: [
+      'Höhen-Slider setzt wieder Intensität, Weichheit und Farbtemperatur wie Tageszeit',
+      'Behebt flache Fassade nach Abend/Tageszyklus trotz hoher Sonnenhöhe',
+    ],
+  },
   {
     version: '2.0.357',
     date: '2026-09-11',

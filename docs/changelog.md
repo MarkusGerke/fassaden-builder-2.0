@@ -2,6 +2,10 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Sonnenhöhe ohne Licht (2026-09-11) — v2.0.358
+
+**Symptom:** Nach v2.0.355 wirkte Fassade/Innen flach, obwohl Himmelsrichtung/Höhe „Tag“ zeigten — lokal und online. **Ursache:** Tageszeit/Tageszyklus setzt Intensität/Weichheit/Farbtemperatur (`applySolarLook`); **Höhen-Slider** nur `elevationRad` — nach Abend blieb z. B. Sonnenlicht **0,04** bei manuell hoher Höhe → kaum Key-Licht/Schatten. **Versuch verworfen:** nur Shadow-Bake (v2.0.357) ohne Slider-Kopplung. **Fix:** `applyManualSunElevationLook` am Höhen-Slider. Docs: `docs/celestial-sky.md`.
+
 ### 3D/Fassade: flache Sonne (2026-09-11) — v2.0.357
 
 **Symptom:** 2D-Aufriss mit Schatten ok; **3D** und **Fassade** hell/blass, wenig Sonnenfeedback. **Hypothesen verworfen:** `setCladdingReceiveShadows` in Perspektive bereits an; `applySunLighting()` ohne `updateShadowMap` backt nach `startupShadowReady` normal — aber Orbit-Defer (`renderLitSceneFrame` löscht `needsUpdate`) und `applySceneAppearance({ updateShadowMap: false })` vor dem Ansichtwechsel ließen die Map leer/stale, bis man die Sonne bewegte. **Fix:** `setView` → 3D/`present`: `applySunLighting({ updateShadowMap: true, forceShadowBake: true })`; `bootstrapSceneLighting` ebenfalls `forceShadowBake`. Docs: `shadows.md`.
