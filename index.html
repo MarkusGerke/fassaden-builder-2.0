@@ -12,7 +12,10 @@
       html, body { margin: 0; min-height: 100%; font-family: system-ui, sans-serif; color: #111; background: #e4e4e4; }
       #app { display: grid; grid-template-columns: 320px minmax(0, 1fr) 280px; grid-template-rows: minmax(0, 1fr); height: 100vh; overflow: hidden; }
       #app.ui-left-collapsed { grid-template-columns: 0 minmax(0, 1fr) 280px; }
+      #app.ui-right-collapsed { grid-template-columns: 320px minmax(0, 1fr) 0; }
+      #app.ui-left-collapsed.ui-right-collapsed { grid-template-columns: 0 minmax(0, 1fr) 0; }
       #app.ui-left-collapsed #ui { overflow: hidden; border-right: none; padding: 0; pointer-events: none; }
+      #app.ui-right-collapsed #ui-right { overflow: hidden; border-left: none; padding: 0; pointer-events: none; }
       #app.ui-bottom-collapsed #library-dock { display: none !important; }
       #app.view-export #export-sidebar { display: block; }
       #app.view-export #ui-right-main { display: none !important; }
@@ -28,6 +31,16 @@
       }
       #app.ui-left-collapsed #ui-left-collapse {
         left: 0; border-radius: 0 0.35rem 0.35rem 0; border-left: none; border-right: 1px solid #ccc;
+      }
+      #ui-right-collapse {
+        grid-column: 3; grid-row: 1;
+        position: fixed; top: 0.55rem; right: calc(280px - 1.35rem); z-index: 40;
+        width: 1.35rem; height: 1.8rem; padding: 0;
+        border: 1px solid #ccc; border-radius: 0 0.35rem 0.35rem 0;
+        background: #f6f6f6; cursor: pointer; font: inherit; line-height: 1;
+      }
+      #app.ui-right-collapsed #ui-right-collapse {
+        right: 0; border-radius: 0.35rem 0 0 0.35rem; border-right: none; border-left: 1px solid #ccc;
       }
       #ui, #ui-right { background: rgba(255,255,255,0.95); }
       #ui { position: relative; padding: 1.2rem 1.4rem; border-right: 1px solid #ddd; }
@@ -2566,6 +2579,7 @@
           </div>
         </div>
         </div>
+      <button type="button" id="ui-right-collapse" class="ui-right-collapse-btn" title="Rechte Spalte einklappen" aria-expanded="true" aria-controls="ui-right">›</button>
     </div>
 
     <dialog id="storey-copy-dialog">

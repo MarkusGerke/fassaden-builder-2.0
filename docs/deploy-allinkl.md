@@ -43,7 +43,7 @@ Datei: [`.github/workflows/deploy-allinkl.yml`](../.github/workflows/deploy-alli
 
 - Trigger: Push auf `main`, optional `workflow_dispatch`
 - `npm ci` → `npx vite build` → FTPS-Upload von `./dist/` (ohne `tsc`, damit `*.test.ts` den Deploy nicht blockiert)
-- `dangerous-clean-slate: true`: Remote-Ziel wird vor Upload geleert (nur sicher, wenn der FTP-User **nur** das App-Verzeichnis sieht)
+- **`dangerous-clean-slate: false` (v2.0.374):** inkrementeller Upload — nur geänderte Dateien. Unveränderte Fonts/Vite-Hashes bleiben. FTP-User muss **nur** das App-Verzeichnis sehen. Alt-Chunks ohne aktuelle `index.html`-Referenz können liegen bleiben (meist harmlos); bei Bedarf einmalig `true` setzen oder Verzeichnis im KAS aufräumen.
 
 ## Bekannte Fallstricke
 
@@ -51,8 +51,9 @@ Datei: [`.github/workflows/deploy-allinkl.yml`](../.github/workflows/deploy-alli
 |---------|----------------|
 | `pathspec … did not match` | Workflow-Datei fehlt im Repo — committen und pushen |
 | FTP-Verbindung fehlgeschlagen | FTPS, Port 21; Zugangsdaten aus KAS |
+| FTPS-Timeout / sehr langer Upload | Früher oft durch Voll-Wipe (`dangerous-clean-slate: true`) — jetzt inkrementell; bei Timeout Workflow erneut starten |
 | Leere Seite / 404 | `index.html` muss im Document Root der Subdomain liegen |
-| Alte Assets nach Deploy | Hard-Refresh; bei Bedarf `dangerous-clean-slate` prüfen |
+| Alte Assets nach Deploy | Hard-Refresh; tote gehashte Chunks ggf. manuell löschen oder einmal Clean-Slate |
 | Verhalten ≠ localhost | **Gleicher Code**, aber **eigenes `localStorage`** pro Domain (`fassaden-builder-state-v6`); **Cookies/Cache leeren löscht das Projekt nicht** — DevTools → Application → Local Storage löschen oder App-Reset. **Teilen-Links** bis v2.0.355 oft **2D-Aufriss** — ab v2.0.356 `view` im Link. Version prüfen; Hard-Refresh. |
 | Verzeichnisschutz weg | Schutz im KAS anlegen, nicht per Upload in `.htaccess` im `dist/` überschreiben |
 | `http://` ok, `https://` Zertifikatsfehler / kein Auto-Redirect | Port 443 liefert oft noch **\*.kasserver.com** statt Let's Encrypt für die Subdomain — im KAS **SSL-Schutz** explizit für `fassaden.…` aktivieren, Zertifikat ausstellen lassen, 15–60 Min. warten; dann optional HTTP→HTTPS-Umleitung im KAS. Prüfen: `curl -vI https://…` → `subjectAltName` muss die Subdomain enthalten. |
