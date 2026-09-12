@@ -1569,6 +1569,22 @@ export function flushClipPartsToOpeningJambs(
     }
     return true
   }
+  /** Flush darf nicht durch ein anderes Öffnungsloch (z. B. Fenster über Keller). */
+  const extensionHitsOtherHole = (
+    skip: { x0: number; x1: number; y0: number; y1: number },
+    gx0: number,
+    gx1: number,
+    y0: number,
+    y1: number,
+  ): boolean => {
+    for (const other of bodies) {
+      if (other === skip) continue
+      if (y1 <= other.y0 + JAMB_FLUSH_EPS || y0 >= other.y1 - JAMB_FLUSH_EPS) continue
+      if (gx1 <= other.x0 + JAMB_FLUSH_EPS || gx0 >= other.x1 - JAMB_FLUSH_EPS) continue
+      return true
+    }
+    return false
+  }
 
   const out: OpeningPoly[] = []
   for (const part of parts) {
@@ -1593,7 +1609,8 @@ export function flushClipPartsToOpeningJambs(
           x1 <= hole.x0 + JAMB_FLUSH_EPS &&
           hole.x0 - x1 > JAMB_FLUSH_EPS &&
           hole.x0 - x1 <= MAX_JAMB_FLUSH &&
-          gapIsFree(part, x1, hole.x0)
+          gapIsFree(part, x1, hole.x0) &&
+          !extensionHitsOtherHole(hole, x1, hole.x0, y0, y1)
         ) {
           x1 = hole.x0
         }
@@ -1601,7 +1618,8 @@ export function flushClipPartsToOpeningJambs(
           x0 >= hole.x1 - JAMB_FLUSH_EPS &&
           x0 - hole.x1 > JAMB_FLUSH_EPS &&
           x0 - hole.x1 <= MAX_JAMB_FLUSH &&
-          gapIsFree(part, hole.x1, x0)
+          gapIsFree(part, hole.x1, x0) &&
+          !extensionHitsOtherHole(hole, hole.x1, x0, y0, y1)
         ) {
           x0 = hole.x1
         }

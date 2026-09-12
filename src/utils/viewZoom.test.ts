@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest'
 import {
   DBLCLICK_ZOOM_DURATION_MS,
   DBLCLICK_ZOOM_FACTOR,
+  OBJECT_FOCUS_DURATION_MS,
+  easeInOutCubic,
+  easeInOutSine,
   easeOutCubic,
+  lerpFocusPose,
   lerpNumber,
   normalizedWheelDeltaY,
   wheelZoomFactorFromDelta,
@@ -69,6 +73,46 @@ describe('easeOutCubic', () => {
   it('startet bei 0 und endet bei 1', () => {
     expect(easeOutCubic(0)).toBe(0)
     expect(easeOutCubic(1)).toBe(1)
+  })
+})
+
+describe('easeInOutCubic', () => {
+  it('startet bei 0, Mitte 0,5, Ende 1', () => {
+    expect(easeInOutCubic(0)).toBe(0)
+    expect(easeInOutCubic(0.5)).toBeCloseTo(0.5, 5)
+    expect(easeInOutCubic(1)).toBe(1)
+  })
+})
+
+describe('easeInOutSine', () => {
+  it('startet bei 0, Mitte 0,5, Ende 1', () => {
+    expect(easeInOutSine(0)).toBe(0)
+    expect(easeInOutSine(0.5)).toBeCloseTo(0.5, 5)
+    expect(easeInOutSine(1)).toBe(1)
+  })
+
+  it('ist in der Mitte flacher als Cubic', () => {
+    expect(easeInOutSine(0.25)).toBeGreaterThan(easeInOutCubic(0.25))
+    expect(easeInOutSine(0.75)).toBeLessThan(easeInOutCubic(0.75))
+  })
+})
+
+describe('OBJECT_FOCUS_DURATION_MS', () => {
+  it('ist lang genug für einen großen Kameraweg', () => {
+    expect(OBJECT_FOCUS_DURATION_MS).toBeGreaterThanOrEqual(700)
+  })
+})
+
+describe('lerpFocusPose', () => {
+  it('hält Endpose und interpoliert Abstand logarithmisch', () => {
+    const fromPos = { x: 0, y: 0, z: 1000 }
+    const toPos = { x: 0, y: 0, z: 100 }
+    const target = { x: 0, y: 0, z: 0 }
+    const mid = lerpFocusPose(fromPos, target, toPos, target, 0.5)
+    expect(mid.target.z).toBeCloseTo(0, 5)
+    expect(mid.pos.z).toBeCloseTo(Math.sqrt(1000 * 100), 5)
+    const end = lerpFocusPose(fromPos, target, toPos, target, 1)
+    expect(end.pos.z).toBeCloseTo(100, 5)
   })
 })
 

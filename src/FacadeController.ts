@@ -10,6 +10,7 @@ import {
   DEFAULT_JOINT_COLOR,
   DEFAULT_WALL_COLOR,
   defaultOpeningFrameColor,
+  wallDecorFallbackColor,
 } from './constants/colorPalettes'
 import type { EditorState, FacadeState, Opening, OpeningRef, Wall, Building, StudioPanelConfig } from './types/facade'
 import { cloneFacadeState, createDefaultEditorState } from './types/facade'
@@ -2778,9 +2779,24 @@ export class FacadeController {
       mesh.traverse((child) => {
         if (!(child instanceof THREE.Mesh)) return
         if (child.userData.role === 'guideRail') return
-        const mats = Array.isArray(child.material) ? child.material : [child.material]
+        const mats = Array.isArray(child.material) ? [...child.material] : [child.material]
+        const orig = child.userData.originalMaterial as THREE.Material | THREE.Material[] | undefined
+        if (Array.isArray(orig)) {
+          for (const item of orig) {
+            if (item && !mats.includes(item)) mats.push(item)
+          }
+        } else if (orig && !mats.includes(orig)) {
+          mats.push(orig)
+        }
         for (const mat of mats) {
-          if (mat === this.whiteMaterial || mat === this.selectedMaterial || mat === this.selectedUnlitMaterial || mat === this.lineMaterial) {
+          if (
+            !mat ||
+            !(mat instanceof THREE.Material) ||
+            mat === this.whiteMaterial ||
+            mat === this.selectedMaterial ||
+            mat === this.selectedUnlitMaterial ||
+            mat === this.lineMaterial
+          ) {
             continue
           }
           if (mat.userData.skipFacadeShade === true) continue
@@ -3991,7 +4007,7 @@ export class FacadeController {
               kind: 'opening',
               wallId: wall.id,
               openingId: opening.id,
-              openingPart: 'frame',
+              openingPart: 'grille',
             })
             instance.add(guardMesh)
           }
@@ -4019,6 +4035,7 @@ export class FacadeController {
             grilleMesh.userData.lodTier = 'high'
             grilleMesh.userData.buildingId = buildingId
             grilleMesh.userData.wallId = wall.id
+            grilleMesh.userData.originalMaterial = grilleMaterial
             tagPickable(grilleMesh, {
               kind: 'opening',
               wallId: wall.id,
@@ -4300,7 +4317,10 @@ export class FacadeController {
                 if (!decorativePlinth) {
                   const plinthGeometry = createStudioPlinthGeometry(geomWall, panel, neighborWalls)
                   if (plinthGeometry) {
-                    const plinthColor = panel.plinthColor ?? wall.wallColor ?? DEFAULT_WALL_COLOR
+                    const plinthColor = wallDecorFallbackColor(
+                      panel.plinthColor ?? panel.plinthProfileColor,
+                      wall,
+                    )
                     const plinthMaterial = createTintedMaterial(
                       this.material,
                       plinthColor,
@@ -4459,7 +4479,10 @@ export class FacadeController {
           if (!decorativePlinth) {
             const plinthGeometry = createStudioPlinthGeometry(geomWall, panel, neighborWalls)
             if (plinthGeometry) {
-              const plinthColor = panel.plinthColor ?? wall.wallColor ?? DEFAULT_WALL_COLOR
+              const plinthColor = wallDecorFallbackColor(
+                panel.plinthColor ?? panel.plinthProfileColor,
+                wall,
+              )
               const plinthMaterial = createTintedMaterial(
                 this.material,
                 plinthColor,
@@ -4722,7 +4745,9 @@ export class FacadeController {
       if (wall && this.wallIsBare(wall)) continue
       // Fassadenschmuck Sockel aus: weder Box noch Profil-Sockel erzeugen.
       if (path.role === 'plinthProfile' && wall && this.wallPlinthDecorHidden(wall)) continue
-      const profileColor = path.color ?? wall?.profileColor ?? DEFAULT_PROFILE_COLOR
+      const profileColor = wall
+        ? wallDecorFallbackColor(path.color, wall)
+        : (path.color ?? DEFAULT_PROFILE_COLOR)
 
       let zBase: number
       let forwardSign: number
@@ -5189,6 +5214,24 @@ export class FacadeController {
       mesh.material = selected ? this.selectedUnlitMaterial : base
     }
 
+    for (const instance of this.windowInstances) {
+      instance.traverse((obj) => {
+        const mesh = obj as THREE.Mesh
+        if (!mesh.isMesh || mesh.userData.openingPart !== 'grille') return
+        if (isLine) return
+        const wallId = mesh.userData.wallId as string | undefined
+        const openingId = mesh.userData.openingId as string | undefined
+        const base = (mesh.userData.originalMaterial as THREE.Material | undefined) ?? mesh.material
+        const selected =
+          !this.suppressSelectionHighlight &&
+          openingPart === 'grille' &&
+          this.editor.selectedOpenings.some(
+            (ref) => ref.wallId === wallId && ref.openingId === openingId,
+          )
+        mesh.material = selected ? this.selectedUnlitMaterial : base
+      })
+    }
+
     for (const mesh of [...this.innerSillMeshes, ...this.outerSillMeshes, ...this.pedimentMeshes]) {
       if (isLine) continue
       const wallId = mesh.userData.wallId as string | undefined
@@ -5277,6 +5320,9 @@ export class FacadeController {
 
       // Treppen: Orange auf Stufen-Meshes (oben), kein flaches Overlay in der Sockelzone
       if (openingPart === 'stairs' && opening.stairs?.enabled) {
+        continue
+      }
+      if (openingPart === 'grille') {
         continue
       }
 

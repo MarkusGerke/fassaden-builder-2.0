@@ -6,7 +6,7 @@ Horizontale Profile und Sockel an Studio-Wänden. Geometrie-Details (Gehrung, Cl
 
 | Element | Wo | Kurz |
 |---|---|---|
-| **Gesims** | Reiter Gesims | Nur an der **oberen** Wandkante; Höhe (8 cm) und Tiefe (4 cm); Farbe, Finish. Profilwahl in der **Bibliothek** (Tab Profile) bzw. Drag auf die Wand. **v2.0.265:** Querschnitt-Vorschau und Dreh-/Spiegel-UI im Studio-Gesims entfernt. **v2.0.230:** Einschalten setzt erstes Bibliothek-Profil (`traufgesims70x150`) und **32 cm** Höhe; Dropdown Geschossgesims (32) / Dachgesims (48) über dem Höhenfeld. **v2.0.253:** Z-Anker = Paneelfläche (`projectDepth`), folgt Tiefe automatisch. **v2.0.381:** ohne explizite Farbe → **Wandfarbe** (`wall.wallColor`). |
+| **Gesims** | Reiter Gesims | Nur an der **oberen** Wandkante; Höhe (8 cm) und Tiefe (4 cm); Farbe, Finish. Profilwahl in der **Bibliothek** (Tab Profile) bzw. Drag auf die Wand. **v2.0.265:** Querschnitt-Vorschau und Dreh-/Spiegel-UI im Studio-Gesims entfernt. **v2.0.230:** Einschalten setzt erstes Bibliothek-Profil (`traufgesims70x150`) und **32 cm** Höhe; Dropdown Geschossgesims (32) / Dachgesims (48) über dem Höhenfeld. **v2.0.253:** Z-Anker = Paneelfläche (`projectDepth`), folgt Tiefe automatisch. **v2.0.381 / v2.0.398 / v2.0.399:** ohne explizite Farbe → sichtbare Fläche (Steine `claddingColor` nur wenn Paneele an, sonst Putz `wallColor`). |
 | **Sockel** | Reiter Sockel | Default-Höhe **64 cm**, Tiefe **8 cm** (v2.0.259); Höhe 8-cm-Raster, Tiefe/Versatz 1 cm; Farbe setzt Körper + Profil; Profil `sockelprofil` ersetzt die Box |
 | **Zierbänder** | Reiter Zierbänder | Beliebige Höhe von unten; Band hinzufügen, Duplikat ±16 cm, in 3D vertikal ziehen (8 cm) |
 
@@ -76,6 +76,11 @@ Felder analog Gesims: `profileId`, `scale`, `sectionScaleForward`, `offsetForwar
 
 ## Fallstricke
 
+- **v2.0.400:** Profil/Höhe bei aktiver Gesims-/Sockel-Wahl: EnvMap-Bind und Cube-Bake müssen `originalMaterial` mitnehmen. Sonst zeigt nur das Orange-Overlay; nach Abwahl hängt die disposed PMREM-Env → schwarzes Band. Albedo kann trotzdem `#ffffff` sein.
+- **v2.0.399:** `claddingColor` nur wenn Paneele sichtbar sind. Sonst Putz (`wallColor`) — sonst färbt eine alte Bekleidung das Gesims auf glattem Putz ein (v2.0.398, weißes Haus).
+- **v2.0.398:** Ohne eigene Farbe nicht `wall.wallColor`/`profileColor` allein — auf kopierten Etagen ist die Schale oft `#ffffff`, die Steine `claddingColor` (z. B. `#C5B69D`). Fallback `claddingColor ?? wallColor`. v2.0.396 (Shade auf `originalMaterial`) war nicht die Farbursache.
+- **v2.0.396:** Höhe ändern, während Sockel/Gesims gewählt ist: `applyFacadeBacklitShade` muss `originalMaterial` mitbeschatten. Sonst fehlt nach der Abwahl der Facade-Shade und Weiß wirkt grau.
+- **v2.0.397:** `originalMaterial` bei Laibung ist oft `[außen, innen]` — Arrays elementweise beschatten, nicht als ein Listen-Eintrag (sonst Start-Absturz, unsichtbares Haus).
 - Gesims-**Tiefe** = `sectionScaleForward`, nicht `offsetForward`.
 - Gesims-Höhe/Tiefe unter **Etage / Fassade / Typ:** UI zeigt cm, State speichert `scale` / `sectionScaleForward` — Commit rechnet **pro Zielwand** aus dem jeweiligen Profil-Querschnitt (`updateWallCorniceHeightCm` / `updateWallCorniceDepthCm` in `cornice.ts`), damit die letzte Eingabe auf allen Wänden dieselbe sichtbare Größe liefert (nicht nur derselbe `scale`-Faktor am Ankerprofil).
 - Sockelprofil-Gehrung ≠ Gesims-Vorzeichen an Außenecken.

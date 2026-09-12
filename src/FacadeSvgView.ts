@@ -10,6 +10,7 @@ import {
   DEFAULT_PROFILE_COLOR,
   DEFAULT_WALL_COLOR,
   defaultOpeningFrameColor,
+  wallDecorFallbackColor,
 } from './constants/colorPalettes'
 import { resolveCladding } from './meshes/catalog'
 import { resolveProfile } from './profiles/registry'
@@ -556,7 +557,9 @@ export class FacadeSvgView {
         }
       }
       const path = this.pathInElevation(rawPath, wall)
-      const profileColor = path.color ?? wall?.profileColor ?? DEFAULT_PROFILE_COLOR
+      const profileColor = wall
+        ? wallDecorFallbackColor(path.color, wall)
+        : (path.color ?? DEFAULT_PROFILE_COLOR)
       let section = profile.section
         ? scaleProfileSectionAxes(
             transformProfileSection(
@@ -758,7 +761,12 @@ export class FacadeSvgView {
       plinth.setAttribute('y', String(wall.height - plinthHeight - skirtDrop + extraTop))
       plinth.setAttribute('width', String(drawWidth))
       plinth.setAttribute('height', String(plinthHeight))
-      plinth.setAttribute('fill', this.renderStyle === 'line' ? '#ffffff' : wall.wallColor ?? DEFAULT_WALL_COLOR)
+      plinth.setAttribute(
+        'fill',
+        this.renderStyle === 'line'
+          ? '#ffffff'
+          : wallDecorFallbackColor(panel?.plinthColor ?? panel?.plinthProfileColor, wall),
+      )
       plinth.setAttribute('fill-opacity', this.renderStyle === 'line' ? '1' : '0.98')
       plinth.setAttribute('stroke', this.renderStyle === 'line' ? '#000000' : '#bbb')
       plinth.setAttribute('stroke-width', this.renderStyle === 'line' ? this.lineW(0.4) : '0.8')
@@ -1026,6 +1034,9 @@ export class FacadeSvgView {
           config,
           openingGlazingArchForm(opening),
           normalizeOpeningArch(opening.arch).riseCm,
+          opening.type === 'door'
+            ? { openBottom: opening.door?.bottomFrame !== true }
+            : undefined,
         )
         appendGruenderzeitSvg(
           group,

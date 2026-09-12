@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.389'
+export const APP_VERSION = '2.0.401'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,108 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.401',
+    date: '2026-09-12',
+    title: 'Konchen hell, Leisten-Griffe, Fassade-Chrome',
+    changes: [
+      'Konchen nicht mehr pechschwarz: Schatten-Mundkappe entfernt — Rundung und Schattenwurf wieder sichtbar',
+      'Rechte Einstellungsleiste nach Einklappen wieder aufklappbar (Griff außerhalb der Spalte)',
+      'Ebenen-Griff überdeckt „2D“ nicht mehr',
+      'Ansicht Fassade: Export, Farbe/Zeichnung und Vorschau/Render ausgeblendet',
+    ],
+  },
+  {
+    version: '2.0.400',
+    date: '2026-09-12',
+    title: 'Gesims bleibt hell nach Profilwechsel',
+    changes: [
+      'Höhe oder Profil von Gesims/Sockel bei Auswahl ändern: nach Abwahl keine schwarze/graue Leiste mehr (EnvMap auch auf originalMaterial)',
+    ],
+  },
+  {
+    version: '2.0.399',
+    date: '2026-09-12',
+    title: 'Gesims folgt der sichtbaren Wand',
+    changes: [
+      'Ohne eigene Farbe: Gesims/Sockel wie die Steine, wenn Paneele an sind — sonst wie der Putz, nicht eine alte Bekleidungsfarbe',
+    ],
+  },
+  {
+    version: '2.0.398',
+    date: '2026-09-12',
+    title: 'Gesims und Sockel in Steinfarbe',
+    changes: [
+      'Gesims, Sockel und Zierband ohne eigene Farbe folgen der sichtbaren Steinfarbe, auch nach Höhenänderung',
+    ],
+  },
+  {
+    version: '2.0.397',
+    date: '2026-09-12',
+    title: 'Haus wieder sichtbar nach Start',
+    changes: [
+      'Nach dem Start bleibt das Haus sichtbar — der Ladebildschirm blendet nicht mehr in eine leere 3D-Ansicht',
+    ],
+  },
+  {
+    version: '2.0.396',
+    date: '2026-09-12',
+    title: 'Sockel/Gesims: Farbe nach Höhenänderung',
+    changes: [
+      'Höhe von Sockel oder Gesims ändern lässt die Fläche nach der Abwahl nicht mehr grau',
+      'Ladebildschirm bleibt nicht mehr auf „Studio wird geladen …“, wenn der Himmel langsam lädt',
+    ],
+  },
+  {
+    version: '2.0.395',
+    date: '2026-09-12',
+    title: 'Einstellungen: Felder bleiben im Rand',
+    changes: [
+      'Rechte Leiste: Stepper, Selects und Zeilen bleiben 16 px vom Rand und rechtsbündig — nichts ragt mehr aus dem Bild',
+    ],
+  },
+  {
+    version: '2.0.394',
+    date: '2026-09-12',
+    title: 'Balkongitter: Farbe und Auswahl',
+    changes: [
+      'Gitter / franz. Balkon: Farbe unter Farben (Gitterfarbe), sobald das Gitter an ist',
+      'Stäbe in 3D anklicken markiert das Gitter (orange) statt das ganze Fenster',
+    ],
+  },
+  {
+    version: '2.0.393',
+    date: '2026-09-12',
+    title: 'Doppelklick-Zoom weicher',
+    changes: [
+      '3D/Fassade: Kamera-Fokus fährt länger und gleichmäßiger (Ease-in-out, ~800 ms) — weniger Ruck und Zuschlagen',
+    ],
+  },
+  {
+    version: '2.0.392',
+    date: '2026-09-12',
+    title: 'Doppelklick-Zoom mit weicher Kamera',
+    changes: [
+      '3D und Fassade: Doppelklick auf Fenster/Wand fährt die Kamera mit Ease-in-out heran und zurück — kein harter Sprung mehr',
+    ],
+  },
+  {
+    version: '2.0.391',
+    date: '2026-09-12',
+    title: 'Kellerfenster: Abstand und keine Beige-Flächen',
+    changes: [
+      'Kellerfenster duplizieren mit 144 cm Kante-zu-Kante',
+      'Kein beiger Mörtelstreifen links/rechts im Fenster darüber',
+    ],
+  },
+  {
+    version: '2.0.390',
+    date: '2026-09-12',
+    title: 'Tür ohne Unterrahmen füllt bis zum Boden',
+    changes: [
+      'Ohne „Unterer Rahmen“: Flügel und Kassetten gehen gleichmäßig bis nach unten — keine Lücke unter dem Blendrahmen',
+    ],
+  },
   {
     version: '2.0.389',
     date: '2026-09-12',

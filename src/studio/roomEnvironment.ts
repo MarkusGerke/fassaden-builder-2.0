@@ -164,11 +164,20 @@ export function bakeSceneReflectionsIfNeeded(
 
     // EnvMap-Feedback brechen: sonst spiegeln graue Paneele sich selbst → Mittelgrau-IBL.
     // Intensität nur während der Cube-Renders (nicht auf dem sichtbaren Canvas).
+    // Auch originalMaterial (Auswahl-Overlay) — sonst bleibt Env auf dem Original aktiv.
     scene.traverse((obj) => {
       if (!(obj instanceof THREE.Mesh)) return
-      const mats = Array.isArray(obj.material) ? obj.material : [obj.material]
+      const mats: THREE.Material[] = []
+      const visible = obj.material
+      if (Array.isArray(visible)) mats.push(...visible)
+      else if (visible) mats.push(visible)
+      const orig = obj.userData.originalMaterial as THREE.Material | THREE.Material[] | undefined
+      if (Array.isArray(orig)) mats.push(...orig)
+      else if (orig) mats.push(orig)
+      const seen = new Set<THREE.Material>()
       for (const mat of mats) {
-        if (!(mat instanceof THREE.MeshStandardMaterial)) continue
+        if (!(mat instanceof THREE.MeshStandardMaterial) || seen.has(mat)) continue
+        seen.add(mat)
         if (!mat.envMap && mat.envMapIntensity <= 0) continue
         intensityRestore.push({ material: mat, intensity: mat.envMapIntensity })
         mat.envMapIntensity = 0

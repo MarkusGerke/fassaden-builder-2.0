@@ -3,7 +3,7 @@ import * as THREE from 'three'
 import type { FacadeState, Wall } from '../types/facade'
 import { WALL_DEPTH } from '../constants/presets'
 import { DEFAULT_STUDIO_PANEL } from './constants'
-import { createStudioOpeningRevealGeometry, createStudioOpeningShadowTunnelGeometry, createStudioPanelFlatGeometriesByColorIndex, createStudioPanelGeometry, createStudioWallGeometry, innerFaceRingFromWalls, studioWallFaceNormalReverse } from './panelGeometry'
+import { createStudioOpeningRevealGeometry, createStudioOpeningShadowTunnelGeometry, createStudioMortarGeometry, createStudioPanelFlatGeometriesByColorIndex, createStudioPanelGeometry, createStudioWallGeometry, innerFaceRingFromWalls, studioWallFaceNormalReverse } from './panelGeometry'
 import { layoutPanelTiles } from './panelLayout'
 import { topBareBandForWall } from '../utils/wallLabel'
 import { buildingNeedsOuterSpineFit, finalizeStudioGeometry } from './planGeometry'
@@ -1420,5 +1420,115 @@ describe('Rest-Steine an Öffnungen: Front zeigt nach außen (v2.0.119)', () => 
     expect(nrm.count).toBeGreaterThan(100)
     expect(inward).toBe(0)
     geo.dispose()
+  })
+})
+
+function countFrontTrisInOpening(
+  geo: THREE.BufferGeometry,
+  wall: Wall,
+  opening: { x: number; y: number; width: number; height: number },
+  inset = 4,
+): number {
+  const pos = geo.getAttribute('position') as THREE.BufferAttribute
+  const idx = geo.getIndex()
+  const halfH = wall.height / 2
+  const x0 = opening.x - wall.width / 2 + inset
+  const x1 = opening.x + opening.width - wall.width / 2 - inset
+  const y0 = opening.y - halfH + inset
+  const y1 = opening.y + opening.height - halfH - inset
+  let hits = 0
+  const triCount = idx ? idx.count / 3 : pos.count / 3
+  for (let t = 0; t < triCount; t += 1) {
+    const ia = idx ? idx.getX(t * 3) : t * 3
+    const ib = idx ? idx.getX(t * 3 + 1) : t * 3 + 1
+    const ic = idx ? idx.getX(t * 3 + 2) : t * 3 + 2
+    const cx = (pos.getX(ia) + pos.getX(ib) + pos.getX(ic)) / 3
+    const cy = (pos.getY(ia) + pos.getY(ib) + pos.getY(ic)) / 3
+    if (cx >= x0 && cx <= x1 && cy >= y0 && cy <= y1) hits += 1
+  }
+  return hits
+}
+
+describe('Kellerfenster: keine Front im oberen Fenster', () => {
+  const upper = {
+    id: 'upper',
+    type: 'window' as const,
+    x: 200,
+    y: 120,
+    width: 96,
+    height: 192,
+    panelClearance: { enabled: false, cm: 8, finish: 'empty' as const },
+  }
+  const basement = {
+    id: 'base',
+    type: 'window' as const,
+    x: 224,
+    y: 0,
+    width: 48,
+    height: 64,
+    basementWindow: { enabled: true, grilleHeight: 0.5 },
+    panelClearance: { enabled: false, cm: 8, finish: 'empty' as const },
+  }
+  const panel = {
+    ...DEFAULT_STUDIO_PANEL,
+    enabled: true,
+    pattern: 'running' as const,
+    panelWidth: 32,
+    panelHeight: 8,
+    joint: 0.8,
+    plinthEnabled: true,
+    plinthHeight: 80,
+    projectDepth: 4,
+  }
+
+  it('Wandloch und Steine bleiben nach Kellerfenster frei', () => {
+    const wallOnly = {
+      ...createStudioWall(0, 0),
+      id: 'facade',
+      width: 640,
+      height: 448,
+      openings: [upper],
+      panel,
+      profiles: [
+        { openingId: 'upper', profileId: 'fensterprofil40x140', edge: 'left' as const },
+        { openingId: 'upper', profileId: 'fensterprofil40x140', edge: 'right' as const },
+        { openingId: 'upper', profileId: 'fensterprofil40x140', edge: 'top' as const },
+        { openingId: 'upper', profileId: 'fensterprofil40x140', edge: 'bottom' as const },
+      ],
+    }
+    const wallBoth = { ...wallOnly, openings: [upper, basement] }
+    const wallOnlyGeo = createStudioWallGeometry(wallOnly)
+    const wallBothGeo = createStudioWallGeometry(wallBoth)
+    const panelOnly = createStudioPanelGeometry(wallOnly, panel, [wallOnly])
+    const panelBoth = createStudioPanelGeometry(wallBoth, panel, [wallBoth])
+    const mortarOnly = createStudioMortarGeometry(wallOnly, panel, [wallOnly])
+    const mortarBoth = createStudioMortarGeometry(wallBoth, panel, [wallBoth])
+    const wallOnlyHits = countFrontTrisInOpening(wallOnlyGeo, wallOnly, upper)
+    const wallBothHits = countFrontTrisInOpening(wallBothGeo, wallBoth, upper)
+    const panelOnlyHits = countFrontTrisInOpening(panelOnly, wallOnly, upper)
+    const panelBothHits = countFrontTrisInOpening(panelBoth, wallBoth, upper)
+    const mortarOnlyHits = mortarOnly ? countFrontTrisInOpening(mortarOnly, wallOnly, upper) : -1
+    const mortarBothHits = mortarBoth ? countFrontTrisInOpening(mortarBoth, wallBoth, upper) : -1
+    expect({
+      wallOnlyHits,
+      wallBothHits,
+      panelOnlyHits,
+      panelBothHits,
+      mortarOnlyHits,
+      mortarBothHits,
+    }).toEqual({
+      wallOnlyHits: 0,
+      wallBothHits: 0,
+      panelOnlyHits: 0,
+      panelBothHits: 0,
+      mortarOnlyHits: 0,
+      mortarBothHits: 0,
+    })
+    wallOnlyGeo.dispose()
+    wallBothGeo.dispose()
+    panelOnly.dispose()
+    panelBoth.dispose()
+    mortarOnly?.dispose()
+    mortarBoth?.dispose()
   })
 })

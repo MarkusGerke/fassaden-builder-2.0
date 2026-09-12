@@ -96,6 +96,17 @@
         <p>Studio wird geladen …</p>
       </div>
     </div>
+    <script>
+      (function () {
+        window.setTimeout(function () {
+          var el = document.getElementById('app-loading')
+          if (!el || el.classList.contains('is-done')) return
+          el.classList.add('is-done')
+          el.setAttribute('aria-busy', 'false')
+          window.setTimeout(function () { el.remove() }, 400)
+        }, 1200)
+      })()
+    </script>
     <div id="app">
       <div id="ui">
         <h1>Fassaden-Builder 2.0</h1>
@@ -1469,7 +1480,7 @@
             <div id="window-style-section" class="toolbar-group window-style-config" hidden>
               <p class="settings-subheading settings-subheading-nested">Ausstattung</p>
               <svg id="window-style-preview" class="window-style-preview" viewBox="0 0 96 192" aria-hidden="true"></svg>
-              <div class="toolbar-group">
+              <div class="toolbar-group toolbar-inline-value ui-field-inline">
                 <span class="toolbar-label">Typ</span>
                 <select id="window-preset-select">
                   <option value="1fl">1-Flügel</option>
@@ -1498,15 +1509,26 @@
               </label>
               <details id="window-timber-section" class="toolbar-group toolbar-accordion">
                 <summary class="toolbar-label">Holzmaße (cm)</summary>
-                <div class="toolbar-row-2">
-                  <label>Blend <input id="window-timber-blend" type="number" min="2" max="16" step="0.2" value="5.2" /></label>
-                  <label>Flügel <input id="window-timber-sash" type="number" min="2" max="14" step="0.2" value="4.4" /></label>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Blend (cm)</span>
+                  <input id="window-timber-blend" type="number" min="2" max="16" step="0.2" value="5.2" />
                 </div>
-                <div class="toolbar-row-2">
-                  <label>Sprosse <input id="window-timber-muntin" type="number" min="0.8" max="8" step="0.2" value="2.2" /></label>
-                  <label>Kämpfer <input id="window-timber-kaempfer" type="number" min="3" max="20" step="0.2" value="7.2" /></label>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Flügel (cm)</span>
+                  <input id="window-timber-sash" type="number" min="2" max="14" step="0.2" value="4.4" />
                 </div>
-                <label>Stulp <input id="window-timber-stulp" type="number" min="0.8" max="8" step="0.2" value="2.2" /></label>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Sprosse (cm)</span>
+                  <input id="window-timber-muntin" type="number" min="0.8" max="8" step="0.2" value="2.2" />
+                </div>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Kämpfer (cm)</span>
+                  <input id="window-timber-kaempfer" type="number" min="3" max="20" step="0.2" value="7.2" />
+                </div>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Stulp (cm)</span>
+                  <input id="window-timber-stulp" type="number" min="0.8" max="8" step="0.2" value="2.2" />
+                </div>
               </details>
               <details id="window-hinge-section" class="toolbar-group toolbar-accordion">
                 <summary class="toolbar-label">Scharnier / Öffnungsart</summary>
@@ -1518,13 +1540,20 @@
                   Gitter / franz. Balkon
                 </label>
                 <div id="window-guard-options" hidden>
-                  <select id="window-guard-mode">
-                    <option value="grille">Stabgitter</option>
-                    <option value="balcony">Französischer Balkon</option>
-                  </select>
-                  <div class="toolbar-row-2">
-                    <label>Abstand (cm) <input id="window-guard-spacing" type="number" min="6" max="40" step="1" value="12" /></label>
-                    <label>Höhe (cm) <input id="window-guard-height" type="number" min="48" max="160" step="8" value="96" /></label>
+                  <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                    <span class="toolbar-label">Form</span>
+                    <select id="window-guard-mode">
+                      <option value="grille">Stabgitter</option>
+                      <option value="balcony">Französischer Balkon</option>
+                    </select>
+                  </div>
+                  <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                    <span class="toolbar-label">Abstand (cm)</span>
+                    <input id="window-guard-spacing" type="number" min="6" max="40" step="1" value="12" />
+                  </div>
+                  <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                    <span class="toolbar-label">Höhe (cm)</span>
+                    <input id="window-guard-height" type="number" min="48" max="160" step="8" value="96" />
                   </div>
                 </div>
               </div>
@@ -1534,23 +1563,30 @@
                   Vorhang / Jalousie
                 </label>
                 <div id="window-shade-options" hidden>
-                  <select id="window-shade-mode">
-                    <option value="curtain">Vorhang</option>
-                    <option value="blind">Jalousie</option>
-                  </select>
-                  <label>Zu (%) <input id="window-shade-drop" type="range" min="0" max="100" step="1" value="0" /></label>
+                  <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                    <span class="toolbar-label">Art</span>
+                    <select id="window-shade-mode">
+                      <option value="curtain">Vorhang</option>
+                      <option value="blind">Jalousie</option>
+                    </select>
+                  </div>
+                  <label class="slider-label">
+                    <span>Zu (%)</span>
+                    <input id="window-shade-drop" type="range" min="0" max="100" step="1" value="0" />
+                  </label>
                 </div>
               </div>
               <div id="window-door-extras" class="toolbar-group" hidden>
                 <span class="toolbar-label">Tür</span>
-                <label>Kassetten
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Kassetten</span>
                   <select id="window-door-cassettes">
                     <option value="1">1</option>
                     <option value="2" selected>2</option>
                     <option value="3">3</option>
                     <option value="4">4</option>
                   </select>
-                </label>
+                </div>
                 <label class="toolbar-check"><input id="window-door-handle" type="checkbox" checked /> Drücker</label>
                 <label class="toolbar-check"><input id="window-door-letter" type="checkbox" /> Briefschlitz</label>
                 <label class="toolbar-check"><input id="window-door-bottom-frame" type="checkbox" /> Unterer Rahmen</label>
@@ -2232,6 +2268,21 @@
               <span class="toolbar-label">Glasfarbe</span>
               <div id="glass-color-swatches" class="color-swatches"></div>
             </div>
+            <div id="guard-color-hub-section" hidden>
+            <p class="settings-subheading settings-subheading-nested">Gitter / Balkon</p>
+            <div class="toolbar-group ui-field-inline">
+              <span class="toolbar-label">Gitterfarbe</span>
+              <div id="guard-color-swatches-hub" class="color-swatches"></div>
+            </div>
+            <div class="toolbar-group" hidden>
+              <span class="toolbar-label">Oberfläche Gitter</span>
+              <select id="opening-guard-finish" aria-label="Reflexion Gitter">
+                <option value="matte">Stumpf</option>
+                <option value="glossy">Glänzend</option>
+                <option value="metal">Metallisch</option>
+              </select>
+            </div>
+            </div>
             <p class="settings-subheading settings-subheading-nested">Laibung</p>
             <div id="reveal-exterior-color-section" class="toolbar-group ui-field-inline">
               <span class="toolbar-label">Laibung außen</span>
@@ -2719,6 +2770,7 @@
           </div>
         </div>
         </div>
+      </div>
       <button type="button" id="ui-right-collapse" class="ui-right-collapse-btn" title="Rechte Spalte einklappen" aria-expanded="true" aria-controls="ui-right">›</button>
     </div>
 

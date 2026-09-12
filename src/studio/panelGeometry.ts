@@ -4090,13 +4090,15 @@ export function createStudioOpeningShadowTunnelGeometry(
       quads += 1
     }
     if (openingIsConch(opening)) {
-      appendOpeningMaskCap(wall, poly, outerZ, positions, normals, indices)
+      // Keine Kappe an outerZ: die würde die Mundöffnung in der Sonnen-Map
+      // zuschließen → Kalotte pechschwarz, keine Rundung/Schattenwurf sichtbar.
+      // Rückwand (+ ggf. Innenkante) dichtet das Wandloch wie bei flachen Nischen.
       appendOpeningMaskCap(wall, poly, sealBackZ, positions, normals, indices)
       // Flache Konche innerhalb der Wand: Durchgangsloch zur Innenkante zusätzlich dichten.
       if (!deepNiche && Math.abs(sealBackZ - wallInnerZ) > 0.35) {
         appendOpeningMaskCap(wall, poly, wallInnerZ, positions, normals, indices)
       }
-      quads += deepNiche ? 2 : 3
+      quads += deepNiche ? 1 : 2
     } else if (openingFillMode(opening) === 'niche') {
       appendOpeningMaskCap(wall, poly, sealBackZ, positions, normals, indices)
       if (!deepNiche) {

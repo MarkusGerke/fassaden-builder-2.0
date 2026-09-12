@@ -747,3 +747,87 @@ describe('Erker-Gesims-Umschluss (item 14)', () => {
     expect(frontWrap.points[0]!.y).toBeCloseTo(-176, 0)
   })
 })
+
+describe('Dekor-Farbe folgt Bekleidung', () => {
+  it('Gesims ohne eigene Farbe nutzt claddingColor statt weißem wallColor', () => {
+    const wall: Wall = {
+      ...createStudioWall(0, 0),
+      id: 'w',
+      wallColor: '#ffffff',
+      claddingColor: '#C5B69D',
+      profileColor: '#ffffff',
+      cornice: { enabled: true, edge: 'top', scale: 1, profileId: 'traufgesims70x150' },
+    }
+    const paths = buildProfilePaths(stateFromWall(wall)).filter(
+      (p) => !p.openingId && p.role === undefined,
+    )
+    expect(paths.length).toBeGreaterThan(0)
+    expect(paths.every((p) => (p.color ?? '').toLowerCase() === '#c5b69d')).toBe(true)
+  })
+
+  it('explizite Gesims-Farbe bleibt erhalten', () => {
+    const wall: Wall = {
+      ...createStudioWall(0, 0),
+      id: 'w',
+      wallColor: '#ffffff',
+      claddingColor: '#C5B69D',
+      cornice: {
+        enabled: true,
+        edge: 'top',
+        scale: 1,
+        profileId: 'traufgesims70x150',
+        color: '#ff00ff',
+      },
+    }
+    const paths = buildProfilePaths(stateFromWall(wall)).filter(
+      (p) => !p.openingId && p.role === undefined,
+    )
+    expect(paths.every((p) => p.color === '#ff00ff')).toBe(true)
+  })
+
+  it('Sockelprofil ohne eigene Farbe nutzt claddingColor', () => {
+    const wall: Wall = {
+      ...createStudioWall(0, 0),
+      id: 'w',
+      wallColor: '#ffffff',
+      claddingColor: '#C5B69D',
+      profileColor: '#ffffff',
+      panel: {
+        ...DEFAULT_STUDIO_PANEL,
+        enabled: true,
+        plinthEnabled: true,
+        plinthHeight: 64,
+        plinthProfileId: 'sockelprofil',
+      },
+    }
+    const paths = buildProfilePaths(stateFromWall(wall)).filter((p) => p.role === 'plinthProfile')
+    expect(paths.length).toBeGreaterThan(0)
+    expect(paths.every((p) => (p.color ?? '').toLowerCase() === '#c5b69d')).toBe(true)
+  })
+
+  it('ohne Paneele ignoriert Rest-claddingColor und nutzt wallColor', () => {
+    const wall: Wall = {
+      ...createStudioWall(0, 0),
+      id: 'w',
+      wallColor: '#ffffff',
+      claddingColor: '#C1BCB3',
+      profileColor: '#ffffff',
+      panel: {
+        ...DEFAULT_STUDIO_PANEL,
+        enabled: false,
+        pattern: 'none',
+        plinthEnabled: true,
+        plinthHeight: 64,
+        plinthProfileId: 'sockelprofil',
+      },
+      cornice: { enabled: true, edge: 'top', scale: 1, profileId: 'traufgesims70x150' },
+    }
+    const state = stateFromWall(wall)
+    const cornice = buildProfilePaths(state).filter((p) => !p.openingId && p.role === undefined)
+    const plinth = buildProfilePaths(state).filter((p) => p.role === 'plinthProfile')
+    expect(cornice.length).toBeGreaterThan(0)
+    expect(cornice.every((p) => (p.color ?? '').toLowerCase() === '#ffffff')).toBe(true)
+    expect(plinth.length).toBeGreaterThan(0)
+    expect(plinth.every((p) => (p.color ?? '').toLowerCase() === '#ffffff')).toBe(true)
+  })
+})

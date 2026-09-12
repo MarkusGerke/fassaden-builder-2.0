@@ -46,8 +46,8 @@ Rahmenprofil, Bänke, Verdachung, Rollläden, Keller-Gitter, Treppe, Glas, Rahme
 
 ### Neu (v0.7.305)
 
-- `Opening.guard` — Stabgitter oder französischer Balkon
-- `Opening.door` — Kassetten, Drücker, Briefschlitz, **Unterer Rahmen** (`bottomFrame`, Default aus = Haustür ohne Schwellenbalken)
+- `Opening.guard` — Stabgitter oder französischer Balkon. **v2.0.394:** Farbe unter **Farben → Gitter / Balkon** (`guard.color`, Default = Rahmenfarbe). In 3D Stäbe anklicken markiert das Gitter.
+- `Opening.door` — Kassetten, Drücker, Briefschlitz, **Unterer Rahmen** (`bottomFrame`, Default aus = Haustür ohne Schwellenbalken). **v2.0.390:** Ohne Unterrahmen füllen Flügel/Kassetten bis zum Boden (`layoutGruenderzeitWindow` `openBottom`) — keine Lücke unter dem U-Blendrahmen.
 - `Opening.interiorShade` — Vorhang oder Innenjalousie
 
 ## Roadmap
@@ -76,7 +76,7 @@ Neue Features default **aus** in Hydrate/Normalize (Altprojekte unverändert), a
 
 ## Bekannte Fallstricke
 
-- Kellerfenster: kein Rahmenprofil/Bänke/Verdachung.
+- Kellerfenster: kein Rahmenprofil/Bänke/Verdachung. **v2.0.391:** Duplizieren 144 cm Kante-zu-Kante; Mörtelplatte darf das Fenster darüber nicht füllen.
 - `glazingArch` Legacy — Glas folgt `Opening.arch.form`.
 - Kipp/Drehkipp: Pivot unten; Animation in `FacadeController.applyOpeningLeafDegrees` muss `openMode` beachten.
 - Gitter/Shade sitzen als Kinder am Fenstermesh (lokales Z).

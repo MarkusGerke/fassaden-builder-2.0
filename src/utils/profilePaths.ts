@@ -34,6 +34,7 @@ import {
 import { resolveArchRiseForOpening } from './archForms'
 import { miterInsetCm } from '../studio/floorPlan'
 import { studioPlinthActive } from '../studio/constants'
+import { wallDecorFallbackColor } from '../constants/colorPalettes'
 import { wallCornice, wallHasCornice } from './cornice'
 import { wallHasTrimBands, wallTrimBands } from './trimBands'
 import { defaultOpeningTrimForProfile, normalizeOpeningSillOuter, outerSillUsesProfile, resolveOuterSillLayout } from './openings'
@@ -661,7 +662,7 @@ function buildBayCorniceWraps(state: FacadeState, visibleIds: Set<string>): BayC
           localSpace: true,
           forwardSign: wall.panelFlip ? -1 : 1,
           cornerJoin: 'none',
-          color: lc.color ?? lower.profileColor ?? wall.profileColor,
+          color: wallDecorFallbackColor(lc.color, wall),
           finish: lc.finish ?? lower.profileFinish ?? wall.profileFinish,
           sectionScale: lc.scale,
           sectionScaleForward: lc.sectionScaleForward ?? lc.scale,
@@ -782,7 +783,7 @@ function buildCornicePaths(state: FacadeState): ProfilePath[] {
         localSpace: studio,
         forwardSign: studio ? (wall.panelFlip ? -1 : 1) : 1,
         cornerJoin: 'none',
-        color: cornice.color ?? wall.wallColor ?? wall.profileColor,
+        color: wallDecorFallbackColor(cornice.color, wall),
         finish: cornice.finish ?? wall.profileFinish,
         sectionScale: cornice.scale,
         sectionScaleForward: cornice.sectionScaleForward ?? cornice.scale,
@@ -954,7 +955,7 @@ function buildTrimBandPaths(state: FacadeState): ProfilePath[] {
           localSpace: studio,
           forwardSign: studio ? (wall.panelFlip ? -1 : 1) : 1,
           cornerJoin: 'none',
-          color: band.color ?? wall.profileColor,
+          color: wallDecorFallbackColor(band.color, wall),
           sectionScale: band.scale,
           sectionScaleForward: band.sectionScaleForward ?? band.scale ?? 1,
           rotationDeg: band.rotationDeg ?? 0,
@@ -1713,7 +1714,7 @@ function buildPlinthProfilePaths(state: FacadeState): ProfilePath[] {
         localSpace: true,
         forwardSign: wall.panelFlip ? -1 : 1,
         cornerJoin: 'none',
-        color: panel.plinthProfileColor ?? wall.profileColor,
+        color: wallDecorFallbackColor(panel.plinthProfileColor ?? panel.plinthColor, wall),
         sectionScale: heightScale,
         sectionScaleForward: depthScale,
         rotationDeg: panel.plinthProfileRotationDeg ?? 0,

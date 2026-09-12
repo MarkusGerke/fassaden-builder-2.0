@@ -27,7 +27,7 @@ import {
 import { createId } from './id'
 import { DEFAULT_NICHE_DEPTH_CM } from './openingGeometry'
 import { GRID_SIZE, WALL_HEIGHT, WALL_DEPTH, WINDOW_SILL_Y, WINDOW_TRIM_DEFAULT_OFFSET_FORWARD } from '../constants/presets'
-import { DUPLICATE_GAP_CM, DUPLICATE_OPENING_GAP_CM, STUDIO_MASONRY } from '../studio/constants'
+import { DUPLICATE_GAP_CM, DUPLICATE_OPENING_GAP_CM, BASEMENT_DUPLICATE_OPENING_GAP_CM, STUDIO_MASONRY } from '../studio/constants'
 import { viewerSideToAlongSign } from '../studio/walls'
 import { defaultOpeningStairs, normalizeOpeningStairs, stairTopY } from '../studio/stairs'
 import { normalizeOpeningPediment } from '../studio/pediment'
@@ -740,9 +740,12 @@ export function duplicateOpenings(
       let duplicate: Opening | null = null
       let issue: OpeningInsertIssue | null = { kind: 'invalid', message: 'pending' }
 
-      // Zuerst 96 cm Kantenabstand, dann schrittweise kleiner (bis Raster), wenn kein Platz.
+      // Kellerfenster: 144 cm Kante-zu-Kante bevorzugt; sonst 96 cm, dann schrittweise kleiner.
+      const preferredGap = basementWindowEnabled(opening)
+        ? BASEMENT_DUPLICATE_OPENING_GAP_CM
+        : DUPLICATE_OPENING_GAP_CM
       const gapCandidates: number[] = []
-      for (let g = DUPLICATE_OPENING_GAP_CM; g >= STUDIO_MASONRY; g -= STUDIO_MASONRY) {
+      for (let g = preferredGap; g >= STUDIO_MASONRY; g -= STUDIO_MASONRY) {
         gapCandidates.push(g)
       }
       if (!gapCandidates.includes(DUPLICATE_GAP_CM)) gapCandidates.push(DUPLICATE_GAP_CM)

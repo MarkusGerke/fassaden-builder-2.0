@@ -2,6 +2,164 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Konchen schwarz + UI-Leisten (2026-09-12) — v2.0.401
+
+**Symptom:** Konchen in Fassade/3D pechschwarz ohne sichtbare Rundung oder Schattenwurf. Rechte Einstellungsleiste nach Einklappen nicht wieder aufklappbar. Ebenen-Griff lag über „2D“. In Ansicht Fassade blieben Export / Farbe·Zeichnung / Vorschau·Render sichtbar.
+
+**Konche — Ursache:** `createStudioOpeningShadowTunnelGeometry` setzte bei `type: 'conch'` eine Masken-Kappe auf `outerZ` (Mundöffnung). Die Sonnen-Shadow-Map sah dort eine geschlossene Wand → gesamte Kalotte in Umbra, Ambient ≈ 0 → Schwarz. Flache Nischen hatten keine Mundkappe und wirkten heller.
+
+**Konche — Fix:** Mundkappe an `outerZ` entfernt; Rückwand- (+ ggf. Innenkanten-)Kappe bleibt. Datei: `panelGeometry.ts`.
+
+**UI:** `#ui-right-collapse` als Geschwister von `#ui-right` (nicht mehr Kind) — sonst `overflow: hidden` + `pointer-events: none` der eingeklappten Spalte. Chrome bei `ui-left-collapsed` nach rechts versetzt. `syncViewChromeButtons`: bei `present` Export- und die Gruppen Farbe/Zeichnung sowie Vorschau/Render `hidden`.
+
+Docs: [shadows.md](shadows.md), [opening-features.md](opening-features.md), [ux.md](ux.md), [views-and-state.md](views-and-state.md).
+
+### Gesims schwarz nach Profil-/Höhenwechsel (2026-09-12) — v2.0.400
+
+**Symptom:** Gesims oder Sockel wählen → Profil oder Höhe ändern → abwählen: das bearbeitete Band bleibt dunkelgrau/schwarz, andere Geschosse bleiben hell. Albedo `#ffffff` stimmt.
+
+**Runtime:** EG-Gesims EnvMap-UUID `8c69dca5` (disposed PMREM), obere Geschosse `580cfa4a` (aktuell). EnvMap vom hellen Mesh aufs dunkle kopieren → Band wieder hell. Material-Tausch: Dunkelheit folgt dem Material, nicht der Geometrie.
+
+**Verworfen:** Falsche Albedo / klebende Orange-Auswahl (`stillSel: 0`, Hex weiß); nur Self-Shadow (`receiveShadow=false` half nicht, solange disposed Env hing).
+
+**Ursache:** Bei Teil-Wahl ist `mesh.material` das Orange-`MeshBasicMaterial`. `bindMaterialsToGlassEnv` und der Env-Bake-Intensitäts-Reset liefen nur über `mesh.material` — `originalMaterial` behielt die alte Cube-Env. Nach Bake wird die alte RT disposed → Schwarz nach Abwahl. Gleiches bei Profil- und Höhenänderung.
+
+**Fix:** `meshStandardMaterials()` sammelt sichtbares Material **und** `originalMaterial` (inkl. Arrays). Genutzt in `bindMaterialsToGlassEnv`, `syncEnvMapFillIntensities`, `clearGlassEnvironmentBindings`; Bake-Intensitäts-Nullen ebenso.
+
+Dateien: `threeColors.ts`, `roomEnvironment.ts`. Docs: [wall-decor.md](wall-decor.md), [ux.md](ux.md).
+
+### Gesims folgt Putz oder Stein (2026-09-12) — v2.0.399
+
+**Symptom nach v2.0.398:** Weißes Haus ohne Paneele: Gesims/Sockel wurden beige (`#C1BCB3`), die Wand blieb weiß.
+
+**Runtime:** Wand `fc09dccd`: `panel.enabled: false`, `pattern: none`, Rest-`claddingColor` `#C1BCB3` → Dekor `#c1bcb3`. Wand mit Streifen-Paneelen: Dekor weiß wie die Steine.
+
+**Ursache:** Fallback nutzte `claddingColor` immer, auch wenn keine Paneele sichtbar sind.
+
+**Fix:** `claddingColor` nur bei sichtbaren Paneelen (`enabled` und Muster ≠ `none`); sonst `wallColor`. Erker-Umschluss-Gesims dieselbe Regel.
+
+### Gesims/Sockel grau-weiß statt Stein (2026-09-12) — v2.0.398
+
+**Symptom:** Nach Hinzufügen oder Höhenänderung von Gesims/Sockel bleibt das Profil hellgrau/weiß und passt nicht zur beige Steinwand. Nach der Abwahl bleibt die falsche Farbe.
+
+**Runtime (localhost, Haus mit Sandstein):**
+- Erdgeschoss: `wallColor` = `claddingColor` = `#C5B69D` → Gesims-Mesh `#c5b69d`.
+- Obere Etagen: `claddingColor` `#C5B69D` (Steine), `wallColor`/`profileColor` `#ffffff`, `cornice.color` leer → Gesims-Mesh `#ffffff`. Sockel überall `#ffffff`.
+- Shade-Flag und EnvMap nach Abwahl gesetzt (`shade: true`, `hasEnv: true`); Orange-Overlay nicht kleben (`stillSel: 0`). `commitCorniceScale` feuerte in der Repro nicht — der Farbfehler sitzt im Fallback, nicht im Höhen-Commit.
+
+**Hypothesen / Versuche (nicht die Ursache):**
+- Orange-Selektion bleibt auf `originalMaterial` — Logs: `origIsSel: false`.
+- Albedo wechselt durch Shade-Shader — Hex blieb `#ffffff` auf den falschen Etagen; auf passenden Etagen `#c5b69d`.
+- Clone erbt `facadeShadeApplied` ohne Shader — `customProgramCacheKey` endet auf `|facade-backlit-v14`.
+- v2.0.396 Shade auf `originalMaterial` — Haus-Crash (v2.0.397), Farbe auf oberen Etagen weiter weiß.
+
+**Ursache:** Sichtbare Steine nutzen `wall.claddingColor`. Gesims/Sockel fielen auf `wall.wallColor` bzw. `profileColor` zurück. Auf kopierten Etagen ist die Wandschale weiß, die Bekleidung beige.
+
+**Fix:** `wallDecorFallbackColor`: eigene Farbe, sonst `claddingColor`, sonst `wallColor`/`profileColor`. Pfade, 3D, SVG, Farbfelder.
+
+Dateien: `colorPalettes.ts`, `profilePaths.ts`, `FacadeController.ts`, `FacadeSvgView.ts`, `main.ts`. Docs: [wall-decor.md](wall-decor.md), [ux.md](ux.md).
+
+### Haus unsichtbar, UI da (2026-09-12) — v2.0.397
+
+**Symptom:** UI und Himmel sichtbar, Viewport leer grau, kein Gebäude.
+
+**Runtime:** 353 Wand-Meshes in der Szene, Renderer `frame: 0`, Canvas 300×150. Manueller `renderer.render` zeigte das Haus. `svg.facade-svg` fehlte.
+
+**Hypothesen / Versuche:**
+- Persist/Hash leer — verworfen: 32 Wände, 3 Erker, localStorage `fassaden-builder-state-v6` mit Haus.
+- Kamera schaut vorbei — nur Folge: `setView`/`animate` liefen nie.
+- Overlay zu früh weg — macht die leere UI sichtbar, ist nicht die Ursache des fehlenden Renders.
+
+**Ursache:** v2.0.396 beschattet `originalMaterial`. Bei Laibungen ist das ein **Array** zweier Materialien. `mats.push(orig)` schob das Array als ein Element; `mat.userData.skipFacadeShade` warf `TypeError`. `FacadeController`-Konstruktor brach ab, `animate()` startete nicht.
+
+**Fix:** `originalMaterial`-Arrays elementweise beschatten; keine Nicht-Materialien in die Shade-Schleife. `applyFacadeShadeShader` prüft erst `instanceof MeshStandardMaterial`.
+
+Dateien: `FacadeController.ts`, `utils/facadeShade.ts`. Docs: [ux.md](ux.md), [wall-decor.md](wall-decor.md).
+
+### Sockel/Gesims grau nach Höhenänderung (2026-09-12) — v2.0.396
+
+**Symptom:** Sockel oder Gesims gewählt, Höhe geändert: die Fläche wirkt danach anders (grau) und bleibt so nach der Abwahl.
+
+**Hypothesen / Versuche (nicht die Ursache):**
+- Teil-Auswahl blieb intern aktiv — Logs: nach Abwahl `wallPart: group`, `stillSel: 0`.
+- `originalMaterial` war das Orange der Auswahl — Logs: `origIsSel: false`, Albedo weiter `#ffffff`.
+- EnvMap fehlte nach Rebuild / `bindMaterialsToGlassEnv` übersprungen — Logs: `pres: render`, `hasEnv: true`, `forceEnv: true`, `geometryChanged: true`.
+- Höhen-Commit schrieb eine andere Farbe — Logs: `plinthColor`/`profileColor`/`wallColor` null, Hex unverändert `#ffffff`.
+
+**Ursache:** Beim Rebuild mit aktiver Teil-Wahl ruft `refreshWallLabels` zuerst `applySelection` auf. `applyFacadeBacklitShade` überspringt `selectedUnlitMaterial` und hat `originalMaterial` nicht mitbeschattet. Nach der Abwahl kommt das Original ohne Facade-Shade zurück — Weiß wirkt grau.
+
+**Fix:** `applyFacadeBacklitShade` beschattet auch `originalMaterial`, nicht nur das sichtbare Overlay.
+
+**Start:** Ladebildschirm geht nach dem State-Load weg (nicht erst nach Himmel/Rebuild). HTML-Failsafe nach 1,2 s. CDN-Texturen nach 5 s lokal.
+
+Dateien: `FacadeController.ts`. Docs: [ux.md](ux.md).
+
+### Einstellungen: Felder bleiben im Rand (2026-09-12) — v2.0.395
+
+**Symptom:** Stepper (Flügel, Teilung) und Selects (Kassetten) ragten rechts aus der Leiste.
+
+**Ursache:** Sektionskinder mit 16-px-Margin plus `width: 100%` wurden breiter als die Spalte. Inline-Selects hatten `flex: 1 1 100%`.
+
+**Fix:** Sektionsinhalt `width: auto` + `min-width: 0`. Titel links / Control rechts. IDs unverändert.
+
+Dateien: `style.css`, `index.html`. Docs: [ui-kit.md](ui-kit.md), [ux.md](ux.md).
+
+### Balkongitter: Farbe und Auswahl (2026-09-12) — v2.0.394
+
+**Symptom:** Keine Farbe für Stabgitter / franz. Balkon in **Farben**; Klick auf die Stäbe wählte das ganze Fenster.
+
+**Ursache:** `OpeningGuard.color` existierte, hatte aber keine UI. Das Mesh war als `openingPart: 'frame'` getaggt, `selectOpening` mapte `grille` → `group`.
+
+**Fix:** Farben-Hub **Gitter / Balkon** (`#guard-color-hub-section`) wenn Gitter an. Mesh `openingPart: 'grille'`, Teil-Fokus bleibt, Stäbe orange. Guard-Patches behalten Farbe/Finish.
+
+Dateien: `index.html`, `main.ts`, `FacadeController.ts`, `openingExtras.ts`. Docs: [ux.md](ux.md), [windows-doors.md](windows-doors.md), [opening-features.md](opening-features.md).
+
+### Doppelklick-Zoom weicher (2026-09-12) — v2.0.393
+
+**Symptom:** Transition nach Doppelklick wirkte stockig und abrupt.
+
+**Ursache (Runtime):** Die 420-ms-Uhr startete schon während Auswahl/`beginViewNavLite`; sichtbare Bewegung nur ~249 ms. Cubic-Ease plus linearer Positions-Lerp wirkte in der Mitte wie ein Zuschlagen. Extra-RAF war nicht am Render-Loop.
+
+**Nicht geholfen:** Nur Dauer leicht anheben ohne Uhr-Start zu verschieben — der erste sichtbare Frame springt weiter.
+
+**Fix:** Uhr startet am ersten Animate-Frame. `easeInOutSine` + logarithmischer Abstand (`lerpFocusPose`), 800 ms. Tick im `animate`-Loop. `controls.change` während der Anim ohne Depth-Range-Arbeit.
+
+Dateien: `main.ts`, `viewZoom.ts`, Tests. Docs: [ux.md](ux.md), [camera.md](camera.md), [views-and-state.md](views-and-state.md).
+
+### Doppelklick-Zoom mit weicher Kamera (2026-09-12) — v2.0.392
+
+**Symptom:** In 3D/Fassade sprang die Kamera beim Doppelklick hart auf das Objekt (2D Front/Oben war bereits animiert).
+
+**Ursache (Runtime):** `applyObjectFocusFromEvent` setzte `camera.position` / `controls.target` sofort; `hasViewZoomAnim: false`.
+
+**Fix:** `startObjectFocusAnim` interpoliert Position und Ziel mit `easeInOutCubic` (`OBJECT_FOCUS_DURATION_MS` 420). Zurück zur Übersicht ebenfalls. Orbit bricht die Animation ab. `syncPresentCamera` wartet, bis die Animation fertig ist.
+
+Dateien: `main.ts`, `viewZoom.ts`, Tests. Docs: [ux.md](ux.md), [views-and-state.md](views-and-state.md), [camera.md](camera.md).
+
+### Kellerfenster: Duplikat-Abstand und kein Mörtel im Fenster darüber (2026-09-12) — v2.0.391
+
+**Symptom 1:** Duplizierte Kellerfenster lagen zu nah (48 cm wie andere Öffnungen).
+
+**Fix:** `BASEMENT_DUPLICATE_OPENING_GAP_CM` = 144, `duplicateOpenings` nutzt das für `basementWindow.enabled`.
+
+**Symptom 2:** Nach Hinzufügen eines Kellerfensters erschienen links und rechts im oberen Fenster beige Flächen (Fugenfarbe `#c8c0b8`) zwischen Blendrahmen und Rahmenprofil.
+
+**Nicht die Ursache:** Laibung, Fenstermesh, Zarge, Sockelprofil, Wandloch, Steine (Vertex-Scan 0 Treffer; Wand/Steine-Test ohne Mörtel grün).
+
+**Ursache:** `flushClipPartsToOpeningJambs` zieht Reste bis 96 cm an die nächste Laibung. Die Mörtelplatte ist wandhoch; die Lücke zwischen oberer Laibung und schmalerem Kellerfenster galt als frei → Platte wuchs in das obere Loch.
+
+**Fix:** Flush nur wenn die Verlängerung kein anderes Öffnungsloch schneidet. Steine neben dem Keller dürfen weiter an die Keller-Laibung.
+
+Dateien: `openingGeometry.ts`, `openings.ts`, `constants.ts`, Tests. Docs: [panel-geometry.md](panel-geometry.md), [opening-features.md](opening-features.md), [ux.md](ux.md).
+
+### Tür ohne Unterrahmen füllt bis zum Boden (2026-09-12) — v2.0.390
+
+**Symptom:** Bei Türen ohne „Unterer Rahmen“ blieb unter dem U-Blendrahmen eine leere Lücke (Flügel starteten weiter bei Blendrahmen-Stärke).
+
+**Fix:** `layoutGruenderzeitWindow({ openBottom })` — kein Unterbalken, Flügel von Y=0 bis unter den oberen Blendrahmen; Höhe verteilt sich gleichmäßig (Kassetten/Glas mit).
+
+Dateien: `gruenderzeit.ts`, `FacadeSvgView.ts`, `main.ts`, Test. Docs: [windows-doors.md](windows-doors.md).
+
 ### Doppelklick-Zoom auf Öffnungen (2026-09-12) — v2.0.389
 
 **Symptom:** Doppelklick auf Fenster/Tür verschob die Öffnung (oranger Ghost) statt heranzuzoomens; oft kein Zoom-Toggle.

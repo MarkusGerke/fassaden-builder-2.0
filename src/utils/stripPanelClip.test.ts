@@ -1038,6 +1038,26 @@ describe('Läuferverband: Ecken und Laibungen im Render', () => {
     expect(gap[0].x + gap[0].width).toBeCloseTo(144, 3)
   })
 
+  it('flushClipPartsToOpeningJambs zieht hohe Platte nicht ins obere Fenster über Keller', () => {
+    const upper = { id: 'u', type: 'window' as const, x: 200, y: 120, width: 96, height: 192 }
+    const basement = {
+      id: 'b',
+      type: 'window' as const,
+      x: 224,
+      y: 0,
+      width: 48,
+      height: 64,
+      basementWindow: { enabled: true, grilleHeight: 0.5 },
+    }
+    const mortarLeft = [{ x: 0, y: 0, width: 200, height: 448 }]
+    const out = flushClipPartsToOpeningJambs(mortarLeft, [upper, basement] as never)
+    expect(out).toHaveLength(1)
+    expect(out[0]!.x + out[0]!.width).toBeCloseTo(200, 3)
+    const basementStone = [{ x: 176, y: 0, width: 24, height: 8 }]
+    const flushed = flushClipPartsToOpeningJambs(basementStone, [upper, basement] as never)
+    expect(flushed[0]!.x + flushed[0]!.width).toBeCloseTo(224, 3)
+  })
+
   it('Fensterreihen: Pfeiler zwischen Fenstern behalten Stoßfugen (User-Wand)', () => {
     const wall = {
       id: 'bond-piers',

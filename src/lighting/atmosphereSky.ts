@@ -253,7 +253,19 @@ export class AtmosphereSky {
       let textures: PrecomputedTextures
       try {
         const loader = new PrecomputedTexturesLoader().setType(renderer)
-        textures = await loader.loadAsync(texturesUrl)
+        textures = await new Promise<PrecomputedTextures>((resolve, reject) => {
+          const timer = window.setTimeout(() => reject(new Error('atmosphere-cdn-timeout')), 5000)
+          loader.loadAsync(texturesUrl).then(
+            (value) => {
+              window.clearTimeout(timer)
+              resolve(value)
+            },
+            (err) => {
+              window.clearTimeout(timer)
+              reject(err)
+            },
+          )
+        })
       } catch (err) {
         console.warn('Atmosphere CDN-Textures fehlgeschlagen, generiere lokal.', err)
         this.generator = new PrecomputedTexturesGenerator(renderer)

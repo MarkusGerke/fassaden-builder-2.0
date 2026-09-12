@@ -104,4 +104,26 @@ describe('render surface looks', () => {
     tex.dispose()
     root.geometry.dispose()
   })
+
+  it('aktualisiert originalMaterial auch wenn mesh.material Auswahl-Overlay ist', () => {
+    const stale = new THREE.Texture()
+    const fresh = new THREE.Texture()
+    setGlassEnvironment(fresh)
+    setExteriorEnvFillFactor(1)
+    const original = new THREE.MeshStandardMaterial({ color: '#ffffff' })
+    applyRenderExteriorSurfaceLook(original)
+    original.envMap = stale
+    const overlay = new THREE.MeshBasicMaterial({ color: 0xff6600 })
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(), overlay)
+    mesh.userData.originalMaterial = original
+    bindMaterialsToGlassEnv(mesh)
+    expect(original.envMap).toBe(fresh)
+    expect(overlay).toBe(mesh.material)
+    setGlassEnvironment(null)
+    stale.dispose()
+    fresh.dispose()
+    mesh.geometry.dispose()
+    original.dispose()
+    overlay.dispose()
+  })
 })

@@ -40,6 +40,8 @@ export const STUDIO_MIN_SIZE = STUDIO_WALL_WIDTH_STEP
 export const DUPLICATE_GAP_CM = PLAN_GRID_LEGACY_CM
 /** Bevorzugter Kantenabstand beim Duplizieren von Öffnungen; darf kleiner werden, wenn kein Platz. */
 export const DUPLICATE_OPENING_GAP_CM = 96
+/** Kellerfenster: fester Wunsch-Abstand Kante-zu-Kante beim Duplizieren (cm). */
+export const BASEMENT_DUPLICATE_OPENING_GAP_CM = 144
 /** Andocken / Lücken schließen: Abstand in cm (≈ früheres 48-cm-Feld). */
 export const PLAN_CLOSE_GAP_CM = PLAN_GRID_LEGACY_CM
 /** Standard-Gesims-Höhe (Geschossgesims) in cm. */

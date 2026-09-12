@@ -342,6 +342,10 @@ body {
   margin-bottom: 0;
   padding-left: 0;
   padding-right: 0;
+  width: auto;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .selection-toolbar-panels .settings-section > .settings-section-head {
@@ -594,6 +598,11 @@ body {
   gap: 0.4rem;
   max-width: calc(100% - 1.5rem);
   pointer-events: auto;
+}
+
+/* Ebenen-Griff (eingeklappt) nicht über „2D“ legen */
+#app.ui-left-collapsed #viewport-chrome {
+  left: calc(0.75rem + 1.5rem);
 }
 
 .view-line-stroke-row {
@@ -1247,6 +1256,10 @@ body {
   margin-bottom: 0;
   padding-left: 0;
   padding-right: 0;
+  width: auto;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .selection-toolbar-panels .settings-section > .settings-section-head + *,
@@ -2171,9 +2184,16 @@ body {
 
 .toolbar-group.toolbar-inline-value > button,
 .toolbar-group.toolbar-inline-value > p,
-.toolbar-group.toolbar-inline-value > .toolbar-hint,
-.toolbar-group.toolbar-inline-value > select {
+.toolbar-group.toolbar-inline-value > .toolbar-hint {
   flex: 1 1 100%;
+}
+
+.toolbar-group.toolbar-inline-value > select,
+.toolbar-group.ui-field-inline > select {
+  flex: 0 0 auto;
+  width: auto;
+  max-width: 100%;
+  margin: 0;
 }
 
 .toolbar-group.toolbar-inline-value > .preset-group,
@@ -2453,7 +2473,10 @@ button.field-info:focus-visible {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.5rem;
-  width: 100%;
+  width: auto;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   margin: 0.25rem 0;
 }
 
@@ -2514,9 +2537,14 @@ button.field-info:focus-visible {
 #ui-right .toolbar-inline-pairs > input[type='number'],
 #ui-right .opening-width-controls > input[type='number'],
 #ui-right .toolbar-row-2.toolbar-inline-cells input[type='number'],
-#ui-right .field-control-row > input[type='number'].toolbar-inline-narrow {
+#ui-right .field-control-row > input[type='number'].toolbar-inline-narrow,
+#ui-right .toolbar-stepper input[type='number'],
+#ui-right .toolbar-stepper-value,
+#ui-right .ui-stepper input[type='number'],
+#ui-right .field-stepper input[type='number'] {
   width: var(--input-narrow);
   max-width: var(--input-narrow);
+  min-width: var(--input-narrow);
   flex: 0 0 auto;
 }
 
@@ -2583,6 +2611,38 @@ button.field-info:focus-visible {
   font-weight: 600;
   letter-spacing: 0.01em;
   color: #666;
+}
+
+/* Titel links, Control rechts — auch bei <label>Text + Input/Select</label>. */
+#ui-right .toolbar-group > label:not(.toolbar-check):not(.slider-label):not(.checkbox-label),
+#ui-right .toolbar-accordion > label:not(.toolbar-check):not(.slider-label):not(.checkbox-label),
+#ui-right .settings-section > label:not(.toolbar-check):not(.slider-label):not(.checkbox-label),
+#opening-motion-section > label:not(.toolbar-check) {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+#ui-right .toolbar-group > label:not(.toolbar-check):not(.slider-label):not(.checkbox-label) > select,
+#ui-right .toolbar-group > label:not(.toolbar-check):not(.slider-label):not(.checkbox-label) > input:not([type='checkbox']):not([type='range']),
+#ui-right .toolbar-accordion > label:not(.toolbar-check):not(.slider-label):not(.checkbox-label) > select,
+#ui-right .toolbar-accordion > label:not(.toolbar-check):not(.slider-label):not(.checkbox-label) > input:not([type='checkbox']):not([type='range']),
+#ui-right .settings-section > label:not(.toolbar-check):not(.slider-label):not(.checkbox-label) > select,
+#ui-right .settings-section > label:not(.toolbar-check):not(.slider-label):not(.checkbox-label) > input:not([type='checkbox']):not([type='range']) {
+  flex: 0 0 auto;
+  width: auto;
+  max-width: 100%;
+}
+
+#ui-right .toolbar-group > label:not(.toolbar-check):not(.slider-label):not(.checkbox-label) > input[type='range'] {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 10rem;
 }
 
 .toolbar-check {
@@ -3182,7 +3242,10 @@ button:disabled {
   flex-direction: column;
   align-items: stretch;
   gap: var(--space-3);
-  width: 100%;
+  width: auto;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   padding-bottom: 0;
   border-bottom: none;
   margin-bottom: 0;
@@ -3282,16 +3345,33 @@ button:disabled {
 .window-open-group {
   display: flex;
   flex-direction: column;
-  gap: 0.28rem;
-  width: 100%;
+  gap: var(--space-3);
+  width: auto;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .window-open-group label {
-  display: grid;
-  grid-template-columns: 7.2rem 1fr 2.2rem;
+  display: flex;
+  flex-direction: row;
   align-items: center;
-  gap: 0.35rem;
+  justify-content: space-between;
+  gap: 0.75rem;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   font-size: 0.78rem;
+}
+
+.window-open-group label > span {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.window-open-group label > input {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 8rem;
 }
 
 .window-open-group output {

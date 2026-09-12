@@ -53,6 +53,7 @@ import {
   DEFAULT_JOINT_COLOR,
   DEFAULT_PROFILE_COLOR,
   DEFAULT_WALL_COLOR,
+  wallDecorFallbackColor,
   TRANSPARENT_GLASS,
   defaultOpeningFrameColor,
   type ColorPalette,
@@ -79,6 +80,7 @@ import type {
   OpeningEdge,
   OpeningMotion,
   MotionCurve,
+  OpeningGuard,
   OpeningPart,
   OpeningRef,
   OpeningTrimConfig,
@@ -611,7 +613,10 @@ import {
 import {
   DBLCLICK_ZOOM_DURATION_MS,
   DBLCLICK_ZOOM_FACTOR,
+  OBJECT_FOCUS_DURATION_MS,
+  easeInOutSine,
   easeOutCubic,
+  lerpFocusPose,
   lerpNumber,
   normalizedWheelDeltaY,
   wheelZoomFactorFromDelta,
@@ -1058,6 +1063,18 @@ controls.minPolarAngle = 0
 controls.maxPolarAngle = Math.PI
 controls.target.set(192, 224, 0)
 controls.mouseButtons.RIGHT = THREE.MOUSE.PAN
+/** 3D/Fassade-Doppelklick: Ease-in-out Kamera (früh deklariert — syncPresentCamera). */
+let objectFocusAnim: {
+  startTime: number
+  duration: number
+  fromPos: THREE.Vector3
+  toPos: THREE.Vector3
+  fromTarget: THREE.Vector3
+  toTarget: THREE.Vector3
+  present: boolean
+} | null = null
+/** true während wir Pose setzen — OrbitControls-start darf die Anim nicht killen. */
+let objectFocusApplying = false
 if (import.meta.env.DEV) {
   const dbg = (window as unknown as { __fbDebug?: Record<string, unknown> }).__fbDebug
   if (dbg) dbg.controls = controls
@@ -1574,8 +1591,7 @@ function presentCompassYaw(): number {
   return studio?.yawDeg ?? 0
 }
 
-function syncPresentCamera() {
-  if (currentView !== 'present') return
+function presentOverviewPose(): { position: THREE.Vector3; target: THREE.Vector3 } | null {
   const walls = getAllWalls(state).filter(isStudioWall)
   const width = Math.max(1, viewportRenderWidth())
   const height = Math.max(1, viewportRenderHeight())
@@ -1587,18 +1603,29 @@ function syncPresentCamera() {
     aspect: width / height,
     storeyHeight: activeWallHeight(),
   })
-  if (!frame) return
+  if (!frame) return null
   const outward = facadeOutward(yawDeg, true)
-  controls.target.set(frame.lookX, frame.lookY, frame.lookZ)
-  camera.position.set(
-    frame.lookX + outward.x * frame.distance,
-    frame.lookY,
-    frame.lookZ + outward.z * frame.distance,
-  )
-  camera.lookAt(frame.lookX, frame.lookY, frame.lookZ)
+  return {
+    target: new THREE.Vector3(frame.lookX, frame.lookY, frame.lookZ),
+    position: new THREE.Vector3(
+      frame.lookX + outward.x * frame.distance,
+      frame.lookY,
+      frame.lookZ + outward.z * frame.distance,
+    ),
+  }
+}
+
+function syncPresentCamera() {
+  if (currentView !== 'present') return
+  if (objectFocusAnim) return
+  const pose = presentOverviewPose()
+  if (!pose) return
+  controls.target.copy(pose.target)
+  camera.position.copy(pose.position)
+  camera.lookAt(pose.target.x, pose.target.y, pose.target.z)
   camera.updateMatrixWorld()
   camera.near = 1
-  camera.far = Math.max(5000, frame.distance * 4)
+  camera.far = Math.max(5000, pose.position.distanceTo(pose.target) * 4)
   camera.updateProjectionMatrix()
 }
 
@@ -6372,6 +6399,9 @@ const sillOuterColorSwatchesHub = document.querySelector<HTMLDivElement>('#sill-
 const sillOuterColorHubSection = document.querySelector<HTMLDivElement>('#sill-outer-color-hub-section')!
 const pedimentColorSwatchesHub = document.querySelector<HTMLDivElement>('#pediment-color-swatches-hub')!
 const pedimentColorHubSection = document.querySelector<HTMLDivElement>('#pediment-color-hub-section')!
+const guardColorSwatchesHub = document.querySelector<HTMLDivElement>('#guard-color-swatches-hub')!
+const guardColorHubSection = document.querySelector<HTMLDivElement>('#guard-color-hub-section')!
+const openingGuardFinishSelect = document.querySelector<HTMLSelectElement>('#opening-guard-finish')!
 const deleteWallButton = document.querySelector<HTMLButtonElement>('#delete-wall')!
 const duplicateWallButton = document.querySelector<HTMLButtonElement>('#duplicate-wall')!
 const deleteOpeningButton = document.querySelector<HTMLButtonElement>('#delete-opening')!
@@ -6977,6 +7007,58 @@ function invalidateFrontViewBase() {
   frontViewScaleFreeze = null
 }
 
+function cancelObjectFocusAnim() {
+  objectFocusAnim = null
+}
+
+function applyPerspectiveLook(position: THREE.Vector3, target: THREE.Vector3, _present: boolean) {
+  objectFocusApplying = true
+  camera.position.copy(position)
+  controls.target.copy(target)
+  camera.lookAt(target.x, target.y, target.z)
+  camera.updateMatrixWorld()
+  objectFocusApplying = false
+  markViewportDirty()
+}
+
+function tickObjectFocusAnim() {
+  const anim = objectFocusAnim
+  if (!anim) return
+  const now = performance.now()
+  if (anim.startTime < 0) {
+    anim.startTime = now
+  }
+  const t = Math.min(1, (now - anim.startTime) / anim.duration)
+  const e = easeInOutSine(t)
+  const pose = lerpFocusPose(anim.fromPos, anim.fromTarget, anim.toPos, anim.toTarget, e)
+  applyPerspectiveLook(
+    new THREE.Vector3(pose.pos.x, pose.pos.y, pose.pos.z),
+    new THREE.Vector3(pose.target.x, pose.target.y, pose.target.z),
+    anim.present,
+  )
+  if (t < 1) return
+  objectFocusAnim = null
+  objectFocusApplying = true
+  controls.update()
+  objectFocusApplying = false
+  scheduleOrbitLiteEnd()
+}
+
+function startObjectFocusAnim(toPos: THREE.Vector3, toTarget: THREE.Vector3, present: boolean) {
+  cancelObjectFocusAnim()
+  beginViewNavLite()
+  objectFocusAnim = {
+    startTime: -1,
+    duration: OBJECT_FOCUS_DURATION_MS,
+    fromPos: camera.position.clone(),
+    fromTarget: controls.target.clone(),
+    toPos: toPos.clone(),
+    toTarget: toTarget.clone(),
+    present,
+  }
+  markViewportDirty()
+}
+
 function cancelViewZoomAnim() {
   viewZoomAnim = null
   if (viewZoomAnimRaf) {
@@ -7279,17 +7361,19 @@ function restoreObjectFocusBookmark() {
   if (!objectFocusBookmark) return false
   const bookmark = objectFocusBookmark
   objectFocusBookmark = null
+  if (isGalleryModeActive()) applyGalleryOrbitTuning()
+  else syncCameraDistanceLimits()
   if (bookmark.presentOverview && currentView === 'present') {
+    const pose = presentOverviewPose()
+    if (pose) {
+      startObjectFocusAnim(pose.position, pose.target, true)
+      return true
+    }
     syncPresentCamera()
     markViewportDirty()
     return true
   }
-  controls.target.copy(bookmark.target)
-  camera.position.copy(bookmark.position)
-  if (isGalleryModeActive()) applyGalleryOrbitTuning()
-  else syncCameraDistanceLimits()
-  controls.update()
-  markViewportDirty()
+  startObjectFocusAnim(bookmark.position, bookmark.target, currentView === 'present')
   return true
 }
 
@@ -7316,20 +7400,14 @@ function focusCameraFillOnWalls(walls: Wall[]) {
     seed.height,
   )
   const dist = focusDistanceForSize(span, heightSpan)
-  controls.target.set(cx, cy, cz)
-  camera.position.set(cx + out.x * dist, cy, cz + out.z * dist)
+  const target = new THREE.Vector3(cx, cy, cz)
+  const position = new THREE.Vector3(cx + out.x * dist, cy, cz + out.z * dist)
   if (isGalleryModeActive()) applyGalleryOrbitTuning()
   else {
     syncCameraDistanceLimits()
     controls.minDistance = Math.min(controls.minDistance, 40)
   }
-  if (currentView === 'present') {
-    camera.lookAt(cx, cy, cz)
-    camera.updateMatrixWorld()
-  } else {
-    controls.update()
-  }
-  markViewportDirty()
+  startObjectFocusAnim(position, target, currentView === 'present')
 }
 
 /** Fokus auf eine Öffnung (nahezu bildschirmfüllend, mit Rand). */
@@ -7339,8 +7417,8 @@ function focusCameraFillOnOpening(wall: Wall, opening: Opening) {
   const localY = opening.y + opening.height / 2 - wall.height / 2
   const center = wallLocalToWorld(wall, localX, localY, studioPanelFaceLocalZ(wall))
   const dist = focusDistanceForSize(opening.width, opening.height)
-  controls.target.set(center.x, center.y, center.z)
-  camera.position.set(
+  const target = new THREE.Vector3(center.x, center.y, center.z)
+  const position = new THREE.Vector3(
     center.x + out.x * dist,
     center.y,
     center.z + out.z * dist,
@@ -7350,13 +7428,7 @@ function focusCameraFillOnOpening(wall: Wall, opening: Opening) {
     syncCameraDistanceLimits()
     controls.minDistance = Math.min(controls.minDistance, 40)
   }
-  if (currentView === 'present') {
-    camera.lookAt(center.x, center.y, center.z)
-    camera.updateMatrixWorld()
-  } else {
-    controls.update()
-  }
-  markViewportDirty()
+  startObjectFocusAnim(position, target, currentView === 'present')
 }
 
 function applyFrontOrthoFocusZoom(clientX: number, clientY: number) {
@@ -8019,7 +8091,7 @@ function setCompassYaw(yaw: number) {
   updateViewCompass()
   syncCladdingReceiveShadows()
   if (currentView === 'present') {
-    if (!objectFocusBookmark) syncPresentCamera()
+    if (!objectFocusBookmark && !objectFocusAnim) syncPresentCamera()
     markViewportDirty()
   } else if (currentView === '3d') {
     orbitCameraToYaw(snapped, getAllWalls(state))
@@ -8812,7 +8884,7 @@ function syncCorniceControls(wall: Wall) {
   rebuildCorniceProfileCards(
     wallCorniceProfileCards,
     profileId,
-    cornice.color ?? wall.wallColor ?? wall.profileColor ?? DEFAULT_PROFILE_COLOR,
+    wallDecorFallbackColor(cornice.color, wall),
     (id) =>
       commitCornicePatch(id ? { enabled: true, profileId: id } : { enabled: false }),
   )
@@ -10037,7 +10109,7 @@ function initOpeningLibrary() {
       corniceProfileDefinitions(),
       'cornice-profile',
       wall && wallCornice(wall).enabled ? (wallCornice(wall).profileId ?? '') : '',
-      wall ? (wallCornice(wall).color ?? wall.profileColor ?? DEFAULT_PROFILE_COLOR) : DEFAULT_PROFILE_COLOR,
+      wall ? wallDecorFallbackColor(wallCornice(wall).color, wall) : DEFAULT_PROFILE_COLOR,
       'Keines',
     )
     syncLibraryAppliedOutline()
@@ -11404,7 +11476,13 @@ function bootstrapSceneLighting(): Promise<void> {
     facade.refreshWallLabels({ afterFontLoad: true })
     markViewportDirty()
   })
-  return Promise.all([atmosphereSky.load(renderer), facade.whenMeshesReady]).then(() => {
+  const skyReady = atmosphereSky.load(renderer)
+  const meshesReady = facade.whenMeshesReady
+  const ready = Promise.all([skyReady, meshesReady])
+  const limit = new Promise<void>((resolve) => {
+    window.setTimeout(() => resolve(), 8000)
+  })
+  return Promise.race([ready, limit]).then(() => {
     syncCladdingReceiveShadows()
     startupShadowReady = true
     applySunLighting({ updateShadowMap: true, forceShadowBake: true })
@@ -16084,7 +16162,7 @@ function activeCorniceColor(): string {
   const walls = selectedWalls()
   if (walls.length === 0) return DEFAULT_PROFILE_COLOR
   const colors = walls.map(
-    (wall) => wallCornice(wall).color ?? wall.profileColor ?? DEFAULT_PROFILE_COLOR,
+    (wall) => wallDecorFallbackColor(wallCornice(wall).color, wall),
   )
   const first = colors[0]
   return colors.every((color) => color === first) ? first : DEFAULT_PROFILE_COLOR
@@ -16651,7 +16729,8 @@ function plinthProfileDefinitions(): ProfileDefinition[] {
 
 function activePlinthProfileColor(wall?: Wall): string {
   const panel = wall?.panel ?? selectedWalls()[0]?.panel
-  return panel?.plinthProfileColor ?? wall?.profileColor ?? selectedWalls()[0]?.profileColor ?? DEFAULT_PROFILE_COLOR
+  const w = wall ?? selectedWalls()[0]
+  return wallDecorFallbackColor(panel?.plinthProfileColor ?? panel?.plinthColor, w ?? {})
 }
 
 function plinthSectionAxisScale(panel?: { plinthHeight?: number; plinthDepth?: number }, profileId?: string) {
@@ -17267,7 +17346,7 @@ function syncPlinthProfileControls(wall?: Wall) {
   studioPlinthFlipForward.classList.toggle('active', Boolean(panel.plinthProfileFlipForward))
   rebuildPlinthProfileCards(w)
   const sockelColor =
-    panel.plinthColor ?? panel.plinthProfileColor ?? w.wallColor ?? DEFAULT_WALL_COLOR
+    wallDecorFallbackColor(panel.plinthColor ?? panel.plinthProfileColor, w)
   renderColorSwatches(
     studioPlinthColorSwatches,
     'wall',
@@ -17444,7 +17523,7 @@ function refreshAllProfileCards() {
   if (wall) {
     const cornice = wallCornice(wall)
     const profileId = cornice.enabled ? (cornice.profileId ?? 'traufgesims70x150') : ''
-    const color = cornice.color ?? wall.profileColor ?? DEFAULT_PROFILE_COLOR
+    const color = wallDecorFallbackColor(cornice.color, wall)
     rebuildCorniceProfileCards(wallCorniceProfileCards, profileId, color, (id) => {
       commitCornicePatch(id ? { enabled: true, profileId: id } : { enabled: false })
     })
@@ -18473,6 +18552,23 @@ function applyOpeningPartVisibility() {
     if (part === 'pediment' && consolesSection) consolesSection.hidden = true
     if (part === 'consoles' && pedimentSection) pedimentSection.hidden = true
   }
+  if (focusPart && part === 'grille') {
+    if (motionSection) motionSection.hidden = true
+    if (profileAssign) profileAssign.hidden = true
+    windowSillSection.hidden = true
+    doorStairsSection.hidden = true
+    openingRollerShutterSection.hidden = true
+    if (pedimentSection) pedimentSection.hidden = true
+    if (consolesSection) consolesSection.hidden = true
+    if (taperedFieldSection) taperedFieldSection.hidden = true
+    if (frameColorSection) frameColorSection.hidden = true
+    if (glassColorSection) glassColorSection.hidden = true
+    if (frameFinishSection) frameFinishSection.hidden = true
+    if (styleSection && !isBasement) {
+      styleSection.hidden = false
+      windowStyleSection.hidden = false
+    }
+  }
   if (focusPart && part === 'trim') {
     if (motionSection) motionSection.hidden = true
     if (styleSection) styleSection.hidden = true
@@ -18486,6 +18582,8 @@ function applyOpeningPartVisibility() {
     if (glassColorSection) glassColorSection.hidden = true
     if (frameFinishSection) frameFinishSection.hidden = true
   }
+  hidePrecedingSubheading(frameColorSection, Boolean(frameColorSection?.hidden))
+  hidePrecedingSubheading(glassColorSection, Boolean(glassColorSection?.hidden))
 }
 
 function applyWallPartVisibility() {
@@ -18743,6 +18841,56 @@ function syncOpeningColorsHub() {
   }
 
   syncRevealColorSwatches(true)
+
+  const part = editor.selectedOpeningPart ?? 'group'
+  const guard = sel ? normalizeOpeningGuard(sel.opening.guard) : null
+  const showGuardColor =
+    Boolean(sel && guard?.enabled) &&
+    !Boolean(sel && isBasementWindowOpening(sel.opening)) &&
+    (part === 'group' || part === 'grille')
+  guardColorHubSection.hidden = !showGuardColor
+  if (showGuardColor && sel && guard) {
+    const fallback = sel.opening.frameColor ?? defaultOpeningFrameColor(sel.opening.type)
+    const color = guard.color ?? fallback
+    const finish = normalizeSurfaceFinish(guard.finish ?? sel.wall.profileFinish)
+    renderColorSwatches(
+      guardColorSwatchesHub,
+      'profile',
+      color,
+      (nextColor) => {
+        patchSelectedGuards({ color: nextColor })
+      },
+      previewSelectionColor((nextColor) => {
+        let next = state
+        for (const ref of selectedWindowRefsFromEditor()) {
+          const wall = getWall(next, ref.wallId)
+          const opening = wall?.openings.find((item) => item.id === ref.openingId)
+          if (!opening?.guard?.enabled) continue
+          next = updateOpening(next, ref.wallId, ref.openingId, {
+            guard: normalizeOpeningGuard({ ...opening.guard, color: nextColor }),
+          })
+        }
+        return next
+      }),
+      {
+        value: finish,
+        select: openingGuardFinishSelect,
+        onChange: (nextFinish) => patchSelectedGuards({ finish: nextFinish }),
+      },
+    )
+  }
+  const revealHeading = revealExteriorColorSection.previousElementSibling
+  if (part === 'grille') {
+    trimColorHubSection.hidden = true
+    sillOuterColorHubSection.hidden = true
+    pedimentColorHubSection.hidden = true
+    syncRevealColorSwatches(false)
+    if (revealHeading instanceof HTMLElement && revealHeading.classList.contains('settings-subheading')) {
+      revealHeading.hidden = true
+    }
+  } else if (revealHeading instanceof HTMLElement && revealHeading.classList.contains('settings-subheading')) {
+    revealHeading.hidden = revealExteriorColorSection.hidden
+  }
 }
 
 function selectedWindowRefsFromEditor() {
@@ -18772,7 +18920,7 @@ function leafOpenLabel(leaf: { region: 'sash' | 'transom'; index: number; hinge:
 let windowOpenDragBase: FacadeState | null = null
 
 function syncWindowOpenControls(
-  opening: Pick<Opening, 'width' | 'height' | 'type' | 'glazingArch' | 'arch'>,
+  opening: Pick<Opening, 'width' | 'height' | 'type' | 'glazingArch' | 'arch' | 'door'>,
   config: GruenderzeitWindowConfig,
 ) {
   const layout = layoutGruenderzeitWindow(
@@ -18781,6 +18929,9 @@ function syncWindowOpenControls(
     config,
     openingGlazingArchForm(opening),
     normalizeOpeningArch(opening.arch).riseCm,
+    opening.type === 'door'
+      ? { openBottom: opening.door?.bottomFrame !== true }
+      : undefined,
   )
   const leavesUi = [...layout.leaves].sort((a, b) => {
     if (a.region === b.region) return a.index - b.index
@@ -19042,6 +19193,9 @@ function syncWindowStyleSection() {
     config,
     openingGlazingArchForm(opening),
     normalizeOpeningArch(opening.arch).riseCm,
+    opening.type === 'door'
+      ? { openBottom: opening.door?.bottomFrame !== true }
+      : undefined,
   )
   appendGruenderzeitSvg(
     windowStylePreview,
@@ -19182,9 +19336,10 @@ function openingPartToSettingsTab(part: OpeningPart): string | null {
       return 'roller-shutter'
     // Rahmen/Glas: Ganz-Öffnung — Tab nicht auf Farben erzwingen (erster bzw. Sticky).
     case 'frame':
-    case 'grille':
     case 'group':
       return null
+    case 'grille':
+      return 'colors'
     default:
       return null
   }
@@ -19352,9 +19507,8 @@ function selectOpening(
   additive: boolean,
   openingPartArg: OpeningPart = 'group',
 ) {
-  // Rahmen/Glas → Ganz-Öffnung (Maße/Sticky); sonst Teil-Fokus behalten.
-  const openingPart: OpeningPart =
-    openingPartArg === 'frame' || openingPartArg === 'grille' ? 'group' : openingPartArg
+  // Rahmen/Glas → Ganz-Öffnung (Maße/Sticky); Gitter bleibt Teil-Fokus.
+  const openingPart: OpeningPart = openingPartArg === 'frame' ? 'group' : openingPartArg
   queueSelectionToolbarTab(openingPartToSettingsTab(openingPartArg))
   const treeIdx = layerTreeIndexOf({ kind: 'opening', wallId, openingId })
   if (treeIdx >= 0) lastLayerTreeAnchor = treeIdx
@@ -19401,6 +19555,8 @@ function selectOpening(
 }
 
 await loadInitialState()
+dismissAppLoading()
+await new Promise<void>((resolve) => window.setTimeout(resolve, 0))
 // Fassaden-Builder 2.0: Fokus auf 2D-Front + Render-Modus; 3D wieder per Button wählbar
 presentationMode = 'render'
 savePresentationMode('render')
@@ -20399,35 +20555,44 @@ function patchSelectedOpenings(patch: Partial<import('./types/facade').Opening>)
   commitState(next)
 }
 
+function patchSelectedGuards(patch: Partial<OpeningGuard>) {
+  const refs = selectedWindowRefsFromEditor()
+  if (refs.length === 0) return
+  let next = state
+  for (const ref of refs) {
+    const wall = getWall(next, ref.wallId)
+    const opening = wall?.openings.find((item) => item.id === ref.openingId)
+    if (!opening) continue
+    next = updateOpening(next, ref.wallId, ref.openingId, {
+      guard: normalizeOpeningGuard({ ...opening.guard, ...patch }),
+    })
+  }
+  commitState(next)
+}
+
 windowGuardEnabled.addEventListener('change', () => {
-  patchSelectedOpenings({
-    guard: normalizeOpeningGuard({
-      enabled: windowGuardEnabled.checked,
-      mode: windowGuardMode.value === 'balcony' ? 'balcony' : 'grille',
-      barSpacingCm: Number(windowGuardSpacing.value),
-      heightCm: Number(windowGuardHeight.value),
-    }),
+  patchSelectedGuards({
+    enabled: windowGuardEnabled.checked,
+    mode: windowGuardMode.value === 'balcony' ? 'balcony' : 'grille',
+    barSpacingCm: Number(windowGuardSpacing.value),
+    heightCm: Number(windowGuardHeight.value),
   })
 })
 windowGuardMode.addEventListener('change', () => {
-  patchSelectedOpenings({
-    guard: normalizeOpeningGuard({
-      enabled: true,
-      mode: windowGuardMode.value === 'balcony' ? 'balcony' : 'grille',
-      barSpacingCm: Number(windowGuardSpacing.value),
-      heightCm: Number(windowGuardHeight.value),
-    }),
+  patchSelectedGuards({
+    enabled: true,
+    mode: windowGuardMode.value === 'balcony' ? 'balcony' : 'grille',
+    barSpacingCm: Number(windowGuardSpacing.value),
+    heightCm: Number(windowGuardHeight.value),
   })
 })
 for (const el of [windowGuardSpacing, windowGuardHeight]) {
   el.addEventListener('change', () => {
-    patchSelectedOpenings({
-      guard: normalizeOpeningGuard({
-        enabled: windowGuardEnabled.checked,
-        mode: windowGuardMode.value === 'balcony' ? 'balcony' : 'grille',
-        barSpacingCm: Number(windowGuardSpacing.value),
-        heightCm: Number(windowGuardHeight.value),
-      }),
+    patchSelectedGuards({
+      enabled: windowGuardEnabled.checked,
+      mode: windowGuardMode.value === 'balcony' ? 'balcony' : 'grille',
+      barSpacingCm: Number(windowGuardSpacing.value),
+      heightCm: Number(windowGuardHeight.value),
     })
   })
 }
@@ -21988,9 +22153,10 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
     if (op === 'sillOuter' || op === 'sillInner') return 1
     if (op === 'pediment' || op === 'consoles') return 2
     if (op === 'rollerShutter') return 3
+    if (op === 'grille') return 3
     if (op === 'trim') return 4
     if (wp === 'cornice' || wp === 'plinth' || wp === 'trimBand' || wp === 'label') return 1
-    if (op && op !== 'group' && op !== 'frame' && op !== 'grille') return 5
+    if (op && op !== 'group' && op !== 'frame') return 5
     return 100
   }
 
@@ -23400,7 +23566,7 @@ function setView(mode: AppView) {
   if (mode === 'present') {
     updateGroundPlane()
     ensureDefaultElevation()
-    if (!objectFocusBookmark) syncPresentCamera()
+    if (!objectFocusBookmark && !objectFocusAnim) syncPresentCamera()
   }
 
   if (mode === '3d') {
@@ -23439,6 +23605,15 @@ function syncViewChromeButtons() {
     btn.classList.toggle('active', btn.dataset.chrome === currentRenderStyle)
   }
   viewLineStrokeRow.hidden = currentRenderStyle !== 'line'
+  // Fassade: nur Ansicht + Umgebung — kein Export / Farbe·Zeichnung / Vorschau·Render
+  const presentChrome = currentView === 'present'
+  viewBtnExport.hidden = presentChrome
+  const colorLineGroup = viewBtnColor.closest('.view-mode-toggle')
+  if (colorLineGroup instanceof HTMLElement) colorLineGroup.hidden = presentChrome
+  const presentationGroup = document
+    .querySelector('#edit-presentation-btn')
+    ?.closest('.view-mode-toggle')
+  if (presentationGroup instanceof HTMLElement) presentationGroup.hidden = presentChrome
 }
 
 function applyLineStrokeScale() {
@@ -25749,7 +25924,7 @@ function resizeCanvasView() {
       facade.setLineResolution(width, height)
     }
     // Objekt-Fokus (Doppelklick) nicht durch Toolbar-Resize zurücksetzen.
-    if (currentView === 'present' && !objectFocusBookmark) syncPresentCamera()
+    if (currentView === 'present' && !objectFocusBookmark && !objectFocusAnim) syncPresentCamera()
     markViewportDirty()
   }
 }
@@ -25833,10 +26008,16 @@ canvas.addEventListener('contextmenu', (event) => {
 })
 
 controls.addEventListener('start', () => {
+  if (objectFocusApplying) return
+  cancelObjectFocusAnim()
   orbitLitePointer = true
   setOrbitLite(true)
 })
 controls.addEventListener('change', () => {
+  if (objectFocusAnim || objectFocusApplying) {
+    markViewportDirty()
+    return
+  }
   setOrbitLite(true)
   if (!orbitLitePointer && !nav3d) scheduleOrbitLiteEnd()
   syncGalleryNavigationFeel()
@@ -25915,6 +26096,7 @@ function animate() {
   if (perfOn) perfT0 = markPerfFrameStart()
   let perfRendered = false
   if (currentView === '3d' || currentView === 'present') {
+    if (objectFocusAnim) tickObjectFocusAnim()
     if (currentView === '3d' && facade.consumeWallLabelsShadowDirty()) {
       if (orbitLite || orbitLitePointer) {
         deferOrbitShadowBake({ sun: true })
@@ -25923,7 +26105,7 @@ function animate() {
         viewportDirty = true
       }
     }
-    if (sceneLightingReady && !viewportDirty && !perfOn && !liveMotion) {
+    if (sceneLightingReady && !viewportDirty && !perfOn && !liveMotion && !objectFocusAnim) {
       return
     }
     viewportDirty = false
@@ -25937,13 +26119,13 @@ function animate() {
     ) {
       facade.updatePerformanceLod(camera, viewportRenderHeight())
     }
-    if (currentView === 'present' && !objectFocusBookmark) syncPresentCamera()
+    if (currentView === 'present' && !objectFocusBookmark && !objectFocusAnim) syncPresentCamera()
     render3dFrame()
     perfRendered = true
     updateViewCompass()
     if (!orbitLite) updateWallLibraryGizmos()
   } else if (currentView === 'front') {
-    if (sceneLightingReady && !viewportDirty && !perfOn && !viewZoomAnim && !liveMotion) {
+    if (sceneLightingReady && !viewportDirty && !perfOn && !viewZoomAnim && !objectFocusAnim && !liveMotion) {
       return
     }
     viewportDirty = false
@@ -25951,7 +26133,7 @@ function animate() {
     perfRendered = true
     if (!orbitLite) updateWallLibraryGizmos()
   } else if (currentView === 'top') {
-    if (sceneLightingReady && !viewportDirty && !perfOn && !viewZoomAnim && !liveMotion) {
+    if (sceneLightingReady && !viewportDirty && !perfOn && !viewZoomAnim && !objectFocusAnim && !liveMotion) {
       return
     }
     viewportDirty = false

@@ -240,8 +240,8 @@ export function applyFacadeShadeShader(
   outwardLocalZ: number,
   options?: FacadeShadeOptions,
 ): void {
-  if (material.userData.skipFacadeShade === true) return
   if (!(material instanceof THREE.MeshStandardMaterial)) return
+  if (material.userData.skipFacadeShade === true) return
   const isLabel = options?.label === true
   const normalBacklit =
     options?.normalBacklit === true || material.userData.facadeShadeNormalMode === true

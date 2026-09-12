@@ -70,16 +70,19 @@ export function createOpeningGuardMesh(
     mesh.position.set(x, (y0 + y1) / 2, 0)
     mesh.castShadow = true
     mesh.receiveShadow = false
+    mesh.userData.originalMaterial = mat
     group.add(mesh)
   }
   // Handlauf
   const rail = new THREE.Mesh(new THREE.BoxGeometry(width - 2, 1.4, 1.4), mat)
   rail.position.set(0, y1 - 0.7, 0)
   rail.castShadow = true
+  rail.userData.originalMaterial = mat
   group.add(rail)
   if (guard.mode === 'balcony') {
     const bottom = new THREE.Mesh(new THREE.BoxGeometry(width - 2, 1.2, 1.2), mat)
     bottom.position.set(0, y0 + 1.2, 0)
+    bottom.userData.originalMaterial = mat
     group.add(bottom)
   }
   return group

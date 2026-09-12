@@ -253,10 +253,18 @@ function frameRect(
   h: number,
   thickness: number,
   kind: GruenderzeitBar['kind'],
+  opts?: { openBottom?: boolean },
 ) {
   const t = thickness
   if (w <= t * 2 + 0.8 || h <= t * 2 + 0.8) {
     addBar(bars, x, y, w, h, kind)
+    return
+  }
+  // Haustür ohne Schwelle: U-Rahmen — kein Unterbalken, Schenkel bis zum Boden.
+  if (opts?.openBottom) {
+    addBar(bars, x, y + h - t, w, t, kind)
+    addBar(bars, x, y, t, h - t, kind)
+    addBar(bars, x + w - t, y, t, h - t, kind)
     return
   }
   addBar(bars, x, y, w, t, kind)
@@ -915,6 +923,7 @@ function buildLeaf(
 /**
  * Blendrahmen, Kämpfer und einzelne Flügel in Öffnungskoordinaten
  * (Ursprung unten links, Y nach oben). Holzbreiten aus `resolveTimber`.
+ * `openBottom`: Tür ohne unteren Blendrahmen — Flügel füllen bis zum Boden (keine Lücke).
  */
 export function layoutGruenderzeitWindow(
   width: number,
@@ -922,6 +931,7 @@ export function layoutGruenderzeitWindow(
   config: GruenderzeitWindowConfig,
   glazingArch: boolean | ArchFormId = false,
   riseCm?: number | null,
+  opts?: { openBottom?: boolean },
 ): GruenderzeitLayout {
   const timber = resolveTimber(config.timber)
   const bars: GruenderzeitBar[] = []
@@ -930,6 +940,7 @@ export function layoutGruenderzeitWindow(
   const blend = timber.blend
   const kaempfer = timber.kaempfer
   const gap = timber.gap
+  const openBottom = Boolean(opts?.openBottom)
   const glazingForm: ArchFormId =
     typeof glazingArch === 'string' ? glazingArch : glazingArch ? 'round' : 'rect'
   const archGeom = glazingForm === 'round' ? glazingArchGeom(W, H, riseCm) : null
@@ -939,12 +950,12 @@ export function layoutGruenderzeitWindow(
       : null
   const archSpringY = archGeom?.springY ?? archCrown?.[0]?.y ?? null
 
-  frameRect(bars, 0, 0, W, H, blend, 'frame')
+  frameRect(bars, 0, 0, W, H, blend, 'frame', { openBottom })
 
   const innerX = blend
-  const innerY = blend
+  const innerY = openBottom ? 0 : blend
   const innerW = W - blend * 2
-  const innerH = H - blend * 2
+  const innerH = openBottom ? H - blend : H - blend * 2
   const casements = config.casements
   const transomOn = config.transom && innerH > kaempfer + timber.sash * 4 + 20
   let transomH = transomOn ? clamp(innerH * config.transomRatio, 18, innerH * 0.48) : 0
@@ -1754,7 +1765,10 @@ export function createGruenderzeitWindowMesh(
   door?: OpeningDoorConfig | null,
 ): THREE.Group {
   const timber = resolveTimber(config.timber)
-  const layout = layoutGruenderzeitWindow(width, height, config, glazingArch, riseCm)
+  const openBottom = Boolean(door) && door?.bottomFrame !== true
+  const layout = layoutGruenderzeitWindow(width, height, config, glazingArch, riseCm, {
+    openBottom,
+  })
   const group = new THREE.Group()
   const depth = windowAssemblyDepth(config)
   group.userData.proceduralWindow = true
@@ -1793,7 +1807,7 @@ export function createGruenderzeitWindowMesh(
         ).map((p) => ({ x: p.x + timber.blend, y: p.y + timber.blend }))
       : null
   const blendGeo = createFrameGeometry(width, height, timber.blend, depth, outerArch, glazingForm, riseCm, {
-    openBottom: Boolean(door) && door?.bottomFrame !== true,
+    openBottom,
   })
   addMesh(group, blendGeo, wood, -width / 2, -height / 2, 0)
 

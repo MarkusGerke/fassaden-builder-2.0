@@ -54,6 +54,8 @@ Bestehende Klassen bleiben im Markup; Werte kommen aus Tokens.
 
 **Stepper-Wert:** max. **5 Stellen** (`--input-narrow: 5ch`). Sektionen: `max-width: 100%` (kein Rechts-Overflow).
 
+**v2.0.395:** Sektionskinder **nicht** `width: 100%` bei 16-px-Margin (sonst Overflow). Control rechtsbündig; Stepper/Select `flex: 0 0 auto`.
+
 **Teilüberschriften:** Mehrere Gruppen in einer Sektion → `.settings-subheading.settings-subheading-nested` (Farbe, Maße, Position, Profil, …).
 
 ## Buttons

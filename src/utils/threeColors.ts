@@ -65,14 +65,35 @@ function rememberBaseEnvIntensity(material: THREE.MeshStandardMaterial, base: nu
   return scaledEnvIntensity(base)
 }
 
+/**
+ * Sichtbares Material plus `originalMaterial` (Auswahl-Overlay).
+ * Sonst bleibt nach Profil-/Höhen-Rebuild die EnvMap auf dem Original hängen,
+ * während `mesh.material` Orange/MeshBasic ist — nach Abwahl schwarz/grau (v2.0.400).
+ */
+function meshStandardMaterials(mesh: THREE.Mesh): THREE.MeshStandardMaterial[] {
+  const out: THREE.MeshStandardMaterial[] = []
+  const seen = new Set<THREE.Material>()
+  const push = (mat: THREE.Material | null | undefined) => {
+    if (!mat || seen.has(mat)) return
+    if (!(mat instanceof THREE.MeshStandardMaterial)) return
+    if (mat.name === 'studioGround') return
+    seen.add(mat)
+    out.push(mat)
+  }
+  const visible = mesh.material
+  if (Array.isArray(visible)) for (const m of visible) push(m)
+  else push(visible)
+  const orig = mesh.userData.originalMaterial as THREE.Material | THREE.Material[] | undefined
+  if (Array.isArray(orig)) for (const m of orig) push(m)
+  else push(orig)
+  return out
+}
+
 /** EnvMap-Intensitäten an aktuellem Fill-Faktor ausrichten (nach Tageszeit-Wechsel). */
 export function syncEnvMapFillIntensities(root: THREE.Object3D): void {
   root.traverse((child) => {
     if (!(child instanceof THREE.Mesh) || child.name === 'studioGround') return
-    const materials = Array.isArray(child.material) ? child.material : [child.material]
-    for (const material of materials) {
-      if (!(material instanceof THREE.MeshStandardMaterial)) continue
-      if (material.name === 'studioGround') continue
+    for (const material of meshStandardMaterials(child)) {
       if (!material.envMap && !isGlassLike(material)) continue
 
       const stored = material.userData.baseEnvMapIntensity as number | undefined
@@ -102,11 +123,7 @@ export function bindMaterialsToGlassEnv(root: THREE.Object3D) {
   if (!glassEnvMap) return
   root.traverse((child) => {
     if (!(child instanceof THREE.Mesh) || child.name === 'studioGround') return
-    const materials = Array.isArray(child.material) ? child.material : [child.material]
-    for (const material of materials) {
-      if (!(material instanceof THREE.MeshStandardMaterial)) continue
-      if (material.name === 'studioGround') continue
-
+    for (const material of meshStandardMaterials(child)) {
       // Ohne forceExteriorEnv: matte Rahmen ohne Env (Legacy). Mit Außen-Finish
       // (finishOpeningFrameTree) teilen Rahmen die CubeCamera mit Wand/Laibung.
       const finish = material.userData.surfaceFinish as SurfaceFinish | SurfaceFinishPreset | string | undefined
@@ -178,10 +195,7 @@ export function bindMaterialsToGlassEnv(root: THREE.Object3D) {
 export function clearGlassEnvironmentBindings(root: THREE.Object3D) {
   root.traverse((child) => {
     if (!(child instanceof THREE.Mesh) || child.name === 'studioGround') return
-    const materials = Array.isArray(child.material) ? child.material : [child.material]
-    for (const material of materials) {
-      if (!(material instanceof THREE.MeshStandardMaterial)) continue
-      if (material.name === 'studioGround') continue
+    for (const material of meshStandardMaterials(child)) {
       if (!isGlassLike(material) && !material.envMap) continue
       material.envMap = null
       if (isGlassLike(material) && material instanceof THREE.MeshPhysicalMaterial) {
