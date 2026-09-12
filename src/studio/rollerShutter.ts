@@ -49,6 +49,51 @@ const SOFT_RAISE: MotionCurve = {
   ],
 }
 
+/**
+ * Historischer Gurt-/Kabelzug: Hand für Hand ziehen — kurze Züge, dazwischen
+ * Mikropausen (Hände umgreifen). Linear zwischen den Punkten = mechanisch/organisch.
+ * Quelle: klassische Gurtwickler / Cord-Loop (Hand-over-hand), kein Motor.
+ */
+const CABLE_LOWER: MotionCurve = {
+  durationMs: 4200,
+  holdMs: 0,
+  keys: [
+    { t: 0, v: 0, ease: 'linear' },
+    { t: 0.05, v: 0.01, ease: 'linear' },
+    { t: 0.14, v: 0.17, ease: 'linear' },
+    { t: 0.2, v: 0.18, ease: 'linear' },
+    { t: 0.3, v: 0.36, ease: 'linear' },
+    { t: 0.36, v: 0.37, ease: 'linear' },
+    { t: 0.47, v: 0.55, ease: 'linear' },
+    { t: 0.53, v: 0.56, ease: 'linear' },
+    { t: 0.64, v: 0.74, ease: 'linear' },
+    { t: 0.7, v: 0.75, ease: 'linear' },
+    { t: 0.82, v: 0.92, ease: 'linear' },
+    { t: 0.88, v: 0.93, ease: 'linear' },
+    { t: 1, v: 1, ease: 'linear' },
+  ],
+}
+
+const CABLE_RAISE: MotionCurve = {
+  durationMs: 4800,
+  holdMs: 0,
+  keys: [
+    { t: 0, v: 0, ease: 'linear' },
+    { t: 0.06, v: 0.01, ease: 'linear' },
+    { t: 0.16, v: 0.15, ease: 'linear' },
+    { t: 0.23, v: 0.16, ease: 'linear' },
+    { t: 0.34, v: 0.33, ease: 'linear' },
+    { t: 0.41, v: 0.34, ease: 'linear' },
+    { t: 0.52, v: 0.52, ease: 'linear' },
+    { t: 0.59, v: 0.53, ease: 'linear' },
+    { t: 0.7, v: 0.72, ease: 'linear' },
+    { t: 0.77, v: 0.73, ease: 'linear' },
+    { t: 0.88, v: 0.9, ease: 'linear' },
+    { t: 0.94, v: 0.91, ease: 'linear' },
+    { t: 1, v: 1, ease: 'linear' },
+  ],
+}
+
 export function defaultRollerShutterMotion(): NonNullable<OpeningRollerShutter['motion']> {
   return {
     raise: normalizeMotionCurve(SOFT_RAISE, SOFT_RAISE),
@@ -365,7 +410,7 @@ export function createRollerShutterCoverOccluderGeometry(
   return new THREE.ShapeGeometry(shape)
 }
 
-export type RollerShutterMotionPreset = 'soft' | 'linear'
+export type RollerShutterMotionPreset = 'soft' | 'linear' | 'cable'
 
 export function rollerShutterMotionPreset(
   id: RollerShutterMotionPreset,
@@ -384,6 +429,12 @@ export function rollerShutterMotionPreset(
         },
         SOFT_LOWER,
       ),
+    }
+  }
+  if (id === 'cable') {
+    return {
+      raise: normalizeMotionCurve(CABLE_RAISE, CABLE_RAISE),
+      lower: normalizeMotionCurve(CABLE_LOWER, CABLE_LOWER),
     }
   }
   return defaultRollerShutterMotion()

@@ -47,7 +47,7 @@ Rahmenprofil, Bänke, Verdachung, Rollläden, Keller-Gitter, Treppe, Glas, Rahme
 ### Neu (v0.7.305)
 
 - `Opening.guard` — Stabgitter oder französischer Balkon
-- `Opening.door` — Kassetten, Drücker, Briefschlitz
+- `Opening.door` — Kassetten, Drücker, Briefschlitz, **Unterer Rahmen** (`bottomFrame`, Default aus = Haustür ohne Schwellenbalken)
 - `Opening.interiorShade` — Vorhang oder Innenjalousie
 
 ## Roadmap

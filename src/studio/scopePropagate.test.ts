@@ -6,6 +6,7 @@ import { assignProfilesToOpenings, removeProfilesFromOpenings } from '../utils/o
 import { ALL_EDGES } from '../constants/presets'
 import {
   applyOpeningProfilesDelta,
+  assignSelectionPropertiesToScope,
   propagateSelectionEdit,
   scopePropagateAvailable,
 } from './scopePropagate'
@@ -283,5 +284,60 @@ describe('propagateSelectionEdit — Fensterprofile', () => {
     const peer = next.buildings[0]!.walls.find((w) => w.id === 'w2')!
     expect(peer.openings.find((o) => o.id === 'd2')?.frameColor).toBe('#A54040')
     expect(peer.openings.find((o) => o.id === 'o1')?.frameColor).toBe('#ffffff')
+  })
+})
+
+describe('propagateSelectionEdit — Gesims ganz ersetzen', () => {
+  it('übernimmt enabled Gesims auf Etage (kein Partial-Merge)', () => {
+    const before = stateWithWalls([
+      wall({ id: 'w1', openings: [], cornice: { enabled: false } }),
+      wall({ id: 'w2', openings: [], originX: 400, cornice: { enabled: false } }),
+    ])
+    const after = {
+      ...before,
+      buildings: [
+        {
+          ...before.buildings[0]!,
+          walls: [
+            {
+              ...before.buildings[0]!.walls[0]!,
+              cornice: {
+                enabled: true,
+                edge: 'top' as const,
+                profileId: 'traufgesims70x150',
+                scale: 1.5,
+              },
+            },
+            before.buildings[0]!.walls[1]!,
+          ],
+        },
+      ],
+    }
+    const editor: EditorState = {
+      selectedWallIds: ['w1'],
+      selectedOpenings: [],
+      selectedEdges: [],
+    }
+    const next = propagateSelectionEdit(before, after, editor, 'floor')
+    const peer = next.buildings[0]!.walls.find((w) => w.id === 'w2')!
+    expect(peer.cornice?.enabled).toBe(true)
+    expect(peer.cornice?.profileId).toBe('traufgesims70x150')
+    expect(peer.cornice?.scale).toBe(1.5)
+  })
+})
+
+describe('assignSelectionPropertiesToScope', () => {
+  it('weist Öffnungsfarbe auf Typ zu ohne Position zu kopieren', () => {
+    const o1 = win({ id: 'o1', x: 48, frameColor: '#A54040' })
+    const o2 = win({ id: 'o2', x: 200, frameColor: '#ffffff' })
+    const state = stateWithWalls([
+      wall({ id: 'w1', openings: [o1] }),
+      wall({ id: 'w2', openings: [o2], originX: 400 }),
+    ])
+    const next = assignSelectionPropertiesToScope(state, editorForOpening('w1', 'o1'), 'type')
+    const peer = next.buildings[0]!.walls.find((w) => w.id === 'w2')!
+    const peerOpen = peer.openings.find((o) => o.id === 'o2')!
+    expect(peerOpen.frameColor).toBe('#A54040')
+    expect(peerOpen.x).toBe(200)
   })
 })

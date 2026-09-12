@@ -13,7 +13,7 @@ Wenn aktiviert:
 - **Kein Kasten, keine Führungsschienen:** nur die Lamellen. Standard: Checkbox aus, `drop` 0.
 - **Farbe / Oberfläche:** Swatches und Stumpf/Glänzend/Metallisch.
 - **Lamellenhöhe / Spalt:** Feinjustierung (cm) — Spalt gilt nur im freihängenden Abschnitt.
-- **Animation:** Phasen **Runterfahren** und **Hochfahren** mit Dauer, Vorlagen Weich/Linear, Abspielen und Zyklus.
+- **Animation:** Phasen **Runterfahren** / **Hochfahren** mit editierbarer **MotionCurve** (wie Fenster/Tür): Vorlagen **Ein Zug** (durchgehend weich), **Linear**, **Kabelzug** (Hand für Hand am historischen Gurt/Seil, Züge + Mikropausen). Dauer in **Sekunden** (intern `durationMs`). SVG-Editor: Punkte ziehen, Zwischenpunkt per Klick, Kurve/Linie je Segment. Buttons **Rollo schließen** / **Rollo öffnen** / Zyklus untereinander volle Breite.
 - **Uhrzeiten (v2.0.150):** in `#roller-shutter-options` Listen **Hoch** / **Runter** (`OpeningRollerShutter.schedule`); nur sichtbar wenn Rollladen an. Crossing der Tageszeit startet Playback.
 
 Klick auf die Lamellen in 3D öffnet den Rollläden-Tab (`openingPart: 'rollerShutter'`).
@@ -57,10 +57,12 @@ Hydrate setzt fehlende Config auf **disabled**. Kein Schema-Step nötig.
 | `src/FacadeController.ts` | `rebuildRollerShutters`, `applyRollerShutterDrop`, Schatten-Okkluder an Maske |
 | `src/utils/daySchedule.ts` / `src/ui/dayScheduleEditor.ts` | Uhrzeiten |
 | `index.html` / `src/main.ts` | Tab, Sync, Playback, Schedule |
+| `src/ui/rollerShutterMotionEditor.ts` | SVG-Kurve, Vorlagen, Punkt-Edit (v2.0.378) |
 
 ## Fallstricke
 
 - Animation der Flügel (`Opening.motion`) und der Rollläden sind getrennt; gleichzeitiges Abspielen wird vermieden (Rollladen-Play stoppt Flügel-Play).
+- **Kabelzug:** historischer Gurtwickler / Cord-Loop — kein Motor; die Preset-Kurve ist gestuft (Zug → Pause → Zug), nicht „zufälliges Ruckeln“.
 - Live-Ziehen am Höhen-Slider nutzt `applyRollerShutterDrop` (kein Mesh-Rebuild); Commit speichert `drop`.
 - Geteilte Lamellen-Geometrie/Material pro Öffnung — beim Dispose nur einmal freigeben (`sharedGeometry` / `sharedMaterial`); Okkluder: `sharedOccluderGeometry` (wird bei Layout neu erzeugt).
 - `layoutRollerShutterGroup` aktualisiert Kinder mit `userData.role === 'slat'` (Breite/`scale.x` + `position.x` aus Maske) und die Okkluder-Kontur.

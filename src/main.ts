@@ -33,12 +33,6 @@ import {
   syncEnvMapFillIntensities,
 } from './utils/threeColors'
 import {
-  DEFAULT_GLASS_IOR,
-  DEFAULT_GLASS_ROUGHNESS,
-  DEFAULT_GLASS_THICKNESS_CM,
-  DEFAULT_GLASS_TRANSMISSION,
-} from './utils/glassConfig'
-import {
   applySceneBackground,
   bakeSceneReflectionsIfNeeded,
   exteriorReflectionProbe,
@@ -81,7 +75,6 @@ import type {
   EditorState,
   FacadeState,
   GruenderzeitPresetId,
-  GruenderzeitTransomBars,
   GruenderzeitWindowConfig,
   OpeningEdge,
   OpeningMotion,
@@ -127,7 +120,6 @@ import {
   updateOpeningRevealColors,
   updateOpeningFrameFinishes,
   updateOpeningGlassColors,
-  updateOpeningGlassSettings,
   updateOpeningGruenderzeit,
   updateOpeningMotion,
   updateOpeningSills,
@@ -255,6 +247,7 @@ import {
   type ExportViewKind,
 } from './ui/exportMode'
 import { initOpeningMotionEditor } from './ui/openingMotionEditor'
+import { initRollerShutterMotionEditor } from './ui/rollerShutterMotionEditor'
 import { evalMotionCurve, openingMotionFromOpening } from './utils/openingMotion'
 import {
   buildSharePayload,
@@ -428,6 +421,7 @@ import { createStudioWall, isStudioWall, stretchStudioFacade, studioWallTransfor
   unselectedLinkedDiagonalWalls,
   frontMoveStepCm,
   updateTwoHorizontalCladdingBands,
+  studioPanelFaceLocalZ,
 } from './studio/walls'
 import {
   canMergeWallSegments,
@@ -495,6 +489,7 @@ import {
 import {
   isPropertyOnlyFacadeEdit,
   propagateSelectionEdit,
+  assignSelectionPropertiesToScope,
   scopePropagateAvailable,
   type ScopePropagateKind,
 } from './studio/scopePropagate'
@@ -576,7 +571,6 @@ import { normalizeOpeningTaperedField } from './studio/taperedField'
 import {
   normalizeOpeningRollerShutter,
   openingSupportsRollerShutter,
-  rollerShutterMotionPreset,
   DEFAULT_ROLLER_COLOR,
 } from './studio/rollerShutter'
 import { openingTopProfileLiftCm } from './studio/openingProfileLift'
@@ -6345,13 +6339,11 @@ const openingRollerShutterSection = document.querySelector<HTMLDivElement>('#ope
 const rollerShutterEnabled = document.querySelector<HTMLInputElement>('#roller-shutter-enabled')!
 const rollerShutterOptions = document.querySelector<HTMLDivElement>('#roller-shutter-options')!
 const rollerShutterDrop = document.querySelector<HTMLInputElement>('#roller-shutter-drop')!
-const rollerShutterDropPct = document.querySelector<HTMLInputElement>('#roller-shutter-drop-pct')!
 const rollerShutterDropLabel = document.querySelector<HTMLSpanElement>('#roller-shutter-drop-label')!
 const rollerShutterColorSwatches = document.querySelector<HTMLDivElement>('#roller-shutter-color-swatches')!
 const rollerShutterFinish = document.querySelector<HTMLSelectElement>('#roller-shutter-finish')!
 const rollerShutterSlatHeight = document.querySelector<HTMLInputElement>('#roller-shutter-slat-height')!
 const rollerShutterGap = document.querySelector<HTMLInputElement>('#roller-shutter-gap')!
-const rollerShutterDuration = document.querySelector<HTMLInputElement>('#roller-shutter-duration')!
 const rollerShutterPlayLower = document.querySelector<HTMLButtonElement>('#roller-shutter-play-lower')!
 const rollerShutterPlayRaise = document.querySelector<HTMLButtonElement>('#roller-shutter-play-raise')!
 const rollerShutterPlayCycle = document.querySelector<HTMLButtonElement>('#roller-shutter-play-cycle')!
@@ -6390,12 +6382,23 @@ const windowStylePreview = document.querySelector<SVGSVGElement>('#window-style-
 const windowTransomInput = document.querySelector<HTMLInputElement>('#window-transom')!
 const windowTransomOptions = document.querySelector<HTMLDivElement>('#window-transom-options')!
 const windowTransomRatioInput = document.querySelector<HTMLInputElement>('#window-transom-ratio')!
-const windowCasementButtons = document.querySelectorAll<HTMLButtonElement>('#window-casement-group .preset-btn')
-const windowTransomBarsButtons = document.querySelectorAll<HTMLButtonElement>('#window-transom-bars-group .preset-btn')
-const windowSplitVCountButtons = document.querySelectorAll<HTMLButtonElement>('#window-split-v-count-group .preset-btn')
+const windowCasementStepper = document.querySelector<HTMLElement>('#window-casement-stepper')!
+const windowTransomSplitVStepper = document.querySelector<HTMLElement>('#window-transom-split-v-stepper')!
+const windowTransomSplitHStepper = document.querySelector<HTMLElement>('#window-transom-split-h-stepper')!
+const windowTransomSplitVRatioButtons = document.querySelectorAll<HTMLButtonElement>(
+  '#window-transom-split-v-ratio-group .preset-btn',
+)
+const windowTransomSplitVRatioGroup = document.querySelector<HTMLElement>('#window-transom-split-v-ratio-group')!
+const windowTransomSplitHRatioButtons = document.querySelectorAll<HTMLButtonElement>(
+  '#window-transom-split-h-ratio-group .preset-btn',
+)
+const windowTransomSplitHRatioGroup = document.querySelector<HTMLElement>('#window-transom-split-h-ratio-group')!
+const windowSplitVSection = document.querySelector<HTMLElement>('#window-split-v-section')!
+const windowSplitHSection = document.querySelector<HTMLElement>('#window-split-h-section')!
+const windowSplitVStepper = document.querySelector<HTMLElement>('#window-split-v-stepper')!
+const windowSplitHStepper = document.querySelector<HTMLElement>('#window-split-h-stepper')!
 const windowSplitVRatioButtons = document.querySelectorAll<HTMLButtonElement>('#window-split-v-ratio-group .preset-btn')
 const windowSplitVRatioGroup = document.querySelector<HTMLElement>('#window-split-v-ratio-group')!
-const windowSplitHCountButtons = document.querySelectorAll<HTMLButtonElement>('#window-split-h-count-group .preset-btn')
 const windowSplitHRatioButtons = document.querySelectorAll<HTMLButtonElement>('#window-split-h-ratio-group .preset-btn')
 const windowSplitHRatioGroup = document.querySelector<HTMLElement>('#window-split-h-ratio-group')!
 const windowPanelSection = document.querySelector<HTMLElement>('#window-panel-section')!
@@ -6403,8 +6406,8 @@ const windowBottomPanelInput = document.querySelector<HTMLInputElement>('#window
 const windowPanelRatioGroup = document.querySelector<HTMLElement>('#window-panel-ratio-group')!
 const windowPanelRatioButtons = document.querySelectorAll<HTMLButtonElement>('#window-panel-ratio-group .preset-btn')
 const windowMuntinSection = document.querySelector<HTMLElement>('#window-muntin-section')!
-const windowMuntinVButtons = document.querySelectorAll<HTMLButtonElement>('#window-muntin-v-group .preset-btn')
-const windowMuntinHButtons = document.querySelectorAll<HTMLButtonElement>('#window-muntin-h-group .preset-btn')
+const windowMuntinVStepper = document.querySelector<HTMLElement>('#window-muntin-v-stepper')!
+const windowMuntinHStepper = document.querySelector<HTMLElement>('#window-muntin-h-stepper')!
 /** Mehrfachauswahl der Fensterteile in der Vorschau (Indizes in paneMuntins). */
 let windowPaneSelection: number[] = []
 const windowPresetSelect = document.querySelector<HTMLSelectElement>('#window-preset-select')!
@@ -6432,6 +6435,7 @@ const windowDoorExtras = document.querySelector<HTMLElement>('#window-door-extra
 const windowDoorCassettes = document.querySelector<HTMLSelectElement>('#window-door-cassettes')!
 const windowDoorHandle = document.querySelector<HTMLInputElement>('#window-door-handle')!
 const windowDoorLetter = document.querySelector<HTMLInputElement>('#window-door-letter')!
+const windowDoorBottomFrame = document.querySelector<HTMLInputElement>('#window-door-bottom-frame')!
 const windowOpenGroup = document.querySelector<HTMLDivElement>('#window-open-group')!
 const undoButton = document.querySelector<HTMLButtonElement>('#undo')!
 const redoButton = document.querySelector<HTMLButtonElement>('#redo')!
@@ -6467,13 +6471,6 @@ const revealInteriorColorSection = document.querySelector<HTMLDivElement>(
 const revealInteriorColorSwatches = document.querySelector<HTMLDivElement>(
   '#reveal-interior-color-swatches',
 )!
-const glassPhysicalSection = document.querySelector<HTMLDivElement>('#glass-physical-section')!
-const glassModePhysical = document.querySelector<HTMLInputElement>('#glass-mode-physical')!
-const glassPhysicalOptions = document.querySelector<HTMLDivElement>('#glass-physical-options')!
-const glassIorInput = document.querySelector<HTMLInputElement>('#glass-ior')!
-const glassRoughnessInput = document.querySelector<HTMLInputElement>('#glass-roughness')!
-const glassTransmissionInput = document.querySelector<HTMLInputElement>('#glass-transmission')!
-const glassThicknessInput = document.querySelector<HTMLInputElement>('#glass-thickness')!
 const studioPanelOptions = document.querySelector<HTMLDivElement>('#studio-panel-options')!
 const studioJointsSection = document.querySelector<HTMLDivElement>('#studio-joints-section')!
 const studioJointOptions = document.querySelector<HTMLDivElement>('#studio-joint-options')!
@@ -7240,10 +7237,12 @@ function startViewZoomAnim(view: 'front' | 'top', to: ViewZoomAnimTarget) {
   tickViewZoomAnim()
 }
 
-/** Doppelklick 3D: Objekt-Fokus speichern / Übersicht wiederherstellen. */
+/** Doppelklick 3D/Fassade: Objekt-Fokus speichern / Übersicht wiederherstellen. */
 let objectFocusBookmark: {
   target: THREE.Vector3
   position: THREE.Vector3
+  /** present: Überblick über syncPresentCamera statt freier Orbit-Pose. */
+  presentOverview?: boolean
 } | null = null
 /** Doppelklick Front/Oben: Zoom-Stand vor dem Hineinzoomen. */
 let orthoFocusBookmark: ViewZoomAnimTarget | null = null
@@ -7253,6 +7252,8 @@ let orthoFocusBookmark: ViewZoomAnimTarget | null = null
  */
 const VIEWPORT_DBLCLICK_MS = 450
 const VIEWPORT_DBLCLICK_PX = 14
+/** Fokus: Objekt füllt ~1/margin der View (1,35 ≈ 74 % — Rand bleibt). */
+const OBJECT_FOCUS_MARGIN = 1.35
 let lastViewportTap: { t: number; x: number; y: number } | null = null
 
 function consumeViewportDoubleTap(clientX: number, clientY: number): boolean {
@@ -7270,19 +7271,36 @@ function captureObjectFocusBookmark() {
   objectFocusBookmark = {
     target: controls.target.clone(),
     position: camera.position.clone(),
+    presentOverview: currentView === 'present',
   }
 }
 
 function restoreObjectFocusBookmark() {
   if (!objectFocusBookmark) return false
-  controls.target.copy(objectFocusBookmark.target)
-  camera.position.copy(objectFocusBookmark.position)
+  const bookmark = objectFocusBookmark
   objectFocusBookmark = null
+  if (bookmark.presentOverview && currentView === 'present') {
+    syncPresentCamera()
+    markViewportDirty()
+    return true
+  }
+  controls.target.copy(bookmark.target)
+  camera.position.copy(bookmark.position)
   if (isGalleryModeActive()) applyGalleryOrbitTuning()
   else syncCameraDistanceLimits()
   controls.update()
   markViewportDirty()
   return true
+}
+
+/** Abstand, sodass Breite×Höhe mit Rand nahezu bildschirmfüllend sind. */
+function focusDistanceForSize(sizeW: number, sizeH: number, margin = OBJECT_FOCUS_MARGIN): number {
+  const aspect = Math.max(1e-6, camera.aspect || 1)
+  const vFov = (camera.fov * Math.PI) / 180
+  const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect)
+  const distH = (Math.max(24, sizeH) * margin) / (2 * Math.tan(vFov / 2))
+  const distW = (Math.max(24, sizeW) * margin) / (2 * Math.tan(hFov / 2))
+  return Math.max(distH, distW, 80)
 }
 
 /** Kamera frontal und nah an Wand(en) — bildschirmfüllender Fokus. */
@@ -7293,21 +7311,51 @@ function focusCameraFillOnWalls(walls: Wall[]) {
   const { cx, cy, cz, span } = bounds
   const seed = walls[0]!
   const out = facadeOutward(seed.yawDeg ?? 0, seed.panelFlip ?? true)
-  // Näher als Überblick: Wandhöhe / Spannweite, aber über minDistance (60).
-  const dist = Math.max(span * 0.55, seed.height * 0.75, 120)
+  const heightSpan = Math.max(
+    ...walls.map((w) => w.height),
+    seed.height,
+  )
+  const dist = focusDistanceForSize(span, heightSpan)
   controls.target.set(cx, cy, cz)
+  camera.position.set(cx + out.x * dist, cy, cz + out.z * dist)
+  if (isGalleryModeActive()) applyGalleryOrbitTuning()
+  else {
+    syncCameraDistanceLimits()
+    controls.minDistance = Math.min(controls.minDistance, 40)
+  }
+  if (currentView === 'present') {
+    camera.lookAt(cx, cy, cz)
+    camera.updateMatrixWorld()
+  } else {
+    controls.update()
+  }
+  markViewportDirty()
+}
+
+/** Fokus auf eine Öffnung (nahezu bildschirmfüllend, mit Rand). */
+function focusCameraFillOnOpening(wall: Wall, opening: Opening) {
+  const out = facadeOutward(wall.yawDeg ?? 0, wall.panelFlip ?? true)
+  const localX = opening.x + opening.width / 2 - wall.width / 2
+  const localY = opening.y + opening.height / 2 - wall.height / 2
+  const center = wallLocalToWorld(wall, localX, localY, studioPanelFaceLocalZ(wall))
+  const dist = focusDistanceForSize(opening.width, opening.height)
+  controls.target.set(center.x, center.y, center.z)
   camera.position.set(
-    cx + out.x * dist,
-    cy + Math.min(span * 0.08, seed.height * 0.06),
-    cz + out.z * dist,
+    center.x + out.x * dist,
+    center.y,
+    center.z + out.z * dist,
   )
   if (isGalleryModeActive()) applyGalleryOrbitTuning()
   else {
     syncCameraDistanceLimits()
-    // Kurzer Fokus darf näher als der Site-Überblick sein.
     controls.minDistance = Math.min(controls.minDistance, 40)
   }
-  controls.update()
+  if (currentView === 'present') {
+    camera.lookAt(center.x, center.y, center.z)
+    camera.updateMatrixWorld()
+  } else {
+    controls.update()
+  }
   markViewportDirty()
 }
 
@@ -7365,7 +7413,10 @@ function applyTopOrthoFocusZoom(clientX: number, clientY: number) {
  * Doppelklick-Aktion: Fokus auf Objekt bzw. Übersicht wiederherstellen.
  * @returns true wenn eine Aktion ausgeführt wurde
  */
-function applyObjectFocusFromEvent(event: { clientX: number; clientY: number }): boolean {
+function applyObjectFocusFromEvent(
+  event: { clientX: number; clientY: number },
+  prefer?: { wallId: string; openingId?: string },
+): boolean {
   if (currentView === 'front') {
     applyFrontOrthoFocusZoom(event.clientX, event.clientY)
     return true
@@ -7374,7 +7425,7 @@ function applyObjectFocusFromEvent(event: { clientX: number; clientY: number }):
     applyTopOrthoFocusZoom(event.clientX, event.clientY)
     return true
   }
-  if (currentView !== '3d') return false
+  if (currentView !== '3d' && currentView !== 'present') return false
 
   if (restoreObjectFocusBookmark()) {
     planStatus.textContent = 'Übersicht'
@@ -7382,32 +7433,45 @@ function applyObjectFocusFromEvent(event: { clientX: number; clientY: number }):
   }
 
   const hit = pickFromEvent(event)
-  const wallId = hit?.wallId ?? pickWallAtClient(event.clientX, event.clientY)?.wallId
+  // Beim Öffnungs-pointerup kann der Raycast den Ghost/Orange verfehlen —
+  // dann Prefer aus dem laufenden Drag (gleiche Öffnung wie der Doppelklick).
+  const wallId =
+    prefer?.wallId ?? hit?.wallId ?? pickWallAtClient(event.clientX, event.clientY)?.wallId
+  const openingId = prefer?.openingId ?? hit?.openingId
   if (!wallId) return false
   const wall = getWall(state, wallId)
   if (!wall) return false
 
   captureObjectFocusBookmark()
-  if (hit?.openingId) {
-    selectOpening(wallId, hit.openingId, false, hit.openingPart)
+  if (openingId) {
+    selectOpening(wallId, openingId, false, hit?.openingPart)
+    const opening = wall.openings.find((o) => o.id === openingId)
+    if (opening) {
+      focusCameraFillOnOpening(wall, opening)
+    } else {
+      focusCameraFillOnWalls([wall])
+    }
   } else {
     selectWall(wallId, false, hit?.wallPart ?? 'group', hit?.bandId, hit?.labelId)
+    const bayIds = bayWallSelectionIds(getAllWalls(state), wallId)
+    const focusWalls =
+      bayIds && bayIds.length > 1
+        ? bayIds.map((id) => getWall(state, id)).filter((w): w is Wall => Boolean(w))
+        : [wall]
+    focusCameraFillOnWalls(focusWalls)
   }
-  const bayIds = bayWallSelectionIds(getAllWalls(state), wallId)
-  const focusWalls =
-    bayIds && bayIds.length > 1
-      ? bayIds.map((id) => getWall(state, id)).filter((w): w is Wall => Boolean(w))
-      : [wall]
-  focusCameraFillOnWalls(focusWalls)
   planStatus.textContent = 'Doppelklick: zurück zur Übersicht'
   return true
 }
 
 /** true, wenn dieser Tap der zweite eines Doppelklicks war und Fokus greift. */
 let objectFocusHandledAt = 0
-function tryObjectFocusDoubleTap(event: { clientX: number; clientY: number }): boolean {
+function tryObjectFocusDoubleTap(
+  event: { clientX: number; clientY: number },
+  prefer?: { wallId: string; openingId?: string },
+): boolean {
   if (!consumeViewportDoubleTap(event.clientX, event.clientY)) return false
-  const ok = applyObjectFocusFromEvent(event)
+  const ok = applyObjectFocusFromEvent(event, prefer)
   if (ok) objectFocusHandledAt = performance.now()
   return ok
 }
@@ -7622,6 +7686,7 @@ function commitDragFromBase(
   status?: string,
 ) {
   if (base) {
+    const before = base
     editHistory.record({
       facade: cloneFacadeState(base),
       editor: {
@@ -7631,6 +7696,8 @@ function commitDragFromBase(
       },
     })
     applyState(state, nextEditor)
+    scheduleShareHashWrite()
+    showScopePropagateOfferIfUseful(before, state, nextEditor, editScope)
   } else {
     commitState(state, nextEditor)
   }
@@ -7952,7 +8019,7 @@ function setCompassYaw(yaw: number) {
   updateViewCompass()
   syncCladdingReceiveShadows()
   if (currentView === 'present') {
-    syncPresentCamera()
+    if (!objectFocusBookmark) syncPresentCamera()
     markViewportDirty()
   } else if (currentView === '3d') {
     orbitCameraToYaw(snapped, getAllWalls(state))
@@ -8745,7 +8812,7 @@ function syncCorniceControls(wall: Wall) {
   rebuildCorniceProfileCards(
     wallCorniceProfileCards,
     profileId,
-    cornice.color ?? wall.profileColor ?? DEFAULT_PROFILE_COLOR,
+    cornice.color ?? wall.wallColor ?? wall.profileColor ?? DEFAULT_PROFILE_COLOR,
     (id) =>
       commitCornicePatch(id ? { enabled: true, profileId: id } : { enabled: false }),
   )
@@ -12454,6 +12521,24 @@ function acceptScopePropagate(toScope: ScopePropagateKind) {
   updateHistoryButtons()
 }
 
+function commitAssignSelectionToScope(toScope: ScopePropagateKind) {
+  const next = assignSelectionPropertiesToScope(state, editor, toScope)
+  if (next === state) {
+    planStatus.textContent = 'Nichts zum Zuweisen'
+    return
+  }
+  editHistory.record(currentSnapshot())
+  applyState(next, editor)
+  scheduleShareHashWrite()
+  planStatus.textContent =
+    toScope === 'type'
+      ? 'Eigenschaften auf Typ zugewiesen'
+      : toScope === 'floor'
+        ? 'Eigenschaften auf Etage zugewiesen'
+        : 'Eigenschaften auf Fassade zugewiesen'
+  updateHistoryButtons()
+}
+
 scopePropagateTypeBtn.addEventListener('click', () => acceptScopePropagate('type'))
 scopePropagateFloorBtn.addEventListener('click', () => acceptScopePropagate('floor'))
 scopePropagateFacadeBtn.addEventListener('click', () => acceptScopePropagate('facade'))
@@ -13428,6 +13513,32 @@ function wallContextItems(
       children: templateItems,
     })
   }
+  items.push({
+    label: 'Zuweisen für',
+    children: [
+      {
+        label: 'Typ',
+        action: () => {
+          ensureWallSelected(wallId)
+          commitAssignSelectionToScope('type')
+        },
+      },
+      {
+        label: 'Etage',
+        action: () => {
+          ensureWallSelected(wallId)
+          commitAssignSelectionToScope('floor')
+        },
+      },
+      {
+        label: 'Fassade',
+        action: () => {
+          ensureWallSelected(wallId)
+          commitAssignSelectionToScope('facade')
+        },
+      },
+    ],
+  })
   if (wall && isStudioWall(wall)) {
     items.push({
       label: 'Drehen',
@@ -13517,6 +13628,32 @@ function openingContextItems(wallId: string, openingId: string): MenuItem[] {
       children: openingTemplateItems,
     })
   }
+  items.push({
+    label: 'Zuweisen für',
+    children: [
+      {
+        label: 'Typ',
+        action: () => {
+          ensureOpeningSelected(wallId, openingId)
+          commitAssignSelectionToScope('type')
+        },
+      },
+      {
+        label: 'Etage',
+        action: () => {
+          ensureOpeningSelected(wallId, openingId)
+          commitAssignSelectionToScope('floor')
+        },
+      },
+      {
+        label: 'Fassade',
+        action: () => {
+          ensureOpeningSelected(wallId, openingId)
+          commitAssignSelectionToScope('facade')
+        },
+      },
+    ],
+  })
   items.push({
     label: 'Löschen',
     danger: true,
@@ -15198,6 +15335,75 @@ function rgbChannelsToHex(r: number, g: number, b: number): string {
   return `#${c(r)}${c(g)}${c(b)}`.toUpperCase()
 }
 
+function rgbToHsvChannels(
+  r: number,
+  g: number,
+  b: number,
+): { h: number; s: number; v: number } {
+  r /= 255
+  g /= 255
+  b /= 255
+  const max = Math.max(r, g, b)
+  const min = Math.min(r, g, b)
+  const d = max - min
+  let h = 0
+  if (d !== 0) {
+    if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6
+    else if (max === g) h = ((b - r) / d + 2) / 6
+    else h = ((r - g) / d + 4) / 6
+  }
+  const s = max === 0 ? 0 : d / max
+  return { h, s, v: max }
+}
+
+function hsvToRgbChannels(
+  h: number,
+  s: number,
+  v: number,
+): { r: number; g: number; b: number } {
+  const i = Math.floor(h * 6)
+  const f = h * 6 - i
+  const p = v * (1 - s)
+  const q = v * (1 - f * s)
+  const t = v * (1 - (1 - f) * s)
+  let r = 0
+  let g = 0
+  let b = 0
+  switch (i % 6) {
+    case 0:
+      r = v
+      g = t
+      b = p
+      break
+    case 1:
+      r = q
+      g = v
+      b = p
+      break
+    case 2:
+      r = p
+      g = v
+      b = t
+      break
+    case 3:
+      r = p
+      g = q
+      b = v
+      break
+    case 4:
+      r = t
+      g = p
+      b = v
+      break
+    default:
+      r = v
+      g = p
+      b = q
+      break
+  }
+  return { r: r * 255, g: g * 255, b: b * 255 }
+}
+
 function rgbToHslChannels(
   r: number,
   g: number,
@@ -15305,6 +15511,9 @@ function renderColorControl(
     __colorPicking?: boolean
     __colorExpanded?: boolean
     __colorOutsideBound?: boolean
+    __colorHsv?: { h: number; s: number; v: number }
+    __colorFieldDragging?: boolean
+    __colorSuppressOutsideUntil?: number
   }
   const host = container as ColorHost
   host.__colorPick = onPick
@@ -15328,6 +15537,7 @@ function renderColorControl(
   const openOverlay = () => {
     beginSession()
     setExpanded(true)
+    host.__colorSuppressOutsideUntil = performance.now() + 400
   }
   const endPick = () => {
     if (host.__colorPicking) {
@@ -15341,6 +15551,7 @@ function renderColorControl(
       'pointerdown',
       (event) => {
         if (!host.__colorExpanded) return
+        if (performance.now() < (host.__colorSuppressOutsideUntil ?? 0)) return
         const target = event.target
         if (target instanceof Node && host.contains(target)) return
         endPick()
@@ -15366,6 +15577,33 @@ function renderColorControl(
     host.appendChild(overlay)
   }
 
+  let fieldPanel = overlay.querySelector<HTMLDivElement>('.color-field-panel')
+  let svMap = overlay.querySelector<HTMLDivElement>('.color-sv-map')
+  let svThumb = overlay.querySelector<HTMLDivElement>('.color-sv-thumb')
+  let hueRange = overlay.querySelector<HTMLInputElement>('.color-hue-range')
+  if (!fieldPanel || !svMap || !svThumb || !hueRange) {
+    fieldPanel = document.createElement('div')
+    fieldPanel.className = 'color-field-panel'
+    svMap = document.createElement('div')
+    svMap.className = 'color-sv-map'
+    svMap.setAttribute('role', 'slider')
+    svMap.setAttribute('aria-label', 'Sättigung und Helligkeit')
+    svThumb = document.createElement('div')
+    svThumb.className = 'color-sv-thumb'
+    svMap.appendChild(svThumb)
+    hueRange = document.createElement('input')
+    hueRange.type = 'range'
+    hueRange.className = 'color-hue-range'
+    hueRange.min = '0'
+    hueRange.max = '360'
+    hueRange.step = '1'
+    hueRange.setAttribute('aria-label', 'Farbton')
+    fieldPanel.append(svMap, hueRange)
+    overlay.insertBefore(fieldPanel, overlay.firstChild)
+  } else if (fieldPanel.parentElement !== overlay) {
+    overlay.insertBefore(fieldPanel, overlay.firstChild)
+  }
+
   let input = host.querySelector<HTMLInputElement>('input[type="color"]')
   let hexInput = host.querySelector<HTMLInputElement>('input.color-hex-input')
   let rgbR = host.querySelector<HTMLInputElement>('input.color-rgb-r')
@@ -15373,9 +15611,18 @@ function renderColorControl(
   let rgbB = host.querySelector<HTMLInputElement>('input.color-rgb-b')
   // Legacy HSL-Zeile ausblenden (HEX/RGB reichen).
   host.querySelector<HTMLDivElement>('.color-channel-row[data-space="hsl"]')?.setAttribute('hidden', '')
-  host.querySelector<HTMLDivElement>('.color-channel-row[data-space="hex"]')?.setAttribute('hidden', '')
 
-  const applyHex = (nextHex: string, preview: boolean) => {
+  const syncFieldUi = (hsv: { h: number; s: number; v: number }) => {
+    host.__colorHsv = hsv
+    const hueDeg = Math.round(hsv.h * 360)
+    const pure = hsvToRgbChannels(hsv.h, 1, 1)
+    svMap!.style.backgroundColor = rgbChannelsToHex(pure.r, pure.g, pure.b)
+    svThumb!.style.left = `${hsv.s * 100}%`
+    svThumb!.style.top = `${(1 - hsv.v) * 100}%`
+    if (document.activeElement !== hueRange) hueRange!.value = String(hueDeg)
+  }
+
+  const applyHex = (nextHex: string, preview: boolean, fromField = false) => {
     const value = nextHex.toUpperCase()
     input!.value = value
     hexInput!.value = value
@@ -15383,11 +15630,21 @@ function renderColorControl(
     rgbR!.value = String(rgb.r)
     rgbG!.value = String(rgb.g)
     rgbB!.value = String(rgb.b)
+    if (!fromField && !host.__colorFieldDragging) {
+      syncFieldUi(rgbToHsvChannels(rgb.r, rgb.g, rgb.b))
+    }
     if (preview) host.__colorPreview?.(value)
     else {
       host.__colorPreview?.(null)
       host.__colorPick?.(value)
     }
+  }
+
+  const applyFromField = (preview: boolean) => {
+    const hsv = host.__colorHsv ?? { h: 0, s: 0, v: 1 }
+    syncFieldUi(hsv)
+    const rgb = hsvToRgbChannels(hsv.h, hsv.s, hsv.v)
+    applyHex(rgbChannelsToHex(rgb.r, rgb.g, rgb.b), preview, true)
   }
 
   if (!input) {
@@ -15399,13 +15656,68 @@ function renderColorControl(
   }
   if (!input.dataset.colorControlBound) {
     input.dataset.colorControlBound = '1'
-    input.addEventListener('pointerdown', openOverlay)
-    input.addEventListener('input', () => {
-      openOverlay()
-      applyHex(input!.value, true)
+    // Swatch öffnet nur das Overlay — kein natives OS-Farb-Dropdown.
+    // Toggle nur auf pointerdown: der folgende click darf nicht sofort wieder schließen.
+    input.addEventListener('pointerdown', (event) => {
+      event.preventDefault()
+      event.stopPropagation()
+      if (host.__colorExpanded) {
+        endPick()
+        setExpanded(false)
+        host.__colorPreview?.(null)
+      } else {
+        openOverlay()
+      }
     })
-    input.addEventListener('change', () => {
-      applyHex(input!.value, false)
+    input.addEventListener('click', (event) => {
+      event.preventDefault()
+      event.stopPropagation()
+    })
+  }
+
+  if (!svMap.dataset.colorFieldBound) {
+    svMap.dataset.colorFieldBound = '1'
+    const pickSv = (clientX: number, clientY: number, preview: boolean) => {
+      const rect = svMap!.getBoundingClientRect()
+      const s = Math.max(0, Math.min(1, (clientX - rect.left) / Math.max(1, rect.width)))
+      const v = Math.max(0, Math.min(1, 1 - (clientY - rect.top) / Math.max(1, rect.height)))
+      const prev = host.__colorHsv ?? { h: 0, s: 0, v: 1 }
+      host.__colorHsv = { h: prev.h, s, v }
+      applyFromField(preview)
+    }
+    svMap.addEventListener('pointerdown', (event) => {
+      openOverlay()
+      host.__colorFieldDragging = true
+      svMap!.setPointerCapture(event.pointerId)
+      pickSv(event.clientX, event.clientY, true)
+    })
+    svMap.addEventListener('pointermove', (event) => {
+      if (!host.__colorFieldDragging) return
+      pickSv(event.clientX, event.clientY, true)
+    })
+    const endSv = (event: PointerEvent) => {
+      if (!host.__colorFieldDragging) return
+      host.__colorFieldDragging = false
+      if (svMap!.hasPointerCapture(event.pointerId)) svMap!.releasePointerCapture(event.pointerId)
+      pickSv(event.clientX, event.clientY, false)
+    }
+    svMap.addEventListener('pointerup', endSv)
+    svMap.addEventListener('pointercancel', endSv)
+  }
+
+  if (!hueRange.dataset.colorFieldBound) {
+    hueRange.dataset.colorFieldBound = '1'
+    hueRange.addEventListener('pointerdown', openOverlay)
+    hueRange.addEventListener('input', () => {
+      openOverlay()
+      const prev = host.__colorHsv ?? { h: 0, s: 0, v: 1 }
+      host.__colorHsv = { h: Number(hueRange!.value) / 360, s: prev.s, v: prev.v }
+      applyFromField(true)
+    })
+    hueRange.addEventListener('change', () => {
+      const prev = host.__colorHsv ?? { h: 0, s: 0, v: 1 }
+      host.__colorHsv = { h: Number(hueRange!.value) / 360, s: prev.s, v: prev.v }
+      applyFromField(false)
     })
   }
 
@@ -15427,7 +15739,16 @@ function renderColorControl(
     return row
   }
 
+  // Overlay: Farbfeld → HEX → RGB → Oberfläche (kein Dropdown, alles direkt).
+  const hexRow = ensureRow('hex', 'HEX')
   const rgbRow = ensureRow('rgb', 'RGB')
+  overlay.insertBefore(fieldPanel, overlay.firstChild)
+  if (hexRow.previousElementSibling !== fieldPanel) {
+    overlay.insertBefore(hexRow, fieldPanel.nextSibling)
+  }
+  if (rgbRow.previousElementSibling !== hexRow) {
+    overlay.insertBefore(rgbRow, hexRow.nextSibling)
+  }
 
   const bindChannelCommit = (el: HTMLInputElement, readHex: () => string | null) => {
     if (el.dataset.colorChannelBound) return
@@ -15453,6 +15774,10 @@ function renderColorControl(
     rgbB = makeColorNumberInput(0, 255, 1)
     rgbB.classList.add('color-rgb-b')
     rgbRow.append(rgbR, rgbG, rgbB)
+  } else {
+    if (rgbR.parentElement !== rgbRow) rgbRow.append(rgbR)
+    if (rgbG.parentElement !== rgbRow) rgbRow.append(rgbG)
+    if (rgbB.parentElement !== rgbRow) rgbRow.append(rgbB)
   }
   const readRgb = () =>
     rgbChannelsToHex(Number(rgbR!.value), Number(rgbG!.value), Number(rgbB!.value))
@@ -15466,9 +15791,13 @@ function renderColorControl(
     hexInput.className = 'color-hex-input'
     hexInput.spellcheck = false
     hexInput.maxLength = 7
-    hexInput.addEventListener('focus', beginSession)
+    hexInput.addEventListener('focus', () => {
+      beginSession()
+      openOverlay()
+    })
     hexInput.addEventListener('input', () => {
       beginSession()
+      openOverlay()
       const raw = hexInput!.value.trim()
       if (/^#[0-9a-fA-F]{6}$/.test(raw)) applyHex(raw, true)
     })
@@ -15477,20 +15806,21 @@ function renderColorControl(
       if (/^#[0-9a-fA-F]{6}$/.test(raw)) applyHex(raw, false)
       else host.__colorPreview?.(null)
     })
-    top.appendChild(hexInput)
-  } else if (hexInput.parentElement !== top) {
-    top.appendChild(hexInput)
+    hexRow.appendChild(hexInput)
+  } else if (hexInput.parentElement !== hexRow) {
+    hexRow.appendChild(hexInput)
   }
 
-  const channelInputs = [input, hexInput, rgbR, rgbG, rgbB]
+  const channelInputs = [input, hexInput, rgbR, rgbG, rgbB, hueRange]
   const channelFocused = channelInputs.some((el) => el && document.activeElement === el)
-  if (!host.__colorPicking && !channelFocused) {
+  if (!host.__colorPicking && !channelFocused && !host.__colorFieldDragging) {
     input.value = hex
     hexInput.value = isTransparent ? 'transparent' : hex
     const rgb = hexToRgbChannels(hex)
     rgbR.value = String(rgb.r)
     rgbG.value = String(rgb.g)
     rgbB.value = String(rgb.b)
+    syncFieldUi(rgbToHsvChannels(rgb.r, rgb.g, rgb.b))
   }
   input.title = isTransparent ? 'Transparent — Farbe wählen zum Einfärben' : hex
   hexInput.title = 'HEX-Farbe (#RRGGBB)'
@@ -15500,6 +15830,9 @@ function renderColorControl(
   rgbR.disabled = disableFields
   rgbG.disabled = disableFields
   rgbB.disabled = disableFields
+  hueRange.disabled = disableFields
+  svMap.style.pointerEvents = disableFields ? 'none' : 'auto'
+  svMap.style.opacity = disableFields ? '0.45' : '1'
   input.style.opacity = isTransparent ? '0.55' : '1'
 
   if (options?.allowTransparent) {
@@ -15631,7 +15964,7 @@ function renderColorSwatches(
 ) {
   void palette
   renderColorControl(container, active, onPick, onPreview, {
-    allowTransparent: active === TRANSPARENT_GLASS || palette === 'glass',
+    allowTransparent: false,
     finish,
   })
 }
@@ -15836,66 +16169,6 @@ function previewGlassColor(color: string): FacadeState {
   return updateWindowGlassColorsForWalls(state, scopedWallIds(), color)
 }
 
-function selectedOpeningGlassSample(): Opening | null {
-  const refs =
-    editor.selectedOpenings.length > 0
-      ? editor.selectedOpenings
-      : selectedWindowOpeningRefs()
-  if (refs.length === 0) return null
-  const wall = getWall(state, refs[0].wallId)
-  return wall?.openings.find((item) => item.id === refs[0].openingId) ?? null
-}
-
-function syncGlassPhysicalControls(visible: boolean) {
-  glassPhysicalSection.hidden = !visible
-  if (!visible) return
-  const opening = selectedOpeningGlassSample()
-  if (!opening) {
-    glassPhysicalSection.hidden = true
-    return
-  }
-  const physical = opening.glassMode === 'physical'
-  glassModePhysical.checked = physical
-  glassPhysicalOptions.hidden = !physical
-  glassIorInput.value = String(opening.glassIor ?? DEFAULT_GLASS_IOR)
-  glassRoughnessInput.value = String(opening.glassRoughness ?? DEFAULT_GLASS_ROUGHNESS)
-  glassTransmissionInput.value = String(opening.glassTransmission ?? DEFAULT_GLASS_TRANSMISSION)
-  glassThicknessInput.value = String(opening.glassThickness ?? DEFAULT_GLASS_THICKNESS_CM)
-}
-
-function commitGlassPhysicalPatch(
-  patch: Partial<
-    Pick<
-      Opening,
-      'glassMode' | 'glassIor' | 'glassRoughness' | 'glassTransmission' | 'glassThickness'
-    >
-  >,
-) {
-  const refs =
-    editor.selectedOpenings.length > 0
-      ? scopedOpeningRefs()
-      : selectedWindowOpeningRefs()
-  if (refs.length === 0) return
-  commitState(updateOpeningGlassSettings(state, refs, patch))
-  syncGlassPhysicalControls(true)
-}
-
-glassModePhysical.addEventListener('change', () => {
-  commitGlassPhysicalPatch({ glassMode: glassModePhysical.checked ? 'physical' : 'tint' })
-  facade.setState(state)
-})
-for (const [input, key] of [
-  [glassIorInput, 'glassIor'],
-  [glassRoughnessInput, 'glassRoughness'],
-  [glassTransmissionInput, 'glassTransmission'],
-  [glassThicknessInput, 'glassThickness'],
-] as const) {
-  input.addEventListener('change', () => {
-    commitGlassPhysicalPatch({ [key]: Number.parseFloat(input.value) })
-    facade.setState(state)
-  })
-}
-
 function activeRevealExteriorColor(): string {
   const refs =
     editor.selectedOpenings.length > 0
@@ -15975,7 +16248,6 @@ function syncOpeningColorSwatches(
 ) {
   if (frameSection) frameSection.hidden = !visible
   if (glassSection) glassSection.hidden = !visible
-  syncGlassPhysicalControls(visible)
   if (!visible) return
   renderColorSwatches(
     frameContainer,
@@ -17646,15 +17918,10 @@ function syncRollerShutterControls() {
 
   const pct = Math.round(shutter.drop * 100)
   rollerShutterDrop.value = String(pct)
-  rollerShutterDropPct.value = String(pct)
   rollerShutterDropLabel.textContent = rollerDropLabel(shutter.drop)
   rollerShutterSlatHeight.value = String(shutter.slatHeightCm ?? 5)
   rollerShutterGap.value = String(shutter.gapCm ?? 0.85)
-  const curve = rollerShutterPhase === 'raise' ? shutter.motion!.raise : shutter.motion!.lower
-  rollerShutterDuration.value = String(curve.durationMs)
-  for (const btn of document.querySelectorAll<HTMLButtonElement>('#roller-shutter-phase-group .preset-btn')) {
-    btn.classList.toggle('active', btn.dataset.rollerPhase === rollerShutterPhase)
-  }
+  rollerShutterMotionEditor?.sync()
   rollerShutterScheduleEditor?.sync()
   renderColorSwatches(
     rollerShutterColorSwatches,
@@ -18515,18 +18782,22 @@ function syncWindowOpenControls(
     openingGlazingArchForm(opening),
     normalizeOpeningArch(opening.arch).riseCm,
   )
-  const key = layout.leaves.map((leaf) => `${leaf.region}-${leaf.index}`).join('|')
+  const leavesUi = [...layout.leaves].sort((a, b) => {
+    if (a.region === b.region) return a.index - b.index
+    return a.region === 'transom' ? -1 : 1
+  })
+  const key = leavesUi.map((leaf) => `${leaf.region}-${leaf.index}`).join('|')
   if (windowOpenGroup.dataset.key !== key) {
     windowOpenGroup.dataset.key = key
     windowOpenGroup.replaceChildren()
-    for (const leaf of layout.leaves) {
+    for (const leaf of leavesUi) {
       const row = document.createElement('label')
       const title = document.createElement('span')
       title.textContent = leafOpenLabel(leaf, config.casements)
       const input = document.createElement('input')
       input.type = 'range'
       input.min = '0'
-      input.max = '80'
+      input.max = '180'
       input.step = '1'
       input.dataset.region = leaf.region
       input.dataset.index = String(leaf.index)
@@ -18582,16 +18853,72 @@ function syncWindowOpenControls(
   }
 }
 
+function bindToolbarStepper(
+  root: HTMLElement,
+  opts: { min: number; onChange: (value: number) => void },
+): { setValue: (value: number) => void; getValue: () => number } {
+  const dec = root.querySelector<HTMLButtonElement>('.toolbar-stepper-dec')!
+  const inc = root.querySelector<HTMLButtonElement>('.toolbar-stepper-inc')!
+  let valueEl = root.querySelector<HTMLInputElement | HTMLOutputElement>('.toolbar-stepper-value')!
+  if (!(valueEl instanceof HTMLInputElement)) {
+    const input = document.createElement('input')
+    input.type = 'number'
+    input.className = 'toolbar-stepper-value'
+    input.min = String(opts.min)
+    input.step = '1'
+    input.value = valueEl.textContent?.trim() || String(opts.min)
+    input.setAttribute('aria-label', root.getAttribute('aria-label') ?? 'Wert')
+    valueEl.replaceWith(input)
+    valueEl = input
+  } else {
+    valueEl.type = 'number'
+    valueEl.min = String(opts.min)
+    valueEl.removeAttribute('max')
+    valueEl.step = '1'
+  }
+  const read = () => {
+    const n = Number(valueEl instanceof HTMLInputElement ? valueEl.value : valueEl.textContent)
+    return Number.isFinite(n) ? Math.round(n) : opts.min
+  }
+  const apply = (raw: number, emit: boolean) => {
+    const next = Math.max(opts.min, Math.round(Number.isFinite(raw) ? raw : opts.min))
+    if (valueEl instanceof HTMLInputElement) valueEl.value = String(next)
+    else valueEl.textContent = String(next)
+    dec.disabled = next <= opts.min
+    inc.disabled = false
+    if (emit) opts.onChange(next)
+  }
+  dec.addEventListener('click', () => apply(read() - 1, true))
+  inc.addEventListener('click', () => apply(read() + 1, true))
+  valueEl.addEventListener('change', () => apply(read(), true))
+  valueEl.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      apply(read(), true)
+      ;(valueEl as HTMLInputElement).blur()
+    }
+  })
+  return {
+    getValue: read,
+    setValue: (value) => apply(value, false),
+  }
+}
+
+function hidePrecedingSubheading(el: Element | null, hidden: boolean) {
+  const prev = el?.previousElementSibling
+  if (prev instanceof HTMLElement && prev.classList.contains('settings-subheading')) {
+    prev.hidden = hidden
+  }
+}
+
 function syncBasementWindowStyleUi(isBasement: boolean) {
-  const casement3 = document.querySelector<HTMLElement>('#window-casement-group [data-casements="3"]')
-  if (casement3) casement3.hidden = isBasement
   const transomLabel = windowTransomInput.closest('label')
   if (transomLabel) transomLabel.hidden = isBasement
+  hidePrecedingSubheading(transomLabel, isBasement)
   if (isBasement) windowTransomOptions.hidden = true
-  const splitVSection = windowSplitVCountButtons[0]?.closest('.toolbar-group')
-  const splitHSection = windowSplitHCountButtons[0]?.closest('.toolbar-group')
-  if (splitVSection) splitVSection.hidden = isBasement
-  if (splitHSection) splitHSection.hidden = isBasement
+  windowSplitVSection.hidden = isBasement
+  windowSplitHSection.hidden = isBasement
+  hidePrecedingSubheading(windowSplitVSection, isBasement)
   const guardSection = document.querySelector<HTMLElement>('#window-guard-section')
   if (guardSection) guardSection.hidden = isBasement
   for (const opt of windowPresetSelect.options) {
@@ -18599,12 +18926,6 @@ function syncBasementWindowStyleUi(isBasement: boolean) {
     opt.hidden =
       isBasement &&
       Boolean(preset && (preset.transom || preset.bottomPanel || preset.casements > 2))
-  }
-  for (const button of windowMuntinVButtons) {
-    button.hidden = isBasement && Number(button.dataset.muntinV) > 1
-  }
-  for (const button of windowMuntinHButtons) {
-    button.hidden = isBasement && Number(button.dataset.muntinH) > 1
   }
 }
 
@@ -18666,25 +18987,29 @@ function syncWindowStyleSection() {
     windowDoorCassettes.value = String(opening.door?.cassetteCount ?? 2)
     windowDoorHandle.checked = opening.door?.handle !== false
     windowDoorLetter.checked = Boolean(opening.door?.letterSlot)
+    windowDoorBottomFrame.checked = Boolean(opening.door?.bottomFrame)
   }
   windowTransomInput.checked = config.transom
   windowTransomOptions.hidden = !config.transom
-  windowTransomRatioInput.value = String(Math.round(config.transomRatio * 100))
-  windowPresetSelect.value = preset
-  for (const button of windowCasementButtons) {
-    button.classList.toggle('active', Number(button.dataset.casements) === config.casements)
+  if (document.activeElement !== windowTransomRatioInput) {
+    windowTransomRatioInput.value = String(Math.round(config.transomRatio * 100))
   }
-  for (const button of windowTransomBarsButtons) {
-    button.classList.toggle('active', button.dataset.transomBars === config.transomBars)
+  windowPresetSelect.value = preset
+  windowCasementStepperCtl.setValue(config.casements)
+  windowTransomSplitVStepperCtl.setValue(config.transomSplitVCount)
+  windowTransomSplitHStepperCtl.setValue(config.transomSplitHCount)
+  windowTransomSplitVRatioGroup.hidden = config.transomSplitVCount !== 2
+  windowTransomSplitHRatioGroup.hidden = config.transomSplitHCount !== 2
+  for (const button of windowTransomSplitVRatioButtons) {
+    button.classList.toggle('active', button.dataset.transomSplitVRatio === config.transomSplitVRatio)
+  }
+  for (const button of windowTransomSplitHRatioButtons) {
+    button.classList.toggle('active', button.dataset.transomSplitHRatio === config.transomSplitHRatio)
   }
   const paneCount = paneCountForSplit(config.splitVCount, config.splitHCount)
   windowPaneSelection = windowPaneSelection.filter((i) => i >= 0 && i < paneCount)
-  for (const button of windowSplitVCountButtons) {
-    button.classList.toggle('active', Number(button.dataset.splitVCount) === config.splitVCount)
-  }
-  for (const button of windowSplitHCountButtons) {
-    button.classList.toggle('active', Number(button.dataset.splitHCount) === config.splitHCount)
-  }
+  windowSplitVStepperCtl.setValue(config.splitVCount)
+  windowSplitHStepperCtl.setValue(config.splitHCount)
   windowSplitVRatioGroup.hidden = config.splitVCount !== 2
   windowSplitHRatioGroup.hidden = config.splitHCount !== 2
   for (const button of windowSplitVRatioButtons) {
@@ -18707,12 +19032,8 @@ function syncWindowStyleSection() {
     config.paneMuntins.length === 0 || config.paneMuntins.every((m) => (m?.v ?? 0) === sample.v)
   const allSameH =
     config.paneMuntins.length === 0 || config.paneMuntins.every((m) => (m?.h ?? 0) === sample.h)
-  for (const button of windowMuntinVButtons) {
-    button.classList.toggle('active', allSameV && Number(button.dataset.muntinV) === sample.v)
-  }
-  for (const button of windowMuntinHButtons) {
-    button.classList.toggle('active', allSameH && Number(button.dataset.muntinH) === sample.h)
-  }
+  windowMuntinVStepperCtl.setValue(allSameV ? sample.v : 0)
+  windowMuntinHStepperCtl.setValue(allSameH ? sample.h : 0)
   windowStylePreview.setAttribute('viewBox', `0 0 ${opening.width} ${opening.height}`)
   windowStylePreview.replaceChildren()
   const styleLayout = layoutGruenderzeitWindow(
@@ -19172,6 +19493,7 @@ interface OpeningMotionPlayback {
 
 let openingMotionPlayback: OpeningMotionPlayback | null = null
 let openingMotionEditor: ReturnType<typeof initOpeningMotionEditor> | null = null
+let rollerShutterMotionEditor: ReturnType<typeof initRollerShutterMotionEditor> | null = null
 
 function leafMotionStartKey(wallId: string, openingId: string, region: string, index: number): string {
   return `${wallId}:${openingId}:${region}:${index}`
@@ -19376,6 +19698,7 @@ function syncRollerShutterStopButton() {
 function stopRollerShutterPlayback(commitDrop: boolean) {
   const playback = rollerShutterPlayback
   rollerShutterPlayback = null
+  rollerShutterMotionEditor?.setPlayhead(null)
   syncRollerShutterStopButton()
   syncSelectionHighlightSuppressed()
   if (!playback) return
@@ -19469,19 +19792,21 @@ function tickRollerShutterPlayback(now: number) {
     facade.applyRollerShutterDrop(ref.wallId, ref.openingId, drop)
   }
   rollerShutterDrop.value = String(Math.round(drop * 100))
-  rollerShutterDropPct.value = String(Math.round(drop * 100))
   rollerShutterDropLabel.textContent = rollerDropLabel(drop)
+  rollerShutterMotionEditor?.setPlayhead(t)
 
   if (t >= 1) {
     if (playback.mode === 'cycle' && playback.phase === 'lower') {
       playback.phase = 'hold'
       playback.targetDrop = 1
       playback.t0 = now
+      rollerShutterMotionEditor?.setPlayhead(null)
       markViewportDirty()
       return
     }
     const finalDrop = playback.targetDrop
     rollerShutterPlayback = null
+    rollerShutterMotionEditor?.setPlayhead(null)
     syncRollerShutterStopButton()
     syncSelectionHighlightSuppressed()
     commitState(updateOpeningRollerShutter(state, playback.refs, { drop: finalDrop }))
@@ -19505,6 +19830,18 @@ openingMotionEditor = initOpeningMotionEditor({
   play: playOpeningMotion,
   stop: () => stopOpeningMotionPlayback(true),
   isPlaying: () => Boolean(openingMotionPlayback),
+})
+
+rollerShutterMotionEditor = initRollerShutterMotionEditor({
+  getOpening: () => selectedWindowOpening()?.opening ?? null,
+  getPhase: () => rollerShutterPhase,
+  setPhase: (phase) => {
+    rollerShutterPhase = phase
+  },
+  commitMotion: (motion) => {
+    commitRollerShutterPatch({ motion })
+  },
+  isPlaying: () => Boolean(rollerShutterPlayback),
 })
 
 const sceneLightScheduleEditor = bindDayScheduleEditor(sceneLightScheduleEl, {
@@ -19689,13 +20026,13 @@ function runDuplicateOpenings(side: 'left' | 'right') {
   }
 }
 
-for (const button of windowCasementButtons) {
-  button.addEventListener('click', () => {
-    const casements = Number(button.dataset.casements) as 1 | 2 | 3
-    if (casements !== 1 && casements !== 2 && casements !== 3) return
-    commitGruenderzeitPatch({ casements })
-  })
-}
+const windowCasementStepperCtl = bindToolbarStepper(windowCasementStepper, {
+  min: 1,
+  onChange: (casements) => {
+    if (!Number.isFinite(casements) || casements < 1) return
+    commitGruenderzeitPatch({ casements: Math.round(casements) })
+  },
+})
 
 windowTransomInput.addEventListener('change', () => {
   commitGruenderzeitPatch(
@@ -19705,21 +20042,97 @@ windowTransomInput.addEventListener('change', () => {
   )
 })
 
-windowTransomRatioInput.addEventListener('input', () => {
-  commitGruenderzeitPatch({ transomRatio: Number(windowTransomRatioInput.value) / 100 })
+windowTransomRatioInput.addEventListener('change', () => {
+  const pct = Number(windowTransomRatioInput.value)
+  const ratio = (Number.isFinite(pct) ? pct : 33) / 100
+  windowTransomRatioInput.value = String(Math.round(ratio * 100))
+  commitGruenderzeitPatch({ transomRatio: ratio })
 })
 
-for (const button of windowTransomBarsButtons) {
+const windowTransomSplitVStepperCtl = bindToolbarStepper(windowTransomSplitVStepper, {
+  min: 1,
+  onChange: (transomSplitVCount) => {
+    if (!isSplitCount(transomSplitVCount)) return
+    const refs = selectedWindowRefsFromEditor()
+    const wall = refs[0] ? getWall(state, refs[0].wallId) : undefined
+    const opening = wall?.openings.find((o) => o.id === refs[0]?.openingId)
+    const current = opening ? gruenderzeitConfigForOpening(opening) : undefined
+    const transomSplitVRatio =
+      transomSplitVCount === 2 ? (current?.transomSplitVRatio ?? '1/1') : '1/1'
+    commitGruenderzeitPatch({
+      transom: true,
+      transomSplitVCount,
+      transomSplitVRatio,
+      transomSplitHCount: current?.transomSplitHCount ?? 1,
+      transomSplitHRatio: current?.transomSplitHRatio ?? '1/1',
+    })
+  },
+})
+
+const windowTransomSplitHStepperCtl = bindToolbarStepper(windowTransomSplitHStepper, {
+  min: 1,
+  onChange: (transomSplitHCount) => {
+    if (!isSplitCount(transomSplitHCount)) return
+    const refs = selectedWindowRefsFromEditor()
+    const wall = refs[0] ? getWall(state, refs[0].wallId) : undefined
+    const opening = wall?.openings.find((o) => o.id === refs[0]?.openingId)
+    if (!opening) return
+    const current = gruenderzeitConfigForOpening(opening)
+    const transomSplitHRatio =
+      transomSplitHCount === 2 ? current.transomSplitHRatio : '1/1'
+    commitGruenderzeitPatch({
+      transom: true,
+      transomSplitVCount: current.transomSplitVCount,
+      transomSplitVRatio: current.transomSplitVRatio,
+      transomSplitHCount,
+      transomSplitHRatio,
+    })
+  },
+})
+
+for (const button of windowTransomSplitVRatioButtons) {
   button.addEventListener('click', () => {
-    const transomBars = button.dataset.transomBars as GruenderzeitTransomBars
-    if (transomBars !== 'none' && transomBars !== 'match' && transomBars !== 'cross') return
-    commitGruenderzeitPatch({ transom: true, transomBars })
+    const transomSplitVRatio = button.dataset.transomSplitVRatio
+    if (!isBinaryRatio(transomSplitVRatio)) return
+    const refs = selectedWindowRefsFromEditor()
+    const wall = refs[0] ? getWall(state, refs[0].wallId) : undefined
+    const opening = wall?.openings.find((o) => o.id === refs[0]?.openingId)
+    if (!opening) return
+    const current = gruenderzeitConfigForOpening(opening)
+    if (current.transomSplitVCount !== 2) return
+    commitGruenderzeitPatch({
+      transom: true,
+      transomSplitVCount: current.transomSplitVCount,
+      transomSplitVRatio,
+      transomSplitHCount: current.transomSplitHCount,
+      transomSplitHRatio: current.transomSplitHRatio,
+    })
   })
 }
 
-for (const button of windowSplitVCountButtons) {
+for (const button of windowTransomSplitHRatioButtons) {
   button.addEventListener('click', () => {
-    const splitVCount = Number(button.dataset.splitVCount)
+    const transomSplitHRatio = button.dataset.transomSplitHRatio
+    if (!isBinaryRatio(transomSplitHRatio)) return
+    const refs = selectedWindowRefsFromEditor()
+    const wall = refs[0] ? getWall(state, refs[0].wallId) : undefined
+    const opening = wall?.openings.find((o) => o.id === refs[0]?.openingId)
+    if (!opening) return
+    const current = gruenderzeitConfigForOpening(opening)
+    if (current.transomSplitHCount !== 2) return
+    commitGruenderzeitPatch({
+      transom: true,
+      transomSplitVCount: current.transomSplitVCount,
+      transomSplitVRatio: current.transomSplitVRatio,
+      transomSplitHCount: current.transomSplitHCount,
+      transomSplitHRatio,
+    })
+  })
+}
+
+const windowSplitVStepperCtl = bindToolbarStepper(windowSplitVStepper, {
+  min: 1,
+  onChange: (splitVCount) => {
     if (!isSplitCount(splitVCount)) return
     const refs = selectedWindowRefsFromEditor()
     const wall = refs[0] ? getWall(state, refs[0].wallId) : undefined
@@ -19739,12 +20152,12 @@ for (const button of windowSplitVCountButtons) {
         h: 0,
       })),
     })
-  })
-}
+  },
+})
 
-for (const button of windowSplitHCountButtons) {
-  button.addEventListener('click', () => {
-    const splitHCount = Number(button.dataset.splitHCount)
+const windowSplitHStepperCtl = bindToolbarStepper(windowSplitHStepper, {
+  min: 1,
+  onChange: (splitHCount) => {
     if (!isSplitCount(splitHCount)) return
     const refs = selectedWindowRefsFromEditor()
     const wall = refs[0] ? getWall(state, refs[0].wallId) : undefined
@@ -19763,8 +20176,8 @@ for (const button of windowSplitHCountButtons) {
         () => ({ v: 0, h: 0 }),
       ),
     })
-  })
-}
+  },
+})
 
 for (const button of windowSplitVRatioButtons) {
   button.addEventListener('click', () => {
@@ -19821,10 +20234,10 @@ for (const button of windowPanelRatioButtons) {
   })
 }
 
-for (const button of windowMuntinVButtons) {
-  button.addEventListener('click', () => {
-    const v = Number(button.dataset.muntinV) as 0 | 1 | 2
-    if (v !== 0 && v !== 1 && v !== 2) return
+const windowMuntinVStepperCtl = bindToolbarStepper(windowMuntinVStepper, {
+  min: 0,
+  onChange: (vRaw) => {
+    const v = Math.max(0, Math.round(vRaw))
     const refs = selectedWindowRefsFromEditor()
     const wall = refs[0] ? getWall(state, refs[0].wallId) : undefined
     const opening = wall?.openings.find((o) => o.id === refs[0]?.openingId)
@@ -19842,13 +20255,13 @@ for (const button of windowMuntinVButtons) {
       splitHRatio: current.splitHRatio,
       paneMuntins,
     })
-  })
-}
+  },
+})
 
-for (const button of windowMuntinHButtons) {
-  button.addEventListener('click', () => {
-    const h = Number(button.dataset.muntinH) as 0 | 1 | 2
-    if (h !== 0 && h !== 1 && h !== 2) return
+const windowMuntinHStepperCtl = bindToolbarStepper(windowMuntinHStepper, {
+  min: 0,
+  onChange: (hRaw) => {
+    const h = Math.max(0, Math.round(hRaw))
     const refs = selectedWindowRefsFromEditor()
     const wall = refs[0] ? getWall(state, refs[0].wallId) : undefined
     const opening = wall?.openings.find((o) => o.id === refs[0]?.openingId)
@@ -19866,8 +20279,8 @@ for (const button of windowMuntinHButtons) {
       splitHRatio: current.splitHRatio,
       paneMuntins,
     })
-  })
-}
+  },
+})
 
 windowPresetSelect.addEventListener('change', () => {
   const id = windowPresetSelect.value as GruenderzeitPresetId
@@ -19884,6 +20297,10 @@ windowPresetSelect.addEventListener('change', () => {
     splitVRatio: '1/1',
     splitHCount: 1,
     splitHRatio: '1/1',
+    transomSplitVCount: 1,
+    transomSplitVRatio: '1/1',
+    transomSplitHCount: 1,
+    transomSplitHRatio: '1/1',
     paneMuntins: [{ v: 0, h: 0 }],
     sashBarsH: 0,
     sashBarsV: 0,
@@ -20049,12 +20466,14 @@ function commitDoorExtras() {
       cassetteCount: Number(windowDoorCassettes.value) as 1 | 2 | 3 | 4,
       handle: windowDoorHandle.checked,
       letterSlot: windowDoorLetter.checked,
+      bottomFrame: windowDoorBottomFrame.checked,
     }),
   })
 }
 windowDoorCassettes.addEventListener('change', commitDoorExtras)
 windowDoorHandle.addEventListener('change', commitDoorExtras)
 windowDoorLetter.addEventListener('change', commitDoorExtras)
+windowDoorBottomFrame.addEventListener('change', commitDoorExtras)
 
 wallModuleSelect.addEventListener('change', () => {
   const moduleName = wallModuleSelect.value
@@ -20205,7 +20624,7 @@ pedimentFormCards.addEventListener('click', (event) => {
   commitOpeningPedimentPatch({
     enabled: true,
     form,
-    ...(pedimentFormIsClosed(form) ? { sideArmWidth: 0 } : {}),
+    ...(pedimentFormIsClosed(form) ? { sideArmWidth: 0, sealedBack: true } : {}),
   })
   syncPedimentControls()
 })
@@ -20833,7 +21252,6 @@ rollerShutterEnabled.addEventListener('change', () => {
 function setRollerDropFromUi(pct: number, live: boolean) {
   const drop = Math.max(0, Math.min(1, pct / 100))
   rollerShutterDrop.value = String(Math.round(drop * 100))
-  rollerShutterDropPct.value = String(Math.round(drop * 100))
   rollerShutterDropLabel.textContent = rollerDropLabel(drop)
   commitRollerShutterPatch({ drop }, { liveDrop: live })
 }
@@ -20843,9 +21261,6 @@ rollerShutterDrop.addEventListener('input', () => {
 })
 rollerShutterDrop.addEventListener('change', () => {
   setRollerDropFromUi(Number(rollerShutterDrop.value), false)
-})
-rollerShutterDropPct.addEventListener('change', () => {
-  setRollerDropFromUi(Number(rollerShutterDropPct.value), false)
 })
 rollerShutterFinish.addEventListener('change', () => {
   commitRollerShutterPatch({
@@ -20858,36 +21273,6 @@ rollerShutterSlatHeight.addEventListener('change', () => {
 rollerShutterGap.addEventListener('change', () => {
   commitRollerShutterPatch({ gapCm: Number(rollerShutterGap.value) })
 })
-rollerShutterDuration.addEventListener('change', () => {
-  const durationMs = Math.max(80, Math.round(Number(rollerShutterDuration.value) || 1800))
-  const sel = selectedWindowOpening()
-  if (!sel) return
-  const shutter = normalizeOpeningRollerShutter(sel.opening.rollerShutter)
-  if (rollerShutterPhase === 'raise') {
-    commitRollerShutterPatch({
-      motion: { raise: { ...shutter.motion!.raise, durationMs }, lower: shutter.motion!.lower },
-    })
-  } else {
-    commitRollerShutterPatch({
-      motion: { raise: shutter.motion!.raise, lower: { ...shutter.motion!.lower, durationMs } },
-    })
-  }
-})
-for (const btn of document.querySelectorAll<HTMLButtonElement>('#roller-shutter-phase-group .preset-btn')) {
-  btn.addEventListener('click', () => {
-    const phase = btn.dataset.rollerPhase
-    if (phase !== 'raise' && phase !== 'lower') return
-    rollerShutterPhase = phase
-    syncRollerShutterControls()
-  })
-}
-for (const btn of document.querySelectorAll<HTMLButtonElement>('#roller-shutter-preset-group .preset-btn')) {
-  btn.addEventListener('click', () => {
-    const id = btn.dataset.rollerPreset
-    if (id !== 'soft' && id !== 'linear') return
-    commitRollerShutterPatch({ motion: rollerShutterMotionPreset(id) })
-  })
-}
 rollerShutterPlayLower.addEventListener('click', () => playRollerShutter('lower'))
 rollerShutterPlayRaise.addEventListener('click', () => playRollerShutter('raise'))
 rollerShutterPlayCycle.addEventListener('click', () => playRollerShutter('cycle'))
@@ -21353,6 +21738,9 @@ let drag3dMoved = false
 let drag3dOpening: { wallId: string; openingId: string } | null = null
 let drag3dStartOpeningX = 0
 let drag3dStartOpeningY = 0
+/** Client-Start für Öffnungs-Drag — Schwelle 6 px, damit Doppelklick nicht als Zug gilt. */
+let drag3dOpeningStartClientX = 0
+let drag3dOpeningStartClientY = 0
 let drag3dWallPlane: THREE.Plane | null = null
 let drag3dWallCenterX = 0
 let drag3dWallCenterZ = 0
@@ -22019,6 +22407,8 @@ canvas.addEventListener('pointerdown', (event) => {
       drag3dOpening = { wallId: hit.wallId, openingId: hit.openingId }
       setup3dDragForWall(wall, opening)
       drag3dStartLocalHit = pick3dLocal(event) ?? { x: opening.x, y: opening.y }
+      drag3dOpeningStartClientX = event.clientX
+      drag3dOpeningStartClientY = event.clientY
       drag3dMoved = false
       const alreadySelected3d = editor.selectedOpenings.some(
         (r) => r.wallId === hit.wallId && r.openingId === hit.openingId,
@@ -22499,6 +22889,11 @@ canvas.addEventListener('pointermove', (event) => {
   }
 
   if (isSceneEditView() && drag3dOpening) {
+    const dist2 =
+      (event.clientX - drag3dOpeningStartClientX) ** 2 +
+      (event.clientY - drag3dOpeningStartClientY) ** 2
+    // Wie Wand-Drag: unter 6 px noch Klick/Doppelklick, kein Verschieben.
+    if (!drag3dMoved && dist2 < 36) return
     drag3dMoved = true
     const wall = getWall(state, drag3dOpening.wallId)
     if (wall) {
@@ -22541,7 +22936,14 @@ canvas.addEventListener('dblclick', (event) => {
   // Fallback: wenn die Browser-Click-Sequenz doch ankommt (ohne Pointer-Capture).
   // Nach manuellem Doppel-Tap auf pointerup nicht nochmal ausführen (sonst Fokus→sofort Übersicht).
   if (event.button !== 0) return
-  if (currentView !== '3d' && currentView !== 'front' && currentView !== 'top') return
+  if (
+    currentView !== '3d' &&
+    currentView !== 'present' &&
+    currentView !== 'front' &&
+    currentView !== 'top'
+  ) {
+    return
+  }
   if (performance.now() - objectFocusHandledAt < 500) return
   event.preventDefault()
   applyObjectFocusFromEvent(event)
@@ -22725,14 +23127,18 @@ canvas.addEventListener('pointerup', (event) => {
   }
 
   if (isSceneEditView() && drag3dOpening) {
-    if (!drag3dMoved && drag3dPendingSelect) {
-      selectOpening(
-        drag3dPendingSelect.wallId,
-        drag3dPendingSelect.openingId,
-        drag3dPendingSelect.shiftKey,
-        drag3dPendingSelect.openingPart,
-      )
-      if (tryObjectFocusDoubleTap(event)) {
+    const focusPrefer = { wallId: drag3dOpening.wallId, openingId: drag3dOpening.openingId }
+    if (!drag3dMoved) {
+      if (drag3dPendingSelect) {
+        selectOpening(
+          drag3dPendingSelect.wallId,
+          drag3dPendingSelect.openingId,
+          drag3dPendingSelect.shiftKey,
+          drag3dPendingSelect.openingPart,
+        )
+      }
+      // Auch ohne pending: Tap für Doppelklick-Zoom registrieren (erste Auswahl auf pointerdown).
+      if (tryObjectFocusDoubleTap(event, focusPrefer)) {
         drag3dPendingSelect = null
         drag3dMoved = false
         facade.clearOpeningGuides()
@@ -22994,7 +23400,7 @@ function setView(mode: AppView) {
   if (mode === 'present') {
     updateGroundPlane()
     ensureDefaultElevation()
-    syncPresentCamera()
+    if (!objectFocusBookmark) syncPresentCamera()
   }
 
   if (mode === '3d') {
@@ -25342,7 +25748,8 @@ function resizeCanvasView() {
     if (currentRenderStyle === 'line') {
       facade.setLineResolution(width, height)
     }
-    if (currentView === 'present') syncPresentCamera()
+    // Objekt-Fokus (Doppelklick) nicht durch Toolbar-Resize zurücksetzen.
+    if (currentView === 'present' && !objectFocusBookmark) syncPresentCamera()
     markViewportDirty()
   }
 }
@@ -25530,7 +25937,7 @@ function animate() {
     ) {
       facade.updatePerformanceLod(camera, viewportRenderHeight())
     }
-    if (currentView === 'present') syncPresentCamera()
+    if (currentView === 'present' && !objectFocusBookmark) syncPresentCamera()
     render3dFrame()
     perfRendered = true
     updateViewCompass()
@@ -26873,6 +27280,10 @@ function initOpeningTemplateUi() {
         splitVRatio: '1/1',
         splitHCount: 1,
         splitHRatio: '1/1',
+        transomSplitVCount: 1,
+        transomSplitVRatio: '1/1',
+        transomSplitHCount: 1,
+        transomSplitHRatio: '1/1',
         paneMuntins: [{ v: 0, h: 0 }],
         sashBarsH: 0,
         sashBarsV: 0,

@@ -157,7 +157,9 @@ export function normalizeOpeningPediment(
     ),
     gableWidth: snapPedimentMeasure(raw?.gableWidth ?? 0, 0, GABLE_WIDTH_MAX),
     sideArmWidth: snapPedimentMeasure(raw?.sideArmWidth ?? 0, 0, OVERHANG_MAX),
-    sealedBack: Boolean(raw?.sealedBack),
+    sealedBack: pedimentFormIsClosed(normalizeForm(raw?.form))
+      ? raw?.sealedBack !== false
+      : Boolean(raw?.sealedBack),
     scale:
       Number.isFinite(raw?.scale) && (raw?.scale as number) > 0
         ? Math.min(4, Math.max(0.25, raw!.scale!))

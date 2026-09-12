@@ -19,7 +19,7 @@ Toolbar **Maße** (Auszug):
 | Steuerung | Verhalten |
 |---|---|
 | Breite / Höhe / Position | **Verschieben (v2.0.302):** Drag / Pfeile / Position-Felder immer **8-cm-Raster** (`STUDIO_MASONRY`) — auch bei Läuferverband (früher Fuge/Steinmitte → oft 12/24-cm-Sprünge). **Maße / Align:** weiterhin Fugen-Kandidaten (`alignOpeningToMasonry`, Breiten-Snap). Bei Zwei-Bändern Modul der Zone an Öffnungsmitte-Y für Align. Abstand zwischen Öffnungen 32 cm; kein Pflicht-Randabstand zur Wandkante. **v2.0.156:** Ghost, orangefarbene Auswahl und Hilfslinien teilen dieselbe Maske (`openingForShellCut` + `openingWallFaceMaskPolyline`) und dieselbe Fassadentiefe (`OPENING_DRAG_FLOAT_CM` = 4 cm); Pick-Ebene = Overlay-Z. **v2.0.211–213:** Einfügen/Verschieben hält Bibliotheksbreite; explizite Breiten-Eingabe hält die Sollbreite (kein Aufblasen auf Fugen-Spannweite). UI `#opening-width-dir-*` **nach links** / **nach rechts** (rechte bzw. linke Kante fest). Abstandslabels nur zu Nachbarn mit Y-/X-Überlappung. **v2.0.294:** Y-Snap und Wandflächen-Raster am Erker mit Skirt nutzen `allWalls` (`bayWallSkirtDropCm`) — Schichten wie Paneele. Dateien: `openingPanelSnap.ts`, `openingGuides.ts`, `placementGrid.ts`, `openings.ts`, `main.ts` |
-| Fenstertiefe | UI **Frontlage (cm von Außenkante)** unter Maße; speichert `Opening.depthOffset` pro Öffnung (Gültigkeitsbereich). Fehlt → `Building.windowDepthOffset`. Standard **32 cm** (Laibung 24 cm + Offset 8, v2.0.188) |
+| Fenstertiefe | UI **Vertikaler Versatz** (`#opening-window-depth-offset`, Info: cm von Außenkante) unter Maße; speichert `Opening.depthOffset` pro Öffnung (Gültigkeitsbereich). Fehlt → `Building.windowDepthOffset`. Standard **32 cm** (Laibung 24 cm + Offset 8, v2.0.188) |
 | Öffnungsart | Fenster/Tür: durchgehend · Wandfläche (bündig) · Nische. Cutout: Durchbruch oder Nische (+ Tiefe). Konche: immer Kalotte, Tiefe steuerbar. **v2.0.123:** Nische lichtdicht — Shadow-Tunnel-Kappen. **v2.0.127 / v2.0.130:** Nischenwände EnvMap wie Innenwand, kein Selbstwurf. **v2.0.133:** Bei Nischentiefe **größer als Wanddicke** Tunnel bis hinter die Rückwand (keine Mittelkappe an der Innenkante); Nischen empfangen wieder Sonne-/Punktlicht-Schatten |
 | In Wand eingebettet | `revealFrame.enabled` → kein Wandloch, kein Rahmen/Glas; Bänke/Profile/Bogen/Verdachung bleiben. Nicht bei Cutouts |
 | Freiraum | `panelClearance`: Abstand in ganzen cm, Tiefe +/−/0; optional `finish: 'taper'` nur mit Paneelen. **v2.0.256:** Freiraum-Kappe empfängt Werfschatten, wirft selbst keine. **v2.0.257:** kein Gegenlicht-Shade auf der Cap — Erker-Seitenfenster bleiben hell lesbar. **v2.0.258:** Kontakt-Schatten unter Fensterbänken wieder geschlossen (PCSS Contact-Hardening; unabhängig von Freiraum-Cast). |
@@ -52,9 +52,9 @@ Fenster und Türen, **nicht** Kellerfenster. Unabhängig von `wall.profiles`.
 | `gableHeight` | 24 cm | First (bei Gerade ausgeblendet) |
 | `gableWidth` | 0 (= auto) | Giebelbreite; 0 → Öffnung + 2× Überstand |
 | `sideArmWidth` | 0 | Horizontale links/rechts (nur offene Formen) |
-| `sealedBack` | aus | Geschlossene Formen: Tympanon rückseitig verschließen |
+| `sealedBack` | **an** bei `triangleClosed`/`segmentClosed` | Geschlossene Formen: Tympanon rückseitig verschließen (wandseitig zu) |
 | `extentOutCm` / `extentForwardCm` | auto | Querschnitt cm |
-| `offsetUp` | 0 | −96…96, 8er; + über Sturz, − nach unten; plus Auto-Anhebung über Sturzprofil |
+| `offsetUp` | 0 | −96…96, 8er; + über Sturz, − nach unten; plus Auto-Anhebung über Sturzprofil **und** (bei geschlossenen Formen) Verdachungs-Profilhöhe |
 | `offsetForward` | 0 | Tiefe |
 | `consoles` | aus | unter den Enden; Default 16×8×64 cm |
 

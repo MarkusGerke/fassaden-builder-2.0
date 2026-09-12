@@ -478,7 +478,7 @@ export function alignOpeningToMasonry(
   wall: Wall,
   allWalls: Wall[],
   opening: Pick<Opening, 'x' | 'y' | 'width' | 'height' | 'type' | 'stairs'>,
-  opts?: { snapWidth?: boolean; snapHeight?: boolean; snapY?: boolean },
+  opts?: { snapWidth?: boolean; snapHeight?: boolean; snapY?: boolean; snapX?: boolean },
 ): OpeningMasonrySnapResult {
   let { x, y, width, height } = opening
   if (!wallUsesOpeningMasonrySnap(wall)) {
@@ -490,17 +490,21 @@ export function alignOpeningToMasonry(
   // Default true (explizites „An Fugen“ / Alt-Migration). Neu platzieren: snapY false —
   // sonst wandert WINDOW_SILL_Y=128 auf Schichtmitte/Wandmitte (448 cm: Mitte≡128, andere Höhen falsch).
   const snapY = opts?.snapY !== false
+  // Default true. Höhen-only-Edit: snapX false — sonst springt X auf die nächste Flush-Laibung.
+  const snapX = opts?.snapX !== false
 
   // Explizite Breitenänderung (snapWidth): Sollbreite halten — nicht auf nächste Fugen-Spannweite
   // aufblasen (96→100/104). Nur Position so wählen, dass möglichst beide Laibungen auf Fugen liegen.
 
   // Sollbreite halten: Positionen bevorzugen, bei denen beide Laibungen auf Fugen liegen.
-  const flushXs = openingFlushWidthPlacementXs(wall, allWalls, width, atY)
-  const xs =
-    flushXs.length > 0
-      ? flushXs
-      : openingPlacementCandidateXs(wall, allWalls, width, atY, 'full')
-  if (xs.length > 0) x = nearestPlacementX(xs, x, width, wall.width)
+  if (snapX) {
+    const flushXs = openingFlushWidthPlacementXs(wall, allWalls, width, atY)
+    const xs =
+      flushXs.length > 0
+        ? flushXs
+        : openingPlacementCandidateXs(wall, allWalls, width, atY, 'full')
+    if (xs.length > 0) x = nearestPlacementX(xs, x, width, wall.width)
+  }
 
   const lockY = opening.type === 'door' && Boolean(opening.stairs?.enabled)
   if (!lockY && snapY) {

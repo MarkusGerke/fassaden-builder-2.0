@@ -1,18 +1,19 @@
-import type { MotionEase, MotionCurve, Opening, OpeningMotion } from '../types/facade'
+import type { MotionEase, MotionCurve, Opening, OpeningRollerShutter } from '../types/facade'
 import {
   MOTION_V_MAX,
   MOTION_V_MIN,
   deleteMotionKey,
   insertMotionKey,
-  motionPresetById,
   moveMotionKey,
-  openingMotionFromOpening,
-  openingMotionToDataset,
-  parseOpeningMotionDataset,
-  patchOpeningMotionCurve,
+  normalizeMotionCurve,
   sampleMotionCurve,
   setMotionKeyEase,
 } from '../utils/openingMotion'
+import {
+  normalizeOpeningRollerShutter,
+  rollerShutterMotionPreset,
+  type RollerShutterMotionPreset,
+} from '../studio/rollerShutter'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 const VIEW_W = 280
@@ -22,11 +23,13 @@ const PAD_R = 10
 const PAD_T = 10
 const PAD_B = 24
 
-export interface OpeningMotionEditorHost {
+export type RollerMotionPhase = 'raise' | 'lower'
+
+export interface RollerShutterMotionEditorHost {
   getOpening(): Opening | null
-  commitMotion(motion: OpeningMotion): void
-  play(mode: 'open' | 'close' | 'cycle'): void
-  stop(): void
+  getPhase(): RollerMotionPhase
+  setPhase(phase: RollerMotionPhase): void
+  commitMotion(motion: NonNullable<OpeningRollerShutter['motion']>): void
   isPlaying(): boolean
 }
 
@@ -52,7 +55,10 @@ function yToV(y: number): number {
   return MOTION_V_MIN + u * (MOTION_V_MAX - MOTION_V_MIN)
 }
 
-function svgEl<K extends keyof SVGElementTagNameMap>(name: K, attrs: Record<string, string | number> = {}): SVGElementTagNameMap[K] {
+function svgEl<K extends keyof SVGElementTagNameMap>(
+  name: K,
+  attrs: Record<string, string | number> = {},
+): SVGElementTagNameMap[K] {
   const node = document.createElementNS(SVG_NS, name)
   for (const [key, value] of Object.entries(attrs)) {
     node.setAttribute(key, String(value))
@@ -70,46 +76,44 @@ function clientToSvg(svg: SVGSVGElement, clientX: number, clientY: number): { x:
   return { x: mapped.x, y: mapped.y }
 }
 
-export function initOpeningMotionEditor(host: OpeningMotionEditorHost): {
+function patchPhaseCurve(
+  motion: NonNullable<OpeningRollerShutter['motion']>,
+  phase: RollerMotionPhase,
+  curve: MotionCurve,
+): NonNullable<OpeningRollerShutter['motion']> {
+  const fallback = phase === 'raise' ? motion.raise : motion.lower
+  const next = normalizeMotionCurve(curve, fallback)
+  return phase === 'raise'
+    ? { raise: next, lower: motion.lower }
+    : { raise: motion.raise, lower: next }
+}
+
+export function initRollerShutterMotionEditor(host: RollerShutterMotionEditorHost): {
   sync: () => void
   setPlayhead: (t: number | null) => void
 } {
-  const section = el<HTMLDivElement>('opening-motion-section')
-  const svg = document.querySelector<SVGSVGElement>('#opening-motion-curve')
-  const durationInput = el<HTMLInputElement>('opening-motion-duration')
-  const holdInput = el<HTMLInputElement>('opening-motion-hold')
-  const holdWrap = el<HTMLElement>('opening-motion-hold-wrap')
-  const maxDegInput = el<HTMLInputElement>('opening-motion-maxdeg')
-  const datasetArea = el<HTMLTextAreaElement>('opening-motion-dataset')
-  const statusEl = el<HTMLParagraphElement>('opening-motion-status')
-  const deleteBtn = el<HTMLButtonElement>('opening-motion-delete-key')
-  const stopBtn = el<HTMLButtonElement>('opening-motion-stop')
-  const keyOptions = el<HTMLDivElement>('opening-motion-key-options')
+  const svg = document.querySelector<SVGSVGElement>('#roller-shutter-motion-curve')
+  const durationInput = el<HTMLInputElement>('roller-shutter-duration')
+  const deleteBtn = el<HTMLButtonElement>('roller-shutter-delete-key')
+  const keyOptions = el<HTMLDivElement>('roller-shutter-key-options')
 
-  let phase: 'open' | 'close' = 'open'
   let selectedIndex = 0
   let playheadT: number | null = null
+  let draft: NonNullable<OpeningRollerShutter['motion']> | null = null
   let dragIndex: number | null = null
-  let draft: OpeningMotion | null = null
 
-  function setStatus(message: string, show: boolean) {
-    if (!statusEl) return
-    statusEl.textContent = message
-    statusEl.hidden = !show
-  }
-
-  function currentMotion(): OpeningMotion | null {
+  function currentMotion(): NonNullable<OpeningRollerShutter['motion']> | null {
     if (draft) return draft
     const opening = host.getOpening()
-    if (!opening || (opening.type !== 'window' && opening.type !== 'door')) return null
-    return openingMotionFromOpening(opening)
+    if (!opening) return null
+    return normalizeOpeningRollerShutter(opening.rollerShutter).motion!
   }
 
-  function currentCurve(motion: OpeningMotion): MotionCurve {
-    return phase === 'close' ? motion.close : motion.open
+  function currentCurve(motion: NonNullable<OpeningRollerShutter['motion']>): MotionCurve {
+    return host.getPhase() === 'raise' ? motion.raise : motion.lower
   }
 
-  function commit(motion: OpeningMotion) {
+  function commit(motion: NonNullable<OpeningRollerShutter['motion']>) {
     draft = null
     host.commitMotion(motion)
   }
@@ -121,14 +125,15 @@ export function initOpeningMotionEditor(host: OpeningMotionEditorHost): {
     if (!motion) return
     const curve = currentCurve(motion)
 
-    const plotBg = svgEl('rect', {
-      x: PAD_L,
-      y: PAD_T,
-      width: VIEW_W - PAD_L - PAD_R,
-      height: VIEW_H - PAD_T - PAD_B,
-      fill: '#fafafa',
-    })
-    svg.appendChild(plotBg)
+    svg.appendChild(
+      svgEl('rect', {
+        x: PAD_L,
+        y: PAD_T,
+        width: VIEW_W - PAD_L - PAD_R,
+        height: VIEW_H - PAD_T - PAD_B,
+        fill: '#fafafa',
+      }),
+    )
 
     for (const v of [0, 1]) {
       const y = vToY(v)
@@ -149,7 +154,7 @@ export function initOpeningMotionEditor(host: OpeningMotionEditorHost): {
         'font-size': 9,
         fill: '#666',
       })
-      label.textContent = v === 1 ? 'offen' : 'zu'
+      label.textContent = v === 1 ? 'Ende' : 'Start'
       svg.appendChild(label)
     }
 
@@ -182,18 +187,15 @@ export function initOpeningMotionEditor(host: OpeningMotionEditorHost): {
     }
 
     curve.keys.forEach((key, index) => {
-      const cx = tToX(key.t)
-      const cy = vToY(key.v)
       const selected = index === selectedIndex
       svg.appendChild(
         svgEl('circle', {
-          cx,
-          cy,
+          cx: tToX(key.t),
+          cy: vToY(key.v),
           r: selected ? 6 : 4.5,
           fill: selected ? '#1d4ed8' : '#fff',
           stroke: '#1d4ed8',
           'stroke-width': selected ? 2 : 1.4,
-          'data-key-index': index,
         }),
       )
     })
@@ -209,44 +211,30 @@ export function initOpeningMotionEditor(host: OpeningMotionEditorHost): {
     svg.appendChild(axis)
   }
 
-  function syncFields(motion: OpeningMotion) {
+  function syncFields(motion: NonNullable<OpeningRollerShutter['motion']>) {
     const curve = currentCurve(motion)
+    const phase = host.getPhase()
     if (durationInput && document.activeElement !== durationInput) {
-      durationInput.value = String(curve.durationMs)
+      durationInput.value = String(Math.round((curve.durationMs / 1000) * 10) / 10)
     }
-    if (holdInput && document.activeElement !== holdInput) {
-      holdInput.value = String(motion.open.holdMs ?? 0)
+    for (const btn of document.querySelectorAll<HTMLButtonElement>('#roller-shutter-phase-group .preset-btn')) {
+      btn.classList.toggle('active', btn.dataset.rollerPhase === phase)
     }
-    if (maxDegInput && document.activeElement !== maxDegInput) {
-      maxDegInput.value = String(motion.maxDeg)
-    }
-    if (holdWrap) holdWrap.hidden = phase !== 'open'
     if (keyOptions) {
       const canDelete = selectedIndex > 0 && selectedIndex < curve.keys.length - 1
       if (deleteBtn) deleteBtn.hidden = !canDelete
     }
-    for (const btn of document.querySelectorAll<HTMLButtonElement>('#opening-motion-phase-group .preset-btn')) {
-      btn.classList.toggle('active', btn.dataset.motionPhase === phase)
-    }
     const ease = curve.keys[selectedIndex]?.ease ?? 'smooth'
-    for (const btn of document.querySelectorAll<HTMLButtonElement>('#opening-motion-ease-group .preset-btn')) {
-      btn.classList.toggle('active', btn.dataset.motionEase === ease)
+    for (const btn of document.querySelectorAll<HTMLButtonElement>('#roller-shutter-ease-group .preset-btn')) {
+      btn.classList.toggle('active', btn.dataset.rollerEase === ease)
     }
-    if (datasetArea && document.activeElement !== datasetArea) {
-      const opening = host.getOpening()
-      const preset = opening?.type === 'door' ? 'door' : 'window'
-      datasetArea.value = JSON.stringify(openingMotionToDataset(motion, preset), null, 2)
-    }
-    if (stopBtn) stopBtn.hidden = !host.isPlaying()
   }
 
   function hitKey(curve: MotionCurve, x: number, y: number): number {
     let best = -1
     let bestDist = 10
     curve.keys.forEach((key, index) => {
-      const dx = tToX(key.t) - x
-      const dy = vToY(key.v) - y
-      const dist = Math.hypot(dx, dy)
+      const dist = Math.hypot(tToX(key.t) - x, vToY(key.v) - y)
       if (dist < bestDist) {
         bestDist = dist
         best = index
@@ -257,8 +245,7 @@ export function initOpeningMotionEditor(host: OpeningMotionEditorHost): {
 
   function sync() {
     const opening = host.getOpening()
-    if (!section) return
-    if (!opening || (opening.type !== 'window' && opening.type !== 'door')) {
+    if (!opening?.rollerShutter?.enabled) {
       draw()
       return
     }
@@ -271,92 +258,52 @@ export function initOpeningMotionEditor(host: OpeningMotionEditorHost): {
     draw()
   }
 
-  document.querySelectorAll<HTMLButtonElement>('#opening-motion-phase-group .preset-btn').forEach((btn) => {
+  document.querySelectorAll<HTMLButtonElement>('#roller-shutter-phase-group .preset-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const next = btn.dataset.motionPhase
-      if (next !== 'open' && next !== 'close') return
-      phase = next
+      const next = btn.dataset.rollerPhase
+      if (next !== 'raise' && next !== 'lower') return
+      host.setPhase(next)
       selectedIndex = 0
       draft = null
       sync()
     })
   })
 
-  document.querySelectorAll<HTMLButtonElement>('#opening-motion-preset-group .preset-btn').forEach((btn) => {
+  document.querySelectorAll<HTMLButtonElement>('#roller-shutter-preset-group .preset-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const id = btn.dataset.motionPreset
-      if (id !== 'window' && id !== 'door' && id !== 'linear') return
-      commit(motionPresetById(id))
+      const id = btn.dataset.rollerPreset as RollerShutterMotionPreset | undefined
+      if (id !== 'soft' && id !== 'linear' && id !== 'cable') return
+      commit(rollerShutterMotionPreset(id))
     })
   })
 
-  document.querySelectorAll<HTMLButtonElement>('#opening-motion-ease-group .preset-btn').forEach((btn) => {
+  document.querySelectorAll<HTMLButtonElement>('#roller-shutter-ease-group .preset-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const ease = btn.dataset.motionEase as MotionEase | undefined
+      const ease = btn.dataset.rollerEase as MotionEase | undefined
       if (ease !== 'smooth' && ease !== 'linear') return
       const motion = currentMotion()
       if (!motion) return
-      commit(patchOpeningMotionCurve(motion, phase, setMotionKeyEase(currentCurve(motion), selectedIndex, ease)))
+      commit(patchPhaseCurve(motion, host.getPhase(), setMotionKeyEase(currentCurve(motion), selectedIndex, ease)))
     })
   })
 
   deleteBtn?.addEventListener('click', () => {
     const motion = currentMotion()
     if (!motion) return
-    commit(patchOpeningMotionCurve(motion, phase, deleteMotionKey(currentCurve(motion), selectedIndex)))
+    commit(patchPhaseCurve(motion, host.getPhase(), deleteMotionKey(currentCurve(motion), selectedIndex)))
     selectedIndex = Math.max(0, selectedIndex - 1)
   })
 
   durationInput?.addEventListener('change', () => {
     const motion = currentMotion()
-    if (!motion) return
-    const curve = { ...currentCurve(motion), durationMs: Number(durationInput.value) }
-    commit(patchOpeningMotionCurve(motion, phase, curve))
-  })
-
-  holdInput?.addEventListener('change', () => {
-    const motion = currentMotion()
-    if (!motion) return
-    commit({
-      ...motion,
-      open: { ...motion.open, holdMs: Number(holdInput.value) },
-    })
-  })
-
-  maxDegInput?.addEventListener('change', () => {
-    const motion = currentMotion()
-    if (!motion) return
-    commit({ ...motion, maxDeg: Number(maxDegInput.value) })
-  })
-
-  el<HTMLButtonElement>('opening-motion-play-open')?.addEventListener('click', () => host.play('open'))
-  el<HTMLButtonElement>('opening-motion-play-close')?.addEventListener('click', () => host.play('close'))
-  el<HTMLButtonElement>('opening-motion-play-cycle')?.addEventListener('click', () => host.play('cycle'))
-  stopBtn?.addEventListener('click', () => host.stop())
-
-  el<HTMLButtonElement>('opening-motion-copy')?.addEventListener('click', async () => {
-    const motion = currentMotion()
-    if (!motion || !datasetArea) return
-    const text = datasetArea.value || JSON.stringify(openingMotionToDataset(motion), null, 2)
-    try {
-      await navigator.clipboard.writeText(text)
-      setStatus('Datensatz kopiert.', true)
-    } catch {
-      datasetArea.select()
-      setStatus('Bitte manuell kopieren (Strg/Cmd+C).', true)
-    }
-  })
-
-  el<HTMLButtonElement>('opening-motion-apply')?.addEventListener('click', () => {
-    const opening = host.getOpening()
-    if (!opening || !datasetArea) return
-    const parsed = parseOpeningMotionDataset(datasetArea.value, opening.type)
-    if (!parsed) {
-      setStatus('Ungültiger Datensatz — Format fassaden-opening-motion/v1 erwartet.', true)
-      return
-    }
-    setStatus('', false)
-    commit(parsed)
+    if (!motion || !durationInput) return
+    const seconds = Number(durationInput.value)
+    const durationMs = Math.max(
+      80,
+      Math.min(12000, Math.round((Number.isFinite(seconds) ? seconds : 1.8) * 1000)),
+    )
+    durationInput.value = String(Math.round((durationMs / 1000) * 10) / 10)
+    commit(patchPhaseCurve(motion, host.getPhase(), { ...currentCurve(motion), durationMs }))
   })
 
   svg?.addEventListener('pointerdown', (event) => {
@@ -379,13 +326,13 @@ export function initOpeningMotionEditor(host: OpeningMotionEditorHost): {
       (key) => Math.abs(key.t - xToT(x)) < 0.04 && Math.abs(key.v - yToV(y)) < 0.08,
     )
     selectedIndex = inserted >= 0 ? inserted : Math.max(1, nextCurve.keys.length - 2)
-    commit(patchOpeningMotionCurve(motion, phase, nextCurve))
+    commit(patchPhaseCurve(motion, host.getPhase(), nextCurve))
   })
 
   svg?.addEventListener('pointermove', (event) => {
     if (dragIndex == null || !draft || !svg) return
     const { x, y } = clientToSvg(svg, event.clientX, event.clientY)
-    draft = patchOpeningMotionCurve(draft, phase, moveMotionKey(currentCurve(draft), dragIndex, xToT(x), yToV(y)))
+    draft = patchPhaseCurve(draft, host.getPhase(), moveMotionKey(currentCurve(draft), dragIndex, xToT(x), yToV(y)))
     draw()
   })
 

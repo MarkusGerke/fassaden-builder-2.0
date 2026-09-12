@@ -29,12 +29,14 @@ export function normalizeOpeningDoor(raw?: {
   cassetteCount?: number
   handle?: boolean
   letterSlot?: boolean
+  bottomFrame?: boolean
 } | null) {
   const c = raw?.cassetteCount
   return {
     cassetteCount: (c === 1 || c === 2 || c === 3 || c === 4 ? c : 2) as 1 | 2 | 3 | 4,
     handle: raw?.handle !== false,
     letterSlot: Boolean(raw?.letterSlot),
+    bottomFrame: Boolean(raw?.bottomFrame),
   }
 }
 

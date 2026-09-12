@@ -125,7 +125,7 @@ Im Modus **Himmel** sind die Neutral-Farb-Inputs ausgeblendet (physikalischer Hi
 
 Anwendung über `applySceneAppearance()` / `sceneColorsForLighting()`. Farb-Picker haben Live-Vorschau während des Ziehens (v2.0.11).
 
-Rahmen-/Glas-Farben in der **Öffnungs-Toolbar** (`#frame-color-swatches`) über `<input type="color">`; **RGB-/HSL-/HEX-Felder** erscheinen erst nach Klick auf den Swatch (Klasse `color-picker-expanded`, Klick außerhalb klappt zu). Gleiches Muster für **Szene**, **Nebel**, Wand-, Fugen-, Profil-, Gesims- und Dachziegel-Farben (`renderColorControl`). Bei Glas zusätzlich Button **Transparent**. Die Inputs werden bei UI-Sync **wiederverwendet**; während eines aktiven Pickers (`activeColorPickerCount`) wird `renderUi` nicht für Farb-Hosts aufgerufen. Hover-Livevorschau (`previewSelectionColor`) aktualisiert nur 3D/2D, kein vollständiges `renderUi`.
+Rahmen-/Glas-Farben in der **Öffnungs-Toolbar** (`#frame-color-swatches`) über `<input type="color">`. **v2.0.376:** Titel links, Swatch rechtsbündig auf einer Höhe (kein HEX in der Zeile); Abstand zwischen Farbzeilen **16 px**. Nach Klick: Overlay mit **HEX** (zuerst) und **RGB** direkt sichtbar (kein Dropdown); Klasse `color-picker-expanded`, Klick außerhalb klappt zu. **v2.0.388:** Öffnen nur per `pointerdown` (der folgende `click` schließt nicht mehr sofort). Gleiches Muster für **Szene**, **Nebel**, Wand-, Fugen-, Profil-, Gesims- und Dachziegel-Farben (`renderColorControl`). Bei Glas zusätzlich Button **Transparent**. Die Inputs werden bei UI-Sync **wiederverwendet**; während eines aktiven Pickers (`activeColorPickerCount`) wird `renderUi` nicht für Farb-Hosts aufgerufen. Hover-Livevorschau (`previewSelectionColor`) aktualisiert nur 3D/2D, kein vollständiges `renderUi`.
 
 **Studio:** **Wandfarbe** färbt die Außenfläche (`wallColor`). **Laibung außen/innen** (`revealExteriorColor` / `revealInteriorColor` am Öffnung, Farben-Tab) sind unabhängig — fehlen sie, Fallback Wand-/Innenwandfarbe. **Paneele / Ziegel** (`claddingColor`, Label `#cladding-color-section-studio`) steuert Steine/Paneele; darunter **Stein-Kontrast** / **Stein-Häufigkeit** (`#studio-tile-color-section`). **Fugenfarbe** (`panel.jointColor`, unter Tab Fassade) unabhängig davon. **Innenwandfarbe** (`interiorColor`, Default Weiß) nur die Raumseite.
 
@@ -236,7 +236,7 @@ Yaw-Konvention überall gleich: **0=N, 90=W, 180=S, 270=O** (gegen Uhrzeigersinn
 - **v2.0.207:** Bibliothek-Paneele und Stil einfügen / Stil-Vorlage nutzen `scopedWallIds()` / `scopedOpeningRefs()` — Scope **Etage** gilt auch dafür
 - Öffnungs-Edits (Profil, Fensterbank, Treppe, Rahmen/Glas, Gründerzeit, **Position/Nudge/Drag**): `editOpeningTargets` / `scopedOpeningRefs()`
 - Beim Verschieben: Delta gilt für alle Scoped-Refs. Türen mit aktiver Treppe behalten Auto-Y aus Stufen.
-- **v2.0.233 / v2.0.234 / v2.0.321 / v2.0.322 / v2.0.323 / v2.0.324:** Nach Edit mit Scope **Auswahl**/**Typ**/**Etage** ggf. `#scope-propagate-offer` — **Typ / Etage / Fassade**, **5-s-Countdown**. **v2.0.324:** Toast-Typ auch bei unterschiedlicher Größe (gleicher Öffnungstyp). **v2.0.323:** Farbe/Profil auf Fenster und Türen.
+- **v2.0.233 / v2.0.234 / v2.0.321 / v2.0.322 / v2.0.323 / v2.0.324 / v2.0.381:** Nach Edit mit Scope **Auswahl**/**Typ**/**Etage** ggf. `#scope-propagate-offer` — **Typ / Etage / Fassade**, **5-s-Countdown**. **v2.0.324:** Toast-Typ auch bei unterschiedlicher Größe (gleicher Öffnungstyp). **v2.0.323:** Farbe/Profil auf Fenster und Türen. **v2.0.381:** auch nach **Verschieben**; Gesims/`cornice` als Ganzes; Rechtsklick **Zuweisen für** → Typ/Etage/Fassade (`assignSelectionPropertiesToScope`).
 
 | Scope | Wände | Öffnungen |
 |---|---|---|
@@ -274,22 +274,24 @@ JSON-/Link-Export unter Datei bleibt unverändert.
 
 ## Fensterteilung und Sprossen
 
-Toolbar **Fensterteilung** / **Sprossen** (`#window-style-section`), gilt für Fenster und Türen (gleiche `Opening.gruenderzeit`-Config). Oberlicht (`transomBars`) bleibt separat.
+Toolbar **Fensterteilung** / **Sprossen** (`#window-style-section`), gilt für Fenster und Türen (gleiche `Opening.gruenderzeit`-Config).
 
-**Ebene A – dicke Rahmen-Teilung** (ganzer Flügel unter dem Kämpfer), je Achse:
+**Oberlicht** (wenn Checkbox an): Unterüberschrift, **Höhe (%)** als Zahlfeld (`transomRatio`), danach **Teilung vertikal/horizontal** (`transomSplitVCount` / `transomSplitHCount`, bei 2 Verhältnis 1:1…1:6) — gleiches Muster wie Flügel. Alt-Tabs offen/geteilt/Kreuz (`transomBars`) werden migriert.
+
+**Flügel** (Unterüberschrift):
 
 | Steuerung | Werte | Bedeutung |
 |---|---|---|
-| **Anzahl** (`#window-split-v-count-group` / `#window-split-h-count-group`) | `1`–`5` | gleichmäßige Teile |
+| **Anzahl** (Stepper) | ≥ 1 | gleichmäßige Teile |
 | **Verhältnis** (nur bei Anzahl `2`) | `1:1` … `1:6` | Gewichte `[1, n]` unten→oben bzw. links→rechts |
 
 Primärstege nutzen Flügelholz (`TIMBER.sash`). Wechsel der Teilung setzt `paneMuntins` auf Defaults und leert die Vorschau-Auswahl.
 
-**Ebene B – Sprossen je Teil** (`#window-muntin-section`, nur bei Auswahl):
+**Sprossen je Teil** (`#window-muntin-section`):
 
 | Steuerung | Werte | Bedeutung |
 |---|---|---|
-| Senkrecht / waagerecht | `0`, `1`, `2` | Anzahl Sprossen → gleichmäßiges Raster `(v+1) × (h+1)` im Teil |
+| Senkrecht / waagerecht | ≥ 0 | Anzahl Sprossen → Raster `(v+1) × (h+1)` im Teil |
 
 **Vorschau:** Klick auf ein Fensterteil toggelt die **Mehrfachauswahl** (orange); Buttons setzen Sprossen für alle selektierten Indizes. Leere Auswahl → Sprossen-Gruppe ausgeblendet.
 
@@ -336,9 +338,9 @@ Z-Fighting: Beide Ebenen teilen `backZ = 0` an der Wandaußenfläche — zu flac
 
 Unter **Höhe** im Tab Paneele: **Reihen unten ausblenden** / **Reihen oben ausblenden** (`#studio-hide-rows-bottom`, `#studio-hide-rows-top`). Ganzzahlige Schichten (0 = alle sichtbar); 1 = eine Reihe ohne Paneele/Mörtel, nur nackter Wandkörper. Default **0** (v2.0.372; früher Streifen-Preset 3). Unabhängig vom Sockel (Sockel clippt weiterhin cm-basiert von unten). Maximalwert = Gesamtreihen − 1. **v0.7.227:** Im oberen Freistreifen bleibt die Außenfläche auf voller Tiefe — der Wandkörper wirft weiter Schatten (keine Einsenkung der Außenfläche). **v0.7.134/135:** Ist die Wandbeschriftung aktiv, rückt sie in den oberen Freistreifen — auch wenn der Streifen niedriger als die Schrifthöhe ist (dann an der Wandoberkante). **v0.7.159:** Zierbänder im ausgeblendeten oberen Streifen werden ebenfalls auf die nackte Wand gelegt (`syncWallDecorToTopBareBand`).
 
-### Doppelklick-Zoom (v2.0.372 / v2.0.373)
+### Doppelklick-Zoom (v2.0.372 / v2.0.373 / v2.0.389)
 
-**3D:** Doppelklick auf Wand/Öffnung speichert die aktuelle Kamera und zoomt frontal/nah (bildschirmfüllend); zweiter Doppelklick stellt die Übersicht wieder her. **Front/Oben:** erster Doppelklick zoomt unter dem Cursor hinein, zweiter stellt Zoom/Pan wieder her. **v2.0.373:** Erkennung per manuellem Doppel-Tap auf `pointerup` — native `dblclick` wird durch `setPointerCapture` (Wandzug/Orbit) oft unterdrückt.
+**3D:** Doppelklick auf Wand/Öffnung speichert die aktuelle Kamera und zoomt frontal/nah (bildschirmfüllend); zweiter Doppelklick stellt die Übersicht wieder her. **Front/Oben:** erster Doppelklick zoomt unter dem Cursor hinein, zweiter stellt Zoom/Pan wieder her. **v2.0.373:** Erkennung per manuellem Doppel-Tap auf `pointerup` — native `dblclick` wird durch `setPointerCapture` (Wandzug/Orbit) oft unterdrückt. **v2.0.389:** Öffnung — Tap für Zoom auch ohne `drag3dPendingSelect`; Zug erst ab **6 px**; Fokus nutzt Prefer-IDs aus dem Öffnungs-Drag (Raycast auf Ghost unzuverlässig); in Präsentieren setzt Resize/Kompass die Kamera nicht zurück, solange ein Objekt-Fokus-Bookmark aktiv ist.
 
 ### Wandbeschriftung (v0.7.109)
 
@@ -442,7 +444,7 @@ Vorspringende Teile (Treppe, Bank, Verdachung, Gesims, Sockel, Zierband, Schrift
 
 ##### Kamera / Viewport (v2.0.155–156)
 
-Auswahl darf die Aufriss-Skala nicht springen lassen: bei gleichem `contentKey` friert `computeFrontViewBase` **px/cm** ein (`frontViewScaleFreeze` / `viewportW` / `viewW`), ohne Re-Fit an `minH`. Fehlendes `wall.kind` → Hydrate setzt `studio` (v2.0.157). Rechte Spalte fest `340px`. **Bibliothek (v2.0.204):** feste Höhe für Tab-Zeile (`#library-dock > .library-chrome` 2,6 rem) und Kartenzeile (`.opening-library-items` 6,5 rem) plus `scrollbar-gutter: stable` — sonst ändert Profil-Auswahl die Viewport-Höhe und der 3D-Kamera-Aspekt lässt das Haus horizontal „springen“.
+Auswahl darf die Aufriss-Skala nicht springen lassen: bei gleichem `contentKey` friert `computeFrontViewBase` **px/cm** ein (`frontViewScaleFreeze` / `viewportW` / `viewW`), ohne Re-Fit an `minH`. Fehlendes `wall.kind` → Hydrate setzt `studio` (v2.0.157). Rechte Spalte fest `340px`. **Bibliothek (v2.0.204 / v2.0.387):** feste Höhe für Tab-Zeile (`#library-dock > .library-tabs` 2,6 rem) und Kartenzeile (`.opening-library-items` 6,5 rem) plus `scrollbar-gutter: stable` — sonst ändert Profil-Auswahl die Viewport-Höhe und der 3D-Kamera-Aspekt lässt das Haus horizontal „springen“.
 
 ##### Rechte Leiste
 
@@ -481,7 +483,7 @@ Auswahl darf die Aufriss-Skala nicht springen lassen: bei gleichem `contentKey` 
 
 Bei Wand-, Öffnungs-, Studio-, Dach- oder Decken-Auswahl:
 
-- **Unten** (`#library-dock` / `#opening-library` / `#library-mode`): **kontextuelle** Element-Bibliothek (siehe Grundgesetz). Tabs horizontal **oberhalb** der Kartenleiste (`#library-dock > .library-chrome`), Text **waagerecht** lesbar; kein Titel „Bibliothek“.
+- **Unten** (`#library-dock` / `#opening-library` / `#library-mode`): **kontextuelle** Element-Bibliothek (siehe Grundgesetz). Tabs horizontal **über** der Kartenleiste (`#library-dock > .library-tabs`, Geschwister vor `.library-chrome`), Text **waagerecht** lesbar; kein Titel „Bibliothek“. **v2.0.387:** Tabs nicht mehr in `.library-chrome`; Chrome umschließt die Karten.
 - **Rechts** (`#selection-toolbar`): Scroll-Akkordeon (**v2.0.330**, [scrollable-settings-sections.md](scrollable-settings-sections.md)): Sektionsköpfe oben/unten gestapelt, Mitte = aktive Sektion, nur Scroll öffnet, Klick scrollt zur Sektion. Modul `src/ui/scrollableSettingsSections.ts` (Algorithmus wie [react-scrollable-accordion](https://github.com/andrii-maglovanyi/react-scrollable-accordion)). Leere Sektionen → `settings-section-empty`. Analog Szene.
 - Ohne Auswahl: rechts **immer** die Szeneneinstellungen (`#lighting-accordion`, Geschwister von `#selection-toolbar` unter `#ui-right` — nicht darin verschachtelt, sonst verschwindet die Szene mit `[hidden]` der Auswahl-Toolbar).
 - **`data-settings-inline-all`**: kein eigener Reiter, im aktiven rechten Panel mit sichtbar (Modell/Aktionen).
@@ -569,7 +571,7 @@ Kein Foto-Himmel, keine `.hdr`-Datei, keine HDRI-Schalter. Hintergrund ist die V
 
 ### Physisches Glas (v0.7.59)
 
-Bei Öffnungs-Auswahl unter Glasfarbe: Checkbox **Physisches Glas (3D)** + IOR, Rauheit, Transmission, Dicke. Modus `tint` = Farbe/Transparenz (2D-SVG unverändert). Standard (`transmission` 0): echte Durchsicht plus Fresnel-Spiegelung der **CubeCamera-EnvMap** (Nachbarflügel, Boden, Himmel, von außerhalb des Hauses). Transmission > 0,08 = physische Transmission. Klarglas ist dunkel getönt (`#1a242e`), von vorn eher dunkel/durchscheinend, im Streiflicht stärkere Spiegelung.
+**v2.0.376:** Die Checkbox **Physisches Glas (3D)** und die IOR-/Rauheit-/Transmission-/Dicke-Felder sind aus der Toolbar entfernt. Standard für neue Öffnungen bleibt **Tint** mit Glasfarbe **#575757**. Alt-Daten mit `glassMode: 'physical'` rendern weiter physisch (Felder im Modell bleiben), ohne UI zum Umschalten.
 
 ### Bossen an Wandenden (v0.7.59)
 
@@ -763,11 +765,13 @@ Feldkatalog, Sweep, UI-IDs: [wall-decor.md](wall-decor.md). Kurz: Sockelhöhe 8 
 
 Struktur bei Wandauswahl: Wand → Sockel → Gesims → Fenstertiefe → Paneele (Paneele/Mauerwerk-Kacheln, darunter Bossensteine und Fugen). Bei Öffnungen: **Fensterteilung** (inkl. **Sprossen** ohne Feld-Auswahl) → **Rahmenprofil** …
 
-### Toolbar-Layout (v0.7.14)
+### Toolbar-Layout (v0.7.14 / v2.0.376 / **v2.0.382**)
 
-- **Abstände:** Label→Feld `4px` (`.toolbar-group` gap; `.toolbar-label` ohne Extra-Margin); Abstand oberhalb einer Gruppe/Sektion `1.5rem` (erstes Kind der Sektion ausgenommen). Verschachtelte Wrapper (`#studio-joints-section`, `#studio-joint-options`, …) setzen beim ersten Kind ebenfalls `1.5rem`, damit Fugen/Fugentiefe nicht an der vorherigen Gruppe kleben.
+- **Teilüberschriften (v2.0.386):** Gruppen innerhalb einer Sektion (Farbe / Maße / Position / Profil / …) mit `.settings-subheading-nested`. Beispiel Profil: Farbe → Maße → Position → Profil (Kanten).
+- **Abstände (UI-Kit / v2.0.385):** innerhalb einer Sektion immer **16 px** (`--space-3`); **zwischen Sektionen 32 px** (`--space-4`). Label→Feld 4 px; Aktions-Buttons Gap 8 px. Kein Gap+Margin-Doppel. Details: [ui-kit.md](ui-kit.md).
 - **Register (Auswahl):** unten horizontale Tabs (`#selection-bottom-tabs`); rechts nur die aktive Sektion — **Ausnahme Fenster/Tür:** `#toolbar-opening` zeigt alle Sektionen ohne Tabs.
-- **Labels:** Jedes Eingabefeld und jede Farbgruppe hat eine eigene `.toolbar-label`-Zeile (z. B. „Horizontal (cm)“, „Verdachungsfarbe“).
+- **Labels:** Jedes Eingabefeld und jede Farbgruppe hat eine eigene `.toolbar-label`-Zeile. **v2.0.376:** auch `.toolbar-row-2 label` (Holzmaße Blend/Flügel/…) nutzt dieselbe Typo (`--fs-label` / `--fw-label` / `--c-label`).
+- **Kurze Werte (v2.0.376 / v2.0.382 / v2.0.383 / v2.0.384):** Titel links, schmales Zahlenfeld rechts; Stepper **− / Zahl / +** (Wert max. **5 Stellen**); **Einheit im Titel** `(cm)`, nicht im Feld. **Fensterbrett/Bank**, Position, Kanten: eine Spalte / Inline-Zeile. **Buttons** überall wie „Löschen“ (kein Pill), horizontal 8 px Padding. Sektionen ohne Rechts-Überlauf.
 - **Hinweise:** Erklärungstexte an Slider, Feldern und Dropdowns als rundes **i**-Icon hinter dem Label; Text nur bei Hover/Fokus auf dem Icon (`.field-info`, Tipp `.field-info-tip`). Abschnitts-Hinweise ohne zugehöriges Feld (z. B. Zierbänder-Intro) bleiben grauer Text. Status-/Fehlerzeilen (Validierung, Dach-Hinweis, Animation-Status) bleiben sichtbarer Text. `.toolbar-hint` im Markup bleibt im DOM (`hidden`), damit IDs weiter funktionieren.
 - **Gültig für:** Label links neben den Scope-Buttons (eine Zeile).
 - **Undo/Redo:** `#history-toolbar` ohne Hintergrund — nur die beiden Buttons.
@@ -789,13 +793,13 @@ Ruhewinkel: Slider **Einzeln öffnen** (`leafOpenDeg` / `transomOpenDeg`) **oben
 
 ### Rollläden (v0.7.177)
 
-Reiter **Rollläden** bei Fenster/Tür **immer** sichtbar; Checkbox standardmäßig aus. Nur Lamellen, kein Kasten und keine Schienen. Höhe `drop` 0…1; freier Spalt bis die unterste Lamelle die Bank berührt, danach Stapel; volle Laibungsbreite; lichtdicht. Details: [roller-shutter.md](roller-shutter.md).
+Reiter **Rollläden** bei Fenster/Tür **immer** sichtbar; Checkbox standardmäßig aus. Nur Lamellen, kein Kasten und keine Schienen. Höhe `drop` 0…1; freier Spalt bis die unterste Lamelle die Bank berührt, danach Stapel; volle Laibungsbreite; lichtdicht. Animation: Dauer in **Sekunden**; Vorlagen **Ein Zug** / **Linear** / **Kabelzug** mit editierbarer Kurve; Abspielen **Rollo schließen** / **Rollo öffnen** / Zyklus untereinander volle Breite. Details: [roller-shutter.md](roller-shutter.md).
 
 ---
 
 ## Standardfarben
 
-Neue Elemente: Wand, Paneele, Profile, Rahmen, Türen → `#ffffff`. Neue Fenster/Türen: **physisches Glas** (`glassMode: 'physical'`, IOR 1,52, Transmission 0), Standard-Glasfarbe **#575757** plus Szenen-EnvMap. Sonnen-Slider-Defaults v2.0.369: Sonne 3,0, Ambient 0,05, Kontrast 0,5, Schatten-Tiefe 0,75, Weichheit 2,0, 3500 K. Alt-Saves: Hydrate setzt unveränderte Defaults nach (Klarglas-Transmission 0,9/0,96/0,42 → 0; Fensterbank 20/32/… → 16 cm). Gespeicherte **abweichende** Nutzerwerte bleiben.
+Neue Elemente: Wand, Paneele, Profile, Rahmen, Türen → `#ffffff`. Neue Fenster/Türen: **getöntes Glas** (`glassMode: 'tint'`), Standard-Glasfarbe **#575757**. Sonnen-Slider-Defaults v2.0.369: Sonne 3,0, Ambient 0,05, Kontrast 0,5, Schatten-Tiefe 0,75, Weichheit 2,0, 3500 K. Alt-Saves: Hydrate setzt unveränderte Defaults nach (Klarglas-Transmission 0,9/0,96/0,42 → 0; Fensterbank 20/32/… → 16 cm). Gespeicherte **abweichende** Nutzerwerte bleiben.
 
 ---
 
@@ -863,7 +867,8 @@ Swatch `transparent` (`TRANSPARENT_GLASS`) macht Klarverglasung. 3D-Glas (`apply
 ## Wand-Toolbar (Reihenfolge)
 
 1. Maße/Farben → 2. Gesims → 3. **Zierbänder** → 4. Paneele (Fugen + Bossen) → 5. Sockel → 6. Schrift.
-- **Fenster-/Türtiefe** nur in der Öffnungs-Toolbar (`#opening-window-depth-offset`).
+- **Fenster-/Türtiefe** nur in der Öffnungs-Toolbar (`#opening-window-depth-offset`, Label **Vertikaler Versatz**; Info: cm von Außenkante).
+- **Öffnungs-Position** (`#opening-position-section`): Labels **Horizontale Position** / **Vertikale Position**; Raster-Hinweis (cm, 8er-Raster) nur im Info-Icon.
 
 Zierbänder (Pflicht-Referenz): [wall-decor.md](wall-decor.md). Nicht ohne Nutzeranweisung entfernen (`.cursor/rules/keine-ui-loeschen.mdc`).
 

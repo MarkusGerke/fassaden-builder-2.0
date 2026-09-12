@@ -7,6 +7,7 @@ import type {
   GruenderzeitPresetId,
   GruenderzeitSplitCount,
   GruenderzeitTimberOverrides,
+  GruenderzeitTransomBars,
   GruenderzeitWindowConfig,
   LeafOpenMode,
   Opening,
@@ -315,7 +316,7 @@ const BINARY_RATIOS: BinaryRatio[] = ['1/1', '1/2', '1/3', '1/4', '1/5', '1/6']
 const PANEL_RATIOS: PanelRatio[] = ['1/1', '1/2', '1/3', '1/4']
 
 export function isSplitCount(value: unknown): value is SplitCount {
-  return value === 1 || value === 2 || value === 3 || value === 4 || value === 5
+  return typeof value === 'number' && Number.isFinite(value) && Number.isInteger(value) && value >= 1
 }
 
 export function isBinaryRatio(value: unknown): value is BinaryRatio {
@@ -349,8 +350,10 @@ export function normalizePaneMuntins(
   const out: GruenderzeitPaneMuntins[] = []
   for (let i = 0; i < count; i += 1) {
     const src = muntins?.[i]
-    const v = src?.v === 1 || src?.v === 2 ? src.v : 0
-    const h = src?.h === 1 || src?.h === 2 ? src.h : 0
+    const v =
+      typeof src?.v === 'number' && Number.isFinite(src.v) ? Math.max(0, Math.round(src.v)) : 0
+    const h =
+      typeof src?.h === 'number' && Number.isFinite(src.h) ? Math.max(0, Math.round(src.h)) : 0
     out.push({ v, h })
   }
   return out
@@ -526,6 +529,10 @@ export function defaultGruenderzeitConfig(width: number, height: number, type: O
       splitVRatio: '1/1',
       splitHCount: 1,
       splitHRatio: '1/1',
+      transomSplitVCount: 1,
+      transomSplitVRatio: '1/1',
+      transomSplitHCount: 1,
+      transomSplitHRatio: '1/1',
       paneMuntins: [{ v: 0, h: 0 }],
       sashBarsH: 0,
       sashBarsV: 0,
@@ -550,6 +557,10 @@ export function defaultGruenderzeitConfig(width: number, height: number, type: O
     splitVRatio: '1/1',
     splitHCount: 1,
     splitHRatio: '1/1',
+    transomSplitVCount: 1,
+    transomSplitVRatio: '1/1',
+    transomSplitHCount: 1,
+    transomSplitHRatio: '1/1',
     paneMuntins: [{ v: 0, h: 0 }],
     sashBarsH: 0,
     sashBarsV: 0,
@@ -573,7 +584,10 @@ export function normalizeGruenderzeitConfig(
   const fallback = defaultGruenderzeitConfig(width, height, type)
   const casements = raw?.casements
   const transomBars = raw?.transomBars
-  const nextCasements = casements === 1 || casements === 2 || casements === 3 ? casements : fallback.casements
+  const nextCasements =
+    typeof casements === 'number' && Number.isFinite(casements) && Number.isInteger(casements) && casements >= 1
+      ? casements
+      : fallback.casements
 
   let splitVCount: SplitCount = fallback.splitVCount
   let splitVRatio: BinaryRatio = fallback.splitVRatio
@@ -643,6 +657,34 @@ export function normalizeGruenderzeitConfig(
   const paneMuntins = normalizePaneMuntins(splitVCount, splitHCount, raw?.paneMuntins)
   const legacy = deriveLegacySashBars(splitVCount, splitHCount)
 
+  let transomSplitVCount: SplitCount = 1
+  let transomSplitVRatio: BinaryRatio = '1/1'
+  let transomSplitHCount: SplitCount = 1
+  let transomSplitHRatio: BinaryRatio = '1/1'
+  const resolvedTransomBars: GruenderzeitTransomBars =
+    transomBars === 'none' || transomBars === 'match' || transomBars === 'cross'
+      ? transomBars
+      : fallback.transomBars
+  if (
+    isSplitCount(raw?.transomSplitVCount) ||
+    isSplitCount(raw?.transomSplitHCount)
+  ) {
+    if (isSplitCount(raw?.transomSplitVCount)) transomSplitVCount = raw!.transomSplitVCount!
+    if (isBinaryRatio(raw?.transomSplitVRatio)) transomSplitVRatio = raw!.transomSplitVRatio!
+    if (isSplitCount(raw?.transomSplitHCount)) transomSplitHCount = raw!.transomSplitHCount!
+    if (isBinaryRatio(raw?.transomSplitHRatio)) transomSplitHRatio = raw!.transomSplitHRatio!
+  } else if (resolvedTransomBars === 'cross') {
+    transomSplitVCount = 2
+    transomSplitHCount = 2
+  } else if (resolvedTransomBars === 'match') {
+    transomSplitVCount = splitVCount
+    transomSplitVRatio = splitVRatio
+    transomSplitHCount = splitHCount
+    transomSplitHRatio = splitHRatio
+  }
+  if (transomSplitVCount !== 2) transomSplitVRatio = '1/1'
+  if (transomSplitHCount !== 2) transomSplitHRatio = '1/1'
+
   const timberRaw = raw?.timber
   const timber: GruenderzeitTimberOverrides | undefined =
     timberRaw && typeof timberRaw === 'object'
@@ -661,18 +703,19 @@ export function normalizeGruenderzeitConfig(
   return {
     casements: nextCasements,
     transom: raw?.transom ?? fallback.transom,
-    transomRatio: clamp(raw?.transomRatio ?? fallback.transomRatio, 0.16, 0.48),
+    transomRatio: clamp(raw?.transomRatio ?? fallback.transomRatio, 0.05, 0.9),
     splitVCount,
     splitVRatio,
     splitHCount,
     splitHRatio,
+    transomSplitVCount,
+    transomSplitVRatio,
+    transomSplitHCount,
+    transomSplitHRatio,
     paneMuntins,
     sashBarsH: legacy.sashBarsH,
     sashBarsV: legacy.sashBarsV,
-    transomBars:
-      transomBars === 'none' || transomBars === 'match' || transomBars === 'cross'
-        ? transomBars
-        : fallback.transomBars,
+    transomBars: resolvedTransomBars,
     bottomPanel: raw?.bottomPanel ?? fallback.bottomPanel,
     bottomPanelRatio,
     boxWindow: raw?.boxWindow ?? fallback.boxWindow,
@@ -716,6 +759,10 @@ export function clampGruenderzeitForBasement(config: GruenderzeitWindowConfig): 
     splitVRatio: '1/1',
     splitHCount: 1,
     splitHRatio: '1/1',
+    transomSplitVCount: 1,
+    transomSplitVRatio: '1/1',
+    transomSplitHCount: 1,
+    transomSplitHRatio: '1/1',
     paneMuntins,
     leafOpenDeg: padOpen(config.leafOpenDeg, casements),
     transomOpenDeg: padOpen(undefined, casements),
@@ -805,12 +852,27 @@ function buildLeaf(
   }
 
   if (innerW > 3 && glassH > 3) {
-    if (region === 'transom' && config.transomBars === 'none' && count > 1) {
-      panes.push({ x: innerX, y: glassY, w: innerW, h: glassH, region })
-    } else if (region === 'transom') {
-      const barsH = config.transomBars === 'cross' ? 1 : 0
-      const barsV = config.transomBars === 'cross' && count === 1 ? 1 : 0
-      subdivide(bars, panes, innerX, glassY, innerW, glassH, barsV + 1, barsH + 1, region, timber.muntin)
+    if (region === 'transom') {
+      const emptyMuntins = normalizePaneMuntins(
+        config.transomSplitVCount,
+        config.transomSplitHCount,
+        undefined,
+      )
+      subdividePrimaryThenMuntins(
+        bars,
+        panes,
+        innerX,
+        glassY,
+        innerW,
+        glassH,
+        config.transomSplitVCount,
+        config.transomSplitVRatio,
+        config.transomSplitHCount,
+        config.transomSplitHRatio,
+        emptyMuntins,
+        region,
+        timber,
+      )
     } else {
       subdividePrimaryThenMuntins(
         bars,
@@ -921,23 +983,7 @@ export function layoutGruenderzeitWindow(
 
   const leaves = splitLeaves(lowerY, lowerH, 'sash', config.leafOpenDeg ?? [])
   if (transomOn) {
-    const transomLeaves =
-      config.transomBars === 'none'
-        ? [
-            buildLeaf(
-              innerX,
-              transomY,
-              innerW,
-              transomH,
-              'transom',
-              0,
-              1,
-              config.transomOpenDeg?.[0] ?? 0,
-              { ...config, transomBars: 'none' },
-              timber,
-            ),
-          ]
-        : splitLeaves(transomY, transomH, 'transom', config.transomOpenDeg ?? [])
+    const transomLeaves = splitLeaves(transomY, transomH, 'transom', config.transomOpenDeg ?? [])
     leaves.push(...transomLeaves)
   }
 
@@ -1033,10 +1079,30 @@ function extrudeFrameOptions(depth: number, bevel: boolean, arched: boolean): TH
   }
 }
 
-function createRectFrameGeometry(width: number, height: number, thickness: number, depth: number): THREE.ExtrudeGeometry {
+function createRectFrameGeometry(
+  width: number,
+  height: number,
+  thickness: number,
+  depth: number,
+  opts?: { openBottom?: boolean },
+): THREE.ExtrudeGeometry {
+  const t = Math.min(thickness, width / 2 - 0.4, height / 2 - 0.4)
+  // Haustür: U-Blendrahmen ohne Unterschwelle (optional unten schließen).
+  if (opts?.openBottom && t > 0.4) {
+    const shape = new THREE.Shape()
+    shape.moveTo(0, 0)
+    shape.lineTo(t, 0)
+    shape.lineTo(t, height - t)
+    shape.lineTo(width - t, height - t)
+    shape.lineTo(width - t, 0)
+    shape.lineTo(width, 0)
+    shape.lineTo(width, height)
+    shape.lineTo(0, height)
+    shape.closePath()
+    return new THREE.ExtrudeGeometry(shape, extrudeFrameOptions(depth, true, false))
+  }
   const shape = new THREE.Shape()
   addRectOutline(shape, 0, 0, width, height)
-  const t = Math.min(thickness, width / 2 - 0.4, height / 2 - 0.4)
   if (t > 0.4) {
     const hole = new THREE.Path()
     addRectOutline(hole, t, t, width - 2 * t, height - 2 * t, true)
@@ -1064,17 +1130,37 @@ function createCrownFrameGeometry(
   depth: number,
   form: ArchFormId,
   riseCm?: number | null,
+  opts?: { openBottom?: boolean },
 ): THREE.ExtrudeGeometry {
   const shape = new THREE.Shape()
   const crown = glazingArchCrown(width, height, form, ARCH_MESH_SEGMENTS, riseCm)
   const springY = crown[0]?.y ?? height
+  const t = Math.min(thickness, width / 2 - 0.4, height / 2 - 0.4)
+  if (opts?.openBottom && t > 0.4) {
+    shape.moveTo(0, 0)
+    shape.lineTo(t, 0)
+    shape.lineTo(t, springY)
+    const innerCrown = glazingArchCrown(
+      Math.max(2, width - 2 * t),
+      Math.max(2, height - 2 * t),
+      form,
+      ARCH_MESH_SEGMENTS,
+      riseCm,
+    ).map((p) => ({ x: p.x + t, y: p.y + t }))
+    appendCrownPath(shape, innerCrown, false)
+    shape.lineTo(width - t, 0)
+    shape.lineTo(width, 0)
+    shape.lineTo(width, springY)
+    appendCrownPath(shape, crown, true)
+    shape.closePath()
+    return new THREE.ExtrudeGeometry(shape, extrudeFrameOptions(depth, true, true))
+  }
   shape.moveTo(0, 0)
   shape.lineTo(width, 0)
   shape.lineTo(width, springY)
   appendCrownPath(shape, crown, true)
   shape.closePath()
 
-  const t = Math.min(thickness, width / 2 - 0.4, height / 2 - 0.4)
   if (t > 0.4) {
     const hole = new THREE.Path()
     const innerCrown = glazingArchCrown(
@@ -1103,12 +1189,13 @@ function createFrameGeometry(
   arch: ArchGeom | null,
   form: ArchFormId = 'rect',
   riseCm?: number | null,
+  opts?: { openBottom?: boolean },
 ): THREE.ExtrudeGeometry {
   if (form !== 'rect' && form !== 'round') {
-    return createCrownFrameGeometry(width, height, thickness, depth, form, riseCm)
+    return createCrownFrameGeometry(width, height, thickness, depth, form, riseCm, opts)
   }
   if (!arch || !rectHitsArchCap(0, 0, width, height, arch)) {
-    return createRectFrameGeometry(width, height, thickness, depth)
+    return createRectFrameGeometry(width, height, thickness, depth, opts)
   }
   const shape = new THREE.Shape()
   addArchedRectOutline(shape, 0, 0, width, height, arch)
@@ -1116,7 +1203,13 @@ function createFrameGeometry(
   if (t > 0.4) {
     const hole = new THREE.Path()
     const inner = insetArchGeom(arch, t)
-    if (inner) {
+    if (opts?.openBottom) {
+      if (inner) {
+        addArchedRectOutline(hole, t, 0, width - 2 * t, height - t, inner, true)
+      } else {
+        addRectOutline(hole, t, 0, width - 2 * t, height - t, true)
+      }
+    } else if (inner) {
       // Loch im selben Koordinatensystem wie der Außenumriss: konzentrischer
       // Innenbogen (gleiche Mitte, kleinerer Radius). Ein Extra-Offset um −t
       // verschiebt die Bogenmitte und verzerrt den Halbkreis.
@@ -1699,7 +1792,9 @@ export function createGruenderzeitWindowMesh(
           riseCm,
         ).map((p) => ({ x: p.x + timber.blend, y: p.y + timber.blend }))
       : null
-  const blendGeo = createFrameGeometry(width, height, timber.blend, depth, outerArch, glazingForm, riseCm)
+  const blendGeo = createFrameGeometry(width, height, timber.blend, depth, outerArch, glazingForm, riseCm, {
+    openBottom: Boolean(door) && door?.bottomFrame !== true,
+  })
   addMesh(group, blendGeo, wood, -width / 2, -height / 2, 0)
 
   for (const bar of layout.bars) {

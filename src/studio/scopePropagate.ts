@@ -97,6 +97,9 @@ const WALL_SKIP = new Set([
   'profiles',
 ])
 
+/** Nested Wall-Objekte ganz ersetzen (kein Partial-Merge — sonst fehlt z. B. cornice.enabled). */
+const WALL_REPLACE_WHOLE = new Set(['cornice', 'plinth', 'panel', 'label'])
+
 /** Profil-Zuweisungen einer Öffnung (Kante+Profil), sortiert vergleichbar. */
 function profileAssignmentKey(p: ProfileAssignment): string {
   return `${p.edge}:${p.profileId}`
@@ -145,6 +148,10 @@ function applyWallPropertyDelta(peer: Wall, before: Wall, after: Wall): Wall {
     const beforeRec = before as unknown as Record<string, unknown>
     const afterRec = after as unknown as Record<string, unknown>
     const nextRec = next as unknown as Record<string, unknown>
+    if (WALL_REPLACE_WHOLE.has(key as string)) {
+      nextRec[key as string] = afterRec[key as string]
+      continue
+    }
     nextRec[key as string] = deepApplyChanged(
       peerRec[key as string],
       beforeRec[key as string],
@@ -187,7 +194,23 @@ function applyWallPropertyDelta(peer: Wall, before: Wall, after: Wall): Wall {
   return next
 }
 
-const OPENING_SKIP = new Set(['id', 'x', 'y', 'width', 'height', 'type', 'hidden'])
+const OPENING_SKIP = new Set(['id', 'width', 'height', 'type', 'hidden'])
+
+/** Nested Opening-Objekte ganz ersetzen (kein Partial-Merge). */
+const OPENING_REPLACE_WHOLE = new Set([
+  'pediment',
+  'rollerShutter',
+  'gruenderzeit',
+  'stairs',
+  'sillOuter',
+  'sillInner',
+  'taperedField',
+  'door',
+  'trim',
+  'guard',
+  'interiorShade',
+  'motion',
+])
 
 function applyOpeningPropertyDelta(peer: Opening, before: Opening, after: Opening): Opening {
   const out = { ...(peer as unknown as Record<string, unknown>) }
@@ -197,6 +220,10 @@ function applyOpeningPropertyDelta(peer: Opening, before: Opening, after: Openin
     const peerRec = peer as unknown as Record<string, unknown>
     const beforeRec = before as unknown as Record<string, unknown>
     const afterRec = after as unknown as Record<string, unknown>
+    if (OPENING_REPLACE_WHOLE.has(key as string)) {
+      out[key as string] = afterRec[key as string]
+      continue
+    }
     out[key as string] = deepApplyChanged(
       peerRec[key as string],
       beforeRec[key as string],
@@ -368,4 +395,87 @@ function updateWallsInState(
 
 export function wallStillInBuilding(state: FacadeState, wallId: string): boolean {
   return Boolean(findBuildingForWall(state, wallId))
+}
+
+/**
+ * Rechtsklick „Zuweisen für“: aktuelle Eigenschaften der Auswahl auf Typ/Etage/Fassade
+ * kopieren (Geometrie bleibt am Peer). Kein before→after-Delta nötig.
+ */
+export function assignSelectionPropertiesToScope(
+  state: FacadeState,
+  editor: EditorState,
+  toScope: ScopePropagateKind,
+): FacadeState {
+  const hasOpenings = editor.selectedOpenings.length > 0
+  if (hasOpenings) {
+    const targets = propagateOpeningTargets(state, editor, toScope)
+    type OpeningDonor = {
+      after: Opening
+      profilesAfter: ProfileAssignment[]
+    }
+    const donors = editor.selectedOpenings
+      .map((ref): OpeningDonor | null => {
+        const wall = getWall(state, ref.wallId)
+        const open = wall?.openings.find((o) => o.id === ref.openingId)
+        if (!open || !wall) return null
+        return {
+          after: open,
+          profilesAfter: profilesForOpening(wall, ref.openingId),
+        }
+      })
+      .filter((d): d is OpeningDonor => Boolean(d))
+    if (donors.length === 0) return state
+
+    return updateWallsInState(state, (wall) => {
+      let changed = false
+      let profiles = wall.profiles
+      const openings = wall.openings.map((open) => {
+        const hit = targets.some((t) => t.wallId === wall.id && t.openingId === open.id)
+        if (!hit) return open
+        const isDonor = editor.selectedOpenings.some(
+          (r) => r.wallId === wall.id && r.openingId === open.id,
+        )
+        if (isDonor) return open
+        let nextOpen = open
+        let did = false
+        for (const donor of donors) {
+          const canTakePeer =
+            toScope === 'type'
+              ? open.type === donor.after.type
+              : openingTakesFrameProfile(open) && openingTakesFrameProfile(donor.after)
+          if (!canTakePeer) continue
+          const emptyProfiles: ProfileAssignment[] = []
+          profiles = applyOpeningProfilesDelta(
+            profiles,
+            open.id,
+            emptyProfiles,
+            donor.profilesAfter,
+          )
+          // Peer als before → alle abweichenden Felder vom Donor übernehmen.
+          nextOpen = applyOpeningPropertyDelta(open, open, donor.after)
+          // Position nicht zuweisen (nur Styles); Maße bleiben über OPENING_SKIP.
+          nextOpen = { ...nextOpen, x: open.x, y: open.y }
+          did = true
+          break
+        }
+        if (did) changed = true
+        return nextOpen
+      })
+      return changed ? { ...cloneWall(wall), openings, profiles } : wall
+    })
+  }
+
+  const targets = new Set(editWallTargets(state, editor, toScope, null))
+  const donorIds = editor.selectedWallIds
+  const primaryId = donorIds[0]
+  if (!primaryId) return state
+  const primary = getWall(state, primaryId)
+  if (!primary) return state
+
+  return updateWallsInState(state, (wall) => {
+    if (!targets.has(wall.id)) return wall
+    if (donorIds.includes(wall.id)) return wall
+    // Peer als before → Donor-Properties zuweisen (Geometrie über WALL_SKIP).
+    return applyWallPropertyDelta(wall, wall, primary)
+  })
 }

@@ -6,7 +6,7 @@ Horizontale Profile und Sockel an Studio-Wänden. Geometrie-Details (Gehrung, Cl
 
 | Element | Wo | Kurz |
 |---|---|---|
-| **Gesims** | Reiter Gesims | Nur an der **oberen** Wandkante; Höhe (8 cm) und Tiefe (4 cm); Farbe, Finish. Profilwahl in der **Bibliothek** (Tab Profile) bzw. Drag auf die Wand. **v2.0.265:** Querschnitt-Vorschau und Dreh-/Spiegel-UI im Studio-Gesims entfernt. **v2.0.230:** Einschalten setzt erstes Bibliothek-Profil (`traufgesims70x150`) und **32 cm** Höhe; Dropdown Geschossgesims (32) / Dachgesims (48) über dem Höhenfeld. **v2.0.253:** Z-Anker = Paneelfläche (`projectDepth`), folgt Tiefe automatisch. |
+| **Gesims** | Reiter Gesims | Nur an der **oberen** Wandkante; Höhe (8 cm) und Tiefe (4 cm); Farbe, Finish. Profilwahl in der **Bibliothek** (Tab Profile) bzw. Drag auf die Wand. **v2.0.265:** Querschnitt-Vorschau und Dreh-/Spiegel-UI im Studio-Gesims entfernt. **v2.0.230:** Einschalten setzt erstes Bibliothek-Profil (`traufgesims70x150`) und **32 cm** Höhe; Dropdown Geschossgesims (32) / Dachgesims (48) über dem Höhenfeld. **v2.0.253:** Z-Anker = Paneelfläche (`projectDepth`), folgt Tiefe automatisch. **v2.0.381:** ohne explizite Farbe → **Wandfarbe** (`wall.wallColor`). |
 | **Sockel** | Reiter Sockel | Default-Höhe **64 cm**, Tiefe **8 cm** (v2.0.259); Höhe 8-cm-Raster, Tiefe/Versatz 1 cm; Farbe setzt Körper + Profil; Profil `sockelprofil` ersetzt die Box |
 | **Zierbänder** | Reiter Zierbänder | Beliebige Höhe von unten; Band hinzufügen, Duplikat ±16 cm, in 3D vertikal ziehen (8 cm) |
 
@@ -47,7 +47,7 @@ UI: `#studio-cornice-scale` / `#wall-cornice-scale`, `#studio-cornice-offset-for
 
 UI: `#studio-plinth-depth`, `#studio-plinth-offset`, `#studio-plinth-color-swatches`, Profilkarten (erste Kachel **Keiner**). Vorschau: Links = Wand, unten = Boden.
 
-**Ecken (v2.0.252):** Gehrung und offene Stirn nur bei fortgesetztem Sockel/Gesims/Zierband auf dem Nachbarn. Ohne Fortsetzung: stumpf an der Plan-Kante, Profil-Sweep mit Stirnkappe (geschlossen). Wandkörper-Gehrung bleibt. Sockelprofil an Außenecken mit Fortsetzung: nach außen längere 45°-Gehrung (Vorzeichen umgekehrt zum Gesims). **v2.0.33:** lange CSG-Schrägen im Sockelstreifen entfallen auch im Pier zwischen Kellerfenstern. **v2.0.32:** Zeichnungsfilter trifft Rechteckloch (nicht nur Bogenmaske). **v2.0.31:** Tiefenkanten/Kappen aus; Plan-Kanten-Snap. **v2.0.30:** CSG-Schwellwinkel; Filter über die ganze Strecke.
+**Ecken (v2.0.252):** Gehrung und offene Stirn nur bei fortgesetztem Sockel/Gesims/Zierband auf dem Nachbarn. Ohne Fortsetzung: stumpf an der Plan-Kante, Profil-Sweep mit Stirnkappe (geschlossen). Wandkörper-Gehrung bleibt. Sockelprofil an Außenecken mit Fortsetzung: nach außen längere 45°-Gehrung (Vorzeichen umgekehrt zum Gesims). **v2.0.381:** Tür-Durchschneidung als **X-Spannen** mit Stirnkappen; Kellerfenster weiter CSG (Sturz bleibt); Querschnitt geschlossen (kein hohler Ring). **v2.0.33:** lange CSG-Schrägen im Sockelstreifen entfallen auch im Pier zwischen Kellerfenstern. **v2.0.32:** Zeichnungsfilter trifft Rechteckloch (nicht nur Bogenmaske). **v2.0.31:** Tiefenkanten/Kappen aus; Plan-Kanten-Snap. **v2.0.30:** CSG-Schwellwinkel; Filter über die ganze Strecke.
 
 **Schatten:** Sockel wirft/empfängt keine Shadow-Map (v0.7.132, Moiré-Schutz).
 

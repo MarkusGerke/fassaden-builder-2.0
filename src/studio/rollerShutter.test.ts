@@ -4,6 +4,7 @@ import {
   normalizeOpeningRollerShutter,
   rollerShutterCoverHeightFromTop,
   rollerShutterCoverLocalPolygon,
+  rollerShutterMotionPreset,
   rollerShutterSlatCentersFromBottom,
   rollerShutterSlatCount,
   rollerShutterSlatLocalSpan,
@@ -11,6 +12,7 @@ import {
   ROLLER_GUIDE_EDGE_INSET_CM,
   ROLLER_STACK_PITCH_FACTOR,
 } from './rollerShutter'
+import { evalMotionCurve } from '../utils/openingMotion'
 
 describe('rollerShutterSlatCentersFromBottom', () => {
   it('liefert keine Lamellen bei drop 0', () => {
@@ -66,6 +68,37 @@ describe('rollerShutterSlatCentersFromBottom', () => {
     const h = 5
     const cover = rollerShutterCoverHeightFromTop(H, 1, h, 0.85)
     expect(cover).toBeGreaterThanOrEqual(H - 0.5)
+  })
+})
+
+describe('rollerShutterMotionPreset', () => {
+  it('Kabelzug hat gestufte Hand-für-Hand-Punkte', () => {
+    const cable = rollerShutterMotionPreset('cable')
+    expect(cable.lower.keys.length).toBeGreaterThan(6)
+    expect(cable.raise.keys.length).toBeGreaterThan(6)
+    expect(cable.lower.durationMs).toBeGreaterThan(3000)
+    // Plateaus: mindestens ein Paar mit Δv ≈ 0 bei Δt > 0
+    let plateau = false
+    for (let i = 1; i < cable.lower.keys.length; i += 1) {
+      const a = cable.lower.keys[i - 1]!
+      const b = cable.lower.keys[i]!
+      if (b.t - a.t > 0.03 && Math.abs(b.v - a.v) < 0.025) plateau = true
+    }
+    expect(plateau).toBe(true)
+    expect(evalMotionCurve(cable.lower, 0)).toBeCloseTo(0, 5)
+    expect(evalMotionCurve(cable.lower, 1)).toBeCloseTo(1, 5)
+  })
+
+  it('Ein Zug und Linear bleiben monoton 0→1', () => {
+    for (const id of ['soft', 'linear'] as const) {
+      const motion = rollerShutterMotionPreset(id)
+      let prev = -0.01
+      for (let i = 0; i <= 20; i += 1) {
+        const v = evalMotionCurve(motion.lower, i / 20)
+        expect(v).toBeGreaterThanOrEqual(prev - 1e-6)
+        prev = v
+      }
+    }
   })
 })
 

@@ -193,4 +193,23 @@ describe('opening top profile lift', () => {
     ])
     expect(openingTopProfileLiftCm(wall, win)).toBe(24)
   })
+
+  it('hebt geschlossene Verdachung um Profil-Ausladung', () => {
+    const win = opening()
+    const wall = wallWith(win, [])
+    const ped = normalizeOpeningPediment({
+      enabled: true,
+      form: 'triangleClosed',
+      profileId: 'fensterprofil40x140',
+      extentOutCm: 12,
+    })
+    expect(pedimentBaseLiftCm(wall, win, ped)).toBe(12)
+    const openPed = normalizeOpeningPediment({
+      enabled: true,
+      form: 'triangle',
+      profileId: 'fensterprofil40x140',
+      extentOutCm: 12,
+    })
+    expect(pedimentBaseLiftCm(wall, win, openPed)).toBe(0)
+  })
 })

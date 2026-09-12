@@ -20,6 +20,7 @@
 | [views-and-state.md](views-and-state.md) | Views, Persistenz, Undo/Redo, Navigation |
 | [camera.md](camera.md) | 3D-Kamera, Orbit-Ziel, ⌘/Ctrl-Gesten, Geschwindigkeiten |
 | [ux.md](ux.md) | Bedienung: Navigation, Kontextmenü, Farben, Scope; **rechte Einstellungs-Tabs** (Übersicht → Maße → Farben → Formen → Dekor oben→unten) |
+| [ui-kit.md](ui-kit.md) | Design-Tokens, UI-Primitives (`.ui-*`), Stepper, Abstände 4/8/16, Teilüberschriften |
 | [wall-decor.md](wall-decor.md) | Gesims, Sockel, Zierbänder |
 | [opening-features.md](opening-features.md) | Bogen, Nischen/Konche, Freiraum, Paneel-Laibung, Bänke, Verdachung, Treppe, Kellerfenster |
 | [windows-doors.md](windows-doors.md) | Fenster/Türen: Ist-Bestand Gründerzeit-Teilung, Individualisierung, Altbau-Roadmap |
@@ -27,7 +28,7 @@
 | [bay-windows.md](bay-windows.md) | Erker, Balkon, Loggia |
 | [style-templates.md](style-templates.md) | Stil-Vorlagen speichern/anwenden (localStorage) |
 | [opening-motion.md](opening-motion.md) | Flügel-Öffnen/Schließen: Kurveneditor, Vorlagen, Uhrzeiten, Datensatz `fassaden-opening-motion/v1` |
-| [roller-shutter.md](roller-shutter.md) | Rollläden: Lamellen, Höhe, Stapel, Animation, Uhrzeiten |
+| [roller-shutter.md](roller-shutter.md) | Rollläden: Lamellen, Höhe, Stapel, Animation (Ein Zug / Kabelzug), Uhrzeiten |
 | [roof.md](roof.md) | Berliner Mansarde: Ziegel/Trapez, bündige Traufe, Gehrungsrinne |
 | [gallery.md](gallery.md) | QA-Galerie: alle Standards im Raster, Abstand, Zufall, Projekt-Schutz |
 | [deploy-allinkl.md](deploy-allinkl.md) | Auto-Deploy auf All-Inkl (GitHub Actions, FTPS, Passwortschutz) |

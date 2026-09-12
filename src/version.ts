@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.375'
+export const APP_VERSION = '2.0.389'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,144 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.389',
+    date: '2026-09-12',
+    title: 'Doppelklick-Zoom auf Öffnungen',
+    changes: [
+      'Doppelklick auf Fenster/Türen zoomt wieder heran und zurück (fehlender Import + Drag-Schwelle)',
+    ],
+  },
+  {
+    version: '2.0.388',
+    date: '2026-09-12',
+    title: 'Farb-Overlay bleibt offen',
+    changes: [
+      'Klick auf die Farbfläche klappt den Wähler nicht mehr sofort wieder zu',
+    ],
+  },
+  {
+    version: '2.0.387',
+    date: '2026-09-12',
+    title: 'Bibliothek-Tabs über der Kartenleiste',
+    changes: [
+      'Die unteren Register sitzen über der Kartenleiste, nicht in deren Chrome',
+    ],
+  },
+  {
+    version: '2.0.386',
+    date: '2026-09-12',
+    title: 'Teilüberschriften in den Einstellungen',
+    changes: [
+      'Sektionen mit mehreren Gruppen: Überschriften Farbe, Maße, Position, Profil, …',
+      'Profil: Farbe, Maße, Position, Profil (Kanten)',
+    ],
+  },
+  {
+    version: '2.0.385',
+    date: '2026-09-12',
+    title: 'Abstände: 16px in Sektionen, 32px dazwischen',
+    changes: [
+      'Rechte Einstellungen: Zeilenabstand überall 16 px',
+      'Zwischen Sektionen (Maße → Farben → …) einheitlich 32 px',
+    ],
+  },
+  {
+    version: '2.0.384',
+    date: '2026-09-12',
+    title: 'Stepper, Buttons, kein Overflow',
+    changes: [
+      'Einheit im Titel (cm), Stepper nur −/Zahl/+ — max. 5 Stellen, Plus bleibt sichtbar',
+      'Kanten-Buttons rechtsbündig auf Titelhöhe; Sektionen ohne Rechts-Überlauf',
+      'Alle Text-Buttons wie „Löschen“ (kein Pill)',
+    ],
+  },
+  {
+    version: '2.0.383',
+    date: '2026-09-12',
+    title: 'Fensterbrett/Bank-Layout und Button-Padding',
+    changes: [
+      'Fensterbrett und Fensterbank: Titel links, Feld rechts, alles untereinander',
+      'Text-Buttons (z. B. Duplizieren): immer 8 px Padding links und rechts',
+    ],
+  },
+  {
+    version: '2.0.382',
+    date: '2026-09-12',
+    title: 'UI-Kit: einheitliche Felder und Abstände',
+    changes: [
+      'Design-Tokens und UI-Primitives (4/8/16 px) — gleiche Optik, eine Definition',
+      'Zahlfelder in der rechten Leiste: − / Wert mit Einheit / +',
+      'Farben und Maße: exakt 16 px Zeilenabstand und sichtbarer Sektions-Unterrand',
+    ],
+  },
+  {
+    version: '2.0.381',
+    date: '2026-09-12',
+    title: 'Scope-Zuweisen, Gesims, Sockel, Tür, Verdachung',
+    changes: [
+      'Rechtsklick „Zuweisen für“ → Typ / Etage / Fassade (aktuelle Eigenschaften übernehmen)',
+      'Gesims-Toast Etage/Fassade wendet das Gesims vollständig an; Farbe folgt der Wandfarbe',
+      'Sockelprofil an Türen mit geschlossenen Stirnkappen (Kellerfenster: CSG mit Sturz)',
+      'Nach Verschieben: „gültig für“-Toast wie bei anderen Edits',
+      'Tür: unterer Blendrahmen standardmäßig aus (optional „Unterer Rahmen“)',
+      'Geschlossene Verdachung: wandseitig zu; Abstand über Fensterprofil = Profilhöhe',
+    ],
+  },
+  {
+    version: '2.0.380',
+    date: '2026-09-12',
+    title: 'Oberlicht wie Flügelteilung',
+    changes: [
+      'Oberlicht: Teilung vertikal/horizontal wie bei Flügeln (statt offen/geteilt/Kreuz)',
+      'Unterüberschriften „Oberlicht“ und „Flügel“; Höhe als Prozent-Zahlfeld',
+    ],
+  },
+  {
+    version: '2.0.379',
+    date: '2026-09-12',
+    title: 'Toolbar: Farbfeld, Abstände, freie Zahlen',
+    changes: [
+      'Farb-Overlay: Spektrum (Sättigung/Helligkeit + Farbton) plus HEX, RGB und Oberfläche — kein OS-Dropdown',
+      'Einstellungs-Sektionen: 16 px Abstand zum Rand; Aktions-Buttons mit 8 px Gap',
+      'Stepper (Teilung/Sprossen/Flügel) ohne Obergrenze, Wert tippbar',
+      'Oberlichter (OL) stehen in „Einzeln öffnen“ über den Flügeln',
+    ],
+  },
+  {
+    version: '2.0.378',
+    date: '2026-09-12',
+    title: 'Rollladen: Kabelzug-Animation',
+    changes: [
+      'Rollladen-Vorlagen: Ein Zug, Linear, Kabelzug (Hand für Hand wie früher am Gurt)',
+      'Editierbare Animationskurve wie bei Fenster/Tür (Punkte ziehen, Zwischenpunkte)',
+    ],
+  },
+  {
+    version: '2.0.377',
+    date: '2026-09-12',
+    title: 'Rollladen: Dauer in Sekunden',
+    changes: [
+      'Rollladen-Dauer in Sekunden statt Millisekunden',
+      'Abspielen: „Rollo schließen“ / „Rollo öffnen“ / Zyklus jeweils untereinander volle Breite',
+    ],
+  },
+  {
+    version: '2.0.376',
+    date: '2026-09-12',
+    title: 'Toolbar: kompaktere Maße und Farben',
+    changes: [
+      'Maße: „Vertikaler Versatz“, „Horizontale Position“, „Vertikale Position“ — Einheiten nur noch im Info-Icon',
+      'Farben: Titel links, Swatch rechts; HEX/RGB erst im geöffneten Picker; 16px Abstand zwischen Farbzeilen',
+      'Kurze Zahlfelder: Titel links, schmales Feld rechts (wie Farben)',
+      'Holzmaße-Labels (Blend …) nutzen denselben Schriftstil wie andere Feldtitel',
+      'Fensterteilung/Sprossen: Stepper (−/+) statt Zahlenreihe; Zwischenüberschrift „Sprossen“ entfernt',
+      'Animation: Dauer/Pause wie Zielwinkel in einer Zeile',
+      'Profil-Kanten: Pfeile ↑→↓← statt Text',
+      'Checkbox „Physisches Glas (3D)“ entfernt; Standard-Glasfarbe bleibt #575757 (Tint)',
+      'Höhenänderung verschiebt die Öffnung nicht mehr seitlich (kein X-Fugen-Snap)',
+    ],
+  },
   {
     version: '2.0.375',
     date: '2026-09-11',

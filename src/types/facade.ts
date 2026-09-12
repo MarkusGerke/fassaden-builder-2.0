@@ -664,8 +664,8 @@ export interface GruenderzeitTimberOverrides {
 /** Öffnungsart eines Flügels (Ruhepose + Animation). */
 export type LeafOpenMode = 'turn' | 'tilt' | 'turnTilt'
 
-/** Anzahl gleichmäßiger Primärteile je Achse (1–5). */
-export type GruenderzeitSplitCount = 1 | 2 | 3 | 4 | 5
+/** Anzahl gleichmäßiger Primärteile je Achse (≥ 1, kein UI-Maximum). */
+export type GruenderzeitSplitCount = number
 
 /**
  * Verhältnis bei Zweiteilung (unten→oben bzw. links→rechts).
@@ -681,30 +681,38 @@ export type GruenderzeitSplitV = '1' | '1/1' | '1/2' | '1/3'
 
 /** Sprossen innerhalb eines Fensterteils. */
 export interface GruenderzeitPaneMuntins {
-  /** Senkrechte Sprossen (0–2 → 1–3 gleich breite Felder). */
-  v: 0 | 1 | 2
-  /** Waagerechte Sprossen (0–2 → 1–3 gleich hohe Felder). */
-  h: 0 | 1 | 2
+  /** Senkrechte Sprossen (≥ 0 → Felder = v+1). */
+  v: number
+  /** Waagerechte Sprossen (≥ 0 → Felder = h+1). */
+  h: number
 }
 
 /** @deprecated Altes einstufiges Höhenverhältnis. */
 export type GruenderzeitSashSplitV = '1/1' | '1/2' | '1/3'
 
 export interface GruenderzeitWindowConfig {
-  /** Anzahl der Flügel unter dem Kämpfer. */
-  casements: 1 | 2 | 3
+  /** Anzahl der Flügel unter dem Kämpfer (≥ 1). */
+  casements: number
   /** Oberlicht über dem Kämpfer. */
   transom: boolean
   /** Anteil der lichten Höhe für das Oberlicht (0.16–0.4). */
   transomRatio: number
-  /** Vertikale Primärteilung: Anzahl gleichmäßiger Zeilen (1–5). */
+  /** Vertikale Primärteilung: Anzahl gleichmäßiger Zeilen (≥ 1). */
   splitVCount: GruenderzeitSplitCount
   /** Bei splitVCount === 2: Höhenverhältnis unten→oben. */
   splitVRatio: GruenderzeitBinaryRatio
-  /** Horizontale Primärteilung: Anzahl gleichmäßiger Spalten (1–5). */
+  /** Horizontale Primärteilung: Anzahl gleichmäßiger Spalten (≥ 1). */
   splitHCount: GruenderzeitSplitCount
   /** Bei splitHCount === 2: Breitenverhältnis links→rechts. */
   splitHRatio: GruenderzeitBinaryRatio
+  /** Oberlicht: vertikale Primärteilung (≥ 1). */
+  transomSplitVCount: GruenderzeitSplitCount
+  /** Bei transomSplitVCount === 2: Höhenverhältnis. */
+  transomSplitVRatio: GruenderzeitBinaryRatio
+  /** Oberlicht: horizontale Primärteilung (≥ 1). */
+  transomSplitHCount: GruenderzeitSplitCount
+  /** Bei transomSplitHCount === 2: Breitenverhältnis. */
+  transomSplitHRatio: GruenderzeitBinaryRatio
   /**
    * Sprossen je Fensterteil (Länge = splitVCount × splitHCount).
    * Index row-major, unten→oben, links→rechts.
@@ -722,6 +730,7 @@ export interface GruenderzeitWindowConfig {
   sashSplitV?: GruenderzeitSashSplitV
   /** @deprecated Migriert nach splitHCount / paneMuntins. */
   paneCols?: Array<1 | 2 | 3>
+  /** @deprecated Migriert nach transomSplit* (none→1×1, cross→2×2, match→Flügel-Teilung). */
   transomBars: GruenderzeitTransomBars
   /** Balkontür / Tür: untere Holzfüllung statt Glas. */
   bottomPanel?: boolean
@@ -773,6 +782,11 @@ export interface OpeningDoorConfig {
   handle?: boolean
   /** Briefschlitz. Default false. */
   letterSlot?: boolean
+  /**
+   * Unteren Blendrahmen (Schwelle) zeichnen.
+   * Default false (Haustür); true = Balkontür mit U-Rahmen unten zu.
+   */
+  bottomFrame?: boolean
 }
 
 /** Innenliegender Sichtschutz (Vorhang oder Jalousie). */

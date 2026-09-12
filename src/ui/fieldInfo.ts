@@ -33,7 +33,200 @@ export function installFieldInfo(root: ParentNode = document): void {
   splitEmDashLabels(root)
   upgradeHintParagraphs(root)
   upgradeControlTitles(root)
+  installInlineValueRows(root)
+  installFieldSteppers(root)
   bindTipListeners()
+}
+
+const UNIT_RE = /\((cm|mm|m|s|%|°|deg)\)\s*$/i
+
+/** Einheit aus Label, title oder data-unit ableiten. */
+export function inferFieldUnit(input: HTMLInputElement): string | undefined {
+  const data = input.dataset.unit?.trim()
+  if (data) return data
+  const title = input.getAttribute('title') ?? ''
+  const titleMatch = title.match(UNIT_RE) ?? title.match(/\b(cm|mm|%|s)\b/i)
+  if (titleMatch) return (titleMatch[1] ?? titleMatch[0]!).replace(/^deg$/i, '°')
+  const group = input.closest('.toolbar-group, label, .toolbar-inline-value, .toolbar-inline-pairs')
+  const label =
+    group?.querySelector(':scope > .toolbar-label, :scope > span.toolbar-label') ??
+    input.closest('label')
+  const labelText = (label?.textContent ?? '').replace(/\s+/g, ' ').trim()
+  const labelMatch = labelText.match(UNIT_RE)
+  if (labelMatch) return labelMatch[1]!.replace(/^deg$/i, '°')
+  return undefined
+}
+
+/** True wenn das Feld schon zwischen manuellen ±-Buttons sitzt (Studio Breite/Höhe). */
+export function hasManualPlusMinusNeighbors(input: HTMLInputElement): boolean {
+  const group = input.closest('.preset-group')
+  if (!group) return false
+  const prev = input.previousElementSibling
+  const next = input.nextElementSibling
+  const btnText = (el: Element | null) =>
+    el instanceof HTMLButtonElement ? (el.textContent?.trim() ?? '') : ''
+  const isMinus = /^[−\-]/.test(btnText(prev))
+  const isPlus = /^[+＋]/.test(btnText(next))
+  return isMinus && isPlus
+}
+
+/**
+ * Native Number-Spinner → − / Feld / +.
+ * Einheit bleibt im Label links in Klammern (z. B. „Höhe (cm)“), nicht im Feld.
+ * Gilt für alle `input[type=number]` in der rechten Toolbar (außer Slider/bereits umgebaut).
+ */
+export function installFieldSteppers(root: ParentNode = document): void {
+  const scope: ParentNode = root instanceof Document ? root : root
+  const inputs = [
+    ...scope.querySelectorAll<HTMLInputElement>(
+      '#ui-right input[type="number"], .right-selection-toolbar input[type="number"]',
+    ),
+  ]
+  for (const input of inputs) {
+    if (
+      input.closest(
+        '.ui-stepper, .field-stepper, .toolbar-stepper, .color-field-panel, .color-picker-overlay',
+      )
+    ) {
+      continue
+    }
+    if (input.type !== 'number') continue
+    if (hasManualPlusMinusNeighbors(input)) continue
+    const stepRaw = input.step
+    const step =
+      stepRaw && stepRaw !== 'any' && Number.isFinite(Number(stepRaw)) && Number(stepRaw) > 0
+        ? Number(stepRaw)
+        : 1
+
+    ensureUnitInNearbyLabel(input)
+
+    const wrap = document.createElement('div')
+    wrap.className = 'ui-stepper field-stepper'
+
+    const dec = document.createElement('button')
+    dec.type = 'button'
+    dec.className = 'ui-stepper-dec field-stepper-dec'
+    dec.setAttribute('aria-label', 'Verringern')
+    dec.textContent = '−'
+
+    const inc = document.createElement('button')
+    inc.type = 'button'
+    inc.className = 'ui-stepper-inc field-stepper-inc'
+    inc.setAttribute('aria-label', 'Erhöhen')
+    inc.textContent = '+'
+
+    const inputWrap = document.createElement('div')
+    inputWrap.className = 'ui-stepper-input-wrap field-stepper-input-wrap'
+
+    const parent = input.parentNode
+    if (!parent) continue
+    parent.insertBefore(wrap, input)
+    inputWrap.appendChild(input)
+    wrap.append(dec, inputWrap, inc)
+
+    const read = () => {
+      const n = Number(input.value)
+      return Number.isFinite(n) ? n : 0
+    }
+    const clamp = (raw: number) => {
+      let next = raw
+      if (input.min !== '' && Number.isFinite(Number(input.min))) {
+        next = Math.max(Number(input.min), next)
+      }
+      if (input.max !== '' && Number.isFinite(Number(input.max))) {
+        next = Math.min(Number(input.max), next)
+      }
+      return next
+    }
+    const apply = (raw: number) => {
+      const next = clamp(raw)
+      const rounded =
+        step >= 1 && Number.isInteger(step) ? Math.round(next / step) * step : next
+      input.value = String(clamp(rounded))
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+      input.dispatchEvent(new Event('change', { bubbles: true }))
+      syncDisabled()
+    }
+    const syncDisabled = () => {
+      const v = read()
+      dec.disabled = input.min !== '' && Number.isFinite(Number(input.min)) && v <= Number(input.min)
+      inc.disabled = input.max !== '' && Number.isFinite(Number(input.max)) && v >= Number(input.max)
+    }
+    dec.addEventListener('click', () => apply(read() - step))
+    inc.addEventListener('click', () => apply(read() + step))
+    input.addEventListener('input', syncDisabled)
+    input.addEventListener('change', syncDisabled)
+    syncDisabled()
+  }
+}
+
+/** `(cm)` o. ä. im benachbarten Label belassen bzw. aus data-unit/title ergänzen. */
+export function ensureUnitInNearbyLabel(input: HTMLInputElement): void {
+  const unit = inferFieldUnit(input)
+  if (!unit) return
+  const group = input.closest('.toolbar-group, .toolbar-inline-value, .toolbar-inline-pairs')
+  const labels = group
+    ? [...group.querySelectorAll<HTMLElement>(':scope > .toolbar-label')]
+    : []
+  if (labels.length === 0) return
+  const re = new RegExp(`\\(\\s*${unit.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\)`, 'i')
+  for (const label of labels) {
+    if (re.test(label.textContent ?? '')) continue
+    // Nur Textknoten am Ende erweitern (Info-Icons bleiben).
+    let textNode: Text | null = null
+    for (const node of label.childNodes) {
+      if (node.nodeType === Node.TEXT_NODE && (node.textContent ?? '').trim()) {
+        textNode = node as Text
+      }
+    }
+    if (!textNode) {
+      textNode = document.createTextNode(` (${unit})`)
+      const info = label.querySelector('.field-info')
+      if (info) label.insertBefore(textNode, info)
+      else label.appendChild(textNode)
+      continue
+    }
+    textNode.textContent = `${(textNode.textContent ?? '').trimEnd()} (${unit})`
+  }
+}
+
+/** @deprecated Einheit bleibt im Label — nur noch für Tests / Altaufrufe. */
+export function stripUnitFromNearbyLabel(_input: HTMLInputElement, _unit: string | undefined): void {
+  // Einheit gehört in den Titel links in Klammern, nicht ins Stepper-Feld.
+}
+
+/** Kurze Zahlfelder: Titel links / Wert rechts (wie Farbzeilen). */
+export function installInlineValueRows(root: ParentNode = document): void {
+  for (const row of root.querySelectorAll<HTMLElement>('.toolbar-row-2')) {
+    const labels = [...row.querySelectorAll<HTMLLabelElement>(':scope > label')]
+    if (labels.length === 0) continue
+    const onlyShortNumbers = labels.every((label) => {
+      const inputs = [...label.querySelectorAll<HTMLInputElement>(':scope > input[type="number"]')]
+      return inputs.length === 1 && !label.querySelector('select, textarea, input[type="text"]')
+    })
+    if (onlyShortNumbers) row.classList.add('toolbar-inline-cells')
+  }
+
+  for (const group of root.querySelectorAll<HTMLElement>('.toolbar-group')) {
+    if (group.classList.contains('settings-section')) continue
+    if (group.classList.contains('toolbar-accordion')) continue
+    if (group.querySelector(':scope > .toolbar-group, :scope > .toolbar-row-2, :scope > .color-picker-row, :scope > .color-swatches')) {
+      continue
+    }
+    if (group.querySelector(':scope > select, :scope > textarea, :scope > .preset-group, :scope > .slider-label')) {
+      continue
+    }
+
+    const labels = [...group.querySelectorAll<HTMLElement>(':scope > .toolbar-label')]
+    const numbers = [...group.querySelectorAll<HTMLInputElement>(':scope > input[type="number"]')]
+    if (labels.length === 0 || numbers.length === 0) continue
+    if (numbers.length !== labels.length) continue
+
+    group.classList.remove('toolbar-inline-value', 'toolbar-inline-pairs')
+    // Nur Einzel-Zeilen: Titel links / Control rechts. Mehrere Felder → kein enggeschnittenes Grid
+    // (Plus-Button abgeschnitten); Markup soll eigene ui-field-inline-Zeilen nutzen.
+    if (numbers.length === 1) group.classList.add('toolbar-inline-value')
+  }
 }
 
 function bindTipListeners(): void {

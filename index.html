@@ -344,7 +344,6 @@
         </div>
 
         <div id="library-dock" aria-label="Element-Bibliothek">
-          <div class="library-chrome">
             <div class="library-tabs" role="tablist" aria-label="Elemente">
               <button type="button" class="library-tab active" role="tab" aria-selected="true" data-library-tab="windows" id="library-tab-windows" data-library-when="wall">Fenster</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="doors" id="library-tab-doors" data-library-when="wall">Türen</button>
@@ -364,11 +363,12 @@
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="pediment" id="library-tab-pediment" data-library-when="opening">Verdachung</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="lights" id="library-tab-lights" data-library-when="always">Licht</button>
             </div>
-          </div>
+          <div class="library-chrome">
           <div id="opening-library" aria-label="Bibliothek">
             <div id="library-mode" class="bottom-bar-mode">
               <div id="opening-library-items" class="opening-library-items"></div>
             </div>
+          </div>
           </div>
         </div>
       </div>
@@ -478,6 +478,7 @@
           </div>
           <div id="toolbar-scene-light" hidden>
             <div class="settings-section" data-settings-section="sceneLight" data-settings-label="Punktlicht">
+              <p class="settings-subheading settings-subheading-nested">Licht</p>
               <div class="toolbar-group">
                 <span class="toolbar-label">Voreinstellung</span>
                 <div id="scene-light-preset-cards" class="tpl-card-row scene-light-preset-cards sidebar-library-picker" role="listbox" aria-label="Licht-Voreinstellung"></div>
@@ -509,6 +510,7 @@
                 <input id="scene-light-beam-angle-up" type="range" min="10" max="90" step="1" value="55" />
                 <input id="scene-light-beam-angle-up-num" type="number" min="10" max="90" step="1" value="55" />
               </div>
+              <p class="settings-subheading settings-subheading-nested">Position</p>
               <div class="toolbar-group">
                 <span class="toolbar-label">Position (cm)</span>
                 <label class="slider-label"><span>X</span></label>
@@ -527,6 +529,7 @@
                 <input id="scene-light-depth" type="range" min="-1200" max="1200" step="8" value="0" />
                 <input id="scene-light-depth-num" type="number" min="-1200" max="1200" step="8" value="0" />
               </div>
+              <p class="settings-subheading settings-subheading-nested">Farbe</p>
               <div class="toolbar-group">
                 <span class="toolbar-label">Lichtfarbe</span>
                 <label class="slider-label">
@@ -543,25 +546,11 @@
                 <input id="scene-light-color-temp" type="range" min="2000" max="6500" step="50" value="3000" />
                 <span class="toolbar-hint">Temperatur setzt die Farbe; eigene Farbe bleibt, bis die Temperatur erneut bewegt wird</span>
               </div>
+              <p class="settings-subheading settings-subheading-nested">Leistung</p>
               <div class="toolbar-group">
                 <span class="toolbar-label">Leistung (Watt LED)</span>
                 <input id="scene-light-intensity" type="number" min="1" max="150" step="1" />
                 <span class="toolbar-hint">10 W ≈ 800 lm · Übernahme bei Enter oder Fokus-Verlust</span>
-              </div>
-              <div class="toolbar-group">
-                <label class="toolbar-check">
-                  <input id="scene-light-show-marker" type="checkbox" checked />
-                  Marker anzeigen
-                </label>
-              </div>
-              <div id="scene-light-marker-size-row" class="toolbar-group">
-                <span class="toolbar-label">Marker-Größe (cm)</span>
-                <label class="slider-label">
-                  <span>Durchmesser</span>
-                  <output id="scene-light-marker-size-value">40</output>
-                </label>
-                <input id="scene-light-marker-size" type="range" min="8" max="200" step="4" value="40" />
-                <input id="scene-light-marker-size-num" type="number" min="8" max="200" step="4" value="40" />
               </div>
               <div class="toolbar-group">
                 <span class="toolbar-label">Reichweite (cm)</span>
@@ -587,6 +576,23 @@
                 </label>
                 <p class="toolbar-hint compact-hint">Doppelblitz ~2&nbsp;Hz (Feuerwehr/Polizei).</p>
               </div>
+              <p class="settings-subheading settings-subheading-nested">Marker</p>
+              <div class="toolbar-group">
+                <label class="toolbar-check">
+                  <input id="scene-light-show-marker" type="checkbox" checked />
+                  Marker anzeigen
+                </label>
+              </div>
+              <div id="scene-light-marker-size-row" class="toolbar-group">
+                <span class="toolbar-label">Marker-Größe (cm)</span>
+                <label class="slider-label">
+                  <span>Durchmesser</span>
+                  <output id="scene-light-marker-size-value">40</output>
+                </label>
+                <input id="scene-light-marker-size" type="range" min="8" max="200" step="4" value="40" />
+                <input id="scene-light-marker-size-num" type="number" min="8" max="200" step="4" value="40" />
+              </div>
+              <p class="settings-subheading settings-subheading-nested">Uhrzeiten</p>
               <div class="toolbar-group">
                 <span class="toolbar-label">Ein-/Ausblenden</span>
                 <div class="toolbar-row-2">
@@ -629,6 +635,7 @@
               </div>
               <div id="roof-options">
                 <div id="roof-shell-options" class="settings-section" data-settings-section="roof-shell" data-settings-label="Dachform">
+                <p class="settings-subheading settings-subheading-nested">Maße</p>
                 <div class="toolbar-group">
                   <span class="toolbar-label">Untere Neigung (°)</span>
                   <input id="roof-pitch-lower" type="number" min="45" max="80" step="1" value="70" />
@@ -647,6 +654,7 @@
                 </div>
                 </div>
                 <div id="roof-tiles-options" class="settings-section" data-settings-section="roof-tiles" data-settings-label="Ziegel">
+                <p class="settings-subheading settings-subheading-nested">Muster</p>
                 <div class="toolbar-group">
                   <span class="toolbar-label">Ziegel-Muster</span>
                   <div id="roof-tile-pattern-cards" class="tpl-card-row pattern-picker-row sidebar-library-picker" role="listbox" aria-label="Ziegel-Muster"></div>
@@ -658,6 +666,7 @@
                     <option value="barrel">Gewölbt (Barrel)</option>
                   </select>
                 </div>
+                <p class="settings-subheading settings-subheading-nested">Maße</p>
                 <div class="toolbar-group">
                   <span class="toolbar-label">Ziegelbreite (cm)</span>
                   <input id="roof-tile-width" type="number" min="8" max="96" step="8" value="32" />
@@ -683,6 +692,7 @@
                   <input id="roof-tile-taper" type="range" min="0.2" max="1" step="0.05" value="0.85" />
                   <output id="roof-tile-taper-value">0.85</output>
                 </div>
+                <p class="settings-subheading settings-subheading-nested">Farbe</p>
                 <div class="toolbar-group">
                   <span class="toolbar-label">Ziegel-Farbe</span>
                   <div id="roof-tile-color-swatches" class="color-swatches"></div>
@@ -701,8 +711,7 @@
           </div>
           <div id="toolbar-studio" hidden>
 
-<div class="settings-section" data-settings-section="dimensions" data-settings-label="Maße" data-settings-order="10">
-              <p class="settings-subheading">Wand</p>
+<div class="settings-section ui-stack" data-settings-section="dimensions" data-settings-label="Maße" data-settings-order="10">
               <div class="toolbar-group">
                 <span class="toolbar-label">Breite (48 cm, 45°: Diagonale)</span>
                 <div class="preset-group scope-toggle" id="studio-wall-width-dir" role="group" aria-label="Breitenänderung Richtung">
@@ -711,7 +720,7 @@
                 </div>
                 <div class="preset-group">
                   <button id="studio-width-minus" class="preset-btn" type="button">−</button>
-                  <input id="studio-wall-width" type="number" min="8" step="8" value="192" aria-label="Wandbreite in cm" />
+                  <input id="studio-wall-width" type="number" min="8" step="8" value="192" aria-label="Wandbreite in cm" data-unit="cm" />
                   <button id="studio-width-plus" class="preset-btn" type="button">+</button>
                 </div>
               </div>
@@ -719,17 +728,18 @@
                 <span class="toolbar-label">Höhe (cm, 16er-Raster)</span>
                 <div class="preset-group">
                   <button id="studio-height-minus" class="preset-btn" type="button">−</button>
-                  <input id="studio-wall-height" type="number" min="16" step="16" value="448" aria-label="Wandhöhe in cm" />
+                  <input id="studio-wall-height" type="number" min="16" step="16" value="448" aria-label="Wandhöhe in cm" data-unit="cm" />
                   <button id="studio-height-plus" class="preset-btn" type="button">+</button>
                 </div>
               </div>
-              <div class="toolbar-group">
+              <div class="toolbar-group ui-field-inline">
                 <span class="toolbar-label">Wandstärke (cm)</span>
                 <input id="studio-wall-depth" type="number" min="8" max="80" step="8" value="32" aria-label="Wandstärke in cm" />
               </div>
+              <p class="settings-subheading settings-subheading-nested">Position</p>
               <div class="toolbar-group">
                 <span class="toolbar-label">Feindrehung</span>
-                <input id="studio-wall-yaw" type="number" step="1" value="0" aria-label="Wand-Ausrichtung in Grad" />
+                <input id="studio-wall-yaw" type="number" step="1" value="0" aria-label="Wand-Ausrichtung in Grad" data-unit="°" />
                 <p class="toolbar-hint compact-hint">90°-Drehung: Rechtsklick auf die Wand → Drehen.</p>
               </div>
               <div id="studio-end-piece-section" class="toolbar-group" hidden>
@@ -750,8 +760,9 @@
               </div>
             
 </div>
-<div class="settings-section" data-settings-section="colors" data-settings-label="Farben" data-settings-order="20">
-            <div id="wall-color-section-studio" class="toolbar-group">
+<div class="settings-section ui-stack" data-settings-section="colors" data-settings-label="Farben" data-settings-order="20">
+            <p class="settings-subheading settings-subheading-nested">Wand</p>
+            <div id="wall-color-section-studio" class="toolbar-group ui-field-inline">
                 <span class="toolbar-label">Wandfarbe</span>
                 <div id="wall-color-swatches-studio" class="color-swatches"></div>
               </div>
@@ -763,15 +774,16 @@
                   <option value="metal">Metallisch</option>
                 </select>
               </div>
-              <div id="interior-color-section-studio" class="toolbar-group">
+              <div id="interior-color-section-studio" class="toolbar-group ui-field-inline">
                 <span class="toolbar-label">Innenwandfarbe</span>
                 <div id="interior-color-swatches-studio" class="color-swatches"></div>
               </div>
-              <div id="ceiling-color-section-studio" class="toolbar-group">
+              <div id="ceiling-color-section-studio" class="toolbar-group ui-field-inline">
                 <span class="toolbar-label">Deckenfarbe</span>
                 <div id="ceiling-color-swatches-studio" class="color-swatches"></div>
               </div>
-              <div id="cladding-color-section-studio" class="toolbar-group">
+              <p class="settings-subheading settings-subheading-nested">Paneele</p>
+              <div id="cladding-color-section-studio" class="toolbar-group ui-field-inline">
                 <span class="toolbar-label">Paneele / Ziegel</span>
                 <div id="cladding-color-swatches-studio" class="color-swatches"></div>
               </div>
@@ -802,6 +814,7 @@
                   <option value="metal">Metallisch</option>
                 </select>
               </div>
+              <p class="settings-subheading settings-subheading-nested">Profile</p>
               <div id="profile-color-section-studio" class="toolbar-group">
                 <span class="toolbar-label">Profilfarbe</span>
                 <div id="profile-color-swatches-studio" class="color-swatches"></div>
@@ -824,7 +837,7 @@
               </div>
 
 </div>
-<div class="settings-section" data-settings-section="cornice" data-settings-label="Gesims" data-settings-order="30">
+<div class="settings-section ui-stack" data-settings-section="cornice" data-settings-label="Gesims" data-settings-order="30">
               <div class="toolbar-group">
                 <label class="toolbar-check">
                   <input id="studio-cornice-enabled" type="checkbox" />
@@ -832,6 +845,7 @@
                 </label>
               </div>
               <div id="studio-cornice-options">
+              <p class="settings-subheading settings-subheading-nested">Maße</p>
               <div class="toolbar-group" hidden>
                 <span class="toolbar-label">Kante</span>
                 <div class="preset-group">
@@ -852,6 +866,11 @@
                 <input id="studio-cornice-scale" type="number" min="8" step="8" value="32" />
               </div>
               <div class="toolbar-group">
+                <span class="toolbar-label">Tiefe (cm, 4er-Schritte)</span>
+                <input id="studio-cornice-offset-forward" type="number" min="4" step="4" value="16" />
+              </div>
+              <p class="settings-subheading settings-subheading-nested">Farbe</p>
+              <div class="toolbar-group">
                 <span class="toolbar-label">Gesimsfarbe</span>
                 <div id="studio-cornice-color-swatches" class="color-swatches"></div>
               </div>
@@ -862,10 +881,6 @@
                   <option value="glossy">Glänzend</option>
                   <option value="metal">Metallisch</option>
                 </select>
-              </div>
-              <div class="toolbar-group">
-                <span class="toolbar-label">Tiefe (cm, 4er-Schritte)</span>
-                <input id="studio-cornice-offset-forward" type="number" min="4" step="4" value="16" />
               </div>
               </div>
               <p class="toolbar-hint compact-hint" title="Fortlaufende Ecken mit Gehrung, offene Enden stumpf">Gesims-Ecken: Gehrung an fortlaufenden Wandecken.</p>
@@ -905,6 +920,7 @@
                 </label>
                 <p class="toolbar-hint compact-hint">Gerade und ungerade Streifen mit eigener Tiefe und Trapez.</p>
               </div>
+              <p class="settings-subheading settings-subheading-nested">Maße</p>
               <div id="studio-standard-depth-row" class="toolbar-group">
                 <span class="toolbar-label">Vorstand / Steintiefe (cm)</span>
                 <input id="studio-project-depth" type="number" min="0" step="0.1" value="4" />
@@ -1000,6 +1016,7 @@
               </div>
 
               <div id="studio-joints-section">
+              <p class="settings-subheading settings-subheading-nested">Fugen</p>
               <div class="toolbar-group">
                 <label class="toolbar-check">
                   <input id="studio-joints-enabled" type="checkbox" checked />
@@ -1026,7 +1043,7 @@
 
 </div>
 </div>
-<div class="settings-section" data-settings-section="plinth" data-settings-label="Sockel">
+<div class="settings-section ui-stack" data-settings-section="plinth" data-settings-label="Sockel">
               <div class="toolbar-group">
                 <label class="toolbar-check">
                   <input id="studio-plinth-enabled" type="checkbox" checked />
@@ -1034,13 +1051,10 @@
                 </label>
               </div>
               <div id="studio-plinth-options">
+                <p class="settings-subheading settings-subheading-nested">Maße</p>
                 <div class="toolbar-group">
                   <span class="toolbar-label">Höhe (cm, 8er-Raster)</span>
                   <input id="studio-plinth-height" type="number" min="0" step="8" value="64" />
-                </div>
-                <div class="toolbar-group">
-                  <span class="toolbar-label">Sockelfarbe</span>
-                  <div id="studio-plinth-color-swatches" class="color-swatches"></div>
                 </div>
                 <div id="studio-plinth-depth-row" class="toolbar-group">
                   <span class="toolbar-label">Tiefe nach außen (cm)</span>
@@ -1050,6 +1064,12 @@
                   <span class="toolbar-label">Versatz vor Mauerwerk (cm)</span>
                   <input id="studio-plinth-offset" type="number" min="0" step="1" value="4" />
                 </div>
+                <p class="settings-subheading settings-subheading-nested">Farbe</p>
+                <div class="toolbar-group">
+                  <span class="toolbar-label">Sockelfarbe</span>
+                  <div id="studio-plinth-color-swatches" class="color-swatches"></div>
+                </div>
+                <p class="settings-subheading settings-subheading-nested">Profil</p>
                 <div class="toolbar-group">
                   <span class="toolbar-label">Sockelprofil</span>
                   <p class="toolbar-hint compact-hint">Profil in der Bibliothek (Tab Sockel) wählen oder auf die Wand ziehen.</p>
@@ -1088,6 +1108,7 @@
                 </label>
               </div>
               <div id="studio-label-options">
+                <p class="settings-subheading settings-subheading-nested">Text</p>
                 <div class="toolbar-group">
                   <span class="toolbar-label">Text</span>
                   <div class="input-row-pair">
@@ -1099,10 +1120,12 @@
                   <span class="toolbar-label">Schriftart</span>
                   <div id="studio-label-font-cards" class="label-font-card-stack sidebar-library-picker" role="listbox" aria-label="Schriftart"></div>
                 </div>
+                <p class="settings-subheading settings-subheading-nested">Maße</p>
                 <div class="toolbar-group">
                   <span class="toolbar-label">Höhe (cm, 8er-Raster)</span>
                   <input id="studio-label-height" type="number" min="8" max="192" step="8" value="48" />
                 </div>
+                <p class="settings-subheading settings-subheading-nested">Position</p>
                 <div class="toolbar-group">
                   <span class="toolbar-label">Position X / Y (cm)</span>
                   <div class="input-row-pair">
@@ -1118,6 +1141,7 @@
                     <option value="right">Rechts</option>
                   </select>
                 </div>
+                <p class="settings-subheading settings-subheading-nested">Farbe</p>
                 <div class="toolbar-group">
                   <span class="toolbar-label">Schriftfarbe</span>
                   <div id="studio-label-color-swatches" class="color-swatches"></div>
@@ -1170,6 +1194,7 @@
             </div>
             </div>
             <div class="settings-section" data-settings-section="colors" data-settings-label="Farben" data-settings-order="20">
+            <p class="settings-subheading settings-subheading-nested">Wand</p>
             <div id="wall-color-section" class="toolbar-group">
               <span class="toolbar-label">Wandfarbe</span>
               <div id="wall-color-swatches" class="color-swatches"></div>
@@ -1182,6 +1207,7 @@
                 <option value="metal">Metallisch</option>
               </select>
             </div>
+            <p class="settings-subheading settings-subheading-nested">Profile</p>
             <div id="profile-color-section" class="toolbar-group">
               <span class="toolbar-label">Profil</span>
               <div id="profile-color-swatches" class="color-swatches"></div>
@@ -1204,6 +1230,7 @@
             </div>
             </div>
             <div class="settings-section" data-settings-section="cornice" data-settings-label="Gesims">
+            <p class="settings-subheading settings-subheading-nested">Maße</p>
             <div class="toolbar-group">
               <span class="toolbar-label">Gesims</span>
               <label class="toolbar-check">
@@ -1223,6 +1250,7 @@
               <span class="toolbar-label">Höhe (cm, 8er-Raster)</span>
               <input id="wall-cornice-scale" type="number" min="8" step="8" value="32" />
             </div>
+            <p class="settings-subheading settings-subheading-nested">Farbe</p>
             <div class="toolbar-group">
               <span class="toolbar-label">Gesimsfarbe</span>
               <div id="wall-cornice-color-swatches" class="color-swatches"></div>
@@ -1235,6 +1263,7 @@
                 <option value="metal">Metallisch</option>
               </select>
             </div>
+            <p class="settings-subheading settings-subheading-nested">Profil</p>
             <div class="toolbar-group">
               <span class="toolbar-label">Querschnitt</span>
               <p class="toolbar-hint compact-hint">Profil in der Bibliothek (Tab Profile) wählen oder auf die Wand ziehen.</p>
@@ -1247,6 +1276,7 @@
                 <button id="wall-cornice-flip-forward" class="preset-btn" type="button">Spiegeln vorne/hinten</button>
               </div>
             </div>
+            <p class="settings-subheading settings-subheading-nested">Position</p>
             <div class="toolbar-group" data-ui-level="advanced">
               <span class="toolbar-label">Vorstand (cm)</span>
               <input id="wall-cornice-offset-forward" type="number" step="0.5" value="0" />
@@ -1269,29 +1299,41 @@
           </div>
 
           <div id="toolbar-opening" hidden>
-            <div id="opening-measures-section" class="settings-section toolbar-group" data-settings-section="measures" data-settings-label="Maße" data-settings-order="10">
-              <div id="opening-size-section" class="toolbar-group">
-                <span class="toolbar-label">Breite (cm)</span>
-                <div class="preset-group scope-toggle" id="opening-width-dir" role="group" aria-label="Breitenänderung Richtung">
-                  <button id="opening-width-dir-left" class="preset-btn" type="button" aria-pressed="false">nach links</button>
-                  <button id="opening-width-dir-right" class="preset-btn active" type="button" aria-pressed="true">nach rechts</button>
+            <div id="opening-measures-section" class="settings-section toolbar-group ui-stack" data-settings-section="measures" data-settings-label="Maße" data-settings-order="10">
+              <div id="opening-size-section" class="toolbar-group opening-size-stack ui-stack">
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Breite (cm)</span>
+                  <div class="opening-width-controls">
+                    <div class="preset-group scope-toggle" id="opening-width-dir" role="group" aria-label="Breitenänderung Richtung">
+                      <button id="opening-width-dir-left" class="preset-btn" type="button" aria-pressed="false">←</button>
+                      <button id="opening-width-dir-right" class="preset-btn active" type="button" aria-pressed="true">→</button>
+                    </div>
+                    <input id="opening-width" type="number" step="8" value="96" />
+                  </div>
                 </div>
-                <input id="opening-width" type="number" step="8" value="96" />
-                <span class="toolbar-label">Höhe (cm)</span>
-                <input id="opening-height" type="number" step="8" value="192" />
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Höhe (cm)</span>
+                  <input id="opening-height" type="number" step="8" value="192" />
+                </div>
               </div>
-              <div id="opening-window-depth-section" class="toolbar-group">
-                <span class="toolbar-label">Frontlage (cm von Außenkante)</span>
-                <input id="opening-window-depth-offset" type="number" step="1" min="0" max="120" value="32" title="Tiefe der Fensterfront ab Wand-Außenkante. Pro Öffnung einstellbar; ohne eigenen Wert gilt der Gebäude-Standard (32 cm = 24 cm Laibung + 8 cm Offset)." />
+              <div id="opening-window-depth-section" class="toolbar-group toolbar-inline-value ui-field-inline">
+                <span class="toolbar-label">Vertikaler Versatz (cm)</span>
+                <input id="opening-window-depth-offset" type="number" step="1" min="0" max="120" value="32" title="cm von Außenkante. Tiefe der Fensterfront ab Wand-Außenkante. Pro Öffnung einstellbar; ohne eigenen Wert gilt der Gebäude-Standard (32 cm = 24 cm Laibung + 8 cm Offset)." />
                 <button id="opening-window-depth-reset" class="preset-btn" type="button" title="Eigene Tiefe löschen — Gebäude-Standard verwenden">Gebäude-Standard</button>
                 <p id="opening-window-depth-hint" class="toolbar-hint compact-hint">Pro Öffnung. Standard-Frontlage 32 cm (Laibung 24 cm + Offset 8 cm).</p>
               </div>
-              <div id="opening-position-section" class="toolbar-group">
-                <span class="toolbar-label">Horizontal (cm, 8er-Raster)</span>
-                <input id="opening-pos-x" type="number" step="8" min="0" value="0" title="Position in 8-cm-Schritten" />
-                <span class="toolbar-label">Vertikal (cm, 8er-Raster)</span>
-                <input id="opening-pos-y" type="number" step="8" min="0" value="0" title="Position in 8-cm-Schritten" />
+              <p class="settings-subheading settings-subheading-nested">Position</p>
+              <div id="opening-position-section" class="toolbar-group ui-stack">
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Horizontale Position (cm)</span>
+                  <input id="opening-pos-x" type="number" step="8" min="0" value="0" title="cm, 8er-Raster" />
+                </div>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Vertikale Position (cm)</span>
+                  <input id="opening-pos-y" type="number" step="8" min="0" value="0" title="cm, 8er-Raster" />
+                </div>
               </div>
+              <p class="settings-subheading settings-subheading-nested">Typ</p>
               <div id="opening-type-section" class="toolbar-group">
                 <span class="toolbar-label">Typ</span>
                 <select id="opening-type-select">
@@ -1320,6 +1362,7 @@
                   <input id="opening-niche-depth" type="number" step="1" min="1" value="10" />
                 </div>
               </div>
+              <p class="settings-subheading settings-subheading-nested">Einbau</p>
               <div id="opening-reveal-frame-section" class="toolbar-group">
                 <label class="toolbar-check">
                   <input id="opening-reveal-frame-enabled" type="checkbox" />
@@ -1361,9 +1404,8 @@
                   <strong>Hinweis:</strong> Bei Rundbögen kann es an der Bogenlaibung zu Darstellungsproblemen kommen (Lücken oder Versätze zwischen den Return-Steinen). Bei rechteckigen Öffnungen ist die Funktion unproblematisch.
                 </p>
               </div>
+              <p class="settings-subheading settings-subheading-nested">Bogen</p>
               <div id="opening-arch-section" class="toolbar-group">
-                <span class="toolbar-label">Bogenform der Öffnung</span>
-                <p class="toolbar-hint">Mauerwerk, Leibung, Profile und Glas folgen der gewählten Form. Keilsteine nur beim Rundbogen.</p>
                 <label class="toolbar-check" id="opening-arch-enabled-wrap" hidden>
                   <input id="opening-arch-enabled" type="checkbox" />
                   Bogen aktiv (Legacy)
@@ -1424,8 +1466,8 @@
             </div>
 
             <div id="window-style-accordion" class="settings-section" data-settings-section="style" data-settings-label="Teilung" data-settings-order="40">
-              <p class="settings-subheading">Fensterteilung</p>
             <div id="window-style-section" class="toolbar-group window-style-config" hidden>
+              <p class="settings-subheading settings-subheading-nested">Ausstattung</p>
               <svg id="window-style-preview" class="window-style-preview" viewBox="0 0 96 192" aria-hidden="true"></svg>
               <div class="toolbar-group">
                 <span class="toolbar-label">Typ</span>
@@ -1511,6 +1553,7 @@
                 </label>
                 <label class="toolbar-check"><input id="window-door-handle" type="checkbox" checked /> Drücker</label>
                 <label class="toolbar-check"><input id="window-door-letter" type="checkbox" /> Briefschlitz</label>
+                <label class="toolbar-check"><input id="window-door-bottom-frame" type="checkbox" /> Unterer Rahmen</label>
               </div>
               <div id="window-basement-block">
                 <label id="window-basement-row" class="toolbar-check" hidden>
@@ -1532,40 +1575,66 @@
                   </label>
                 </div>
               </div>
-              <div class="toolbar-group">
+              <div class="toolbar-group toolbar-inline-stepper" id="window-casement-section">
                 <span class="toolbar-label">Flügel</span>
-                <div id="window-casement-group" class="preset-group">
-                  <button class="preset-btn" type="button" data-casements="1">1</button>
-                  <button class="preset-btn" type="button" data-casements="2">2</button>
-                  <button class="preset-btn" type="button" data-casements="3">3</button>
+                <div id="window-casement-stepper" class="toolbar-stepper" role="group" aria-label="Flügel">
+                  <button type="button" class="toolbar-stepper-dec" aria-label="Verringern">−</button>
+                  <output id="window-casement-value" class="toolbar-stepper-value">1</output>
+                  <button type="button" class="toolbar-stepper-inc" aria-label="Erhöhen">+</button>
                 </div>
               </div>
+              <p class="settings-subheading settings-subheading-nested">Oberlicht</p>
               <label class="toolbar-check">
                 <input id="window-transom" type="checkbox" />
                 Oberlicht
               </label>
-              <div id="window-transom-options">
-                <label>
-                  Oberlicht-Höhe
-                  <input id="window-transom-ratio" type="range" min="16" max="40" step="1" value="28" />
-                </label>
-                <div class="toolbar-group">
-                  <span class="toolbar-label">Oberlicht</span>
-                  <div id="window-transom-bars-group" class="preset-group">
-                    <button class="preset-btn" type="button" data-transom-bars="none">offen</button>
-                    <button class="preset-btn" type="button" data-transom-bars="match">geteilt</button>
-                    <button class="preset-btn" type="button" data-transom-bars="cross">Kreuz</button>
+              <div id="window-transom-options" hidden>
+                <div class="toolbar-group toolbar-inline-value">
+                  <span class="toolbar-label">Höhe (%)</span>
+                  <input id="window-transom-ratio" type="number" min="5" step="1" value="33" title="Anteil der lichten Fensterhöhe" />
+                </div>
+                <div class="toolbar-group toolbar-inline-stepper" id="window-transom-split-v-section">
+                  <span class="toolbar-label">Teilung vertikal</span>
+                  <div id="window-transom-split-v-stepper" class="toolbar-stepper" role="group" aria-label="Oberlicht Teilung vertikal">
+                    <button type="button" class="toolbar-stepper-dec" aria-label="Verringern">−</button>
+                    <output id="window-transom-split-v-value" class="toolbar-stepper-value">1</output>
+                    <button type="button" class="toolbar-stepper-inc" aria-label="Erhöhen">+</button>
+                  </div>
+                  <div id="window-transom-split-v-ratio-group" class="preset-group" hidden>
+                    <span class="toolbar-label">Verhältnis</span>
+                    <button class="preset-btn" type="button" data-transom-split-v-ratio="1/1">1:1</button>
+                    <button class="preset-btn" type="button" data-transom-split-v-ratio="1/2">1:2</button>
+                    <button class="preset-btn" type="button" data-transom-split-v-ratio="1/3">1:3</button>
+                    <button class="preset-btn" type="button" data-transom-split-v-ratio="1/4">1:4</button>
+                    <button class="preset-btn" type="button" data-transom-split-v-ratio="1/5">1:5</button>
+                    <button class="preset-btn" type="button" data-transom-split-v-ratio="1/6">1:6</button>
+                  </div>
+                </div>
+                <div class="toolbar-group toolbar-inline-stepper" id="window-transom-split-h-section">
+                  <span class="toolbar-label">Teilung horizontal</span>
+                  <div id="window-transom-split-h-stepper" class="toolbar-stepper" role="group" aria-label="Oberlicht Teilung horizontal">
+                    <button type="button" class="toolbar-stepper-dec" aria-label="Verringern">−</button>
+                    <output id="window-transom-split-h-value" class="toolbar-stepper-value">1</output>
+                    <button type="button" class="toolbar-stepper-inc" aria-label="Erhöhen">+</button>
+                  </div>
+                  <div id="window-transom-split-h-ratio-group" class="preset-group" hidden>
+                    <span class="toolbar-label">Verhältnis</span>
+                    <button class="preset-btn" type="button" data-transom-split-h-ratio="1/1">1:1</button>
+                    <button class="preset-btn" type="button" data-transom-split-h-ratio="1/2">1:2</button>
+                    <button class="preset-btn" type="button" data-transom-split-h-ratio="1/3">1:3</button>
+                    <button class="preset-btn" type="button" data-transom-split-h-ratio="1/4">1:4</button>
+                    <button class="preset-btn" type="button" data-transom-split-h-ratio="1/5">1:5</button>
+                    <button class="preset-btn" type="button" data-transom-split-h-ratio="1/6">1:6</button>
                   </div>
                 </div>
               </div>
-              <div class="toolbar-group">
-                <span class="toolbar-label">Fensterteilung vertikal</span>
-                <div id="window-split-v-count-group" class="preset-group">
-                  <button class="preset-btn" type="button" data-split-v-count="1">1</button>
-                  <button class="preset-btn" type="button" data-split-v-count="2">2</button>
-                  <button class="preset-btn" type="button" data-split-v-count="3">3</button>
-                  <button class="preset-btn" type="button" data-split-v-count="4">4</button>
-                  <button class="preset-btn" type="button" data-split-v-count="5">5</button>
+              <p class="settings-subheading settings-subheading-nested">Flügel</p>
+              <div class="toolbar-group toolbar-inline-stepper" id="window-split-v-section">
+                <span class="toolbar-label">Teilung vertikal</span>
+                <div id="window-split-v-stepper" class="toolbar-stepper" role="group" aria-label="Flügel Teilung vertikal">
+                  <button type="button" class="toolbar-stepper-dec" aria-label="Verringern">−</button>
+                  <output id="window-split-v-value" class="toolbar-stepper-value">1</output>
+                  <button type="button" class="toolbar-stepper-inc" aria-label="Erhöhen">+</button>
                 </div>
                 <div id="window-split-v-ratio-group" class="preset-group" hidden>
                   <span class="toolbar-label">Verhältnis</span>
@@ -1577,14 +1646,12 @@
                   <button class="preset-btn" type="button" data-split-v-ratio="1/6">1:6</button>
                 </div>
               </div>
-              <div class="toolbar-group">
-                <span class="toolbar-label">Fensterteilung horizontal</span>
-                <div id="window-split-h-count-group" class="preset-group">
-                  <button class="preset-btn" type="button" data-split-h-count="1">1</button>
-                  <button class="preset-btn" type="button" data-split-h-count="2">2</button>
-                  <button class="preset-btn" type="button" data-split-h-count="3">3</button>
-                  <button class="preset-btn" type="button" data-split-h-count="4">4</button>
-                  <button class="preset-btn" type="button" data-split-h-count="5">5</button>
+              <div class="toolbar-group toolbar-inline-stepper" id="window-split-h-section">
+                <span class="toolbar-label">Teilung horizontal</span>
+                <div id="window-split-h-stepper" class="toolbar-stepper" role="group" aria-label="Flügel Teilung horizontal">
+                  <button type="button" class="toolbar-stepper-dec" aria-label="Verringern">−</button>
+                  <output id="window-split-h-value" class="toolbar-stepper-value">1</output>
+                  <button type="button" class="toolbar-stepper-inc" aria-label="Erhöhen">+</button>
                 </div>
                 <div id="window-split-h-ratio-group" class="preset-group" hidden>
                   <span class="toolbar-label">Verhältnis</span>
@@ -1611,30 +1678,32 @@
               </div>
               <p class="settings-subheading settings-subheading-nested">Sprossen</p>
               <div id="window-muntin-section" class="toolbar-group">
-                <div class="toolbar-group">
-                  <span class="toolbar-label">Senkrecht</span>
-                  <div id="window-muntin-v-group" class="preset-group">
-                    <button class="preset-btn" type="button" data-muntin-v="0">0</button>
-                    <button class="preset-btn" type="button" data-muntin-v="1">1</button>
-                    <button class="preset-btn" type="button" data-muntin-v="2">2</button>
+                <div class="toolbar-group toolbar-inline-stepper">
+                  <span class="toolbar-label">Sprossen senkrecht</span>
+                  <div id="window-muntin-v-stepper" class="toolbar-stepper" role="group" aria-label="Sprossen senkrecht">
+                    <button type="button" class="toolbar-stepper-dec" aria-label="Verringern">−</button>
+                    <output id="window-muntin-v-value" class="toolbar-stepper-value">0</output>
+                    <button type="button" class="toolbar-stepper-inc" aria-label="Erhöhen">+</button>
                   </div>
                 </div>
-                <div class="toolbar-group">
-                  <span class="toolbar-label">Waagerecht</span>
-                  <div id="window-muntin-h-group" class="preset-group">
-                    <button class="preset-btn" type="button" data-muntin-h="0">0</button>
-                    <button class="preset-btn" type="button" data-muntin-h="1">1</button>
-                    <button class="preset-btn" type="button" data-muntin-h="2">2</button>
+                <div class="toolbar-group toolbar-inline-stepper">
+                  <span class="toolbar-label">Sprossen waagerecht</span>
+                  <div id="window-muntin-h-stepper" class="toolbar-stepper" role="group" aria-label="Sprossen waagerecht">
+                    <button type="button" class="toolbar-stepper-dec" aria-label="Verringern">−</button>
+                    <output id="window-muntin-h-value" class="toolbar-stepper-value">0</output>
+                    <button type="button" class="toolbar-stepper-inc" aria-label="Erhöhen">+</button>
                   </div>
                 </div>
               </div>
             </div>
             </div>
             <div id="opening-motion-section" class="settings-section toolbar-group" data-settings-section="motion" data-settings-label="Animation" data-settings-order="45">
+              <p class="settings-subheading settings-subheading-nested">Öffnen</p>
               <div class="toolbar-group window-open-block">
                 <span class="toolbar-label">Einzeln öffnen</span>
                 <div id="window-open-group" class="window-open-group"></div>
               </div>
+              <p class="settings-subheading settings-subheading-nested">Kurve</p>
               <p class="toolbar-hint compact-hint">Öffnen und Schließen getrennt. Punkte ziehen; Klick in die Fläche setzt einen Zwischenpunkt. Kurve = weich, Linie = linear.</p>
               <div class="toolbar-group">
                 <span class="toolbar-label">Phase</span>
@@ -1652,25 +1721,34 @@
                 </div>
               </div>
               <svg id="opening-motion-curve" class="opening-motion-curve" viewBox="0 0 280 156" role="img" aria-label="Bewegungskurve"></svg>
-              <div class="toolbar-row-2">
-                <label>Dauer (ms) <input id="opening-motion-duration" type="number" min="80" max="12000" step="50" /></label>
-                <label id="opening-motion-hold-wrap">Pause danach (ms) <input id="opening-motion-hold" type="number" min="0" max="8000" step="50" /></label>
+              <div class="toolbar-group toolbar-inline-value">
+                <span class="toolbar-label">Dauer (ms)</span>
+                <input id="opening-motion-duration" type="number" min="80" max="12000" step="50" />
               </div>
-              <label>Zielwinkel (°) <input id="opening-motion-maxdeg" type="number" min="10" max="120" step="1" /></label>
+              <div id="opening-motion-hold-wrap" class="toolbar-group toolbar-inline-value">
+                <span class="toolbar-label">Pause danach (ms)</span>
+                <input id="opening-motion-hold" type="number" min="0" max="8000" step="50" />
+              </div>
+              <div class="toolbar-group toolbar-inline-value">
+                <span class="toolbar-label">Zielwinkel (°)</span>
+                <input id="opening-motion-maxdeg" type="number" min="10" max="120" step="1" />
+              </div>
               <div id="opening-motion-key-options" class="toolbar-group">
                 <span class="toolbar-label">Gewählter Punkt → nächster</span>
                 <div id="opening-motion-ease-group" class="preset-group">
                   <button class="preset-btn" type="button" data-motion-ease="smooth">Kurve</button>
                   <button class="preset-btn" type="button" data-motion-ease="linear">Linie</button>
                 </div>
-                <button type="button" id="opening-motion-delete-key">Punkt löschen</button>
+                <button type="button" class="preset-btn" id="opening-motion-delete-key">Punkt löschen</button>
               </div>
+              <p class="settings-subheading settings-subheading-nested">Abspielen</p>
               <div class="action-row">
-                <button type="button" id="opening-motion-play-open">Öffnen abspielen</button>
-                <button type="button" id="opening-motion-play-close">Schließen abspielen</button>
+                <button type="button" class="preset-btn" id="opening-motion-play-open">Öffnen abspielen</button>
+                <button type="button" class="preset-btn" id="opening-motion-play-close">Schließen abspielen</button>
               </div>
-              <button type="button" id="opening-motion-play-cycle">Öffnen → Pause → Schließen</button>
-              <button type="button" id="opening-motion-stop" hidden>Stopp</button>
+              <button type="button" class="preset-btn" id="opening-motion-play-cycle">Öffnen → Pause → Schließen</button>
+              <button type="button" class="preset-btn" id="opening-motion-stop" hidden>Stopp</button>
+              <p class="settings-subheading settings-subheading-nested">Uhrzeiten</p>
               <div id="opening-motion-schedule" class="toolbar-group day-schedule-editor">
                 <span class="toolbar-label">Uhrzeiten</span>
                 <p class="toolbar-hint compact-hint">Ein = öffnen, Aus = schließen (Tageszeit / Tagzyklus).</p>
@@ -1691,12 +1769,13 @@
                   </div>
                 </div>
               </div>
+              <p class="settings-subheading settings-subheading-nested">Datensatz</p>
               <span class="toolbar-label">Datensatz</span>
               <p class="toolbar-hint compact-hint">JSON kopieren und später einfügen (oder an den Assistenten geben), um genau diese Kurven zu übernehmen.</p>
               <textarea id="opening-motion-dataset" class="opening-motion-dataset" rows="7" spellcheck="false"></textarea>
               <div class="action-row">
-                <button type="button" id="opening-motion-copy">Kopieren</button>
-                <button type="button" id="opening-motion-apply">Übernehmen</button>
+                <button type="button" class="preset-btn" id="opening-motion-copy">Kopieren</button>
+                <button type="button" class="preset-btn" id="opening-motion-apply">Übernehmen</button>
               </div>
               <p id="opening-motion-status" class="toolbar-hint compact-hint" hidden></p>
             </div>
@@ -1707,13 +1786,18 @@
                 Rollläden anzeigen
               </label>
               <div id="roller-shutter-options" hidden>
-                <span class="toolbar-label">Höhe (geschlossen)</span>
-                <input id="roller-shutter-drop" type="range" min="0" max="100" step="1" value="0" aria-label="Rollladenhöhe" />
-                <div class="toolbar-row-2">
-                  <span id="roller-shutter-drop-label" class="toolbar-hint compact-hint">Offen</span>
-                  <label>Wert (%) <input id="roller-shutter-drop-pct" type="number" min="0" max="100" step="1" value="0" /></label>
+                <p class="settings-subheading settings-subheading-nested">Maße</p>
+                <div class="toolbar-group toolbar-inline-value">
+                  <span class="toolbar-label">Höhe (geschlossen)</span>
+                  <span id="roller-shutter-drop-label" class="toolbar-hint compact-hint" style="margin:0">Offen</span>
                 </div>
+                <input id="roller-shutter-drop" type="range" min="0" max="100" step="1" value="0" aria-label="Rollladenhöhe" />
                 <p class="toolbar-hint compact-hint">0 % = oben offen, 100 % = vollständig geschlossen. Lamellen hängen mit Spalt und stapeln sich unten.</p>
+                <div class="toolbar-row-2">
+                  <label>Lamellenhöhe (cm) <input id="roller-shutter-slat-height" type="number" min="2.5" max="12" step="0.5" value="5" /></label>
+                  <label>Spalt (cm) <input id="roller-shutter-gap" type="number" min="0" max="4" step="0.05" value="0.85" /></label>
+                </div>
+                <p class="settings-subheading settings-subheading-nested">Farbe</p>
                 <span class="toolbar-label">Farbe</span>
                 <div id="roller-shutter-color-swatches" class="color-swatches"></div>
                 <span class="toolbar-label">Oberfläche</span>
@@ -1722,26 +1806,38 @@
                   <option value="glossy">Glänzend</option>
                   <option value="metal">Metallisch</option>
                 </select>
-                <div class="toolbar-row-2">
-                  <label>Lamellenhöhe (cm) <input id="roller-shutter-slat-height" type="number" min="2.5" max="12" step="0.5" value="5" /></label>
-                  <label>Spalt (cm) <input id="roller-shutter-gap" type="number" min="0" max="4" step="0.05" value="0.85" /></label>
-                </div>
+                <p class="settings-subheading settings-subheading-nested">Animation</p>
                 <span class="toolbar-label">Animation</span>
                 <div id="roller-shutter-phase-group" class="preset-group">
                   <button class="preset-btn active" type="button" data-roller-phase="lower">Runterfahren</button>
                   <button class="preset-btn" type="button" data-roller-phase="raise">Hochfahren</button>
                 </div>
                 <div id="roller-shutter-preset-group" class="preset-group">
-                  <button class="preset-btn" type="button" data-roller-preset="soft">Weich</button>
-                  <button class="preset-btn" type="button" data-roller-preset="linear">Linear</button>
+                  <button class="preset-btn" type="button" data-roller-preset="soft" title="Durchgehend weich">Ein Zug</button>
+                  <button class="preset-btn" type="button" data-roller-preset="linear" title="Gleichmäßige Geschwindigkeit">Linear</button>
+                  <button class="preset-btn" type="button" data-roller-preset="cable" title="Hand für Hand am Gurt/Kabel, mit kurzen Pausen">Kabelzug</button>
                 </div>
-                <label>Dauer (ms) <input id="roller-shutter-duration" type="number" min="80" max="12000" step="50" value="1800" /></label>
-                <div class="action-row">
-                  <button type="button" id="roller-shutter-play-lower">Runter abspielen</button>
-                  <button type="button" id="roller-shutter-play-raise">Hoch abspielen</button>
+                <p class="toolbar-hint compact-hint">Ein Zug = durchgehend. Kabelzug = organisch Hand für Hand wie früher am Gurt. Punkte ziehen; Klick setzt Zwischenpunkt.</p>
+                <svg id="roller-shutter-motion-curve" class="opening-motion-curve" viewBox="0 0 280 156" role="img" aria-label="Rollladen-Bewegungskurve"></svg>
+                <div class="toolbar-group toolbar-inline-value">
+                  <span class="toolbar-label">Dauer (s)</span>
+                  <input id="roller-shutter-duration" type="number" min="0.1" max="12" step="0.1" value="1.8" title="Animationsdauer in Sekunden" />
                 </div>
-                <button type="button" id="roller-shutter-play-cycle">Runter → Pause → Hoch</button>
-                <button type="button" id="roller-shutter-stop" hidden>Stopp</button>
+                <div id="roller-shutter-key-options" class="toolbar-group">
+                  <span class="toolbar-label">Gewählter Punkt → nächster</span>
+                  <div id="roller-shutter-ease-group" class="preset-group">
+                    <button class="preset-btn" type="button" data-roller-ease="smooth">Kurve</button>
+                    <button class="preset-btn" type="button" data-roller-ease="linear">Linie</button>
+                  </div>
+                  <button type="button" class="preset-btn" id="roller-shutter-delete-key">Punkt löschen</button>
+                </div>
+                <div class="action-row action-row-stack">
+                  <button type="button" class="preset-btn" id="roller-shutter-play-lower">Rollo schließen</button>
+                  <button type="button" class="preset-btn" id="roller-shutter-play-raise">Rollo öffnen</button>
+                  <button type="button" class="preset-btn" id="roller-shutter-play-cycle">Runter → Pause → Hoch</button>
+                </div>
+                <button type="button" class="preset-btn" id="roller-shutter-stop" hidden>Stopp</button>
+                <p class="settings-subheading settings-subheading-nested">Uhrzeiten</p>
                 <div id="roller-shutter-schedule" class="toolbar-group day-schedule-editor">
                   <span class="toolbar-label">Uhrzeiten</span>
                   <p class="toolbar-hint compact-hint">Ein = hochfahren, Aus = runterfahren.</p>
@@ -1765,11 +1861,11 @@
               </div>
             </div>
 
-            <div id="profile-assign-section" class="toolbar-group settings-section" data-settings-section="profile" data-settings-label="Profil" data-settings-order="30">
-              <span class="toolbar-label">Rahmenprofil</span>
+            <div id="profile-assign-section" class="toolbar-group settings-section ui-stack" data-settings-section="profile" data-settings-label="Profil" data-settings-order="30">
               <p class="toolbar-hint compact-hint">Profil in der Bibliothek (Tab Profile) wählen oder auf Fenster/Tür ziehen.</p>
               <div id="profile-select-cards" class="tpl-card-row profile-picker-row sidebar-library-picker" role="listbox" aria-label="Rahmenprofil"></div>
-              <div id="profile-trim-section" class="toolbar-group" hidden>
+              <div id="profile-trim-section" class="toolbar-group ui-stack" hidden>
+                <p class="settings-subheading settings-subheading-nested">Farbe</p>
                 <div class="toolbar-group">
                   <span class="toolbar-label">Profilfarbe</span>
                   <div id="trim-color-swatches" class="color-swatches"></div>
@@ -1782,13 +1878,18 @@
                     <option value="metal">Metallisch</option>
                   </select>
                 </div>
-                <div class="toolbar-group">
+                <p class="settings-subheading settings-subheading-nested">Maße</p>
+                <div class="toolbar-group toolbar-inline-value">
                   <span class="toolbar-label">Profilgröße (Faktor)</span>
                   <input id="profile-scale" type="number" min="0.25" step="0.25" value="1" />
                 </div>
-                <div class="toolbar-row-2">
-                  <label>Höhe / Länge (cm) <input id="profile-extent-out" type="number" min="0" step="0.5" value="" placeholder="auto" title="Querschnitt quer zur Kante; steuert auch die Verdachungs-Anhebung" /></label>
-                  <label>Tiefe (cm) <input id="profile-extent-forward" type="number" min="0" step="0.5" value="" placeholder="auto" title="Querschnitt senkrecht zur Wand" /></label>
+                <div class="toolbar-group toolbar-inline-value">
+                  <span class="toolbar-label">Höhe / Länge (cm)</span>
+                  <input id="profile-extent-out" type="number" min="0" step="0.5" value="" placeholder="auto" title="Querschnitt quer zur Kante; steuert auch die Verdachungs-Anhebung" />
+                </div>
+                <div class="toolbar-group toolbar-inline-value">
+                  <span class="toolbar-label">Tiefe (cm)</span>
+                  <input id="profile-extent-forward" type="number" min="0" step="0.5" value="" placeholder="auto" title="Querschnitt senkrecht zur Wand" />
                 </div>
                 <div class="toolbar-group">
                   <span class="toolbar-label">Ecke</span>
@@ -1797,6 +1898,7 @@
                     <option value="none">Kantig</option>
                   </select>
                 </div>
+                <p class="settings-subheading settings-subheading-nested">Position</p>
                 <div class="toolbar-group" data-ui-level="advanced">
                   <span class="toolbar-label">Verschieben X (cm)</span>
                   <input id="profile-offset-x" type="number" step="1" value="0" />
@@ -1810,66 +1912,98 @@
                   <input id="profile-offset-forward" type="number" step="0.5" value="0" />
                 </div>
               </div>
-              <div id="profile-edge-section" class="toolbar-group" hidden>
-                <span class="toolbar-label">Kanten</span>
-                <div class="preset-group profile-edge-group">
-                  <button class="preset-btn profile-edge-btn" type="button" data-edge="top">oben</button>
-                  <button class="preset-btn profile-edge-btn" type="button" data-edge="right">rechts</button>
-                  <button class="preset-btn profile-edge-btn" type="button" data-edge="bottom">unten</button>
-                  <button class="preset-btn profile-edge-btn" type="button" data-edge="left">links</button>
+              <div id="profile-edge-section" class="toolbar-group ui-stack" hidden>
+                <p class="settings-subheading settings-subheading-nested">Profil</p>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Kanten</span>
+                  <div class="preset-group profile-edge-group">
+                    <button class="preset-btn profile-edge-btn" type="button" data-edge="top" title="oben" aria-label="oben">↑</button>
+                    <button class="preset-btn profile-edge-btn" type="button" data-edge="right" title="rechts" aria-label="rechts">→</button>
+                    <button class="preset-btn profile-edge-btn" type="button" data-edge="bottom" title="unten" aria-label="unten">↓</button>
+                    <button class="preset-btn profile-edge-btn" type="button" data-edge="left" title="links" aria-label="links">←</button>
+                  </div>
                 </div>
               </div>
             </div>
 
             <div id="window-sill-section" class="toolbar-group" hidden>
-              <div id="sill-inner-accordion" class="settings-section" data-settings-section="sill-inner" data-settings-label="Fensterbrett" data-settings-order="50">
+              <div id="sill-inner-accordion" class="settings-section ui-stack" data-settings-section="sill-inner" data-settings-label="Fensterbrett" data-settings-order="50">
                 <label class="toolbar-check">
                   <input id="sill-inner-enabled" type="checkbox" checked />
                   Fensterbrett anzeigen
                 </label>
-                <div class="toolbar-row-2">
-                  <label>Überstand (cm) <input id="sill-inner-overhang" type="number" min="0" max="96" step="8" value="8" title="Überstand links/rechts in cm" /></label>
-                  <label>Tiefe (cm) <input id="sill-inner-depth" type="number" min="2" max="48" step="1" value="16" /></label>
+                <p class="settings-subheading settings-subheading-nested">Maße</p>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Überstand (cm)</span>
+                  <input id="sill-inner-overhang" type="number" min="0" max="96" step="8" value="8" title="Überstand links/rechts in cm" />
                 </div>
-                <div class="toolbar-row-2">
-                  <label>Stärke (cm) <input id="sill-inner-thickness" type="number" min="1" max="16" step="0.5" value="4" /></label>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Tiefe (cm)</span>
+                  <input id="sill-inner-depth" type="number" min="2" max="48" step="1" value="16" />
                 </div>
-                <span class="toolbar-label">Fensterbrettfarbe</span>
-                <div id="sill-inner-color-swatches" class="color-swatches"></div>
-                <span class="toolbar-label">Oberfläche Fensterbrett</span>
-                <select id="sill-inner-finish" aria-label="Reflexion Fensterbrett">
-                  <option value="matte">Stumpf</option>
-                  <option value="glossy">Glänzend</option>
-                  <option value="metal">Metallisch</option>
-                </select>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Stärke (cm)</span>
+                  <input id="sill-inner-thickness" type="number" min="1" max="16" step="0.5" value="4" />
+                </div>
+                <p class="settings-subheading settings-subheading-nested">Farbe</p>
+                <div class="toolbar-group ui-field-inline">
+                  <span class="toolbar-label">Fensterbrettfarbe</span>
+                  <div id="sill-inner-color-swatches" class="color-swatches"></div>
+                </div>
+                <div class="toolbar-group">
+                  <span class="toolbar-label">Oberfläche Fensterbrett</span>
+                  <select id="sill-inner-finish" aria-label="Reflexion Fensterbrett">
+                    <option value="matte">Stumpf</option>
+                    <option value="glossy">Glänzend</option>
+                    <option value="metal">Metallisch</option>
+                  </select>
+                </div>
               </div>
-              <div id="sill-outer-accordion" class="settings-section" data-settings-section="sill-outer" data-settings-label="Fensterbank" data-settings-order="51">
+              <div id="sill-outer-accordion" class="settings-section ui-stack" data-settings-section="sill-outer" data-settings-label="Fensterbank" data-settings-order="51">
                 <label class="toolbar-check">
                   <input id="sill-outer-enabled" type="checkbox" checked />
                   Fensterbank anzeigen
                 </label>
-                <div class="toolbar-row-2">
-                  <label>Überstand (cm) <input id="sill-outer-overhang" type="number" min="0" max="96" step="8" value="16" title="Überstand links/rechts in cm" /></label>
-                  <label>Tiefe (cm) <input id="sill-outer-depth" type="number" min="2" max="16" step="1" value="16" title="Vorstand vor der Fassadenfläche, maximal 16 cm" /></label>
+                <p class="settings-subheading settings-subheading-nested">Maße</p>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Überstand (cm)</span>
+                  <input id="sill-outer-overhang" type="number" min="0" max="96" step="8" value="16" title="Überstand links/rechts in cm" />
                 </div>
-                <div class="toolbar-row-2">
-                  <label>Stärke (cm) <input id="sill-outer-thickness" type="number" min="1" max="16" step="0.5" value="4" /></label>
-                  <label>Gefälle (°) <input id="sill-outer-angle" type="number" min="0" max="30" step="1" value="5" title="Gefälle nach außen in Grad" /></label>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Tiefe (cm)</span>
+                  <input id="sill-outer-depth" type="number" min="2" max="16" step="1" value="16" title="Vorstand vor der Fassadenfläche, maximal 16 cm" />
                 </div>
-                <span class="toolbar-label">Fensterbankprofil</span>
-                <p class="toolbar-hint compact-hint">Bankprofil in der Bibliothek (Tab Profile) wählen oder auf das Fenster ziehen.</p>
-                <div id="sill-outer-profile-cards" class="tpl-card-row profile-picker-row sidebar-library-picker" role="listbox" aria-label="Fensterbankprofil"></div>
-                <span class="toolbar-label">Fensterbankfarbe</span>
-                <div id="sill-outer-color-swatches" class="color-swatches"></div>
-                <span class="toolbar-label">Oberfläche Fensterbank</span>
-                <select id="sill-outer-finish" aria-label="Reflexion Fensterbank">
-                  <option value="matte">Stumpf</option>
-                  <option value="glossy">Glänzend</option>
-                  <option value="metal">Metallisch</option>
-                </select>
-                <div id="sill-outer-profile-options" class="toolbar-group" hidden>
-                  <div class="toolbar-row-2">
-                    <label>Profilgröße <input id="sill-outer-scale" type="number" min="0.25" step="0.25" value="1" /></label>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Stärke (cm)</span>
+                  <input id="sill-outer-thickness" type="number" min="1" max="16" step="0.5" value="4" />
+                </div>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Gefälle (°)</span>
+                  <input id="sill-outer-angle" type="number" min="0" max="30" step="1" value="5" title="Gefälle nach außen in Grad" data-unit="°" />
+                </div>
+                <p class="settings-subheading settings-subheading-nested">Profil</p>
+                <div class="toolbar-group">
+                  <span class="toolbar-label">Fensterbankprofil</span>
+                  <p class="toolbar-hint compact-hint">Bankprofil in der Bibliothek (Tab Profile) wählen oder auf das Fenster ziehen.</p>
+                  <div id="sill-outer-profile-cards" class="tpl-card-row profile-picker-row sidebar-library-picker" role="listbox" aria-label="Fensterbankprofil"></div>
+                </div>
+                <p class="settings-subheading settings-subheading-nested">Farbe</p>
+                <div class="toolbar-group ui-field-inline">
+                  <span class="toolbar-label">Fensterbankfarbe</span>
+                  <div id="sill-outer-color-swatches" class="color-swatches"></div>
+                </div>
+                <div class="toolbar-group">
+                  <span class="toolbar-label">Oberfläche Fensterbank</span>
+                  <select id="sill-outer-finish" aria-label="Reflexion Fensterbank">
+                    <option value="matte">Stumpf</option>
+                    <option value="glossy">Glänzend</option>
+                    <option value="metal">Metallisch</option>
+                  </select>
+                </div>
+                <div id="sill-outer-profile-options" class="toolbar-group ui-stack" hidden>
+                  <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                    <span class="toolbar-label">Profilgröße</span>
+                    <input id="sill-outer-scale" type="number" min="0.25" step="0.25" value="1" />
                   </div>
                   <div class="toolbar-group">
                     <span class="toolbar-label">Ecke</span>
@@ -1894,12 +2028,13 @@
             </div>
 
             <div id="opening-pediment-section" class="settings-section toolbar-group" data-settings-section="pediment" data-settings-label="Verdachung" data-settings-order="60">
-              <p id="pediment-summary" class="settings-subheading">Fensterverdachung</p>
+              <p id="pediment-summary" class="settings-subheading settings-subheading-nested">Fensterverdachung</p>
               <label class="toolbar-check">
                 <input id="pediment-enabled" type="checkbox" />
                 <span id="pediment-enabled-label">Verdachung über dem Fenster anzeigen</span>
               </label>
               <div id="pediment-options">
+                  <p class="settings-subheading settings-subheading-nested">Form</p>
                   <div class="toolbar-group">
                   <span class="toolbar-label">Form</span>
                   <p class="toolbar-hint compact-hint">Unten offen (mit optionalen Horizontalen), unten geschlossen, oder Bogenformen. Auch in der Bibliothek wählbar.</p>
@@ -1960,11 +2095,13 @@
                     </button>
                   </div>
                   </div>
+                  <p class="settings-subheading settings-subheading-nested">Profil</p>
                   <div class="toolbar-group">
                   <span class="toolbar-label">Profil</span>
                   <p class="toolbar-hint compact-hint">Profil in der Bibliothek (Tab Profile oder Verdachung) wählen oder auf die Öffnung ziehen.</p>
                 <div id="pediment-profile-cards" class="tpl-card-row profile-picker-row sidebar-library-picker" role="listbox" aria-label="Verdachungsprofil"></div>
                   </div>
+                  <p class="settings-subheading settings-subheading-nested">Maße</p>
                   <div class="toolbar-row-2">
                     <label>Überstand (cm) <input id="pediment-overhang" type="number" min="0" max="96" step="8" value="8" title="Überstand links/rechts in cm" /></label>
                     <label>Profilgröße (Faktor) <input id="pediment-scale" type="number" min="0.25" step="0.25" value="1" /></label>
@@ -1992,6 +2129,7 @@
                     <input id="pediment-sealed-back" type="checkbox" />
                     Rückseite verschließen (kein Mauerwerk durchscheinend)
                   </label>
+                  <p class="settings-subheading settings-subheading-nested">Farbe</p>
                   <span class="toolbar-label">Verdachungsfarbe</span>
                   <div id="pediment-color-swatches" class="color-swatches"></div>
                   <span class="toolbar-label">Oberfläche Verdachung</span>
@@ -2010,22 +2148,24 @@
                 Stützen unter der Verdachung anzeigen
               </label>
               <div id="pediment-console-options">
+                <p class="settings-subheading settings-subheading-nested">Profil</p>
                 <div class="toolbar-group">
                 <span class="toolbar-label">Konsolenprofil</span>
                 <p class="toolbar-hint compact-hint">Konsole in der Bibliothek (Tab Verdachung) wählen.</p>
                 <div id="pediment-console-cards" class="tpl-card-row profile-picker-row sidebar-library-picker" role="listbox" aria-label="Konsolenprofil"></div>
                 </div>
+                <p class="settings-subheading settings-subheading-nested">Position</p>
                 <span class="toolbar-label">Wandversatz (cm, 8er-Raster)</span>
                 <input id="pediment-console-wall-offset" type="number" min="0" max="96" step="8" value="0" title="Versatz der Konsolen entlang der Wandfläche" />
               </div>
             </div>
             <div id="opening-tapered-field-section" class="settings-section toolbar-group" data-settings-section="taperedField" data-settings-label="Verdachungsfeld" data-settings-order="65">
-              <p class="settings-subheading">Verdachungsfeld (separates Trapez)</p>
               <label class="toolbar-check">
                 <input id="tapered-field-enabled" type="checkbox" />
                 <span>Separates Trapezfeld über der Öffnung</span>
               </label>
               <div id="tapered-field-options" hidden>
+                <p class="settings-subheading settings-subheading-nested">Maße</p>
                 <p class="toolbar-hint compact-hint">Optionales Giebel-/Verdachungs-Trapez über Sturz oder Scheitel — <strong>nicht</strong> die radialen Rustika-Lagen am Bogen (die entstehen automatisch bei Strip/Verband + Rundbogen). Default aus.</p>
                 <div class="toolbar-row-2">
                   <label>Lagen <input id="tapered-field-courses" type="number" min="1" max="12" step="1" value="3" title="Anzahl horizontaler Quaderlagen" /></label>
@@ -2048,6 +2188,7 @@
                 Eingangstreppe anzeigen
               </label>
               <div id="stairs-options">
+                <p class="settings-subheading settings-subheading-nested">Maße</p>
                 <span class="toolbar-label">Stufen</span>
                 <input id="stairs-count" type="number" min="1" max="16" step="1" value="3" />
                 <span class="toolbar-label">Steigung (cm, 8er)</span>
@@ -2060,6 +2201,7 @@
                 <input id="stairs-extend" type="number" min="0" max="192" step="8" value="0" />
                 <span class="toolbar-label">Aufweitung je Stufe (cm, beide Seiten)</span>
                 <input id="stairs-splay" type="number" min="0" max="96" step="8" value="0" />
+                <p class="settings-subheading settings-subheading-nested">Farbe</p>
                 <span class="toolbar-label">Treppenfarbe</span>
                 <div id="stairs-color-swatches" class="color-swatches"></div>
                 <span class="toolbar-label">Oberfläche Treppe</span>
@@ -2071,8 +2213,9 @@
                 <p class="toolbar-hint">0 = geradlinig nach vorne. Überstand und Aufweitung gelten symmetrisch links und rechts. Podesttiefe verschiebt die Stufen darunter mit; die obere Ebene schließt hinten immer an Tür bzw. Innenwand an.</p>
               </div>
             </div>
-            <div id="opening-colors-section" class="settings-section opening-colors-hub" data-settings-section="colors" data-settings-label="Farben" data-settings-order="20">
-            <div id="frame-color-section" class="toolbar-group">
+            <div id="opening-colors-section" class="settings-section opening-colors-hub ui-stack" data-settings-section="colors" data-settings-label="Farben" data-settings-order="20">
+            <p class="settings-subheading settings-subheading-nested">Rahmen</p>
+            <div id="frame-color-section" class="toolbar-group ui-field-inline">
               <span class="toolbar-label">Rahmenfarbe</span>
               <div id="frame-color-swatches" class="color-swatches"></div>
             </div>
@@ -2084,53 +2227,40 @@
                 <option value="metal">Metallisch</option>
               </select>
             </div>
-            <div id="glass-color-section" class="toolbar-group">
+            <p class="settings-subheading settings-subheading-nested">Glas</p>
+            <div id="glass-color-section" class="toolbar-group ui-field-inline">
               <span class="toolbar-label">Glasfarbe</span>
               <div id="glass-color-swatches" class="color-swatches"></div>
             </div>
-            <div id="reveal-exterior-color-section" class="toolbar-group">
+            <p class="settings-subheading settings-subheading-nested">Laibung</p>
+            <div id="reveal-exterior-color-section" class="toolbar-group ui-field-inline">
               <span class="toolbar-label">Laibung außen</span>
               <div id="reveal-exterior-color-swatches" class="color-swatches"></div>
             </div>
-            <div id="reveal-interior-color-section" class="toolbar-group">
+            <div id="reveal-interior-color-section" class="toolbar-group ui-field-inline">
               <span class="toolbar-label">Laibung innen</span>
               <div id="reveal-interior-color-swatches" class="color-swatches"></div>
             </div>
-            <div id="glass-physical-section" class="toolbar-group">
-              <label class="toolbar-check">
-                <input id="glass-mode-physical" type="checkbox" checked />
-                Physisches Glas (3D)
-              </label>
-              <div id="glass-physical-options">
-                <div class="toolbar-group">
-                  <span class="toolbar-label">Brechungsindex</span>
-                  <input id="glass-ior" type="number" min="1" max="2.5" step="0.01" value="1.52" />
-                </div>
-                <div class="toolbar-group">
-                  <span class="toolbar-label">Rauheit</span>
-                  <input id="glass-roughness" type="number" min="0" max="1" step="0.01" value="0.03" />
-                </div>
-                <div class="toolbar-group">
-                  <span class="toolbar-label">Transmission</span>
-                  <input id="glass-transmission" type="number" min="0" max="1" step="0.01" value="0" />
-                </div>
-                <div class="toolbar-group">
-                  <span class="toolbar-label">Dicke (cm)</span>
-                  <input id="glass-thickness" type="number" min="0.1" max="10" step="0.1" value="1.2" />
-                </div>
-              </div>
-            </div>
-            <div id="trim-color-hub-section" class="toolbar-group" hidden>
+            <div id="trim-color-hub-section" hidden>
+            <p class="settings-subheading settings-subheading-nested">Profil</p>
+            <div class="toolbar-group ui-field-inline">
               <span class="toolbar-label">Profilfarbe</span>
               <div id="trim-color-swatches-hub" class="color-swatches"></div>
             </div>
-            <div id="sill-outer-color-hub-section" class="toolbar-group" hidden>
+            </div>
+            <div id="sill-outer-color-hub-section" hidden>
+            <p class="settings-subheading settings-subheading-nested">Fensterbank</p>
+            <div class="toolbar-group ui-field-inline">
               <span class="toolbar-label">Fensterbankfarbe</span>
               <div id="sill-outer-color-swatches-hub" class="color-swatches"></div>
             </div>
-            <div id="pediment-color-hub-section" class="toolbar-group" hidden>
+            </div>
+            <div id="pediment-color-hub-section" hidden>
+            <p class="settings-subheading settings-subheading-nested">Verdachung</p>
+            <div class="toolbar-group ui-field-inline">
               <span class="toolbar-label">Verdachungsfarbe</span>
               <div id="pediment-color-swatches-hub" class="color-swatches"></div>
+            </div>
             </div>
             </div>
             <div id="opening-actions-section" class="settings-section" data-settings-inline-all>
@@ -2146,6 +2276,7 @@
           <div id="scene-toolbar" class="right-selection-toolbar scene-toolbar">
             <div id="scene-toolbar-panels" class="selection-toolbar-panels">
               <div class="settings-section" data-settings-section="sun" data-settings-label="Licht" data-settings-order="10">
+                <p class="settings-subheading settings-subheading-nested">Sonne</p>
                 <label class="slider-label">
                   <span>Datum (Berlin)</span>
                 </label>
@@ -2187,6 +2318,7 @@
                 <input id="sun-ambient" type="range" min="0.05" max="1.2" step="0.01" value="0.05" />
                 <p class="toolbar-hint compact-hint">Himmel-Fill — hellt Schatten und Rückseiten auf (nicht die Schattenkante).</p>
 
+                <p class="settings-subheading settings-subheading-nested">Schatten</p>
                 <label class="slider-label">
                   <span>Schatten-Kontrast</span>
                   <output id="sun-shadow-contrast-value">0.50</output>
@@ -2219,6 +2351,7 @@
                 <p class="toolbar-hint compact-hint">Nur Darstellung Render — sichtbar an Boden, Wandkörper und Dach (nicht an Ziegel-Paneele).</p>
                 </div>
 
+                <p class="settings-subheading settings-subheading-nested">Farbe</p>
                 <label class="slider-label">
                   <span>Farbtemperatur</span>
                   <output id="sun-color-temp-value">3500 K</output>
@@ -2226,6 +2359,7 @@
                 <input id="sun-color-temp" type="range" min="2700" max="8000" step="100" value="3500" />
                 <p class="toolbar-hint compact-hint">Manuell verstellbar; wird bei Datum/Tageszeit wieder aus dem Sonnenstand gesetzt.</p>
 
+                <p class="settings-subheading settings-subheading-nested">Lichter</p>
                 <label class="toolbar-check" id="view-all-scene-lights-row">
                   <input id="view-all-scene-lights" type="checkbox" />
                   Alle Lichter an
@@ -2238,6 +2372,7 @@
                 </label>
                 <p class="toolbar-hint compact-hint">Glühen der platzierten Punktlichter — nur Anzeige, die Lichtwirkung bleibt.</p>
 
+                <p class="settings-subheading settings-subheading-nested">Bloom</p>
                 <div class="toolbar-group">
                   <label class="toolbar-check">
                     <input id="bloom-enabled" type="checkbox" />
@@ -2278,6 +2413,7 @@
               </div>
 
               <div class="settings-section" data-settings-section="anim" data-settings-label="Animation" data-settings-order="20">
+                <p class="settings-subheading settings-subheading-nested">Steuerung</p>
                 <div class="toolbar-group">
                   <label class="toolbar-check">
                     <input id="anim-paused" type="checkbox" />
@@ -2311,6 +2447,7 @@
                   <p class="toolbar-hint compact-hint">Bei Sonnenuntergang an, bei Sonnenaufgang aus.</p>
                 </div>
 
+                <p class="settings-subheading settings-subheading-nested">Abspielen</p>
                 <div class="toolbar-group" style="margin-top: 12px">
                   <span class="toolbar-label">Szene abspielen</span>
                   <p class="toolbar-hint compact-hint">Einmalig: Tagesverlauf (Uhrzeit) oder Lichtparameter inkl. Bloom.</p>
@@ -2427,6 +2564,7 @@
                   </div>
                 </div>
 
+                <p class="settings-subheading settings-subheading-nested">Darstellung</p>
                 <div class="toolbar-group">
                   <label class="toolbar-check">
                     <input id="lod-enabled" type="checkbox" />
@@ -2486,6 +2624,7 @@
                 </div>
                 </div>
 
+                <p class="settings-subheading settings-subheading-nested">Boden</p>
                 <div class="toolbar-group">
                   <label class="toolbar-check">
                     <input id="ground-puddles-enabled" type="checkbox" />
@@ -2522,6 +2661,7 @@
                   <input id="ground-puddles-strength-num" type="number" min="0.15" max="1" step="0.05" value="0.75" />
                 </div>
 
+                <p class="settings-subheading settings-subheading-nested">Nebel</p>
                 <div class="toolbar-group">
                   <label class="toolbar-check">
                     <input id="fog-enabled" type="checkbox" />

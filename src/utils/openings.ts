@@ -836,6 +836,8 @@ export function updateOpening(
           snapHeight: patch.height !== undefined,
           // Vertikal bleibt 8-cm / Nutzerwert — nicht auf Schichtmitte (128→132 bei h≠448).
           snapY: false,
+          // Nur bei X/Breite neu ausrichten — reine Höhenänderung darf die Öffnung nicht seitlich verschieben.
+          snapX: patch.x !== undefined || patch.width !== undefined,
         })
         merged = { ...merged, ...aligned }
       }

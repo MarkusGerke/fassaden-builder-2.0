@@ -1,0 +1,62 @@
+---
+description: Rechte Toolbar — Feldlayout, Abstände 16/32, Stepper, Buttons
+alwaysApply: true
+---
+
+# UI-Feldlayout (rechte Einstellungsleiste)
+
+Nutzer-Regel (verbindlich): Einstellungen sind **eine Spalte**. Pro Eigenschaft **eine Zeile**: **Titel links**, **Eingabe rechts**. Keine Mehrspalten-Grids (`toolbar-row-2` / `toolbar-inline-pairs` für Maße).
+
+## Abstände (verbindlich)
+
+| Kontext | Maß | Token |
+|---|---|---|
+| Zwischen Zeilen **innerhalb** einer Sektion | **16px** | `--space-3` |
+| Zwischen **Sektionen** (Maße → Farben → …) | **32px** | `--space-4` |
+| Label → Feld in einer gestapelten Gruppe | 4px | `--space-1` |
+| Button-Gap in Aktionszeile / Chip-Gruppen | 8px | `--space-2` |
+
+- Sektion = Flex-Spalte mit `gap: var(--space-3)`; Kinder **ohne** Extra-`margin-top`.
+- Toolbar (`#toolbar-opening` / Studio / scrollbares Panel) = Flex-Spalte mit `gap: var(--space-4)`.
+- Kein Gap **plus** Margin auf denselben Kindern.
+
+## Pflichtmuster
+
+```html
+<div class="settings-section ui-stack">
+  <label class="toolbar-check">…</label>
+  <div class="toolbar-group toolbar-inline-value ui-field-inline">
+    <span class="toolbar-label">Überstand (cm)</span>
+    <input type="number" … />
+  </div>
+</div>
+```
+
+- Inline-Zeile: `.ui-field-inline` / `.toolbar-inline-value` (auch Chip-Gruppen wie **Kanten** rechtsbündig auf Titelhöhe).
+- **Einheit** im Titel in Klammern (`Höhe (cm)`), **nicht** im Stepper-Feld.
+- Zahlfelder: Stepper `− / Wert / +`; Wertbreite max. **5 Stellen** (`--input-narrow: 5ch`).
+- Sektionen dürfen **nicht** rechts überlaufen (`max-width: 100%`, `min-width: 0`).
+- IDs niemals löschen (`keine-ui-loeschen`).
+
+## Teilüberschriften
+
+Wenn eine Sektion **mehrere Gruppen** hat (Farbe / Maße / Position / Profil / …), jede Gruppe bekommt eine `.settings-subheading.settings-subheading-nested`. Überschriften eigenständig vergeben, nicht weglassen. Typische Namen: **Farbe**, **Maße**, **Position**, **Profil**, **Typ**, **Einbau**.
+
+## Buttons
+
+- Stil überall wie Aktionsbutton **„Öffnung löschen“**: `.preset-btn` / Basis-`button` mit `border-radius: var(--btn-radius)` (**kein** Pill `999px`), Padding horizontal **8px** (`--btn-pad-x`).
+- Danger bleibt `.toolbar-danger` (Farbe), Form wie die anderen.
+
+## Verboten ohne explizite Nutzeranweisung
+
+- Maße in `.toolbar-row-2` nebeneinander
+- Einheit grau im Stepper-Feld statt im Label
+- Stepper-Wert breiter als 5 Stellen
+- Andere vertikale Abstände als 16px (innen) / 32px (Sektionen)
+- Neue Hardcode-Abstände statt `--space-*`
+
+## Reihenfolge (unverändert)
+
+Übersicht → Maße → Farbe → Rest — siehe `ui-reihenfolge-masse-farbe.mdc`.
+
+Docs: `docs/ui-kit.md`, `docs/ux.md`.

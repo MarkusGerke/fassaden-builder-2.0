@@ -10,8 +10,8 @@ export interface OpeningGlassConfig {
   thickness: number
 }
 
-/** Floatglas: IOR ~1,52, leichte Rauheit, ~1,2 cm Scheibe. Transmission 0 = echte Durchsicht. */
-export const DEFAULT_GLASS_MODE: OpeningGlassConfig['mode'] = 'physical'
+/** Default: getöntes Glas (#575757). `physical` bleibt nur für Alt-Daten ohne UI. */
+export const DEFAULT_GLASS_MODE: OpeningGlassConfig['mode'] = 'tint'
 export const DEFAULT_GLASS_IOR = 1.52
 export const DEFAULT_GLASS_ROUGHNESS = 0.03
 export const DEFAULT_GLASS_TRANSMISSION = 0
@@ -34,7 +34,7 @@ export function openingGlassConfig(
   >,
 ): OpeningGlassConfig {
   return {
-    mode: opening.glassMode === 'tint' ? 'tint' : 'physical',
+    mode: opening.glassMode === 'physical' ? 'physical' : 'tint',
     color: opening.glassColor ?? DEFAULT_GLASS_COLOR,
     ior: clampNum(opening.glassIor, 1, 2.5, DEFAULT_GLASS_IOR),
     roughness: clampNum(opening.glassRoughness, 0, 1, DEFAULT_GLASS_ROUGHNESS),

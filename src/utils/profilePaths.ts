@@ -782,7 +782,7 @@ function buildCornicePaths(state: FacadeState): ProfilePath[] {
         localSpace: studio,
         forwardSign: studio ? (wall.panelFlip ? -1 : 1) : 1,
         cornerJoin: 'none',
-        color: cornice.color ?? wall.profileColor,
+        color: cornice.color ?? wall.wallColor ?? wall.profileColor,
         finish: cornice.finish ?? wall.profileFinish,
         sectionScale: cornice.scale,
         sectionScaleForward: cornice.sectionScaleForward ?? cornice.scale,
@@ -1035,9 +1035,42 @@ function plinthOpeningXHoles(wall: Wall, plinthH: number): Array<{ x0: number; x
   return holes
 }
 
+/** Öffnungen, die den Sockelstreifen über die volle Höhe durchschneiden (Tür o. Ä.). */
+function plinthFullHeightXHoles(wall: Wall, plinthH: number): Array<{ x0: number; x1: number }> {
+  const holes: Array<{ x0: number; x1: number }> = []
+  for (const opening of wall.openings) {
+    const rect = plinthOpeningClipRect(wall, opening)
+    if (!rect) continue
+    if (rect.y0 > 0.5 || rect.y1 < plinthH - 0.5) continue
+    holes.push({ x0: rect.x0, x1: rect.x1 })
+  }
+  return holes
+}
+
+/** Ob noch Teilöffnungen (z. B. Kellerfenster) CSG/Maske brauchen. */
+function plinthNeedsOpeningClip(wall: Wall, plinthH: number): boolean {
+  for (const opening of wall.openings) {
+    const rect = plinthOpeningClipRect(wall, opening)
+    if (!rect) continue
+    if (rect.y0 >= plinthH || rect.y1 <= 0) continue
+    // Volle Durchschneidung wird über X-Spannen gelöst — kein Clip nötig.
+    if (rect.y0 <= 0.5 && rect.y1 >= plinthH - 0.5) continue
+    return true
+  }
+  return false
+}
+
 /** Sichtbare Sockel-X-Spannen zwischen Öffnungen (volle Profilhöhe). */
 export function plinthVisibleXSpans(wall: Wall, plinthH: number): Array<{ x0: number; x1: number }> {
   return subtractXRanges(0, wall.width, plinthOpeningXHoles(wall, plinthH))
+}
+
+/** Sockel-X-Spannen nur zwischen voller Durchschneidung (Türen); Kellerfenster bleiben im Band. */
+export function plinthSpansBetweenFullCuts(
+  wall: Wall,
+  plinthH: number,
+): Array<{ x0: number; x1: number }> {
+  return subtractXRanges(0, wall.width, plinthFullHeightXHoles(wall, plinthH))
 }
 
 /**
@@ -1274,16 +1307,6 @@ export type PlinthOpeningDiscardSpec = {
   wallWidth: number
   wallHeight: number
   plinthH: number
-}
-
-function openProfileRing(section: ProfileSectionPoint[]): ProfileSectionPoint[] {
-  if (section.length < 3) return section
-  const a = section[0]!
-  const b = section[section.length - 1]!
-  if (Math.hypot(a.outward - b.outward, a.forward - b.forward) < 0.05) {
-    return section.slice(0, -1)
-  }
-  return section
 }
 
 function plinthIntersectingOpenings(wall: Wall, plinthH: number): Opening[] {
@@ -1577,12 +1600,20 @@ export function createPlinthProfileSweepGeometry(
   wall: Wall,
   plinthH: number,
 ): THREE.BufferGeometry {
-  const ring = openProfileRing(section)
-  if (ring.length < 2 || path.points.length < 2) {
+  // Geschlossener Querschnitt (kein openProfileRing) — Stirnkappen und CSG-Schnitte
+  // bleiben massiv, nicht hohl.
+  if (section.length < 2 || path.points.length < 2) {
     return createProfileSweepGeometry(path, section, zBase, forwardSign)
   }
-  const sweep = createProfileSweepGeometry(path, ring, zBase, forwardSign)
-  const openings = plinthIntersectingOpenings(wall, plinthH)
+  const sweep = createProfileSweepGeometry(path, section, zBase, forwardSign)
+  if (!path.clipOpeningMask) return sweep
+
+  const openings = plinthIntersectingOpenings(wall, plinthH).filter((opening) => {
+    const rect = plinthOpeningClipRect(wall, opening)
+    if (!rect) return false
+    // Volle Durchschneidung läuft über X-Spannen — nicht nochmal CSG.
+    return !(rect.y0 <= 0.5 && rect.y1 >= plinthH - 0.5)
+  })
   if (openings.length === 0) return sweep
 
   try {
@@ -1665,33 +1696,42 @@ function buildPlinthProfilePaths(state: FacadeState): ProfilePath[] {
     const endContinues = Boolean(endAdj?.panel && studioPlinthActive(endAdj.panel))
     const startMiter = startContinues && startAdj ? cornicePlanMiterTan(wall, startAdj, 'start') : 0
     const endMiter = endContinues && endAdj ? cornicePlanMiterTan(wall, endAdj, 'end') : 0
-    paths.push({
-      profileId,
-      wallId: wall.id,
-      closed: false,
-      outward: [{ x: 0, y: 1 }],
-      zOffset: 0,
-      localSpace: true,
-      forwardSign: wall.panelFlip ? -1 : 1,
-      cornerJoin: 'none',
-      color: panel.plinthProfileColor ?? wall.profileColor,
-      sectionScale: heightScale,
-      sectionScaleForward: depthScale,
-      rotationDeg: panel.plinthProfileRotationDeg ?? 0,
-      flipOutward: Boolean(panel.plinthProfileFlipOutward),
-      flipForward: Boolean(panel.plinthProfileFlipForward),
-      offsetForward,
-      role: 'plinthProfile',
-      clipOpeningMask: true,
-      points: [
-        { x: -halfW, y: floorY },
-        { x: halfW, y: floorY },
-      ],
-      planMiterStart: pictureFramePlanMiter(startMiter, 'start'),
-      planMiterEnd: pictureFramePlanMiter(endMiter, 'end'),
-      capStart: !startContinues,
-      capEnd: !endContinues,
-    })
+    // Segmente an voller Durchschneidung (Türen) mit Stirnkappe; Kellerfenster bleiben
+    // im Band und werden per CSG ausgeschnitten (Sturz bleibt).
+    const spans = plinthSpansBetweenFullCuts(wall, plinthH)
+    const needsClip = plinthNeedsOpeningClip(wall, plinthH)
+    for (let i = 0; i < spans.length; i += 1) {
+      const span = spans[i]!
+      const isFirst = i === 0 && Math.abs(span.x0) < 0.5
+      const isLast = i === spans.length - 1 && Math.abs(span.x1 - wall.width) < 0.5
+      paths.push({
+        profileId,
+        wallId: wall.id,
+        closed: false,
+        outward: [{ x: 0, y: 1 }],
+        zOffset: 0,
+        localSpace: true,
+        forwardSign: wall.panelFlip ? -1 : 1,
+        cornerJoin: 'none',
+        color: panel.plinthProfileColor ?? wall.profileColor,
+        sectionScale: heightScale,
+        sectionScaleForward: depthScale,
+        rotationDeg: panel.plinthProfileRotationDeg ?? 0,
+        flipOutward: Boolean(panel.plinthProfileFlipOutward),
+        flipForward: Boolean(panel.plinthProfileFlipForward),
+        offsetForward,
+        role: 'plinthProfile',
+        clipOpeningMask: needsClip,
+        points: [
+          { x: span.x0 - halfW, y: floorY },
+          { x: span.x1 - halfW, y: floorY },
+        ],
+        planMiterStart: isFirst ? pictureFramePlanMiter(startMiter, 'start') : 0,
+        planMiterEnd: isLast ? pictureFramePlanMiter(endMiter, 'end') : 0,
+        capStart: isFirst ? !startContinues : true,
+        capEnd: isLast ? !endContinues : true,
+      })
+    }
   }
 
   return paths

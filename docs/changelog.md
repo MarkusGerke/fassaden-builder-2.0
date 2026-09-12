@@ -2,6 +2,131 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Doppelklick-Zoom auf Öffnungen (2026-09-12) — v2.0.389
+
+**Symptom:** Doppelklick auf Fenster/Tür verschob die Öffnung (oranger Ghost) statt heranzuzoomens; oft kein Zoom-Toggle.
+
+**Ursache (Runtime):** (1) Erste Auswahl auf `pointerdown` → Fokus-Tap übersprungen. (2) `drag3dMoved` ohne Pixel-Schwelle. (3) **`focusCameraFillOnOpening` warf `ReferenceError: studioPanelFaceLocalZ is not defined`** (Import fehlte) — Zoom brach ab, Drag-State blieb (oranger Ghost).
+
+**Fix:** Import `studioPanelFaceLocalZ`. Öffnungs-Tap immer für Zoom; 6 px-Schwelle; Prefer-IDs; `syncPresentCamera` bei Resize nur ohne Fokus-Bookmark.
+
+Dateien: `main.ts`. Docs: [ux.md](ux.md).
+
+### Farb-Overlay bleibt offen (2026-09-12) — v2.0.388
+
+**Symptom:** Klick auf die Farbfläche öffnete das Overlay und klappte es sofort wieder zu.
+
+**Nicht die Ursache:** Layout/Teilüberschriften (Overlay sitzt weiter im Host).
+
+**Ursache:** `pointerdown` öffnete, der folgende `click` auf denselben Swatch sah `__colorExpanded` und schloss. Zusätzlich konnte ein zweites `pointerdown` (natives Color-Input) den Außenklick-Handler treffen.
+
+**Fix:** Toggle nur auf `pointerdown`; `click` nur `preventDefault`. Außenklick 400 ms nach Öffnen ignorieren.
+
+Dateien: `main.ts`. Docs: [ux.md](ux.md).
+
+### Bibliothek-Tabs über der Kartenleiste (2026-09-12) — v2.0.387
+
+`.library-tabs` ist Geschwister **über** `.library-chrome`, nicht darin. Chrome umschließt `#opening-library` (Karten). Feste Tab-Höhe 2,6 rem bleibt auf der Tab-Zeile (kein Kamera-Sprung).
+
+Dateien: `index.html`, `style.css`. Docs: [ux.md](ux.md).
+
+### Teilüberschriften in Sektionen (2026-09-12) — v2.0.386
+
+Gruppen in einer Sektion (Farbe, Maße, Position, Profil, …) bekommen `.settings-subheading-nested`. Profil: Farbe → Maße → Position → Profil. Gleiches Muster in Maße, Farben, Teilung, Animation, Rollläden, Bank/Brett, Verdachung, Studio, Dach, Licht, Szene.
+
+Dateien: `index.html`, `src/main.ts`. Docs: [ui-kit.md](ui-kit.md), [ux.md](ux.md).
+
+### Abstände 16 / 32 (2026-09-12) — v2.0.385
+
+1. **In Sektionen:** Zeilenabstand überall **16 px** (`--space-3`, Flex-`gap` auf `.settings-section`).
+2. **Zwischen Sektionen:** **32 px** (`--space-4` auf `#toolbar-opening` / Studio / scrollbarem Panel).
+3. Rule `ui-feldlayout.mdc` + [ui-kit.md](ui-kit.md) aktualisiert.
+
+Dateien: `style.css`. Docs: [ui-kit.md](ui-kit.md), [ux.md](ux.md).
+
+### Stepper, Buttons, kein Overflow (2026-09-12) — v2.0.384
+
+1. **Einheit** im Titel `(cm)`, nicht im Stepper; Wert max. **5 Stellen**.
+2. Position/Teilung: Plus bleibt sichtbar; Sektionen ohne Rechts-Überlauf.
+3. **Kanten:** Chips rechtsbündig auf Titelhöhe.
+4. Text-Buttons überall wie **Löschen** (kein Pill).
+
+Dateien: `style.css`, `fieldInfo.ts`, `index.html`. Docs: [ui-kit.md](ui-kit.md), Rule `ui-feldlayout.mdc`.
+
+### UI-Feldlayout Fensterbrett/Bank + Button-Padding (2026-09-12) — v2.0.383
+
+1. **Fensterbrett / Fensterbank:** Maße und Farben als eine Spalte — Titel links, Control rechts (kein `toolbar-row-2`-Chaos).
+2. **Buttons:** `.preset-btn` horizontal immer 8 px (`--btn-pad-x`).
+3. Cursor-Rule `.cursor/rules/ui-feldlayout.mdc` + [ui-kit.md](ui-kit.md).
+
+Dateien: `index.html`, `style.css`. Docs: [ui-kit.md](ui-kit.md), [ux.md](ux.md).
+
+### UI-Kit: Tokens, Stepper, Abstände (2026-09-12) — v2.0.382
+
+1. **Design-Tokens** in `:root` (Typo, Farbe, Space 4/8/16, Control-Maße).
+2. **Primitives** `.ui-*` inkl. Alias für `.toolbar-label` / `.toolbar-check` / `.preset-btn` / `.library-tab` / `.tpl-card`.
+3. **Stepper:** Zahlfelder in der rechten Leiste als −/Feld/Einheit/+ (`installFieldSteppers`); Studio-± und ←→ unverändert.
+4. **Farben/Maße:** `.ui-stack` mit 16 px Gap ohne doppeltes Margin; Sektions-Unterrand auch im Scroll-Modus.
+5. Pilot-Markup Öffnung + Studio Maße/Farben.
+
+Dateien: `style.css`, `fieldInfo.ts`, `index.html`. Docs: [ui-kit.md](ui-kit.md), [ux.md](ux.md).
+
+### Scope-Zuweisen, Gesims, Sockel, Tür, Verdachung (2026-09-12) — v2.0.381
+
+1. **Rechtsklick „Zuweisen für“:** Typ / Etage / Fassade kopiert aktuelle Eigenschaften (ohne Geometrie). `assignSelectionPropertiesToScope`.
+2. **Gesims-Toast:** Nested `cornice`/`plinth`/`panel`/`label` ganz ersetzen (nicht Partial-Merge) — Etage/Fassade übernimmt `enabled` + Profil.
+3. **Sockelprofil:** Tür-Durchschneidung als Spannen mit Stirnkappen; Kellerfenster weiter CSG (Sturz); Querschnitt geschlossen (kein offener Ring).
+4. **Gesims-Farbe:** Fallback `wall.wallColor` (nicht nur `profileColor`).
+5. **Verschieben:** `commitDragFromBase` bietet denselben Scope-Toast.
+6. **Tür:** `door.bottomFrame` Default aus — U-Blendrahmen; Checkbox „Unterer Rahmen“.
+7. **Verdachung zu:** `sealedBack` Default an bei geschlossenen Formen.
+8. **Verdachung über Profil:** `pedimentProfileBaseClearanceCm` hebt geschlossene Formen um die Profil-Ausladung.
+
+Dateien: `scopePropagate.ts`, `main.ts`, `profilePaths.ts`, `gruenderzeit.ts`, `openingExtras.ts`, `pediment.ts`, `openingProfileLift.ts`, `index.html`. Docs: [ux.md](ux.md), [views-and-state.md](views-and-state.md), [wall-decor.md](wall-decor.md), [opening-features.md](opening-features.md), [windows-doors.md](windows-doors.md).
+
+### Oberlicht-Teilung wie Flügel (2026-09-12) — v2.0.380
+
+Tabs offen/geteilt/Kreuz ersetzt durch **Teilung vertikal/horizontal** (`transomSplit*`). Unterüberschriften **Oberlicht** / **Flügel**; Höhe als %-Zahlfeld. Alt: `transomBars` → Migration in `normalizeGruenderzeitConfig`. Dateien: `gruenderzeit.ts`, `facade.ts`, `index.html`, `main.ts`. Docs: [ux.md](ux.md), [windows-doors.md](windows-doors.md).
+
+### Toolbar: Farbfeld, Abstände, freie Zahlen (2026-09-12) — v2.0.379
+
+1. **Farbe:** Overlay zeigt Spektrum (SV + Hue) oben, dann HEX/RGB, dann Oberfläche; natives OS-Farb-Dropdown unterdrückt.
+2. **Sektionen:** Inhalt mit **16 px** Abstand zum Rand (Margin, nicht Padding auf Buttons); `#opening-actions-section` zusätzlich **8 px** Gap.
+3. **Stepper:** Wert tippbar, kein Max; Split/Sprossen/Flügel ≥ Min.
+4. **Einzeln öffnen:** OL vor Flügel.
+
+Dateien: `main.ts`, `style.css`, `gruenderzeit.ts`, `facade.ts`. Docs: [ux.md](ux.md).
+
+### Rollladen: Kabelzug-Kurve (2026-09-12) — v2.0.378
+
+1. **Vorlagen:** **Ein Zug** (weich durchgehend), **Linear**, **Kabelzug** (Hand-für-Hand wie historischer Gurt/Seilzug).
+2. **SVG-Editor** wie bei Fenster/Tür: Punkte ziehen, Zwischenpunkte, Kurve/Linie, Dauer in Sekunden.
+3. Speicherung weiter `Opening.rollerShutter.motion` (`MotionCurve`).
+
+Dateien: `rollerShutter.ts`, `rollerShutterMotionEditor.ts`, `main.ts`, `index.html`. Docs: [roller-shutter.md](roller-shutter.md), [ux.md](ux.md).
+
+### Rollladen-Animation UI (2026-09-12) — v2.0.377
+
+1. **Dauer:** Eingabe in Sekunden (`Dauer (s)`, 0,1…12); Speicherung weiter `durationMs`.
+2. **Abspielen:** Buttons untereinander volle Breite — **Rollo schließen**, **Rollo öffnen**, Zyklus.
+3. Prozent-Zeile „Wert (%)“ neben Höhe entfernt (Status bleibt im Label).
+
+Dateien: `index.html`, `style.css`, `main.ts`. Docs: [roller-shutter.md](roller-shutter.md), [ux.md](ux.md).
+
+### Toolbar: Maße, Farben, Inline-Felder (2026-09-12) — v2.0.376
+
+1. **Labels:** Vertikaler Versatz / Horizontale·Vertikale Position; Einheiten im Info-Icon.
+2. **Farben:** Zeile Titel links + Swatch rechts; HEX und RGB im Overlay (HEX zuerst, kein Dropdown); 16 px Abstand.
+3. **Kurze Zahlfelder:** `toolbar-inline-value` / `toolbar-inline-pairs` / `toolbar-inline-cells` — Titel links, schmales Feld rechts (`installInlineValueRows`).
+4. **Holzmaße:** `.toolbar-row-2 label` Typo = `.toolbar-label`.
+5. **Glas:** UI „Physisches Glas“ entfernt; Default Tint `#575757`.
+6. **Höhe:** `alignOpeningToMasonry({ snapX: false })` bei reiner Höhenänderung — kein seitlicher Sprung.
+7. **Fensterteilung/Sprossen:** Stepper (−/+) rechtsbündig; Zwischenüberschrift „Sprossen“ entfernt (Labels „Sprossen senkrecht/waagerecht“).
+8. **Animation:** Dauer/Pause untereinander wie Zielwinkel (Titel links, schmales Feld rechts).
+9. **Profil-Kanten:** Buttons ↑→↓← statt „oben/rechts/unten/links“ (`aria-label` bleibt).
+
+Dateien: `index.html`, `style.css`, `main.ts`, `fieldInfo.ts`, `openingPanelSnap.ts`, `openings.ts`, `glassConfig.ts`. Docs: [ux.md](ux.md), [opening-features.md](opening-features.md).
+
 ### Rechte Einstellungen einklappbar (2026-09-11) — v2.0.375
 
 Wie die Ebenen links: Griff `#ui-right-collapse` (› / ‹), Klasse `ui-right-collapsed`, Persistenz `fassaden-builder-ui-right-collapsed`. Grid-Spalte 0, Griff bleibt am rechten Rand. Dateien: `index.html`, `style.css`, `main.ts`. Docs: [ux.md](ux.md).
