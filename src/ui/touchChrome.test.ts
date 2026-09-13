@@ -35,9 +35,10 @@ describe('touchChrome', () => {
     expect(isCoarseOrNarrowViewport(mockWin({ width: 1200 }))).toBe(false)
   })
 
-  it('activates for present even on desktop', () => {
-    expect(isTouchChromeLayout('present', mockWin({ width: 1400 }))).toBe(true)
+  it('does not activate solely for present on large desktop', () => {
+    expect(isTouchChromeLayout('present', mockWin({ width: 1400 }))).toBe(false)
     expect(isTouchChromeLayout('3d', mockWin({ width: 1400 }))).toBe(false)
+    expect(isTouchChromeLayout('present', mockWin({ width: 800 }))).toBe(true)
     expect(isTouchChromeLayout('3d', mockWin({ coarse: true }))).toBe(true)
   })
 

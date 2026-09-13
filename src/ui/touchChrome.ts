@@ -1,6 +1,6 @@
 /**
- * Touch-/Fassade-Chrome: grober Pointer, schmales Viewport oder Ansicht „Fassade“.
- * Desktop-3D bleibt das klassische Bauen-Layout.
+ * Touch-Chrome: nur grober Pointer oder schmaler Viewport (≤900px).
+ * Große Desktop-Screens (auch Ansicht „Fassade“) behalten das klassische Layout.
  */
 
 export const TOUCH_CHROME_MAX_WIDTH_PX = 900
@@ -47,9 +47,13 @@ export function isCoarseOrNarrowViewport(win: Window = window): boolean {
   )
 }
 
-/** Layout aktiv: Touch/schmal oder Ansicht Fassade (present). */
-export function isTouchChromeLayout(view: string, win: Window = window): boolean {
-  return isCoarseOrNarrowViewport(win) || view === 'present'
+/**
+ * Touch-Chrome-Layout aktiv.
+ * `view` bleibt in der Signatur für Aufrufer; Aktivierung hängt nicht mehr von
+ * Ansicht Fassade (`present`) ab — nur coarse/narrow.
+ */
+export function isTouchChromeLayout(_view: string, win: Window = window): boolean {
+  return isCoarseOrNarrowViewport(win)
 }
 
 /** Auf Touch/schmal die Ansicht auf Fassade zwingen (nicht Export). */

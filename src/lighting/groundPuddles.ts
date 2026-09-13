@@ -200,41 +200,6 @@ export class GroundPuddleRuntime {
     mat.polygonOffsetFactor = -2
     mat.polygonOffsetUnits = -2
 
-    // #region agent log
-    {
-      const original = reflector.onBeforeRender.bind(reflector)
-      let logged = 0
-      reflector.onBeforeRender = (renderer, scene, camera, geometry, material, group) => {
-        if (logged < 3) {
-          logged += 1
-          const worldPos = new THREE.Vector3().setFromMatrixPosition(reflector.matrixWorld)
-          const camPos = new THREE.Vector3().setFromMatrixPosition(camera.matrixWorld)
-          fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'c6b426' },
-            body: JSON.stringify({
-              sessionId: 'c6b426',
-              runId: 'post-fix-noise',
-              hypothesisId: 'F',
-              location: 'groundPuddles.ts:onBeforeRender',
-              message: 'noise-puddle reflector pass',
-              data: {
-                camY: +camPos.y.toFixed(1),
-                worldY: +worldPos.y.toFixed(3),
-                scaleX: +reflector.scale.x.toFixed(0),
-                scaleZ: +reflector.scale.y.toFixed(0),
-                threshold: mat.uniforms['uPuddleThreshold']?.value,
-                wetness: mat.uniforms['uWetness']?.value,
-              },
-              timestamp: Date.now(),
-            }),
-          }).catch(() => {})
-        }
-        return original(renderer, scene, camera, geometry, material, group)
-      }
-    }
-    // #endregion
-
     this.reflector = reflector
     this.group.add(reflector)
   }
@@ -253,30 +218,6 @@ export class GroundPuddleRuntime {
     box: THREE.Box3 | null
   }): void {
     const show = opts.enabled && opts.view3d && !opts.orbitLite
-    // #region agent log
-    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'c6b426' },
-      body: JSON.stringify({
-        sessionId: 'c6b426',
-        runId: 'post-fix-noise',
-        hypothesisId: 'A',
-        location: 'groundPuddles.ts:sync',
-        message: 'puddle sync gate',
-        data: {
-          show,
-          enabled: opts.enabled,
-          view3d: opts.view3d,
-          orbitLite: opts.orbitLite,
-          count: opts.count,
-          size: opts.size,
-          spread: opts.spread,
-          strength: opts.strength,
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {})
-    // #endregion
     if (!show) {
       this.group.visible = false
       return
@@ -313,31 +254,6 @@ export class GroundPuddleRuntime {
     mat.uniforms['uPuddleScale']!.value = noiseScale
     mat.uniforms['uWetness']!.value = strength
     mat.uniforms['color']!.value.copy(PUDDLE_TINT)
-
-    // #region agent log
-    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'c6b426' },
-      body: JSON.stringify({
-        sessionId: 'c6b426',
-        runId: 'post-fix-noise',
-        hypothesisId: 'C',
-        location: 'groundPuddles.ts:sync:placed',
-        message: 'noise puddle plane',
-        data: {
-          cx: +cx.toFixed(1),
-          cz: +cz.toFixed(1),
-          planeW: +planeW.toFixed(0),
-          planeD: +planeD.toFixed(0),
-          y: +(opts.groundY + PUDDLE_Y_EPS).toFixed(2),
-          threshold: +threshold.toFixed(3),
-          noiseScale: +noiseScale.toFixed(5),
-          strength,
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {})
-    // #endregion
   }
 
   dispose(): void {
