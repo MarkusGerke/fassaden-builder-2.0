@@ -758,16 +758,20 @@
                   <button id="downpipe-mount-niche" class="preset-btn" type="button" aria-pressed="false">Nische</button>
                 </div>
               </div>
+              <label class="toolbar-check">
+                <input id="downpipe-break-decor" type="checkbox" checked />
+                Fassadenschmuck durchbrechen
+              </label>
               <div id="downpipe-niche-options" class="ui-stack" hidden>
                 <div class="toolbar-group toolbar-inline-value ui-field-inline">
-                  <span class="toolbar-label">Nischenbreite (cm)</span>
+                  <span class="toolbar-label" id="downpipe-niche-width-label">Nischenbreite (cm)</span>
                   <div class="preset-group">
                     <button id="downpipe-niche-width-minus" class="preset-btn" type="button">−</button>
                     <input id="downpipe-niche-width" type="number" min="8" max="48" step="8" value="16" />
                     <button id="downpipe-niche-width-plus" class="preset-btn" type="button">+</button>
                   </div>
                 </div>
-                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                <div id="downpipe-niche-depth-row" class="toolbar-group toolbar-inline-value ui-field-inline">
                   <span class="toolbar-label">Nischentiefe (cm)</span>
                   <div class="preset-group">
                     <button id="downpipe-niche-depth-minus" class="preset-btn" type="button">−</button>

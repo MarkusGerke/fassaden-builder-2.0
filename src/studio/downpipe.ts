@@ -97,7 +97,7 @@ export function hydrateDownpipes(building: Building): Building {
   if (!list || list.length === 0) {
     return { ...building, downpipes: list ?? [] }
   }
-  return {
+  let next: Building = {
     ...building,
     downpipes: list.map((dp) =>
       normalizeDownpipe({
@@ -107,6 +107,15 @@ export function hydrateDownpipes(building: Building): Building {
       }),
     ),
   }
+  // Cutouts für Nische / Schmuck-Durchbruch nachziehen (Alt-Daten ohne Openings).
+  for (const dp of next.downpipes ?? []) {
+    const synced = syncDownpipeNiches(next, dp)
+    const pipes = [...(synced.building.downpipes ?? [])]
+    const idx = pipes.findIndex((d) => d.id === synced.downpipe.id)
+    if (idx >= 0) pipes[idx] = synced.downpipe
+    next = { ...synced.building, downpipes: pipes }
+  }
+  return next
 }
 
 /** Anker + vertikal ausgerichtete Wände, nach Fuß-Y sortiert. */

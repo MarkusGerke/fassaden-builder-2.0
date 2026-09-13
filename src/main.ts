@@ -577,6 +577,7 @@ import {
   deleteDownpipeFromFacade,
   DOWNPIPE_LIBRARY_PRESET_ID,
   isDownpipeLibraryPresetId,
+  findDownpipeByOpeningId,
   patchDownpipeInFacade,
 } from './studio/downpipe'
 import { buildingCentroid, canRotateBuildingGeometry, canRotateStudioBuilding, rotateBuildingByDeg, rotateStudioBuilding } from './studio/rotateBuilding'
@@ -6730,7 +6731,10 @@ const downpipeMountSurface = document.querySelector<HTMLButtonElement>('#downpip
 const downpipeMountNiche = document.querySelector<HTMLButtonElement>('#downpipe-mount-niche')!
 const downpipeNicheOptions = document.querySelector<HTMLDivElement>('#downpipe-niche-options')!
 const downpipeNicheWidth = document.querySelector<HTMLInputElement>('#downpipe-niche-width')!
+const downpipeNicheWidthLabel = document.querySelector<HTMLSpanElement>('#downpipe-niche-width-label')!
 const downpipeNicheDepth = document.querySelector<HTMLInputElement>('#downpipe-niche-depth')!
+const downpipeNicheDepthRow = document.querySelector<HTMLDivElement>('#downpipe-niche-depth-row')!
+const downpipeBreakDecor = document.querySelector<HTMLInputElement>('#downpipe-break-decor')!
 const downpipeFootShoe = document.querySelector<HTMLButtonElement>('#downpipe-foot-shoe')!
 const downpipeFootGround = document.querySelector<HTMLButtonElement>('#downpipe-foot-ground')!
 const downpipeDelete = document.querySelector<HTMLButtonElement>('#downpipe-delete')!
@@ -15611,7 +15615,12 @@ function syncDownpipeUI() {
   downpipeDiameter.value = String(dp.diameterCm)
   downpipeNicheWidth.value = String(dp.nicheWidthCm ?? DEFAULT_DOWNPIPE_NICHE_WIDTH_CM)
   downpipeNicheDepth.value = String(dp.nicheDepthCm ?? DEFAULT_DOWNPIPE_NICHE_DEPTH_CM)
-  downpipeNicheOptions.hidden = dp.mount !== 'niche'
+  downpipeBreakDecor.checked = dp.breakDecor !== false
+  const showWidth = dp.mount === 'niche' || dp.breakDecor !== false
+  downpipeNicheOptions.hidden = !showWidth
+  downpipeNicheDepthRow.hidden = dp.mount !== 'niche'
+  downpipeNicheWidthLabel.textContent =
+    dp.mount === 'niche' ? 'Nischenbreite (cm)' : 'Durchbruchbreite (cm)'
   downpipeMountSurface.classList.toggle('active', dp.mount === 'surface')
   downpipeMountNiche.classList.toggle('active', dp.mount === 'niche')
   downpipeMountSurface.setAttribute('aria-pressed', String(dp.mount === 'surface'))
@@ -15654,6 +15663,9 @@ function wireDownpipeToolbar() {
   })
   downpipeMountSurface.addEventListener('click', () => commitDownpipePatch({ mount: 'surface' }))
   downpipeMountNiche.addEventListener('click', () => commitDownpipePatch({ mount: 'niche' }))
+  downpipeBreakDecor.addEventListener('change', () => {
+    commitDownpipePatch({ breakDecor: downpipeBreakDecor.checked })
+  })
   downpipeFootShoe.addEventListener('click', () => commitDownpipePatch({ foot: 'shoe' }))
   downpipeFootGround.addEventListener('click', () => commitDownpipePatch({ foot: 'ground' }))
   const stepNicheW = (dir: 1 | -1) => {
@@ -22206,6 +22218,16 @@ let drag3dStartOpeningY = 0
 /** Client-Start für Öffnungs-Drag — Schwelle 6 px, damit Doppelklick nicht als Zug gilt. */
 let drag3dOpeningStartClientX = 0
 let drag3dOpeningStartClientY = 0
+/** 3D/Front: Fallrohr entlang der Wand-X verschieben. */
+let drag3dDownpipe: {
+  buildingId: string
+  downpipeId: string
+  wallId: string
+  startLocalX: number
+} | null = null
+let downpipeDragBase: FacadeState | null = null
+let drag3dDownpipeStartClientX = 0
+let drag3dDownpipeStartClientY = 0
 let drag3dWallPlane: THREE.Plane | null = null
 let drag3dWallCenterX = 0
 let drag3dWallCenterZ = 0
@@ -22336,6 +22358,20 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
   sceneLightId?: string
   downpipe?: { buildingId: string; downpipeId: string }
 } | null {
+  const remapDownpipeOpening = <
+    T extends {
+      openingId?: string
+      downpipe?: { buildingId: string; downpipeId: string }
+    },
+  >(
+    hit: T | null,
+  ): T | { downpipe: { buildingId: string; downpipeId: string } } | null => {
+    if (!hit?.openingId) return hit
+    const linked = findDownpipeByOpeningId(state, hit.openingId)
+    if (!linked) return hit
+    return { downpipe: linked }
+  }
+
   const rect = canvas.getBoundingClientRect()
   pointerNdc.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
   pointerNdc.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
@@ -22495,7 +22531,7 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
     const near = nearestGeneric?.distance ?? Infinity
     // Teilobjekt nehmen, wenn es das Nächste ist oder nur knapp hinter Fläche liegt.
     if (bestPart.distance <= near + PART_PICK_SLACK) {
-      return bestPart.resolved
+      return remapDownpipeOpening(bestPart.resolved)
     }
   }
 
@@ -22503,7 +22539,7 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
     const resolved = resolveHit(hit.object)
     if (!resolved) continue
     if (isBehindFrontFacade(hit.distance, resolved.wallId)) continue
-    if (resolved.openingId) return resolved
+    if (resolved.openingId) return remapDownpipeOpening(resolved)
     if (resolved.wallId && !resolved.openingId) {
       // Explizite Wand-Teile nicht durch Öffnungsloch „stehlen“.
       if (resolved.wallPart && resolved.wallPart !== 'group' && resolved.wallPart !== 'cladding') {
@@ -22520,7 +22556,11 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
       const localY = hit.point.y - wall.y
       const opening = wall.openings.find((item) => openingContainsPoint(item, localX, localY))
       if (opening) {
-        return { wallId: wall.id, openingId: opening.id, openingPart: 'group' }
+        return remapDownpipeOpening({
+          wallId: wall.id,
+          openingId: opening.id,
+          openingPart: 'group' as const,
+        })
       }
       return resolved
     }
@@ -22530,7 +22570,11 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
       (item) => !item.hidden && openingContainsPoint(item, front.localX, front.localY),
     )
     if (opening) {
-      return { wallId: front.wall.id, openingId: opening.id, openingPart: 'group' }
+      return remapDownpipeOpening({
+        wallId: front.wall.id,
+        openingId: opening.id,
+        openingPart: 'group' as const,
+      })
     }
     return { wallId: front.wall.id, wallPart: 'group' }
   }
@@ -22539,7 +22583,7 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
 
 function isSelectablePickHit(hit: ReturnType<typeof pickFromEvent>): boolean {
   if (!hit) return false
-  return Boolean(hit.wallId || hit.openingId || hit.ceiling || hit.sceneLightId)
+  return Boolean(hit.wallId || hit.openingId || hit.ceiling || hit.sceneLightId || hit.downpipe)
 }
 
 function offsetStudioWallsByGrid(
@@ -22870,6 +22914,28 @@ canvas.addEventListener('pointerdown', (event) => {
   }
   if (hit?.ceiling) {
     selectCeiling(hit.ceiling.buildingId, hit.ceiling.floorIndex)
+    return
+  }
+  if (hit?.downpipe) {
+    const building = state.buildings.find((b) => b.id === hit.downpipe!.buildingId)
+    const dp = building?.downpipes?.find((d) => d.id === hit.downpipe!.downpipeId)
+    const wall = dp ? getWall(state, dp.anchorWallId) : null
+    selectDownpipe(hit.downpipe.buildingId, hit.downpipe.downpipeId)
+    if (wall && dp && isStudioWall(wall) && canEditActiveBuildingNow()) {
+      drag3dDownpipe = {
+        buildingId: hit.downpipe.buildingId,
+        downpipeId: hit.downpipe.downpipeId,
+        wallId: wall.id,
+        startLocalX: dp.localX,
+      }
+      downpipeDragBase = null
+      setup3dDragForWall(wall, { x: dp.localX, y: wall.height / 2, width: 1 })
+      drag3dStartLocalHit = pick3dLocal(event) ?? { x: dp.localX, y: wall.height / 2 }
+      drag3dDownpipeStartClientX = event.clientX
+      drag3dDownpipeStartClientY = event.clientY
+      drag3dMoved = false
+      canvas.setPointerCapture(event.pointerId)
+    }
     return
   }
   // Segment-Modus (Wände-Tab, Breite gewählt, nichts markiert): Klick teilt statt zu wählen.
@@ -23365,6 +23431,33 @@ canvas.addEventListener('pointermove', (event) => {
     return
   }
 
+  if (isSceneEditView() && drag3dDownpipe) {
+    const dist2 =
+      (event.clientX - drag3dDownpipeStartClientX) ** 2 +
+      (event.clientY - drag3dDownpipeStartClientY) ** 2
+    if (!drag3dMoved && dist2 < 36) return
+    drag3dMoved = true
+    const wall = getWall(state, drag3dDownpipe.wallId)
+    if (!wall) return
+    const local = pick3dLocal(event)
+    if (local === null) return
+    const dx = local.x - drag3dStartLocalHit.x
+    if (!downpipeDragBase) downpipeDragBase = cloneFacadeState(state)
+    const nextX = Math.max(
+      0,
+      Math.min(wall.width, snapToGrid(drag3dDownpipe.startLocalX + dx, STUDIO_MASONRY)),
+    )
+    const next = patchDownpipeInFacade(
+      downpipeDragBase,
+      drag3dDownpipe.buildingId,
+      drag3dDownpipe.downpipeId,
+      { localX: nextX },
+    )
+    previewState(next)
+    syncDownpipeUI()
+    return
+  }
+
   if (isSceneEditView() && drag3dOpening) {
     const dist2 =
       (event.clientX - drag3dOpeningStartClientX) ** 2 +
@@ -23597,6 +23690,19 @@ canvas.addEventListener('pointerup', (event) => {
     drag3dTrimBand = null
     drag3dTrimBandMoved = false
     trimDragBase = null
+    drag3dWallPlane = null
+    if (currentView === '3d') controls.enabled = true
+    if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId)
+    return
+  }
+
+  if (isSceneEditView() && drag3dDownpipe) {
+    if (drag3dMoved && downpipeDragBase) {
+      commitDragFromBase(downpipeDragBase, editor, 'Fallrohr verschoben')
+    }
+    drag3dDownpipe = null
+    downpipeDragBase = null
+    drag3dMoved = false
     drag3dWallPlane = null
     if (currentView === '3d') controls.enabled = true
     if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId)
@@ -26131,6 +26237,25 @@ window.addEventListener('keydown', (event) => {
   }
 
   if (handle3dCameraArrowKeys(event)) return
+
+  // Pfeiltasten: Fallrohr horizontal in 8-cm-Schritten
+  if (!mod && !event.shiftKey && isSceneEditView() && editor.selectedDownpipe) {
+    const MOVE = heldNudgeStepCm()
+    let dx = 0
+    if (event.key === 'ArrowLeft') dx = -MOVE
+    else if (event.key === 'ArrowRight') dx = MOVE
+    else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      return
+    } else return
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    const hit = selectedDownpipeFixture()
+    if (!hit) return
+    commitDownpipePatch({ localX: hit.downpipe.localX + dx })
+    return
+  }
 
   // Pfeiltasten: Öffnungen in 8-cm-Schritten (Numpad 1–9 = Vielfaches; ohne ⌘/Ctrl/⇧)
   if (!mod && !event.shiftKey && isSceneEditView() && editor.selectedOpenings.length > 0) {

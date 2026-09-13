@@ -28,6 +28,7 @@ import {
   openingActsAsWindow,
   normalizeRevealFrame,
   openingMaskXRangesAtY,
+  openingDecorMaskXRangesAtY,
   openingMaskYRangesAtX,
   openingMaskPolyline,
 } from './openingGeometry'
@@ -38,7 +39,11 @@ import { wallDecorFallbackColor } from '../constants/colorPalettes'
 import { wallCornice, wallHasCornice } from './cornice'
 import { wallHasTrimBands, wallTrimBands } from './trimBands'
 import { defaultOpeningTrimForProfile, normalizeOpeningSillOuter, outerSillUsesProfile, resolveOuterSillLayout } from './openings'
-import { downpipeOpeningsSkippingDecorBreak } from '../studio/downpipe'
+import {
+  DEFAULT_DOWNPIPE_NICHE_WIDTH_CM,
+  downpipeOpeningsSkippingDecorBreak,
+  downpipeStackWalls,
+} from '../studio/downpipe'
 import { isWindowTrimProfile } from '../profiles/windowTrim'
 import { trimSectionScales, profileSectionNativeExtents } from './profileSectionExtents'
 import { basementWindowEnabled } from '../studio/basementWindow'
@@ -746,11 +751,47 @@ function corniceOpeningXGaps(
     const y0 = opening.y - inflate
     const y1 = opening.y + opening.height + inflate
     if (sampleYLocal < y0 - 0.5 || sampleYLocal > y1 + 0.5) continue
-    for (const range of openingMaskXRangesAtY(opening, sampleYLocal, inflate)) {
+    // Decor-Maske inkl. flush (Fallrohr-Aufsatz) — openingMaskXRangesAtY liefert für flush [].
+    let ranges = openingDecorMaskXRangesAtY(opening, sampleYLocal, inflate)
+    // Ober-/Unterkante: Polyline-Schnitt kann auf der Kante leer sein → Bounding-Box.
+    if (ranges.length === 0) {
+      ranges = [
+        {
+          x0: opening.x - inflate,
+          x1: opening.x + opening.width + inflate,
+        },
+      ]
+    }
+    for (const range of ranges) {
       holes.push({
         x0: Math.max(0, range.x0),
         x1: Math.min(wall.width, range.x1),
       })
+    }
+  }
+  return unionXRanges(holes.filter((hole) => hole.x1 - hole.x0 > 0.5))
+}
+
+/** Explizite Fallrohr-X-Lücken (auch wenn Cutouts noch fehlen / flush). */
+function downpipeDecorXGapsForWall(
+  state: FacadeState,
+  wall: Wall,
+): Array<{ x0: number; x1: number }> {
+  const holes: Array<{ x0: number; x1: number }> = []
+  for (const building of state.buildings) {
+    for (const dp of building.downpipes ?? []) {
+      if (dp.breakDecor === false) continue
+      const onStack = downpipeStackWalls(building, dp).some((w) => w.id === wall.id)
+      if (!onStack) continue
+      const linkedId = dp.nicheOpeningIds?.[wall.id]
+      const linked = linkedId ? wall.openings.find((o) => o.id === linkedId) : undefined
+      if (linked && !linked.hidden) {
+        holes.push({ x0: linked.x, x1: linked.x + linked.width })
+        continue
+      }
+      const width = Math.max(8, dp.nicheWidthCm ?? DEFAULT_DOWNPIPE_NICHE_WIDTH_CM)
+      const x0 = Math.max(0, Math.min(wall.width - width, dp.localX - width / 2))
+      holes.push({ x0, x1: x0 + width })
     }
   }
   return unionXRanges(holes.filter((hole) => hole.x1 - hole.x0 > 0.5))
@@ -788,19 +829,22 @@ function buildCornicePaths(state: FacadeState): ProfilePath[] {
       (cornice.edge === 'top' && topBare !== null)
 
     // Erker-Umschluss + Fallrohr-/Öffnungs-Durchbrüche (bündig geschlossen).
-    const sampleYLocal = cornice.edge === 'bottom' ? 0 : wall.height
+    // Sample leicht innen: an y=0 / y=height liefert der Polyline-Schnitt oft [] .
+    const sampleYLocal = cornice.edge === 'bottom' ? 1 : Math.max(1, wall.height - 1)
     const openingGapsWall = corniceOpeningXGaps(
       wall,
       sampleYLocal,
       skipDecorIds,
       state.customProfiles,
     )
+    const downpipeGapsWall = downpipeDecorXGapsForWall(state, wall)
+    const mergedWallGaps = unionXRanges([...openingGapsWall, ...downpipeGapsWall])
     const openingGaps = studio
-      ? openingGapsWall.map((g) => ({
+      ? mergedWallGaps.map((g) => ({
           x0: g.x0 - wall.width / 2,
           x1: g.x1 - wall.width / 2,
         }))
-      : openingGapsWall
+      : mergedWallGaps
     const bayGaps = cornice.edge === 'top' ? gapsByWallId.get(wall.id) ?? [] : []
     const gaps = unionXRanges([...bayGaps, ...openingGaps])
     const segments = subtractCorniceGaps(x0, x1, gaps, {
@@ -886,12 +930,14 @@ export function trimBandOpeningXHoles(
   bandOutwardCm = 0,
   hangDown = true,
   customProfiles?: FacadeState['customProfiles'],
+  skipOpeningIds?: Set<string>,
 ): Array<{ x0: number; x1: number }> {
   const yLo = hangDown ? bandYLocal - Math.max(0, bandOutwardCm) : bandYLocal
   const yHi = hangDown ? bandYLocal : bandYLocal + Math.max(0, bandOutwardCm)
   const holes: Array<{ x0: number; x1: number }> = []
   for (const opening of wall.openings) {
     if (opening.hidden) continue
+    if (skipOpeningIds?.has(opening.id)) continue
     const clearance = openingPanelClearance(opening)
     const inflate = clearance + openingFrameProfileOutwardCm(wall, opening, customProfiles)
     let y0 = opening.y - inflate
@@ -906,7 +952,7 @@ export function trimBandOpeningXHoles(
     const samples = Math.max(1, Math.ceil((spanHi - spanLo) / 2))
     for (let s = 0; s <= samples; s += 1) {
       const y = samples === 0 ? bandYLocal : spanLo + ((spanHi - spanLo) * s) / samples
-      for (const range of openingMaskXRangesAtY(opening, y, inflate)) {
+      for (const range of openingDecorMaskXRangesAtY(opening, y, inflate)) {
         holes.push({
           x0: Math.max(0, range.x0),
           x1: Math.min(wall.width, range.x1),
@@ -937,6 +983,7 @@ function buildTrimBandPaths(state: FacadeState): ProfilePath[] {
   const paths: ProfilePath[] = []
   const allWalls = getAllWalls(state)
   const visibleIds = new Set(getVisibleWalls(state).map((wall) => wall.id))
+  const skipDecorIds = downpipeOpeningsSkippingDecorBreak(state)
 
   for (const wall of allWalls) {
     if (!visibleIds.has(wall.id)) continue
@@ -956,13 +1003,25 @@ function buildTrimBandPaths(state: FacadeState): ProfilePath[] {
         : 0
       const hangDown = !(band.flipOutward ?? false)
       const holes = studio
-        ? trimBandOpeningXHoles(wall, yLocal, nativeOut, hangDown, state.customProfiles).map(
-            (hole) => ({
-              x0: hole.x0 - wall.width / 2,
-              x1: hole.x1 - wall.width / 2,
-            }),
+        ? trimBandOpeningXHoles(
+            wall,
+            yLocal,
+            nativeOut,
+            hangDown,
+            state.customProfiles,
+            skipDecorIds,
+          ).map((hole) => ({
+            x0: hole.x0 - wall.width / 2,
+            x1: hole.x1 - wall.width / 2,
+          }))
+        : trimBandOpeningXHoles(
+            wall,
+            yLocal,
+            nativeOut,
+            hangDown,
+            state.customProfiles,
+            skipDecorIds,
           )
-        : trimBandOpeningXHoles(wall, yLocal, nativeOut, hangDown, state.customProfiles)
       const spans = subtractXRanges(xStart, xEnd, holes)
       const startAdj =
         miterEnds.start && spans[0] && spans[0].x0 <= xStart + 0.5
@@ -1045,8 +1104,10 @@ const PLINTH_OPENING_GAP = 1
 function plinthOpeningClipRect(
   wall: Wall,
   opening: Opening,
+  skipOpeningIds?: Set<string>,
 ): { x0: number; x1: number; y0: number; y1: number } | null {
   if (opening.hidden) return null
+  if (skipOpeningIds?.has(opening.id)) return null
   let y = opening.y
   let height = opening.height
   if (opening.type === 'door' && opening.stairs?.enabled) {
@@ -1065,10 +1126,14 @@ function plinthOpeningClipRect(
 }
 
 /** Öffnungen im Sockelstreifen (y = 0 … plinthH) als X-Löcher (Wand-X 0…width). */
-function plinthOpeningXHoles(wall: Wall, plinthH: number): Array<{ x0: number; x1: number }> {
+function plinthOpeningXHoles(
+  wall: Wall,
+  plinthH: number,
+  skipOpeningIds?: Set<string>,
+): Array<{ x0: number; x1: number }> {
   const holes: Array<{ x0: number; x1: number }> = []
   for (const opening of wall.openings) {
-    const rect = plinthOpeningClipRect(wall, opening)
+    const rect = plinthOpeningClipRect(wall, opening, skipOpeningIds)
     if (!rect) continue
     if (rect.y0 >= plinthH || rect.y1 <= 0) continue
     // Volle Bounding-Breite: erhöhte Füll-Spannen (Sturz/Zwickel) setzen die Bogenform zurück.
@@ -1078,10 +1143,14 @@ function plinthOpeningXHoles(wall: Wall, plinthH: number): Array<{ x0: number; x
 }
 
 /** Öffnungen, die den Sockelstreifen über die volle Höhe durchschneiden (Tür o. Ä.). */
-function plinthFullHeightXHoles(wall: Wall, plinthH: number): Array<{ x0: number; x1: number }> {
+function plinthFullHeightXHoles(
+  wall: Wall,
+  plinthH: number,
+  skipOpeningIds?: Set<string>,
+): Array<{ x0: number; x1: number }> {
   const holes: Array<{ x0: number; x1: number }> = []
   for (const opening of wall.openings) {
-    const rect = plinthOpeningClipRect(wall, opening)
+    const rect = plinthOpeningClipRect(wall, opening, skipOpeningIds)
     if (!rect) continue
     if (rect.y0 > 0.5 || rect.y1 < plinthH - 0.5) continue
     holes.push({ x0: rect.x0, x1: rect.x1 })
@@ -1090,9 +1159,13 @@ function plinthFullHeightXHoles(wall: Wall, plinthH: number): Array<{ x0: number
 }
 
 /** Ob noch Teilöffnungen (z. B. Kellerfenster) CSG/Maske brauchen. */
-function plinthNeedsOpeningClip(wall: Wall, plinthH: number): boolean {
+function plinthNeedsOpeningClip(
+  wall: Wall,
+  plinthH: number,
+  skipOpeningIds?: Set<string>,
+): boolean {
   for (const opening of wall.openings) {
-    const rect = plinthOpeningClipRect(wall, opening)
+    const rect = plinthOpeningClipRect(wall, opening, skipOpeningIds)
     if (!rect) continue
     if (rect.y0 >= plinthH || rect.y1 <= 0) continue
     // Volle Durchschneidung wird über X-Spannen gelöst — kein Clip nötig.
@@ -1103,16 +1176,21 @@ function plinthNeedsOpeningClip(wall: Wall, plinthH: number): boolean {
 }
 
 /** Sichtbare Sockel-X-Spannen zwischen Öffnungen (volle Profilhöhe). */
-export function plinthVisibleXSpans(wall: Wall, plinthH: number): Array<{ x0: number; x1: number }> {
-  return subtractXRanges(0, wall.width, plinthOpeningXHoles(wall, plinthH))
+export function plinthVisibleXSpans(
+  wall: Wall,
+  plinthH: number,
+  skipOpeningIds?: Set<string>,
+): Array<{ x0: number; x1: number }> {
+  return subtractXRanges(0, wall.width, plinthOpeningXHoles(wall, plinthH, skipOpeningIds))
 }
 
 /** Sockel-X-Spannen nur zwischen voller Durchschneidung (Türen); Kellerfenster bleiben im Band. */
 export function plinthSpansBetweenFullCuts(
   wall: Wall,
   plinthH: number,
+  skipOpeningIds?: Set<string>,
 ): Array<{ x0: number; x1: number }> {
-  return subtractXRanges(0, wall.width, plinthFullHeightXHoles(wall, plinthH))
+  return subtractXRanges(0, wall.width, plinthFullHeightXHoles(wall, plinthH, skipOpeningIds))
 }
 
 /**
@@ -1708,6 +1786,7 @@ function buildPlinthProfilePaths(state: FacadeState): ProfilePath[] {
   const paths: ProfilePath[] = []
   const allWalls = getAllWalls(state)
   const visibleIds = new Set(getVisibleWalls(state).map((wall) => wall.id))
+  const skipDecorIds = downpipeOpeningsSkippingDecorBreak(state)
 
   for (const wall of allWalls) {
     if (!visibleIds.has(wall.id)) continue
@@ -1740,8 +1819,8 @@ function buildPlinthProfilePaths(state: FacadeState): ProfilePath[] {
     const endMiter = endContinues && endAdj ? cornicePlanMiterTan(wall, endAdj, 'end') : 0
     // Segmente an voller Durchschneidung (Türen) mit Stirnkappe; Kellerfenster bleiben
     // im Band und werden per CSG ausgeschnitten (Sturz bleibt).
-    const spans = plinthSpansBetweenFullCuts(wall, plinthH)
-    const needsClip = plinthNeedsOpeningClip(wall, plinthH)
+    const spans = plinthSpansBetweenFullCuts(wall, plinthH, skipDecorIds)
+    const needsClip = plinthNeedsOpeningClip(wall, plinthH, skipDecorIds)
     for (let i = 0; i < spans.length; i += 1) {
       const span = spans[i]!
       const isFirst = i === 0 && Math.abs(span.x0) < 0.5

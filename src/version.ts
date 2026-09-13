@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.403'
+export const APP_VERSION = '2.0.404'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,16 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.404',
+    date: '2026-09-13',
+    title: 'Fallrohr: Schmuck-Durchbruch, Schellen, Verschieben',
+    changes: [
+      'Fassadenschmuck optional an Rohr/Nische durchbrochen (bündig geschlossen), Aufsatz und Nische',
+      'Nische eckig (nicht abgerundet); Rohrschellen am Rohr; Drag und Pfeiltasten zum Verschieben',
+      'Gesims wird am Fallrohr wirklich unterbrochen (flush-Cutouts + Kanten-Sample korrigiert)',
+    ],
+  },
   {
     version: '2.0.403',
     date: '2026-09-13',

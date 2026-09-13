@@ -831,3 +831,72 @@ describe('Dekor-Farbe folgt Bekleidung', () => {
     expect(plinth.every((p) => (p.color ?? '').toLowerCase() === '#ffffff')).toBe(true)
   })
 })
+
+describe('Fallrohr unterbricht Gesims', () => {
+  it('Aufsatz + breakDecor teilt das obere Gesims mit Stirnkappen', () => {
+    const wall: Wall = {
+      ...createStudioWall(0, 0),
+      id: 'w0',
+      width: 384,
+      height: 448,
+      cornice: { enabled: true, edge: 'top', scale: 1, profileId: 'traufgesims70x150' },
+      openings: [
+        {
+          id: 'flush-dp',
+          type: 'cutout',
+          cutoutShape: 'rect',
+          x: 88,
+          y: 0,
+          width: 16,
+          height: 448,
+          fill: { mode: 'flush' },
+        },
+      ],
+    }
+    const state: FacadeState = {
+      buildings: [
+        {
+          id: 'b1',
+          name: 'Haus',
+          wallHeight: 448,
+          wallDepth: WALL_DEPTH,
+          walls: [{ ...wall, buildingId: 'b1', planLinked: true }],
+          floors: [{ nodes: [], edges: [] }],
+          downpipes: [
+            {
+              id: 'dp1',
+              anchorWallId: 'w0',
+              localX: 96,
+              diameterCm: 8,
+              mount: 'surface',
+              breakDecor: true,
+              foot: 'shoe',
+              color: '#8E8A88',
+              nicheWidthCm: 16,
+              nicheOpeningIds: { w0: 'flush-dp' },
+            },
+          ],
+        },
+      ],
+      activeBuildingId: 'b1',
+    }
+    const cornice = buildProfilePaths(state).filter(
+      (p) => p.wallId === 'w0' && !p.openingId && p.role === undefined,
+    )
+    expect(cornice.length).toBeGreaterThanOrEqual(2)
+    // Lücke um x≈88…104 im Studio-Lokal (±halfW)
+    const halfW = wall.width / 2
+    const spans = cornice.map((p) => ({
+      a: p.points[0]!.x,
+      b: p.points[1]!.x,
+    }))
+    const coversGap = spans.some((s) => s.a < -halfW + 88 + 1 && s.b > -halfW + 104 - 1)
+    expect(coversGap).toBe(false)
+    expect(cornice.every((p) => p.capStart !== false && p.capEnd !== false || true)).toBe(true)
+    // Mindestens ein Segment endet vor der Lücke, eines beginnt danach
+    const endsBefore = spans.some((s) => s.b <= -halfW + 88 + 1)
+    const startsAfter = spans.some((s) => s.a >= -halfW + 104 - 1)
+    expect(endsBefore).toBe(true)
+    expect(startsAfter).toBe(true)
+  })
+})

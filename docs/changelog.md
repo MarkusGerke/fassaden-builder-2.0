@@ -2,6 +2,14 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Fallrohr: Schmuck, Schellen, Drag (2026-09-13) — v2.0.404
+
+**Feature/Fix:** Optionaler Schmuck-Durchbruch (`breakDecor`) für Aufsatz (flush) und Nische; Nische eckig (`rect`); Rohrschellen; Drag + Pfeiltasten. Gesims/Zierband/Sockel mit geschlossenen Stirnkappen.
+
+**Gesims-Fix:** `openingMaskXRangesAtY` ignoriert flush und liefert an `y=height` oft []; Decor-Maske + explizite Fallrohr-X-Gaps + Sample innen.
+
+Dateien: `downpipe.ts`, `profilePaths.ts`, `openingGeometry.ts`, `main.ts`, `index.html`, `types/facade.ts`. Docs: [downpipes.md](downpipes.md).
+
 ### Fallrohr + Regenrinne (2026-09-13) — v2.0.403
 
 **Feature:** Mehrgeschossiges Fallrohr als `Building.downpipes[]` (Default DN 80, Aufsatz, Fuß Schräge). Optionale Nische synchronisiert Cutouts über `findVerticalAlignedWalls`. Dachrinne: `gutterColor` + Ablaufstutzen.

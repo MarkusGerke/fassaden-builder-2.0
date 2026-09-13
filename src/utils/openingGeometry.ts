@@ -1237,6 +1237,19 @@ export function openingMaskXRangesAtY(
   return polylineXRangesAtY(openingMaskPolyline(opening, inflate), y)
 }
 
+/**
+ * Wie `openingMaskXRangesAtY`, aber auch für flush-Cutouts (Fallrohr-Schmuck-Durchbruch):
+ * die Maske unterbricht Gesims/Zierband, schneidet die Schale aber nicht.
+ */
+export function openingDecorMaskXRangesAtY(
+  opening: Opening,
+  y: number,
+  inflate = 0,
+): Array<{ x0: number; x1: number }> {
+  if (opening.hidden) return []
+  return polylineXRangesAtY(openingMaskPolyline(opening, inflate), y)
+}
+
 /** Y-Löcher der Öffnungsmaske auf Wand-X — dieselbe Kontur wie Paneele/Mauerwerk. */
 export function openingMaskYRangesAtX(
   opening: Opening,
