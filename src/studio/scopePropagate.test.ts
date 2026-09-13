@@ -204,6 +204,75 @@ describe('propagateSelectionEdit — Fensterprofile', () => {
     expect(peer.profiles.filter((p) => p.openingId === 'o2')).toHaveLength(4)
   })
 
+  it('übernimmt Profilfarbe auf Konche/Einbuchtung der Etage (v2.0.412)', () => {
+    const window = win({
+      id: 'o1',
+      width: 96,
+      height: 192,
+      trim: { offsetX: 0, offsetY: 0, offsetForward: 0, rotationDeg: 0, flipOutward: false, flipForward: false, cornerJoin: 'miter', color: '#824242' },
+    })
+    const conch = win({
+      id: 'c1',
+      type: 'conch',
+      x: 200,
+      width: 96,
+      height: 128,
+      trim: { offsetX: 0, offsetY: 0, offsetForward: 0, rotationDeg: 0, flipOutward: false, flipForward: false, cornerJoin: 'miter' },
+    })
+    const cutout = win({
+      id: 'n1',
+      type: 'cutout',
+      x: 48,
+      y: 64,
+      width: 32,
+      height: 48,
+      cutoutShape: 'rect',
+      fill: { mode: 'niche', nicheDepthCm: 32 },
+    })
+    const before = stateWithWalls([
+      wall({
+        id: 'w1',
+        openings: [window, conch],
+        profiles: [
+          { openingId: 'o1', profileId: 'fensterprofil32x120', edge: 'top' },
+          { openingId: 'c1', profileId: 'fensterprofil32x120', edge: 'top' },
+        ],
+      }),
+      wall({
+        id: 'w2',
+        openings: [cutout],
+        originX: 400,
+        profiles: [{ openingId: 'n1', profileId: 'fensterprofil32x120', edge: 'top' }],
+      }),
+    ])
+    const after = {
+      ...before,
+      buildings: [
+        {
+          ...before.buildings[0]!,
+          walls: [
+            {
+              ...before.buildings[0]!.walls[0]!,
+              openings: [
+                {
+                  ...window,
+                  trim: { ...window.trim!, color: '#D13C3C' },
+                },
+                conch,
+              ],
+            },
+            before.buildings[0]!.walls[1]!,
+          ],
+        },
+      ],
+    }
+    const next = propagateSelectionEdit(before, after, editorForOpening('w1', 'o1'), 'floor')
+    const w1 = next.buildings[0]!.walls.find((w) => w.id === 'w1')!
+    const w2 = next.buildings[0]!.walls.find((w) => w.id === 'w2')!
+    expect(w1.openings.find((o) => o.id === 'c1')?.trim?.color).toBe('#D13C3C')
+    expect(w2.openings.find((o) => o.id === 'n1')?.trim?.color).toBe('#D13C3C')
+  })
+
   it('übernimmt Rahmenfarbe auf Fenster und Türen (auch andere Maße)', () => {
     const door = win({
       id: 'd1',

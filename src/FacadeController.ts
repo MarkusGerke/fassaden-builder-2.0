@@ -949,7 +949,10 @@ export class FacadeController {
         this.finishExteriorMaterial(mat)
         // Matt-Weiß etwas heller / weniger rau als reine Wand.
         if (mat.roughness > 0.55) mat.roughness = 0.55
-        mat.envMapIntensity = Math.max(mat.envMapIntensity, 0.7)
+        const envBase = mat.userData.baseEnvMapIntensity
+        if (typeof envBase !== 'number') {
+          mat.userData.baseEnvMapIntensity = Math.max(mat.envMapIntensity, 0.7)
+        }
       }
     })
   }
@@ -3813,7 +3816,11 @@ export class FacadeController {
         )
         exteriorMaterial.shadowSide = THREE.FrontSide
         interiorMaterial.shadowSide = THREE.FrontSide
-        interiorMaterial.userData.skipFacadeShade = true
+        // Offene Laibung innen: Innen-Shade, kein Fassaden-Gegenlicht (sonst exteriorSurface).
+        // Nische/Konche: beide Außen-Finish + Gegenlicht (v2.0.414 — sonst bleiben sie weiß).
+        if (!sealedNiche) {
+          interiorMaterial.userData.skipFacadeShade = true
+        }
         // Paneel-Wrap: Außenlaibung = Mörtelbett hinter den Return-Steinen (Gruppe 0),
         // Innen (1), Sohlbank-Putz (2) — feste Gruppen-Indizes aus der Geometrie.
         const wrapReveal = Boolean(geometry.userData.panelWrappedReveal)
@@ -3835,15 +3842,12 @@ export class FacadeController {
         const mesh = new THREE.Mesh(geometry, materials)
         mesh.castShadow = true
         mesh.userData.sealedNiche = sealedNiche
-        // Nische/Konche: von außen sichtbar beidseitig; kein Fassaden-Gegenlicht-Shader
-        // (sonst wirken Seiten/Rückwand schwarz und empfangen kein Licht).
+        // Nische/Konche: von außen sichtbar beidseitig; Gegenlicht wie Fassade (v2.0.414).
         if (mesh.userData.sealedNiche) {
           exteriorMaterial.side = THREE.DoubleSide
           interiorMaterial.side = THREE.DoubleSide
           exteriorMaterial.shadowSide = THREE.DoubleSide
           interiorMaterial.shadowSide = THREE.DoubleSide
-          exteriorMaterial.userData.skipFacadeShade = true
-          interiorMaterial.userData.skipFacadeShade = true
           this.finishExteriorMaterial(exteriorMaterial)
           this.finishExteriorMaterial(interiorMaterial)
           // Lichtdichte über Shadow-Tunnel; sichtbare Nische wirft nicht selbst

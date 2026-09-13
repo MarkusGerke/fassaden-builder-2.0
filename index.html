@@ -46,6 +46,8 @@
       #ui { position: relative; padding: 1.2rem 1.4rem; border-right: 1px solid #ddd; }
       #viewport { position: relative; background: #555; min-width: 0; }
       [hidden] { display: none !important; }
+      /* UI erst nach Bootstrap sichtbar — Overlay deckt ab, App darunter unsichtbar. */
+      body:not(.app-ready) #app { visibility: hidden; }
       #app-loading {
         position: fixed; inset: 0; z-index: 9999;
         display: flex; align-items: center; justify-content: center;
@@ -97,14 +99,16 @@
       </div>
     </div>
     <script>
+      /* Failsafe: nur wenn main.ts nicht startet / hängt — normalerweise dismissAppLoading(). */
       (function () {
         window.setTimeout(function () {
           var el = document.getElementById('app-loading')
           if (!el || el.classList.contains('is-done')) return
+          document.body.classList.add('app-ready')
           el.classList.add('is-done')
           el.setAttribute('aria-busy', 'false')
           window.setTimeout(function () { el.remove() }, 400)
-        }, 1200)
+        }, 20000)
       })()
     </script>
     <div id="app">
@@ -2461,10 +2465,10 @@
 
                 <label class="slider-label">
                   <span>Schatten-Tiefe (Fassade &amp; Innen)</span>
-                  <output id="sun-shade-depth-value">0.75</output>
+                  <output id="sun-shade-depth-value">0.92</output>
                 </label>
-                <input id="sun-shade-depth" type="range" min="0" max="1" step="0.01" value="0.75" />
-                <p class="toolbar-hint compact-hint">Schattenseite der Fassade und Innenraum dunkler (rechts) oder heller (links). Boden-Schlagschatten bleibt.</p>
+                <input id="sun-shade-depth" type="range" min="0" max="1" step="0.01" value="0.917" />
+                <p class="toolbar-hint compact-hint">Schattenseite der Fassade und Innenraum — links deutlich heller (erweiterter Spielraum), rechts nahezu schwarz. Boden-Schlagschatten bleibt.</p>
 
                 <div id="sun-shadow-density-block" hidden>
                 <label class="slider-label">

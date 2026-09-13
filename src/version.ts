@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.409'
+export const APP_VERSION = '2.0.420'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,100 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.420',
+    date: '2026-09-13',
+    title: 'Ladeanimation bis Bootstrap',
+    changes: [
+      'Haus-vom-Nikolaus-Ladebildschirm bleibt bis Szene/Licht bereit sind (nicht mehr sofort nach State-Load)',
+      'UI erst sichtbar, wenn der Ladebildschirm geschlossen wird',
+    ],
+  },
+  {
+    version: '2.0.419',
+    date: '2026-09-13',
+    title: 'Schatten-Tiefe: mehr Helligkeit nach links',
+    changes: [
+      'Slider „Schatten-Tiefe“: unteres Drittel bis zwei Drittel = zusätzlicher Helligkeits-Spielraum (≈3×); rechts weiterhin nahezu schwarz',
+      'Gespeicherte Werte werden einmalig gemappt (altes 0,75 ≈ neues 0,92)',
+    ],
+  },
+  {
+    version: '2.0.418',
+    date: '2026-09-13',
+    title: 'Glas-Dimmung über Sonnen-Settings',
+    changes: [
+      'Fassaden-Unlit aus Sonnen-Azimut/Höhe (nicht dirLight-Richtung — die war fälschlich 0,0,−1)',
+      'See-through-Glas: Farbe dunkel + weniger Durchsicht, wenn die Blickfassade im Schatten liegt',
+    ],
+  },
+  {
+    version: '2.0.417',
+    date: '2026-09-13',
+    title: 'Glas und Rahmenkanten bei Fassadenschatten',
+    changes: [
+      'Glas: Transmission/Clearcoat und Licht-Shader folgen der sichtbaren Fassade (nicht nur Env)',
+      'Rahmen/Fenster: globales uFacadeWallUnlit — Dim auch wenn lokale Achsen nicht zur Wand passen',
+    ],
+  },
+  {
+    version: '2.0.416',
+    date: '2026-09-13',
+    title: 'Glas-Env folgt der Kamera-Fassade',
+    changes: [
+      'Glas- und Rahmen-Env-Dimmung nutzt die zur Kamera sichtbare Wand — nicht mehr eine sonnenbeschienene Seitenwand bei Streiflicht',
+    ],
+  },
+  {
+    version: '2.0.415',
+    date: '2026-09-13',
+    title: 'Glas und Rahmenkanten im Fassadenschatten',
+    changes: [
+      'Env-Specular auf Rahmen und Glas folgt der sichtbaren Fassade (keine weißen Spiegelkanten mehr bei Streiflicht)',
+      'Innen-Laibung und Nischen dunkeln mit, wenn die Blick-Fassade wenig Sonne bekommt',
+    ],
+  },
+  {
+    version: '2.0.414',
+    date: '2026-09-13',
+    title: 'Rahmen, Flügel und Nischen folgen dem Fassadenschatten',
+    changes: [
+      'Fensterrahmen, geöffnete Flügel/Türen und Nischen/Konchen dunkeln mit der Fassade ab — bleiben nicht mehr hell, wenn die Front im Schatten liegt',
+    ],
+  },
+  {
+    version: '2.0.413',
+    date: '2026-09-13',
+    title: 'Seiten/Oben/Unten folgen dem Fassadenschatten',
+    changes: [
+      'Bei Gegenlicht und Streiflicht werden Seiten-, Ober- und Unterseiten der Paneele/Profile mit abgedunkelt — bleiben nicht mehr weiß, während die Front dunkel ist',
+    ],
+  },
+  {
+    version: '2.0.412',
+    date: '2026-09-13',
+    title: 'Profilfarbe Etage auch für Nischen',
+    changes: [
+      'Übernehmen/Zuweisen auf Etage oder Fassade übernimmt Profilfarbe und Rahmenprofile auch auf Einbuchtungen und Konchen (nicht nur Fenster/Türen)',
+    ],
+  },
+  {
+    version: '2.0.411',
+    date: '2026-09-13',
+    title: 'Werfschatten auf der Wand kontrastreicher',
+    changes: [
+      'Schatten-Dunkelheit dämpft Bounce- und Env-Fill in der Umbra (Density 0,7 → Bounce ~halbiert, Env ~−27 %) — Wandschatten weniger blass',
+      'shadow.intensity Mapping 0,95…1 (Default ~0,985)',
+    ],
+  },
+  {
+    version: '2.0.410',
+    date: '2026-09-13',
+    title: 'Dunklere Werfschatten auf der Fassade',
+    changes: [
+      'Schatten-Dunkelheit steuert shadow.intensity jetzt 0,90…1 (Default ~0,97 statt ~0,87) — Gesims-/Fensterbank-Schatten auf der Wand weniger blass',
+    ],
+  },
   {
     version: '2.0.409',
     date: '2026-09-13',

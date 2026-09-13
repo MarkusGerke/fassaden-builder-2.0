@@ -2,6 +2,74 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Ladeanimation bis Bootstrap (2026-09-13) — v2.0.420
+
+**Symptom:** Ladeanimation (Haus vom Nikolaus) fehlte / UI erschien zu früh. **Ursache:** `dismissAppLoading()` direkt nach `loadInitialState()` (v2.0.396) und HTML-Failsafe nach 1,2 s. **Fix:** Overlay bleibt bis `bootstrapSceneLighting()` (+ 2 Frames) in `finally`; `#app` per `body.app-ready` erst dann sichtbar; Failsafe nur noch 20 s.
+
+**Dateien:** `index.html`, `main.ts`. Docs: [views-and-state.md](views-and-state.md), [ux.md](ux.md).
+
+### Schatten-Tiefe: mehr Helligkeit (2026-09-13) — v2.0.419
+
+**Nutzer:** Am linken Slider-Ende fehlt Spielraum zum Aufhellen; Max rechts (nahezu schwarz) ist ok. **Fix:** UI 0…1 mappt auf Wirk −2…1 — untere ~⅔ = Aufhellung Richtung volles Streulicht (≈3× Spielraum), ab ⅔ wie früher Rohkurve→schwarz. Alt-Saves ohne `shadeDepthExpanded`: `(d+2)/3`. Default ≈ **0,92** (entspricht altem 0,75).
+
+**Dateien:** `facadeShade.ts`, `sunLighting.ts`, `index.html`. Docs: [shadows.md](shadows.md).
+
+### Glas-Dimmung über Sonnen-Settings (2026-09-13) — v2.0.418
+
+**Symptom (Screenshot 239°/40,5°):** Fassade schwarz, Glas/Laibung hellgrau. **Runtime:** `dirLight.getWorldDirection` → `(0,0,−1)` → `facadeWallUnlit` kippte auf 0; Glas-Env blieb **0,73**, Farbe `#575757`, Opacity 0,5 (Innen durchscheinend). **Fix:** `sunFromTargetDirection(sunSettings)`; Present = `max(yawUnlit, cameraUnlit)`; See-through-Glas Farbe×0,02 + Opacity 0,96; Latch nur wenn `yawUnlit` hoch bleibt.
+
+**Verifikation (Browser):** az 239 → Glas `#141414`, env **0,037**, opacity **0,96**; az 0 → Glas wieder `#575757` / env 0,73.
+
+**Dateien:** `main.ts`, `threeColors.ts`. Docs: [shadows.md](shadows.md).
+
+### Glas und Rahmenkanten bei Fassadenschatten (2026-09-13) — v2.0.417
+
+**Symptom (nach v2.0.416):** Env korrekt (`facadeWallUnlit: 1`, `envWallScale: 0,05`); Glasflächen und helle Kanten bleiben weiß. **Ursache:** Glas ohne `facadeShade` (Transmission/Clearcoat); Fenster-Meshes in lokalem Raum → Shader-`wallUnlit` griff nicht; Rahmen-Env-Minimum 0,7. **Fix:** `uFacadeWallUnlit` global; `bindFacadeGlassWallShade` + Transmission-Dim; Rahmen-Env nur als Basis. Cache `facade-backlit-v18`, `glass-wall-unlit-v1`.
+
+**Dateien:** `facadeShade.ts`, `threeColors.ts`, `FacadeController.ts`, `main.ts`. Docs: [shadows.md](shadows.md).
+
+### Glas-Env folgt der Kamera-Fassade (2026-09-13) — v2.0.416
+
+**Symptom (nach v2.0.415):** Rahmen/Glas/Laibung weiter hell. **Runtime:** `facadeWallUnlit: 0`, `envWallScale: 1` bei `sunOnFront: 0` — `primaryFacadeWallUnlit` nach Yaw wählte eine andere, sonnenbeschienene Wand; Env blieb voll. **Fix:** `facadeWallUnlitForCameraView` (Kamera → sichtbare Fassade); `syncEnvMapFillIntensities` nach `setExteriorEnvFillFactor`.
+
+**Dateien:** `elevation.ts`, `main.ts`. Docs: [shadows.md](shadows.md).
+
+### Glas und Rahmenkanten im Fassadenschatten (2026-09-13) — v2.0.415
+
+**Symptom (nach v2.0.414):** Paneele ok; Glas, Rahmenkanten, Laibung innen und Nischen weiter hell/weiß. **Runtime:** Shader-Dim aktiv (`frameDimKeep` ~0,06), aber `radiance` (Env-Specular) blieb für Nicht-Label **ungedimmt** — weiße Rahmen/Glas reflektierten volle CubeCamera. **Fix:** `radiance *= facadeIndirect`; `facadeWallUnlit` dämpft Glas-/Rahmen-Env (`scaledEnvIntensity`) und Innen-Laibung (`applyFacadeWallUnlit`). Cache `facade-backlit-v17`.
+
+**Dateien:** `facadeShade.ts`, `threeColors.ts`, `elevation.ts`, `main.ts`. Docs: [shadows.md](shadows.md).
+
+### Rahmen, Flügel und Nischen folgen dem Fassadenschatten (2026-09-13) — v2.0.414
+
+**Symptom (nach v2.0.413):** Paneele ok; Fensterrahmen, innere Kanten, geöffnete Flügel/Türen und Nischen bleiben hell. **Ursache:** (1) Normalen-Modus (`uNormalBacklit`) nutzte nur Flächen-N·L — sonnenzugewandte Rahmenkanten blieben hell trotz dunkler Wand. (2) Nische/Konche `skipFacadeShade` (Schutz vor pechschwarzen Seiten). **Fix:** `wallUnlit` dimmt auch im Normalen-Modus; Nischen ohne Skip, Außen-Finish + Gegenlicht. Cache `facade-backlit-v16`.
+
+**Dateien:** `facadeShade.ts`, `FacadeController.ts`. Docs: [shadows.md](shadows.md).
+
+### Seiten/Oben/Unten folgen dem Fassadenschatten (2026-09-13) — v2.0.413
+
+**Symptom:** Nach Sonnenwinkel-Änderung wird die Front dunkel; alles Seitliche sowie Oben/Unten bleibt weiß. **Runtime:** `receiveShadow` an (Gesims/Paneele); `backlit=0` bei `sunOnFront≈0` (Streiflicht) — Front dunkel nur per Lambert, Kanten behalten Direct (Elevation/±X). Alte `dimMask = 1 − sideOrTop·0,82` (v2.0.370/371) griff nur bei starkem Gegenlicht und ließ Kanten ~82 % hell. **Fix:** `edgeShade = sideOrTop × frontUnlit` — Nicht-Frontflächen dimmen, sobald die Wandfront wenig Sonne hat; Cache `facade-backlit-v15`.
+
+**Dateien:** `facadeShade.ts`. Docs: [shadows.md](shadows.md).
+
+### Profilfarbe Etage auch für Nischen (2026-09-13) — v2.0.412
+
+**Symptom:** Profilfarbe am Fenster ändern und Toast/Zuweisen **Etage** → Fenster ok, Nischen/Konchen unverändert. **Runtime:** `canTakePeer: false` für `peerType: conch` (Gate nur Fenster/Tür). **Fix:** `openingTakesFrameProfile` = `openingSupportsFrameProfiles` (Fenster/Tür/Cutout/Konche).
+
+**Dateien:** `scopePropagate.ts`. Docs: [ux.md](ux.md), [opening-features.md](opening-features.md), [views-and-state.md](views-and-state.md).
+
+### Werfschatten auf der Wand kontrastreicher (2026-09-13) — v2.0.411
+
+**Symptom:** Nach v2.0.410 (`shadow.intensity` ~0,97) blieben Wand-Werfschatten blass. **Runtime post-fix:** Rest-Key nur noch **0,04**, aber Bounce **0,21** (castShadow aus) und Wand-Env **0,58** (Boden Env 0) füllten die Umbra. **Fix:** Density skaliert Bounce (`lerp(1, 0,48)`) und Env-Fill (`lerp(1, 0,62)`); intensity-Mapping **0,95…1**.
+
+**Dateien:** `main.ts`. Docs: [shadows.md](shadows.md).
+
+### Dunklere Werfschatten auf der Fassade (2026-09-13) — v2.0.410
+
+**Symptom:** Schlagschatten von Gesims/Fensterbank auf der Wand wirkten blass. **Runtime:** `claddingReceive` an, `castShadow` an; `shadow.intensity` **0,865** (Density 0,7 → Formel 0,55+0,45×d) ließ ~14 % Key (~0,20) in der Umbra, zusätzlich Bounce ~0,21 und EnvMap ~0,58. **Verworfen:** Empfang aus / Key-Latch / flache Map. **Fix:** Density→`dirLight.shadow.intensity` **0,90…1** (Default ~0,97). PCSS/Contrast/Density-Defaults unverändert.
+
+**Dateien:** `main.ts`. Docs: [shadows.md](shadows.md).
+
 ### Fallrohr-Wandabstand (2026-09-13) — v2.0.409
 
 **Feature:** Aufsatz-Fallrohr: einstellbarer Abstand Rohraußenkante → äußerste Paneelfläche (`surfaceGapCm`, Default 8, 0…48). UI unter Maße → **Wandabstand (cm)**; bei Nische ausgeblendet. Schellen folgen dem Spalt.

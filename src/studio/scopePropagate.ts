@@ -14,6 +14,7 @@ import type {
 } from '../types/facade'
 import { cloneFacadeState, cloneWall } from '../types/facade'
 import { findBuildingForWall, getAllWalls } from '../utils/buildings'
+import { openingSupportsFrameProfiles } from '../utils/openingGeometry'
 import { getWall } from '../utils/walls'
 
 /** Ob zwei Zustände dieselbe Wand-/Öffnungs-Topologie haben (nur Property-Edit). */
@@ -134,9 +135,12 @@ export function applyOpeningProfilesDelta(
   ]
 }
 
-/** Fenster/Türen: Property- und Profil-Deltas ohne Maßfilter. */
+/**
+ * Rahmenprofil-fähige Öffnungen: Fenster/Türen/Einbuchtungen/Konchen (v2.0.405+).
+ * Kellerfenster und Fallrohr-Nischen über `openingSupportsFrameProfiles` ausgenommen.
+ */
 function openingTakesFrameProfile(opening: Opening): boolean {
-  return opening.type === 'window' || opening.type === 'door'
+  return openingSupportsFrameProfiles(opening)
 }
 
 function applyWallPropertyDelta(peer: Wall, before: Wall, after: Wall): Wall {
@@ -334,7 +338,8 @@ export function propagateSelectionEdit(
         for (const donor of donors) {
           const openSame = donor.before === donor.after
           const profSame = openingProfilesEqual(donor.profilesBefore, donor.profilesAfter)
-          // Typ-Stufe: nur gleicher Opening-Typ; Etage/Fassade: Fenster und Türen.
+          // Typ-Stufe: nur gleicher Opening-Typ; Etage/Fassade: alle rahmenprofil-fähigen Öffnungen
+          // (Fenster/Tür/Cutout/Konche — v2.0.412; zuvor nur Fenster/Tür → Nischen ohne Farbe).
           const canTakePeer =
             toScope === 'type'
               ? open.type === donor.after.type

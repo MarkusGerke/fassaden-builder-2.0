@@ -30,6 +30,8 @@ import {
   bindMaterialsToGlassEnv,
   clearGlassEnvironmentBindings,
   setExteriorEnvFillFactor,
+  setFacadeGlassWallUnlit,
+  setFacadeWallUnlitForEnv,
   syncEnvMapFillIntensities,
 } from './utils/threeColors'
 import {
@@ -384,6 +386,7 @@ import {
   SHADOW_MAP_SIZE_INDOOR,
   shadowMapSizeForPresentation,
   sunDistanceForBox,
+  sunFromTargetDirection,
   sunTargetFromBox,
   syncSunSettingsFromSolar,
   resolveAnimTimeRange,
@@ -527,7 +530,15 @@ import {
   normalizeOpeningGuard,
   normalizeOpeningInteriorShade,
 } from './windows/openingExtras'
-import { facadeOutward, facadeSunIsGrazing, wallsForYaw, wallElevationAlong, type ElevationFilter } from './studio/elevation'
+import {
+  facadeOutward,
+  facadeSunIsGrazing,
+  facadeWallUnlitForCameraView,
+  primaryFacadeWallUnlit,
+  wallsForYaw,
+  wallElevationAlong,
+  type ElevationFilter,
+} from './studio/elevation'
 import { computePresentCameraFrame } from './studio/presentCamera'
 import { normalizeYawDeg, snapYawTo1, snapYawTo45, solarAzimuthToWallYaw, viewedFacadeYaw, wallCompassLabel, wallDockAxisFromFacadeYaw, yawFromCompassSvgPoint } from './studio/compass'
 import { panelCourseCount, visiblePanelRowRange, layoutPanelTiles } from './studio/panelLayout'
@@ -638,7 +649,12 @@ import {
   wheelZoomFactorFromDelta,
   zoomPanOffsetsAtCursor,
 } from './utils/viewZoom'
-import { facadeShadeParamsFromSun, setFacadeShadeParams } from './utils/facadeShade'
+import {
+  applyFacadeWallUnlit,
+  facadeShadeParamsFromSun,
+  setFacadeShadeParams,
+  setFacadeWallUnlitUniform,
+} from './utils/facadeShade'
 import { resolveLightingMood } from './utils/lightingMood'
 import {
   applyGroundMoodShader,
@@ -11576,6 +11592,7 @@ function scheduleSunShadowMapUpdate() {
 }
 
 function dismissAppLoading() {
+  document.body.classList.add('app-ready')
   const el = document.querySelector('#app-loading')
   if (!el) return
   el.classList.add('is-done')
@@ -11968,14 +11985,29 @@ function patchSelectedSceneLight(patch: Parameters<typeof updateSceneLight>[2]):
   commitState(updateSceneLight(state, id, patch))
 }
 
+/** Blick-Fassade für Glas-/Env-Dimmung bei Streiflicht (v2.0.415). */
+function facadeViewYawForSunDim(): number {
+  if (currentView === 'present') return presentCompassYaw()
+  if (currentView === 'front') {
+    if (currentElevation.kind === 'yaw') return currentElevation.yaw
+    if (currentElevation.kind === 'wall') {
+      const w = getWall(state, currentElevation.wallId)
+      return w?.yawDeg ?? 0
+    }
+  }
+  const toTarget = new THREE.Vector3().subVectors(controls.target, camera.position)
+  toTarget.y = 0
+  if (toTarget.lengthSq() < 4) return presentCompassYaw()
+  toTarget.normalize()
+  return THREE.MathUtils.radToDeg(Math.atan2(toTarget.x, toTarget.z))
+}
+
 function applySunLighting(opts?: {
   updateShadowMap?: boolean
   live?: boolean
   /** Shadow-Bake trotz Orbit-Lite-Hold (nach Verschieben/Rebuild). */
   forceShadowBake?: boolean
 }) {
-  const facadeShade = facadeShadeParamsFromSun(sunSettings)
-  setFacadeShadeParams(facadeShade)
   syncCladdingReceiveShadows()
   const preCelestial = resolveCelestialState(sunSettings)
   const live = opts?.live === true
@@ -12027,6 +12059,30 @@ function applySunLighting(opts?: {
     lightTarget: target,
     lightDistance: Math.max(900, distance),
   })
+  const sunDirWorld = sunFromTargetDirection(sunSettings)
+  const studioWalls = getAllWalls(state).filter(isStudioWall)
+  const yawUnlit = primaryFacadeWallUnlit(
+    studioWalls,
+    facadeViewYawForSunDim(),
+    siteYaw,
+    sunDirWorld,
+  )
+  const cameraUnlit = facadeWallUnlitForCameraView(
+    studioWalls,
+    siteYaw,
+    sunDirWorld,
+    camera.position,
+    controls.target,
+  )
+  // Present/Front: nur die Aufriss-/Kompass-Fassade (cameraUnlit dimmt sonst bei az=33 die besonnte Front mit).
+  // 3D: Kamera-Fassade.
+  let facadeWallUnlit =
+    currentView === 'present' || currentView === 'front' ? yawUnlit : cameraUnlit
+  const facadeShade = applyFacadeWallUnlit(facadeShadeParamsFromSun(sunSettings), facadeWallUnlit)
+  setFacadeShadeParams(facadeShade)
+  setFacadeWallUnlitUniform(facadeWallUnlit)
+  setFacadeWallUnlitForEnv(facadeWallUnlit)
+  setFacadeGlassWallUnlit(facadeWallUnlit)
   if (dirLight.castShadow && !hadKeyShadow) {
     dirLight.shadow.needsUpdate = true
     renderer.shadowMap.needsUpdate = true
@@ -12038,8 +12094,14 @@ function applySunLighting(opts?: {
   hemiLight.groundColor.copy(mood.groundHemiColor)
 
   // Paneel/Glas-EnvMap: Farbe + Stärke folgen Tag/Nacht (sonst bleibt Mittelgrau-IBL).
-  const envFill = exteriorEnvFillFromCelestial(preCelestial)
+  // v2.0.411: Density dämpft Env-Fill — Wand-Env wäscht Umbra, Boden hat Env 0.
+  const density01 = THREE.MathUtils.clamp(sunSettings.shadowDensity, 0, 1)
+  const envFill =
+    exteriorEnvFillFromCelestial(preCelestial) * THREE.MathUtils.lerp(1, 0.62, density01)
   setExteriorEnvFillFactor(envFill)
+  if (facadeReady) {
+    syncEnvMapFillIntensities(scene)
+  }
   const reflectSky = `#${palette.zenith.clone().lerp(palette.horizon, 0.35).getHexString()}`
   const reflectGround = `#${palette.ground.getHexString()}`
   const reflectionKey = `${preCelestial.activeLight}:${Math.round(preCelestial.twilightFactor * 8)}:${Math.round(preCelestial.moonIllumination * 4)}:${reflectSky}`
@@ -12049,13 +12111,11 @@ function applySunLighting(opts?: {
     setGlassGroundReflectionColor(reflectGround)
     markSceneReflectionsDirty()
   }
-  if (facadeReady) {
-    syncEnvMapFillIntensities(scene)
-  }
-
   const bounceDist = Math.max(900, distance)
   const bd = mood.bounceDirection
-  bounceDirLight.intensity = mood.bounceIntensity
+  // v2.0.411: Bounce castet nicht → füllt Werfschatten auf der Wand (Runtime ~0,21 vs Rest-Key 0,04).
+  const bounceScale = THREE.MathUtils.lerp(1, 0.48, density01)
+  bounceDirLight.intensity = mood.bounceIntensity * bounceScale
   bounceDirLight.color.copy(mood.bounceColor)
   bounceDirLight.position.set(
     target.x + bd.x * bounceDist,
@@ -12064,7 +12124,7 @@ function applySunLighting(opts?: {
   )
   bounceDirLight.target.position.copy(target)
   bounceDirLight.target.updateMatrixWorld()
-  bounceDirLight.visible = mood.bounceIntensity > 0.02
+  bounceDirLight.visible = bounceDirLight.intensity > 0.02
 
   if (studio) {
     studioSphereMat.color.set(sceneColors.background)
@@ -12112,9 +12172,10 @@ function applySunLighting(opts?: {
     dirLight.shadow.bias = SHADOW_BIAS
   }
   // Schatten-Dunkelheit → Three.js shadow.intensity (0 = unsichtbar, 1 = volle Umbra).
+  // v2.0.410/411: 0,95…1 (Default Density 0,7 → ~0,985). Früher 0,55…1 → blasse Wandschatten.
   dirLight.shadow.intensity = THREE.MathUtils.clamp(
-    0.55 + 0.45 * THREE.MathUtils.clamp(sunSettings.shadowDensity, 0, 1),
-    0.55,
+    THREE.MathUtils.lerp(0.95, 1, density01),
+    0.95,
     1,
   )
 
@@ -19899,7 +19960,6 @@ function selectOpening(
 }
 
 await loadInitialState()
-dismissAppLoading()
 await new Promise<void>((resolve) => window.setTimeout(resolve, 0))
 // Fassaden-Builder 2.0: Fokus auf 2D-Front + Render-Modus; 3D wieder per Button wählbar
 presentationMode = 'render'
