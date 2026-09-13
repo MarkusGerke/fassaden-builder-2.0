@@ -5339,3 +5339,257 @@ html[data-ui-mode='simple'] [data-ui-level='advanced'] {
   border-right: none;
   border-left: 1px solid #ccc;
 }
+
+/* ── Touch-/Fassade-Chrome (html.ui-touch-chrome) ───────────────────────── */
+html.ui-touch-chrome #ui,
+html.ui-touch-chrome #ui-left-collapse,
+html.ui-touch-chrome #view-compass,
+html.ui-touch-chrome #nav-help-btn,
+html.ui-touch-chrome #edit-scope-bar,
+html.ui-touch-chrome #wall-library-gizmos,
+html.ui-touch-chrome #wall-resize-gizmos {
+  display: none !important;
+}
+
+html.ui-touch-chrome #viewport-chrome .view-mode-toggle[aria-label='Ansicht'] #view-btn-top,
+html.ui-touch-chrome #viewport-chrome .view-mode-toggle[aria-label='Ansicht'] #view-btn-front,
+html.ui-touch-chrome #viewport-chrome .view-mode-toggle[aria-label='Ansicht'] #view-btn-3d,
+html.ui-touch-chrome #viewport-chrome .view-mode-toggle[aria-label='Ansicht'] #view-btn-export,
+html.ui-touch-chrome #viewport-chrome .view-mode-toggle[aria-label='Darstellung'],
+html.ui-touch-chrome #viewport-chrome .view-mode-toggle[aria-label='Darstellungsmodus'],
+html.ui-touch-chrome #viewport-chrome .view-mode-toggle[aria-label='Umgebung'],
+html.ui-touch-chrome #viewport-chrome .view-mode-toggle[aria-label='Licht-Modus'],
+html.ui-touch-chrome #viewport-chrome .view-mode-toggle[aria-label='Laub-Modus'],
+html.ui-touch-chrome #viewport-chrome .view-mode-toggle[aria-label='Bearbeitungsmodus'],
+html.ui-touch-chrome #viewport-chrome .view-mode-toggle[aria-label='Galerie'],
+html.ui-touch-chrome #view-line-stroke-row {
+  display: none !important;
+}
+
+html.ui-touch-chrome #ui-right,
+html.ui-touch-chrome #ui-right-collapse {
+  display: none !important;
+}
+
+html.ui-touch-chrome #app {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+html.ui-touch-chrome #scope-bar-slot {
+  display: flex !important;
+}
+
+html.ui-touch-chrome #scope-propagate-offer {
+  z-index: 80;
+}
+
+html.ui-touch-chrome #library-dock > .library-tabs {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+html.ui-touch-chrome #library-dock > .library-tabs .library-tab {
+  scroll-snap-align: start;
+}
+
+html.ui-touch-chrome #library-dock.is-edit-sheet-open > .library-chrome {
+  transform: translateY(110%);
+  pointer-events: none;
+  opacity: 0.35;
+}
+
+html.ui-touch-chrome #library-dock > .library-chrome {
+  transition: transform 0.28s ease, opacity 0.28s ease;
+}
+
+.library-card-edit {
+  display: block;
+  width: 100%;
+  text-align: center;
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: #1a1a1a;
+  padding: 0.1rem 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.opening-library-card .library-card-edit {
+  /* ersetzt den Titel — gleiche Kartenhöhe */
+  min-height: 1.1em;
+}
+
+.library-edit-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  pointer-events: none;
+}
+
+.library-edit-sheet:not([hidden]) {
+  pointer-events: auto;
+}
+
+.library-edit-sheet-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.28);
+  opacity: 0;
+  transition: opacity 0.28s ease;
+}
+
+.library-edit-sheet.is-open .library-edit-sheet-backdrop {
+  opacity: 1;
+}
+
+.library-edit-sheet-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: min(72vh, 640px);
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: 14px 14px 0 0;
+  box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.18);
+  transform: translateY(105%);
+  transition: transform 0.28s ease;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.library-edit-sheet.is-open .library-edit-sheet-panel {
+  transform: translateY(0);
+}
+
+.library-edit-sheet-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1px solid #e4e4e4;
+  flex: none;
+}
+
+.library-edit-sheet-header h2 {
+  margin: 0;
+  flex: 1;
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.library-edit-sheet-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.75rem 0.9rem 1rem;
+}
+
+.library-edit-sheet-body .selection-toolbar-panels {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 32px);
+}
+
+/* Desktop-3D: fokussierter Inspector (nur Bearbeiten-Block) */
+html.ui-library-edit-focus:not(.ui-touch-chrome) #selection-toolbar-panels .settings-section.library-edit-filtered-out {
+  display: none !important;
+}
+
+html.ui-library-edit-focus:not(.ui-touch-chrome) #selection-toolbar {
+  outline: 2px solid rgba(0, 0, 0, 0.06);
+}
+
+.settings-summary-tiles {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 16px);
+}
+
+.settings-summary-tile {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid #e2e2e2;
+  border-radius: var(--btn-radius, 8px);
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
+.settings-summary-tile:hover {
+  border-color: #bbb;
+  background: #fafafa;
+}
+
+.settings-summary-tile-thumb {
+  width: 48px;
+  height: 36px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f7f7f7;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.settings-summary-tile-thumb svg {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.settings-summary-tile-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.settings-summary-tile-label {
+  font-size: 0.7rem;
+  color: #777;
+}
+
+.settings-summary-tile-value {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.settings-summary-tile-edit {
+  flex: none;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.settings-gallery[hidden],
+.settings-deep-edit[hidden] {
+  display: none !important;
+}
+
+.pediment-summary-mode #pediment-options > :not(.settings-summary-tiles):not(.settings-gallery):not(.settings-deep-edit) {
+  /* Root: nur Summary-Kacheln; Galerie/Deep bei Bedarf */
+}
+
+#pediment-options.pediment-catalog-root > .settings-summary-tiles {
+  display: flex;
+}
+
+#pediment-options.pediment-catalog-root:not([data-pediment-depth='root']) > .settings-summary-tiles {
+  display: none;
+}
+
+#pediment-options.pediment-catalog-root[data-pediment-depth='root'] > .settings-gallery,
+#pediment-options.pediment-catalog-root[data-pediment-depth='root'] > .settings-deep-edit {
+  display: none !important;
+}

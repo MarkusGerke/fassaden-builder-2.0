@@ -240,7 +240,7 @@ Yaw-Konvention überall gleich: **0=N, 90=W, 180=S, 270=O** (gegen Uhrzeigersinn
 - **v2.0.207:** Bibliothek-Paneele und Stil einfügen / Stil-Vorlage nutzen `scopedWallIds()` / `scopedOpeningRefs()` — Scope **Etage** gilt auch dafür
 - Öffnungs-Edits (Profil, Fensterbank, Treppe, Rahmen/Glas, Gründerzeit, **Position/Nudge/Drag**): `editOpeningTargets` / `scopedOpeningRefs()`
 - Beim Verschieben: Delta gilt für alle Scoped-Refs. Türen mit aktiver Treppe behalten Auto-Y aus Stufen.
-- **v2.0.233 / v2.0.234 / v2.0.321 / v2.0.322 / v2.0.323 / v2.0.324 / v2.0.381 / v2.0.412 / v2.0.429 / v2.0.444 / v2.0.446:** Nach Edit mit Scope **Auswahl**/**Typ**/**Etage** ggf. `#scope-propagate-offer` — **Typ / Etage / Fassade**, **5-s-Countdown**. Der Toast überträgt die **letzte Änderung** (Deltas), inkl. **Auto** (gelöschte Felder, z. B. Bogenhöhe `riseCm`, v2.0.446). **v2.0.324:** Toast-Typ auch bei unterschiedlicher Größe (gleicher Öffnungstyp). **v2.0.323:** Farbe/Profil auf Fenster und Türen. **v2.0.412:** Etage/Fassade auch Einbuchtungen und Konchen (`openingSupportsFrameProfiles`). **v2.0.381:** auch nach **Verschieben**; Gesims/`cornice` als Ganzes; Rechtsklick **Zuweisen für** → Typ/Etage/Fassade (`assignSelectionPropertiesToScope`). **v2.0.429:** Toast propagiert nur **Deltas** in Nested-Opening-Configs (z. B. nur `boxWindow`); **Zuweisen für** bleibt Vollstil. **v2.0.444:** Bogen-Stichmaß bei Zuweisen/Formwechsel → Auto (kein fremdes Absolutmaß).
+- **v2.0.233 / v2.0.234 / v2.0.321 / v2.0.322 / v2.0.323 / v2.0.324 / v2.0.381 / v2.0.412 / v2.0.429 / v2.0.444 / v2.0.446 / v2.0.448:** Nach Edit mit Scope **Auswahl**/**Typ**/**Etage** ggf. `#scope-propagate-offer` — **Typ / Etage / Fassade**, **7-s-Countdown** (`SCOPE_OFFER_SECONDS`, v2.0.448; zuvor 5 s). Der Toast überträgt die **letzte Änderung** (Deltas), inkl. **Auto** (gelöschte Felder, z. B. Bogenhöhe `riseCm`, v2.0.446). **v2.0.324:** Toast-Typ auch bei unterschiedlicher Größe (gleicher Öffnungstyp). **v2.0.323:** Farbe/Profil auf Fenster und Türen. **v2.0.412:** Etage/Fassade auch Einbuchtungen und Konchen (`openingSupportsFrameProfiles`). **v2.0.381:** auch nach **Verschieben**; Gesims/`cornice` als Ganzes; Rechtsklick **Zuweisen für** → Typ/Etage/Fassade (`assignSelectionPropertiesToScope`). **v2.0.429:** Toast propagiert nur **Deltas** in Nested-Opening-Configs (z. B. nur `boxWindow`); **Zuweisen für** bleibt Vollstil. **v2.0.444:** Bogen-Stichmaß bei Zuweisen/Formwechsel → Auto (kein fremdes Absolutmaß).
 
 | Scope | Wände | Öffnungen |
 |---|---|---|
@@ -260,6 +260,26 @@ Gesims-Höhe/Tiefe (cm) unter Etage/Fassade/Typ: letzte Eingabe gilt für alle Z
 Profil-Assign (`#profile-select-cards`, Kanten-Buttons, Draft-Save) und Öffnungs-Modell nutzen `scopedOpeningRefs()` — nicht nur `editor.selectedOpenings`. Rahmenprofil-Kacheln: nur `FRAME_PROFILE_IDS` (Fensterprofil 32×120 / 35×130 / 40×140).
 
 Persistiert als `editScope` / `editFacadeYawFilter` in localStorage (`PersistedAppState`).
+
+---
+
+## Touch-/Fassade-Chrome (v2.0.448)
+
+Layout-Schalter: `html.ui-touch-chrome`, wenn **`(pointer: coarse)` ODER Viewport ≤ 900 px ODER Ansicht Fassade (`present`)**. Desktop-**3D** bleibt das klassische Drei-Spalten-Layout ohne Bottom-Sheet.
+
+| Verhalten | Details |
+|---|---|
+| Ansicht | Auf Touch/schmal → **Fassade** erzwungen (`#view-btn-present`) |
+| HUD aus | 2D/3D/Oben/Export, Farbe/Zeichnung, Vorschau/Render, Himmel/Neutral, Licht, linke Ebenen (`#ui`), Kompass, Nav-Hilfe, **Gültig für** (`#edit-scope-bar`) |
+| Toast | `#scope-propagate-offer` bleibt (über dem Sheet, 7 s) |
+| Bibliothek-Tabs | horizontal swipebar (`overflow-x`, `scroll-snap`) |
+| Wand-Geometrie | kein Place/DnD/Resize/Move/Innenwand/Erker-Platzieren; Styling (Farben, Paneele, Gesims, Öffnungen) bleibt |
+| Bearbeiten | Aktive Bibliothek-Karte: Titel → **Bearbeiten**; Thumb wendet weiter an |
+| Touch/Fassade | Bottom-Sheet portiert `#selection-toolbar-panels` (keine Kopie); Bibliothek gleitet nach unten |
+| Desktop-3D | Rechts nur der per Bearbeiten gewählte Settings-Block (`libraryEditFocusSections`); kein Auto-Tab Farben |
+| Verdachung | Summary-Kacheln Form/Profil/Konsole → Galerie → Profil-Maße eine Ebene tiefer |
+
+Implementierung: `src/ui/touchChrome.ts`, Wiring in `src/main.ts` / `src/style.css` / `index.html` (`#library-edit-sheet`).
 
 ---
 

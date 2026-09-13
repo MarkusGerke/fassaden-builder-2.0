@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.447'
+export const APP_VERSION = '2.0.448'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,16 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.448',
+    date: '2026-09-13',
+    title: 'Touch-/Fassade-Chrome und fokussierter Inspector',
+    changes: [
+      'Touch, schmales Fenster oder Ansicht Fassade: schlankes Chrome, Bibliothek mit Bearbeiten und Bottom-Sheet',
+      'Keine Wand-Geometrie in diesem Modus — Farben, Paneele und Öffnungsstile bleiben',
+      'Desktop-3D: Bearbeiten zeigt rechts nur den gewählten Einstellungsblock; Toast-Countdown 7 s',
+    ],
+  },
   {
     version: '2.0.447',
     date: '2026-09-13',

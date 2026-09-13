@@ -2,6 +2,15 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Touch-/Fassade-Chrome und fokussierter Inspector (2026-09-13) — v2.0.448
+
+1. **Chrome:** `html.ui-touch-chrome` bei grobem Pointer, schmalem Viewport (≤ 900 px) oder Ansicht Fassade — HUD aus, Ansicht Fassade, Bibliothek-Tabs swipebar, Toast-Countdown **7 s**.
+2. **Geometrie-Lock:** In diesem Chrome keine Wand-/Erker-Platzierung, kein Resize/Move; Styling bleibt.
+3. **Bearbeiten:** Aktive Bibliothek-Karte öffnet Bottom-Sheet (Portal der bestehenden Panels) bzw. Desktop-3D nur den gewählten Inspector-Block.
+4. **Verdachung:** Summary-Kacheln Form/Profil/Konsole mit Galerie und Profil-Tiefe.
+
+Docs: [ux.md](ux.md). Test: `src/ui/touchChrome.test.ts`.
+
 ### Fenster ersetzen, Feindrehung, Stein-Kontrast (2026-09-13) — v2.0.447
 
 1. **Rechtsklick Öffnung:** Bei gefüllter Öffnungs-Zwischenablage **„Fenster/Tür ersetzen“** — ersetzt die Auswahl mittelaxial (`replaceOpeningsFromSource`), ID bleibt.

@@ -260,7 +260,7 @@
           <div id="edit-scope-facade-yaws" class="edit-scope-facade-yaws preset-group" hidden role="group" aria-label="Himmelsrichtungen der Fassade"></div>
         </div>
         <div id="scope-propagate-offer" class="scope-propagate-offer" hidden role="status" aria-live="polite">
-          <span id="scope-propagate-timer" class="scope-propagate-timer" aria-hidden="true">5</span>
+          <span id="scope-propagate-timer" class="scope-propagate-timer" aria-hidden="true">7</span>
           <span class="scope-propagate-label">Übernehmen?</span>
           <button id="scope-propagate-type" class="preset-btn" type="button" hidden>Typ</button>
           <button id="scope-propagate-floor" class="preset-btn" type="button" hidden>Etage</button>
@@ -386,6 +386,17 @@
               <div id="opening-library-items" class="opening-library-items"></div>
             </div>
           </div>
+          </div>
+        </div>
+        <div id="library-edit-sheet" class="library-edit-sheet" hidden aria-hidden="true">
+          <div class="library-edit-sheet-backdrop" data-library-edit-dismiss tabindex="-1"></div>
+          <div class="library-edit-sheet-panel" role="dialog" aria-modal="true" aria-labelledby="library-edit-sheet-title">
+            <header class="library-edit-sheet-header">
+              <button type="button" id="library-edit-sheet-back" class="preset-btn" hidden>Zurück</button>
+              <h2 id="library-edit-sheet-title">Bearbeiten</h2>
+              <button type="button" id="library-edit-sheet-close" class="preset-btn" title="Schließen" aria-label="Schließen">×</button>
+            </header>
+            <div id="library-edit-sheet-body" class="library-edit-sheet-body"></div>
           </div>
         </div>
       </div>
@@ -2377,6 +2388,33 @@
                 <span id="pediment-enabled-label">Verdachung über dem Fenster anzeigen</span>
               </label>
               <div id="pediment-options">
+                  <div id="pediment-summary-tiles" class="settings-summary-tiles" hidden>
+                    <button type="button" class="settings-summary-tile" data-pediment-summary="form" id="pediment-summary-form">
+                      <div class="settings-summary-tile-thumb" id="pediment-summary-form-thumb" aria-hidden="true"></div>
+                      <div class="settings-summary-tile-meta">
+                        <span class="settings-summary-tile-label">Form</span>
+                        <span class="settings-summary-tile-value" id="pediment-summary-form-value">Keine Form</span>
+                      </div>
+                      <span class="settings-summary-tile-edit">Bearbeiten</span>
+                    </button>
+                    <button type="button" class="settings-summary-tile" data-pediment-summary="profile" id="pediment-summary-profile">
+                      <div class="settings-summary-tile-thumb" id="pediment-summary-profile-thumb" aria-hidden="true"></div>
+                      <div class="settings-summary-tile-meta">
+                        <span class="settings-summary-tile-label">Profil</span>
+                        <span class="settings-summary-tile-value" id="pediment-summary-profile-value">Kein Profil</span>
+                      </div>
+                      <span class="settings-summary-tile-edit">Bearbeiten</span>
+                    </button>
+                    <button type="button" class="settings-summary-tile" data-pediment-summary="consoles" id="pediment-summary-consoles">
+                      <div class="settings-summary-tile-thumb" id="pediment-summary-consoles-thumb" aria-hidden="true"></div>
+                      <div class="settings-summary-tile-meta">
+                        <span class="settings-summary-tile-label">Konsole</span>
+                        <span class="settings-summary-tile-value" id="pediment-summary-consoles-value">Keine Konsole</span>
+                      </div>
+                      <span class="settings-summary-tile-edit">Bearbeiten</span>
+                    </button>
+                  </div>
+                  <div id="pediment-form-gallery" class="settings-gallery" hidden>
                   <p class="settings-subheading settings-subheading-nested">Form</p>
                   <div class="toolbar-group">
                   <span class="toolbar-label">Form</span>
@@ -2438,12 +2476,16 @@
                     </button>
                   </div>
                   </div>
+                  </div>
+                  <div id="pediment-profile-gallery" class="settings-gallery" hidden>
                   <p class="settings-subheading settings-subheading-nested">Profil</p>
                   <div class="toolbar-group">
                   <span class="toolbar-label">Profil</span>
                   <p class="toolbar-hint compact-hint">Profil in der Bibliothek (Tab Profile oder Verdachung) wählen oder auf die Öffnung ziehen.</p>
                 <div id="pediment-profile-cards" class="tpl-card-row profile-picker-row sidebar-library-picker" role="listbox" aria-label="Verdachungsprofil"></div>
                   </div>
+                  </div>
+                  <div id="pediment-profile-deep" class="settings-deep-edit" hidden>
                   <p class="settings-subheading settings-subheading-nested">Maße</p>
                   <div class="toolbar-row-2">
                     <label>Überstand (cm) <input id="pediment-overhang" type="number" min="0" max="96" step="8" value="8" title="Überstand links/rechts in cm" /></label>
@@ -2482,6 +2524,7 @@
                     <option value="metal">Metallisch</option>
                   </select>
                   <p class="toolbar-hint compact-hint">Unabhängig vom umlaufenden Rahmenprofil.</p>
+                  </div>
                 </div>
             </div>
 
@@ -2491,11 +2534,13 @@
                 Stützen unter der Verdachung anzeigen
               </label>
               <div id="pediment-console-options">
+                <div id="pediment-console-gallery" class="settings-gallery">
                 <p class="settings-subheading settings-subheading-nested">Profil</p>
                 <div class="toolbar-group">
                 <span class="toolbar-label">Konsolenprofil</span>
                 <p class="toolbar-hint compact-hint">Konsole in der Bibliothek (Tab Verdachung) wählen.</p>
                 <div id="pediment-console-cards" class="tpl-card-row profile-picker-row sidebar-library-picker" role="listbox" aria-label="Konsolenprofil"></div>
+                </div>
                 </div>
                 <p class="settings-subheading settings-subheading-nested">Position</p>
                 <span class="toolbar-label">Wandversatz (cm, 8er-Raster)</span>
