@@ -28,7 +28,7 @@ import { normalizeRoof } from './roof'
 /** Titanzink / QUARTZ-ZINC hellgrau. */
 export const DEFAULT_DOWNPIPE_COLOR = '#8E8A88'
 export const DEFAULT_DOWNPIPE_DIAMETER_CM = 8
-export const DEFAULT_DOWNPIPE_SURFACE_GAP_CM = 3
+export const DEFAULT_DOWNPIPE_SURFACE_GAP_CM = 8
 export const DEFAULT_DOWNPIPE_NICHE_WIDTH_CM = 16
 export const DEFAULT_DOWNPIPE_NICHE_DEPTH_CM = 12
 /** Auslaufschuh: 72° zum Gehweg, horizontale Ausladung. */
@@ -57,6 +57,11 @@ export function normalizeDownpipe(raw: Partial<DownpipeFixture> & Pick<DownpipeF
     localX,
     diameterCm,
     mount,
+    surfaceGapCm: clamp(
+      Number.isFinite(raw.surfaceGapCm) ? Number(raw.surfaceGapCm) : DEFAULT_DOWNPIPE_SURFACE_GAP_CM,
+      0,
+      48,
+    ),
     nicheWidthCm: snapMasonry(
       Number.isFinite(raw.nicheWidthCm) ? Number(raw.nicheWidthCm) : DEFAULT_DOWNPIPE_NICHE_WIDTH_CM,
     ),
@@ -138,6 +143,16 @@ export interface DownpipeWorldPose {
   yBottom: number
   /** y am Rinnenboden (für Ablaufstutzen), sonst null. */
   gutterBottomY: number | null
+  /**
+   * Aufsatz: Abstand Rohraußenkante → äußerste Paneelfläche (cm).
+   * Nische: Abstand Rohraußenkante → Nischenrückwand-Äquivalent.
+   */
+  clearanceToFacadeCm: number
+  /**
+   * Aufsatz: Paneel-/Bossen-Vorstand ab Wandaußenkante (cm) — Schellen-Lasche
+   * geht bis zum Wandkörper (clearance + facadeOut).
+   */
+  facadeOutCm: number
 }
 
 export function resolveDownpipePose(building: Building, dp: DownpipeFixture): DownpipeWorldPose | null {
@@ -160,13 +175,20 @@ export function resolveDownpipePose(building: Building, dp: DownpipeFixture): Do
   faceZ += spine.outward.z * panelOut
 
   const radiusCm = Math.max(2, dp.diameterCm / 2)
+  let clearanceToFacadeCm = 0
   let offsetOut = 0
   if (dp.mount === 'surface') {
-    offsetOut = DEFAULT_DOWNPIPE_SURFACE_GAP_CM + radiusCm
+    // Aufsatz: vor äußerster Paneelfläche, einstellbarer Luftspalt (Default 8 cm)
+    clearanceToFacadeCm = Math.max(
+      0,
+      dp.surfaceGapCm ?? DEFAULT_DOWNPIPE_SURFACE_GAP_CM,
+    )
+    offsetOut = clearanceToFacadeCm + radiusCm
   } else {
     const nicheDepth = dp.nicheDepthCm ?? DEFAULT_DOWNPIPE_NICHE_DEPTH_CM
     // Rohrmitte in der Nische: von Außenfläche nach innen
     offsetOut = -(nicheDepth / 2)
+    clearanceToFacadeCm = Math.max(1.5, nicheDepth / 2 - radiusCm)
   }
 
   const x = faceX + spine.outward.x * offsetOut
@@ -191,6 +213,8 @@ export function resolveDownpipePose(building: Building, dp: DownpipeFixture): Do
     yTop,
     yBottom,
     gutterBottomY: hasGutter ? eaveY - GUTTER_BOTTOM_DROP_CM : null,
+    clearanceToFacadeCm,
+    facadeOutCm: dp.mount === 'surface' ? panelOut : 0,
   }
 }
 
@@ -286,10 +310,12 @@ function buildClampGeometries(
 ): THREE.BufferGeometry[] {
   const towardWallX = -pose.outward.x
   const towardWallZ = -pose.outward.z
-  const gapToWall =
+  // Aufsatz: Lasche von Rohraußenkante über den 8-cm-Spalt und den Paneelvorstand
+  // bis in den Wandkörper (kleiner Embed).
+  const strapReach =
     dp.mount === 'surface'
-      ? DEFAULT_DOWNPIPE_SURFACE_GAP_CM
-      : Math.max(1.5, (dp.nicheDepthCm ?? DEFAULT_DOWNPIPE_NICHE_DEPTH_CM) / 2 - pose.radiusCm)
+      ? pose.clearanceToFacadeCm + pose.facadeOutCm + 1.8
+      : pose.clearanceToFacadeCm + 1.8
 
   const yStart = pose.yBottom + (dp.foot === 'shoe' ? 90 : 70)
   const yEnd = pose.yTop - 55
@@ -313,7 +339,7 @@ function buildClampGeometries(
     ring.translate(pose.x, y, pose.z)
     out.push(ring)
 
-    const strapLen = gapToWall + 1.8
+    const strapLen = Math.max(2, strapReach)
     const strap = new THREE.BoxGeometry(1.5, 2.0, strapLen)
     const yaw = Math.atan2(towardWallX, towardWallZ)
     strap.rotateY(yaw)
@@ -424,6 +450,17 @@ export function findDownpipeByOpeningId(
   return null
 }
 
+/** Alle Cutout-IDs, die zu Fallrohren gehören (Nische oder Schmuck-Durchbruch). */
+export function downpipeLinkedOpeningIds(state: FacadeState): Set<string> {
+  const ids = new Set<string>()
+  for (const building of state.buildings) {
+    for (const dp of building.downpipes ?? []) {
+      for (const id of Object.values(dp.nicheOpeningIds ?? {})) ids.add(id)
+    }
+  }
+  return ids
+}
+
 /**
  * Synchronisiert gekoppelte Cutouts über die vertikale Wandkette.
  * Nische → Wandloch; Aufsatz + breakDecor → flush (nur Schmuck-Durchbruch).
@@ -442,9 +479,16 @@ export function syncDownpipeNiches(building: Building, dp: DownpipeFixture): {
     next.walls = next.walls.map((wall) => {
       if (!removeIds.size) return wall
       const filtered = wall.openings.filter((o) => !removeIds.has(o.id))
-      if (filtered.length === wall.openings.length) return wall
+      const profiles = wall.profiles.filter((p) => !removeIds.has(p.openingId))
+      if (
+        filtered.length === wall.openings.length &&
+        profiles.length === wall.profiles.length
+      ) {
+        return wall
+      }
       const cloned = cloneWall(wall)
       cloned.openings = filtered
+      cloned.profiles = profiles
       return cloned
     })
     return { building: next, downpipe: { ...dp, nicheOpeningIds: undefined } }
@@ -471,6 +515,8 @@ export function syncDownpipeNiches(building: Building, dp: DownpipeFixture): {
         return true
       })
       cloned.openings = [...cleaned.filter((o) => o.id !== opening.id), opening]
+      // Fallrohr-Cutouts tragen keine Rahmenprofile
+      cloned.profiles = cloned.profiles.filter((p) => p.openingId !== opening.id)
       return cloned
     })
   }
@@ -483,9 +529,16 @@ export function syncDownpipeNiches(building: Building, dp: DownpipeFixture): {
     const obsoleteSet = new Set(obsolete)
     next.walls = next.walls.map((wall) => {
       const filtered = wall.openings.filter((o) => !obsoleteSet.has(o.id))
-      if (filtered.length === wall.openings.length) return wall
+      const profiles = wall.profiles.filter((p) => !obsoleteSet.has(p.openingId))
+      if (
+        filtered.length === wall.openings.length &&
+        profiles.length === wall.profiles.length
+      ) {
+        return wall
+      }
       const cloned = cloneWall(wall)
       cloned.openings = filtered
+      cloned.profiles = profiles
       return cloned
     })
   }

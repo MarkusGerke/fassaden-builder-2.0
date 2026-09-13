@@ -30,6 +30,7 @@ import { layoutStairTreads } from './studio/stairs'
 import { pedimentBaseLiftCm } from './studio/openingProfileLift'
 import { normalizeOpeningPediment, pedimentFormIsClosed, pedimentOutlineWallXy } from './studio/pediment'
 import { basementWindowEnabled, basementWindowGrilleHeight } from './studio/basementWindow'
+import { downpipeLinkedOpeningIds } from './studio/downpipe'
 import {
   elevationBounds,
   layoutElevation,
@@ -793,10 +794,12 @@ export class FacadeSvgView {
     const profileGroup = createEl('g')
     profileGroup.setAttribute('pointer-events', 'none')
     if (this.facadeDecorVisible(wall.id, 'profiles')) {
+    const skipDownpipe = downpipeLinkedOpeningIds(this.state)
     for (const assignment of wall.profiles) {
       const opening = wall.openings.find((item) => item.id === assignment.openingId)
       const profile = resolveProfile(assignment.profileId, this.state.customProfiles)
       if (!opening || !profile || profile.projecting) continue
+      if (skipDownpipe.has(opening.id)) continue
       if (opening.type === 'door' && assignment.edge === 'bottom') continue
       const outwardExtra =
         profile.id === 'classical' && cladding?.variant === 'v2'

@@ -26,7 +26,7 @@ Mansarddach auf dem **primären Nesting-Outer** der obersten Etage (`planFacesWi
 | `ridgeHeight` | 280 cm | Höhe Traufe → First |
 | `tileColor` | `#8b3a2a` | Ziegelfarbe |
 | `gutter` | `true` | Dachrinne (nur belegte Kanten) |
-| `gutterColor` | `#8E8A88` | Rinnenfarbe (Titanzink; wie Fallrohr) |
+| `gutterColor` | `#8E8A88` | Rinnenfarbe (Titanzink Default; andere Farben als Lack, v2.0.408) |
 | `tileWidth` / `tileHeight` | 32 / 24 cm | Sichtmaß (8-cm-Raster) |
 | `tileJoint` | 0,8 cm | Fuge |
 | `tilePattern` | `runningBond` | wie Paneel-Muster (`strip`, `runningBond`, …) |

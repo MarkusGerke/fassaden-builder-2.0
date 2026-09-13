@@ -6,13 +6,14 @@ Mehrgeschossige Fallrohre als Gebäude-Fixture plus Dachrinne (Titanzink-Look).
 
 - Bibliothek **Nischen** → Karte **Fallrohr DN 80**: auf Fassade ziehen oder bei gewählter Wand klicken.
 - Ein Fallrohr spannt die **vertikale Wandkette** (`findVerticalAlignedWalls`): alle Etagen mit gleichem Origin/Yaw.
-- Default: **rund Ø 8 cm**, **Aufsatz** (3 cm Wandabstand), Fuß **Schräge Gehweg** (72°-Auslauf), Farbe **`#8E8A88`**.
+- Default: **rund Ø 8 cm**, **Aufsatz** (einstellbarer Wandabstand, Default **8 cm** vor äußerster Paneelfläche), Fuß **Schräge Gehweg** (72°-Auslauf), Farbe **`#8E8A88`**.
 - **Verschieben** wie Öffnungen: Drag auf Rohr/Nische, Pfeiltasten ←/→ (8-cm-Raster), Feld Position X.
-- Optional **Nische**: Breite 16 cm / Tiefe 12 cm — synchronisierte `cutout`-Öffnungen (`cutoutShape: 'rect'`, `fill.niche`) pro Etage schneiden Schale und Paneele (eckig, nicht Stadion).
+- **Wandabstand** (`surfaceGapCm`, nur Aufsatz): Maße-Feld **Wandabstand (cm)** — 0…48, Default 8; bei Nische ausgeblendet.
+- Optional **Nische**: Breite 16 cm / Tiefe 12 cm — synchronisierte `cutout`-Öffnungen (`cutoutShape: 'rect'`, `fill.niche`) pro Etage schneiden Schale und Paneele (eckig, nicht Stadion). **Keine Rahmenprofile** an Fallrohr-Cutouts (v2.0.405; normale Einbuchtungen schon). **v2.0.406:** Nischeninneres in Wandfarbe.
 - Optional **Fassadenschmuck durchbrechen** (`breakDecor`, Default an): Gesims, Zierbänder und Sockel an der Stelle unterbrechen, Enden links/rechts **bündig geschlossen**.
   - Aufsatz: `fill.flush`-Cutouts (kein Wandloch, nur Schmuck).
   - Nische: dieselben Cutouts wie das Wandloch; bei `breakDecor` aus bleibt das Loch, Schmuck läuft durch.
-- **Rohrschellen** (Ring + Lasche zur Wand) entlang der Achse ca. alle 2 m, Aufsatz und Nische.
+- **Rohrschellen** (Ring + Lasche zur Wand) entlang der Achse ca. alle 2 m, Aufsatz und Nische. **v2.0.408:** Aufsatz-Lasche geht über den 8-cm-Spalt und den Paneel-/Bossenvorstand bis zum Wandkörper.
 - **Dachrinne** bleibt Traufen-Sweep; Farbe wählbar (`roof.gutterColor`, Default wie Fallrohr). Bei aktivem Dach+Rinne: kurzer Ablaufstutzen am Rohrokopf.
 
 ## Daten
@@ -25,6 +26,7 @@ Mehrgeschossige Fallrohre als Gebäude-Fixture plus Dachrinne (Titanzink-Look).
 | `localX` | 8-cm-Raster | Position entlang Wand |
 | `diameterCm` | 8 | Außendurchmesser |
 | `mount` | `surface` | `surface` \| `niche` |
+| `surfaceGapCm` | 8 | Aufsatz: Abstand Rohraußenkante → äußerste Paneelfläche (0…48) |
 | `nicheWidthCm` / `nicheDepthCm` | 16 / 12 | Nische bzw. Durchbruchbreite |
 | `foot` | `shoe` | `shoe` \| `ground` |
 | `color` | `#8E8A88` | Titanzink |
@@ -43,7 +45,9 @@ Auswahl → toolbar-downpipe (Maße → Farbe → Einbau → Fuß)
 Pick: gekoppelte Cutouts → Fallrohr (nicht als eigene Öffnung)
 ```
 
-PBR: `metalness 0.55`, `roughness 0.45` (wie Rinne). Schmuck-Löcher: `profilePaths` (Gesims/Zierband/Sockel) mit Stirnkappen; Skip-Set wenn `breakDecor === false`.
+PBR: Default-Zink `metalness 0.55`, `roughness 0.45`; andere Farben (Lack) niedriger Metalness. Schmuck-Löcher: `profilePaths` (Gesims/Zierband/Sockel) mit Stirnkappen; Skip-Set wenn `breakDecor === false`.
+
+**Pose Aufsatz (v2.0.408 / v2.0.409):** `face = Wandaußenkante + studioFacadeOutwardDepth` (Paneel + Bosse), dann `+ surfaceGapCm (Default 8) + Radius` nach außen. Schellen-Lasche: `clearance + facadeOut + 1,8 cm` Embed in den Wandkörper.
 
 ## Dateien
 

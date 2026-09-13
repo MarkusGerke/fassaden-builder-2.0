@@ -191,7 +191,8 @@ export function hydrateOpening(
     next.revealFrame = normalizeRevealFrame(next.revealFrame)
     next.panelClearance = normalizePanelClearance(next.panelClearance)
     next.panelWrappedReveal = normalizePanelWrappedReveal(next.panelWrappedReveal)
-    next.arch = normalizeOpeningArch(next.arch)
+    // Cutout-Maske = rect/Stadion; Rest-Bogen würde Profilrahmen löchern (v2.0.406).
+    next.arch = undefined
     next.hidden = Boolean(next.hidden)
     next.needsReview =
       typeof next.needsReview === 'string' && next.needsReview.trim()

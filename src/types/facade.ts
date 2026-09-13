@@ -69,6 +69,11 @@ export interface DownpipeFixture {
   /** Außendurchmesser (cm). Default DN 80 = 8. */
   diameterCm: number
   mount: DownpipeMount
+  /**
+   * Aufsatz: Abstand Rohraußenkante → äußerste Paneelfläche (cm). Default 8.
+   * Nur bei `mount: 'surface'` relevant.
+   */
+  surfaceGapCm?: number
   nicheWidthCm?: number
   nicheDepthCm?: number
   foot: DownpipeFoot

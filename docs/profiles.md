@@ -4,9 +4,11 @@ Built-in SVG-Profile für Rahmen, Gesims, Sockel, Verdachung, Fensterbänke und 
 
 ## Verhalten für den Nutzer
 
-- Bibliothek-Tab **Profile**: Drag auf Fenster/Tür bzw. Wand; Klick nutzt die Auswahl.
+- Bibliothek-Tab **Profile**: Drag auf Fenster/Tür/Einbuchtung bzw. Wand; Klick nutzt die Auswahl.
 - Rahmen-/Gesims-/Sockel-Picker: Farbe, Größe (Faktor oder cm), Drehung/Spiegeln.
 - **Profil-zeichnen**-Editor ist aus der UI entfernt; Custom-Profile in alten Saves bleiben über `resolveProfile` nutzbar.
+- **v2.0.405:** Cutout-Nischen und Durchbrüche erhalten Rahmenprofile wie Fenster/Türen (`openingSupportsFrameProfiles`). Fallrohr-gekoppelte Cutouts (`nicheOpeningIds`) bleiben ohne Rahmenprofil.
+- **v2.0.406:** Runde Cutouts: Sweep folgt `openingStadiumEdgePolyline` (nicht Rechteckrahmen). Cutouts ohne `arch` (Hydrate löscht Restbogen — sonst Lücken am Kämpfer).
 
 ## Built-ins (`src/profiles/registry.ts`)
 

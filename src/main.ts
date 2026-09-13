@@ -165,6 +165,7 @@ import {
   openingIsConch,
   openingLacksWindowChrome,
   openingActsAsWindow,
+  openingSupportsFrameProfiles,
 } from './utils/openingGeometry'
 import {
   ARCH_FORM_IDS,
@@ -572,6 +573,7 @@ import {
   createDownpipeFixture,
   DEFAULT_DOWNPIPE_COLOR,
   DEFAULT_DOWNPIPE_DIAMETER_CM,
+  DEFAULT_DOWNPIPE_SURFACE_GAP_CM,
   DEFAULT_DOWNPIPE_NICHE_DEPTH_CM,
   DEFAULT_DOWNPIPE_NICHE_WIDTH_CM,
   deleteDownpipeFromFacade,
@@ -1740,12 +1742,12 @@ function allowedLibraryTabs(): Set<LibraryTab> {
     if (part === 'trim') return new Set<LibraryTab>(['profiles'])
     if (part === 'frame' || part === 'grille') {
       if (isDoor) return new Set<LibraryTab>(['doors', 'profiles', 'openingForm'])
-      if (isNiche) return new Set<LibraryTab>(['niches'])
+      if (isNiche) return new Set<LibraryTab>(['niches', 'profiles'])
       return new Set<LibraryTab>(['windows', 'profiles', 'openingForm'])
     }
     // Öffnung ganz
     if (isDoor) return new Set<LibraryTab>(['doors', 'profiles', 'openingForm', 'pediment', 'stairs'])
-    if (isNiche) return new Set<LibraryTab>(['niches'])
+    if (isNiche) return new Set<LibraryTab>(['niches', 'profiles'])
     return new Set<LibraryTab>(['windows', 'profiles', 'openingForm', 'pediment'])
   }
 
@@ -6726,6 +6728,8 @@ const roofHint = document.querySelector<HTMLParagraphElement>('#roof-hint')!
 const toolbarDownpipe = document.querySelector<HTMLDivElement>('#toolbar-downpipe')!
 const downpipeX = document.querySelector<HTMLInputElement>('#downpipe-x')!
 const downpipeDiameter = document.querySelector<HTMLInputElement>('#downpipe-diameter')!
+const downpipeSurfaceGap = document.querySelector<HTMLInputElement>('#downpipe-surface-gap')!
+const downpipeSurfaceGapRow = document.querySelector<HTMLDivElement>('#downpipe-surface-gap-row')!
 const downpipeColorSwatches = document.querySelector<HTMLDivElement>('#downpipe-color-swatches')!
 const downpipeMountSurface = document.querySelector<HTMLButtonElement>('#downpipe-mount-surface')!
 const downpipeMountNiche = document.querySelector<HTMLButtonElement>('#downpipe-mount-niche')!
@@ -9303,9 +9307,13 @@ function wallIdsForLibrary(hit?: { wallId?: string }): string[] {
 
 function applyLibraryAsset(asset: LibraryAsset, hit?: { wallId?: string; openingId?: string }) {
   if (asset.kind === 'frame-profile') {
-    const refs = openingRefsForLibrary(hit)
+    const refs = openingRefsForLibrary(hit).filter((ref) => {
+      const wall = getWall(state, ref.wallId)
+      const opening = wall?.openings.find((item) => item.id === ref.openingId)
+      return Boolean(opening && openingSupportsFrameProfiles(opening))
+    })
     if (refs.length === 0) {
-      planStatus.textContent = 'Profil auf ein Fenster oder eine Tür ziehen'
+      planStatus.textContent = 'Profil auf Fenster, Tür oder Einbuchtung ziehen'
       return
     }
     commitState(
@@ -15613,6 +15621,8 @@ function syncDownpipeUI() {
   const { downpipe: dp } = hit
   downpipeX.value = String(dp.localX)
   downpipeDiameter.value = String(dp.diameterCm)
+  downpipeSurfaceGap.value = String(dp.surfaceGapCm ?? DEFAULT_DOWNPIPE_SURFACE_GAP_CM)
+  downpipeSurfaceGapRow.hidden = dp.mount !== 'surface'
   downpipeNicheWidth.value = String(dp.nicheWidthCm ?? DEFAULT_DOWNPIPE_NICHE_WIDTH_CM)
   downpipeNicheDepth.value = String(dp.nicheDepthCm ?? DEFAULT_DOWNPIPE_NICHE_DEPTH_CM)
   downpipeBreakDecor.checked = dp.breakDecor !== false
@@ -15659,6 +15669,22 @@ function wireDownpipeToolbar() {
   downpipeDiameter.addEventListener('change', () => {
     commitDownpipePatch({
       diameterCm: Math.max(4, Math.min(24, Number(downpipeDiameter.value) || DEFAULT_DOWNPIPE_DIAMETER_CM)),
+    })
+  })
+  const stepSurfaceGap = (dir: 1 | -1) => {
+    const hit = selectedDownpipeFixture()
+    if (!hit) return
+    const gap = (hit.downpipe.surfaceGapCm ?? DEFAULT_DOWNPIPE_SURFACE_GAP_CM) + dir
+    commitDownpipePatch({ surfaceGapCm: Math.max(0, Math.min(48, gap)) })
+  }
+  document.querySelector('#downpipe-surface-gap-minus')?.addEventListener('click', () => stepSurfaceGap(-1))
+  document.querySelector('#downpipe-surface-gap-plus')?.addEventListener('click', () => stepSurfaceGap(1))
+  downpipeSurfaceGap.addEventListener('change', () => {
+    commitDownpipePatch({
+      surfaceGapCm: Math.max(
+        0,
+        Math.min(48, Number(downpipeSurfaceGap.value) || DEFAULT_DOWNPIPE_SURFACE_GAP_CM),
+      ),
     })
   })
   downpipeMountSurface.addEventListener('click', () => commitDownpipePatch({ mount: 'surface' }))
@@ -16600,8 +16626,12 @@ function previewRevealInteriorColor(color: string): FacadeState {
 }
 
 function syncRevealColorSwatches(visible: boolean) {
+  const sel = selectedWindowOpening()
+  const nicheLike =
+    Boolean(sel) &&
+    (openingIsConch(sel!.opening) || normalizeOpeningFill(sel!.opening.fill).mode === 'niche')
   revealExteriorColorSection.hidden = !visible
-  revealInteriorColorSection.hidden = !visible
+  revealInteriorColorSection.hidden = !visible || nicheLike
   if (!visible) return
   renderColorSwatches(
     revealExteriorColorSwatches,
@@ -16610,13 +16640,15 @@ function syncRevealColorSwatches(visible: boolean) {
     commitRevealExteriorColor,
     previewSelectionColor(previewRevealExteriorColor),
   )
-  renderColorSwatches(
-    revealInteriorColorSwatches,
-    'wall',
-    activeRevealInteriorColor(),
-    commitRevealInteriorColor,
-    previewSelectionColor(previewRevealInteriorColor),
-  )
+  if (!nicheLike) {
+    renderColorSwatches(
+      revealInteriorColorSwatches,
+      'wall',
+      activeRevealInteriorColor(),
+      commitRevealInteriorColor,
+      previewSelectionColor(previewRevealInteriorColor),
+    )
+  }
 }
 
 function syncOpeningColorSwatches(
@@ -18629,7 +18661,8 @@ function applyOpeningPartVisibility() {
   const isBasement = Boolean(sel && isBasementWindowOpening(sel.opening))
   const focusPart = part !== 'group'
   const showFrame = !hideFrameChrome && (part === 'group' || part === 'frame' || part === 'grille')
-  const showTrim = !isBasement && !lacksChrome && (part === 'group' || part === 'trim')
+  const supportsFrameProfiles = Boolean(sel && openingSupportsFrameProfiles(sel.opening))
+  const showTrim = supportsFrameProfiles && (part === 'group' || part === 'trim')
   let showSillInner = !isBasement && (part === 'group' || part === 'sillInner')
   let showSillOuter = !isBasement && (part === 'group' || part === 'sillOuter')
   let showPediment = !isBasement && (part === 'group' || part === 'pediment')

@@ -2223,12 +2223,19 @@ export class FacadeController {
       this.roofGroup.add(roofMesh)
 
       if (built.gutter) {
+        const gutterColor = built.gutterColor ?? '#8E8A88'
+        const zincDefault = gutterColor.replace(/\s/g, '').toLowerCase() === '#8e8a88'
+        // Titanzink-Default: metallisch. Andere Farben (z. B. Weiß) als Lack —
+        // sonst wirkt Weiß bei metalness 0.55 ohne EnvMap grau (v2.0.408).
         const gutterMat = new THREE.MeshStandardMaterial({
-          color: new THREE.Color(built.gutterColor ?? '#8E8A88'),
-          roughness: 0.45,
-          metalness: 0.55,
+          color: new THREE.Color(gutterColor),
+          roughness: zincDefault ? 0.45 : 0.72,
+          metalness: zincDefault ? 0.55 : 0.06,
           side: THREE.DoubleSide,
         })
+        if (!zincDefault && !this.isPerfPresentation()) {
+          this.finishExteriorMaterial(gutterMat)
+        }
         const gutterMesh = new THREE.Mesh(built.gutter, gutterMat)
         gutterMesh.castShadow = true
         gutterMesh.receiveShadow = true
@@ -2266,12 +2273,17 @@ export class FacadeController {
       for (const dp of building.downpipes ?? []) {
         const geo = buildDownpipeGeometry(building, dp)
         if (!geo) continue
+        const pipeColor = dp.color || DEFAULT_DOWNPIPE_COLOR
+        const zincDefault = pipeColor.replace(/\s/g, '').toLowerCase() === '#8e8a88'
         const mat = new THREE.MeshStandardMaterial({
-          color: new THREE.Color(dp.color || DEFAULT_DOWNPIPE_COLOR),
-          roughness: DOWNPIPE_ROUGHNESS,
-          metalness: DOWNPIPE_METALNESS,
+          color: new THREE.Color(pipeColor),
+          roughness: zincDefault ? DOWNPIPE_ROUGHNESS : 0.72,
+          metalness: zincDefault ? DOWNPIPE_METALNESS : 0.06,
           side: THREE.DoubleSide,
         })
+        if (!zincDefault && !this.isPerfPresentation()) {
+          this.finishExteriorMaterial(mat)
+        }
         const mesh = new THREE.Mesh(geo, mat)
         mesh.castShadow = true
         mesh.receiveShadow = true
@@ -3784,10 +3796,15 @@ export class FacadeController {
           treatAsBareWall,
         })
         if (!geometry) continue
+        const sealedNiche =
+          opening.type === 'conch' || openingFillMode(opening) === 'niche'
         const exteriorColor =
           opening.revealExteriorColor ?? wall.wallColor ?? DEFAULT_WALL_COLOR
-        const interiorColor =
-          opening.revealInteriorColor ?? wall.interiorColor ?? DEFAULT_INTERIOR_COLOR
+        // Nische/Konche/Fallrohr: gesamtes Inneres in Wandfarbe + Außen-Oberfläche
+        // (nicht Innenwand-Weiß / Innen-Env — sonst wirkt die Nische trotz gleicher Hex anders).
+        const interiorColor = sealedNiche
+          ? exteriorColor
+          : opening.revealInteriorColor ?? wall.interiorColor ?? DEFAULT_INTERIOR_COLOR
         const exteriorMaterial = createTintedMaterial(this.material, exteriorColor, wall.wallFinish)
         const interiorMaterial = createTintedMaterial(
           this.material,
@@ -3817,8 +3834,7 @@ export class FacadeController {
             : exteriorMaterial
         const mesh = new THREE.Mesh(geometry, materials)
         mesh.castShadow = true
-        mesh.userData.sealedNiche =
-          opening.type === 'conch' || openingFillMode(opening) === 'niche'
+        mesh.userData.sealedNiche = sealedNiche
         // Nische/Konche: von außen sichtbar beidseitig; kein Fassaden-Gegenlicht-Shader
         // (sonst wirken Seiten/Rückwand schwarz und empfangen kein Licht).
         if (mesh.userData.sealedNiche) {
@@ -3828,9 +3844,8 @@ export class FacadeController {
           interiorMaterial.shadowSide = THREE.DoubleSide
           exteriorMaterial.userData.skipFacadeShade = true
           interiorMaterial.userData.skipFacadeShade = true
-          // Wie Innenwand: EnvMap-Fill + Punktlicht sichtbar („spiegeln“).
-          this.finishInteriorMaterial(exteriorMaterial)
-          this.finishInteriorMaterial(interiorMaterial)
+          this.finishExteriorMaterial(exteriorMaterial)
+          this.finishExteriorMaterial(interiorMaterial)
           // Lichtdichte über Shadow-Tunnel; sichtbare Nische wirft nicht selbst
           // (vermeidet Selbstabschattung der Rückwand).
           mesh.castShadow = false

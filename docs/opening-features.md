@@ -12,6 +12,10 @@ Dekor und Öffnungsarten an `Opening`. **Fenster-/Türteilung (Gründerzeit):** 
 
 Typ-Select `#opening-type-select`: Fenster / Tür / **Keines (leer)** / Konche. Bibliothek Fenster: Karte **Keines (leer)** (`opening-empty-96`). Tab **Nischen** für Nischen/Durchbrüche/Konchen.
 
+**Rahmenprofile (v2.0.405 / v2.0.406):** Cutouts (Einbuchtungen/Durchbrüche) und Konchen wie Fenster/Türen — Bibliothek **Profile**, Toolbar `#profile-assign-section`. Runde Cutouts: Profil folgt Stadion-Kontur. Fallrohr-Nischen (`Building.downpipes[].nicheOpeningIds`) ohne Rahmenprofil. Bänke/Verdachung bleiben nur Fenster/Tür/Konche (`openingSupportsOpeningDecor`).
+
+**Nischenfarbe (v2.0.406 / v2.0.407):** Seiten und Rückwand einer Nische (inkl. Fallrohr-Nische, Konche) in **Wandfarbe** / `revealExteriorColor` mit **Außen-Oberfläche** (`finishExteriorMaterial`) — nicht Innenwand-Weiß und nicht Innen-Env/Shade. Laibung-innen-Picker ausgeblendet bei Nische.
+
 ## Maße, Einbettung, Freiraum, Bogen
 
 Toolbar **Maße** (Auszug):

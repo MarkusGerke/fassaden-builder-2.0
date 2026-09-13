@@ -31,6 +31,7 @@ import {
   openingDecorMaskXRangesAtY,
   openingMaskYRangesAtX,
   openingMaskPolyline,
+  openingStadiumEdgePolyline,
 } from './openingGeometry'
 import { resolveArchRiseForOpening } from './archForms'
 import { miterInsetCm } from '../studio/floorPlan'
@@ -41,6 +42,7 @@ import { wallHasTrimBands, wallTrimBands } from './trimBands'
 import { defaultOpeningTrimForProfile, normalizeOpeningSillOuter, outerSillUsesProfile, resolveOuterSillLayout } from './openings'
 import {
   DEFAULT_DOWNPIPE_NICHE_WIDTH_CM,
+  downpipeLinkedOpeningIds,
   downpipeOpeningsSkippingDecorBreak,
   downpipeStackWalls,
 } from '../studio/downpipe'
@@ -202,7 +204,9 @@ function openingEdgeSegment(
   const bottomY =
     opening.type === 'door' && plinthH > 0.5 ? Math.max(y, plinthTopY) : y
 
-  const arch = normalizeOpeningArch(opening.arch)
+  // Cutouts: Maske ist rect/Stadion — kein Bogen-Kämpfer (sonst Lücken im Profilrahmen).
+  const arch =
+    opening.type === 'cutout' ? { enabled: false, form: 'rect' as const } : normalizeOpeningArch(opening.arch)
   const form = arch.form ?? 'rect'
   const rise = form === 'rect' ? 0 : resolveArchRiseForOpening(form, width, height, arch.riseCm)
   const springLocalY = y + height - rise
@@ -244,6 +248,7 @@ function profileZOffset(wall: Wall): number {
 function collectSegments(state: FacadeState): RawSegmentExt[] {
   const segments: RawSegmentExt[] = []
   const walls = getVisibleWalls(state)
+  const skipDownpipeOpenings = downpipeLinkedOpeningIds(state)
 
   for (const wall of walls) {
     const zOffset = profileZOffset(wall)
@@ -255,6 +260,7 @@ function collectSegments(state: FacadeState): RawSegmentExt[] {
       if (!profile?.projecting) continue
       const opening = wall.openings.find((item) => item.id === assignment.openingId)
       if (!opening || opening.hidden) continue
+      if (skipDownpipeOpenings.has(opening.id)) continue
       if (
         !openingCutsWall(opening) &&
         !openingShowsGlazing(opening) &&
@@ -300,9 +306,39 @@ function collectSegments(state: FacadeState): RawSegmentExt[] {
         sectionScale: scales.outward,
         sectionScaleForward: scales.forward,
       }
-      // Dekorative Öffnungsprofile folgen automatisch der Wandöffnungsform (`Opening.arch`).
-      const arch = normalizeOpeningArch(opening.arch)
-      if (assignment.edge === 'top' && arch.enabled) {
+      // Dekorative Öffnungsprofile folgen der Maske (Bogen / Stadion-Cutout).
+      const arch = opening.type === 'cutout' ? { enabled: false } : normalizeOpeningArch(opening.arch)
+      const stadiumPts = openingStadiumEdgePolyline(opening, assignment.edge)
+      if (stadiumPts && stadiumPts.length >= 2) {
+        const { ox, oy } = openingTrimOffsets(opening)
+        const cx = opening.x + opening.width / 2
+        const cy = opening.y + opening.height / 2
+        for (let i = 0; i < stadiumPts.length - 1; i += 1) {
+          const p0 = stadiumPts[i]!
+          const p1 = stadiumPts[i + 1]!
+          const ax = isStudioWall(wall) ? p0.x - wall.width / 2 + ox : wall.x + p0.x + ox
+          const ay = isStudioWall(wall) ? p0.y - wall.height / 2 + oy : wall.y + p0.y + oy
+          const bx = isStudioWall(wall) ? p1.x - wall.width / 2 + ox : wall.x + p1.x + ox
+          const by = isStudioWall(wall) ? p1.y - wall.height / 2 + oy : wall.y + p1.y + oy
+          let oxN = p0.y - p1.y
+          let oyN = p1.x - p0.x
+          const nLen = Math.hypot(oxN, oyN) || 1
+          oxN /= nLen
+          oyN /= nLen
+          const midX = (p0.x + p1.x) / 2
+          const midY = (p0.y + p1.y) / 2
+          if (oxN * (midX - cx) + oyN * (midY - cy) < 0) {
+            oxN = -oxN
+            oyN = -oyN
+          }
+          segments.push({
+            a: { x: ax, y: ay },
+            b: { x: bx, y: by },
+            outward: { x: oxN, y: oyN },
+            ...common,
+          })
+        }
+      } else if (assignment.edge === 'top' && arch.enabled) {
         const { ox, oy } = openingTrimOffsets(opening)
         const pts = openingArchPolyline(opening)
         for (let i = 0; i < pts.length - 1; i += 1) {

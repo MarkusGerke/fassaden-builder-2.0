@@ -2,6 +2,40 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Fallrohr-Wandabstand (2026-09-13) — v2.0.409
+
+**Feature:** Aufsatz-Fallrohr: einstellbarer Abstand Rohraußenkante → äußerste Paneelfläche (`surfaceGapCm`, Default 8, 0…48). UI unter Maße → **Wandabstand (cm)**; bei Nische ausgeblendet. Schellen folgen dem Spalt.
+
+**Dateien:** `facade.ts`, `downpipe.ts`, `main.ts`, `index.html`. Docs: [downpipes.md](downpipes.md), [ux.md](ux.md).
+
+### Fallrohr-Aufsatz und Rinnenfarbe (2026-09-13) — v2.0.408
+
+**Fix:** Aufsatz-Fallrohr sitzt 8 cm vor der äußersten Paneelfläche (`studioFacadeOutwardDepth`); Schellen-Laschen reichen über Spalt + Paneelvorstand bis in den Wandkörper. Dachrinne/Fallrohr in Nicht-Zink-Farben (z. B. Weiß) mit niedriger Metalness statt Titanzink-Grau.
+
+**Dateien:** `downpipe.ts`, `FacadeController.ts`. Docs: [downpipes.md](downpipes.md).
+
+### Nischen-Innenraum wie Außenwand (2026-09-13) — v2.0.407
+
+**Fix:** Versiegelte Nischen (Cutout/Konche/Fallrohr) nutzen `finishExteriorMaterial` und erzwingen Wandfarbe für beide Materialgruppen — Hex allein reichte nicht, Innen-Finish wirkte wie Innenputz.
+
+**Symptom / Versuch:** v2.0.406 setzte nur die Hex-Farbe auf Wandweiß; Runtime-Logs zeigten `finishPath: interiorBoth` → optisch noch Innenwand. Fix: Außen-Finish + `skipFacadeShade`.
+
+**Dateien:** `FacadeController.ts`. Docs: [opening-features.md](opening-features.md), [ux.md](ux.md).
+
+### Nischen: Profile folgen Form, Innen Wandfarbe (2026-09-13) — v2.0.406
+
+**Fix:** Rahmenprofile an runden Cutouts folgen der Stadion-Kontur (`openingStadiumEdgePolyline`); Rest-`arch` an Cutouts entfernt (Profilrahmen ohne Lücken). Nischen-/Konchen-/Fallrohr-Inneres in Wandfarbe statt Innenwand-Weiß.
+
+**Symptom / Versuche:** Rechteck-Rahmen auf Stadion-Loch → Ecken im Leeren bzw. fehlende Kurve; Cutouts mit Legacy-`arch.enabled` kürzten Seiten bis Kämpfer → Lücken oben. Innenfarbe war `interiorColor` (50/50-Split) auch bei versiegelter Nische.
+
+**Dateien:** `openingGeometry.ts`, `profilePaths.ts`, `hydrate.ts`, `FacadeController.ts`, `main.ts`. Docs: [profiles.md](profiles.md), [opening-features.md](opening-features.md), [downpipes.md](downpipes.md).
+
+### Profile an Einbuchtungen (2026-09-13) — v2.0.405
+
+**Feature:** Cutout-Nischen und Durchbrüche können Rahmenprofile wie Fenster und Türen bekommen (Bibliothek-Tab Profile, Toolbar Profil). Fallrohr-gekoppelte Cutouts bleiben ohne Rahmenprofil.
+
+**Dateien:** `openingGeometry.ts` (`openingSupportsFrameProfiles`), `profilePaths.ts`, `openings.ts`, `downpipe.ts`, `main.ts`, `FacadeSvgView.ts`, `index.html`. Docs: [profiles.md](profiles.md), [opening-features.md](opening-features.md).
+
 ### Fallrohr: Schmuck, Schellen, Drag (2026-09-13) — v2.0.404
 
 **Feature/Fix:** Optionaler Schmuck-Durchbruch (`breakDecor`) für Aufsatz (flush) und Nische; Nische eckig (`rect`); Rohrschellen; Drag + Pfeiltasten. Gesims/Zierband/Sockel mit geschlossenen Stirnkappen.

@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.404'
+export const APP_VERSION = '2.0.409'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,49 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.409',
+    date: '2026-09-13',
+    title: 'Fallrohr-Wandabstand',
+    changes: [
+      'Aufsatz: Abstand zur Wand (cm) in den Fallrohr-Maßen einstellbar (Default 8 cm, 0…48)',
+    ],
+  },
+  {
+    version: '2.0.408',
+    date: '2026-09-13',
+    title: 'Fallrohr-Aufsatz und Rinnenfarbe',
+    changes: [
+      'Aufsatz: Rohr 8 cm vor der äußersten Paneelfläche; Schellen-Laschen bis zum Wandkörper',
+      'Dachrinne/Fallrohr in Nicht-Zink-Farben (z. B. Weiß) als Lack statt grau-metallisch',
+    ],
+  },
+  {
+    version: '2.0.407',
+    date: '2026-09-13',
+    title: 'Nischen-Innenraum wie Außenwand',
+    changes: [
+      'Nischen/Konchen/Fallrohr-Nischen nutzen Wandfarbe und Außen-Oberfläche (nicht Innenwand-Finish)',
+    ],
+  },
+  {
+    version: '2.0.406',
+    date: '2026-09-13',
+    title: 'Nischen: Profile folgen Form, Innen Wandfarbe',
+    changes: [
+      'Rahmenprofile an runden Nischen/Durchbrüchen folgen der Stadion-Kontur; Rest-Bogen an Cutouts entfernt (keine Lücken)',
+      'Nischeninnenraum inkl. Fallrohr-Nische in Wandfarbe statt Innenwand-Weiß',
+    ],
+  },
+  {
+    version: '2.0.405',
+    date: '2026-09-13',
+    title: 'Profile an Einbuchtungen',
+    changes: [
+      'Nischen und Durchbrüche (Cutouts) können Rahmenprofile wie Fenster und Türen erhalten',
+      'Bibliothek-Tab Profile bei Einbuchtungsauswahl; Fallrohr-Nischen bleiben ohne Rahmenprofil',
+    ],
+  },
   {
     version: '2.0.404',
     date: '2026-09-13',

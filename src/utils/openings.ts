@@ -40,6 +40,7 @@ import {
   normalizeGruenderzeitConfig,
 } from '../windows/gruenderzeit'
 import { basementWindowEnabled } from '../studio/basementWindow'
+import { downpipeLinkedOpeningIds } from '../studio/downpipe'
 import { isSillOuterProfile, isWindowTrimProfile } from '../profiles/windowTrim'
 import { findBuildingForWall, findWall, getAllWalls, mapAllWalls, updateBuilding } from './buildings'
 import { snapToGrid } from './grid'
@@ -1396,12 +1397,15 @@ export function assignProfilesToOpenings(
 ): FacadeState {
   if (targets.length === 0 || edges.length === 0) return state
 
+  const skipDownpipe = downpipeLinkedOpeningIds(state)
   const byWall = new Map<string, string[]>()
   for (const target of targets) {
+    if (skipDownpipe.has(target.openingId)) continue
     const list = byWall.get(target.wallId) ?? []
     list.push(target.openingId)
     byWall.set(target.wallId, list)
   }
+  if (byWall.size === 0) return state
 
   return mapAllWalls(state, (wall) => {
     const openingIds = byWall.get(wall.id)

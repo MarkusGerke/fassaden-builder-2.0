@@ -24,6 +24,7 @@ import {
   openingCutsWall,
   openingPanelClearance,
   openingShowsGlazing,
+  openingSupportsFrameProfiles,
 } from '../utils/openingGeometry'
 
 function baseOpening(partial: Partial<Opening> = {}): Opening {
@@ -109,12 +110,13 @@ describe('resolveOpeningLayerContract', () => {
     expect(c.attachmentsAllowed).toBe(false)
   })
 
-  it('Cutout: kein Chrome, Attachments aus', () => {
+  it('Cutout: kein Chrome, Attachments aus; Rahmenprofile erlaubt', () => {
     const o = baseOpening({ type: 'cutout', cutoutShape: 'rect', fill: { mode: 'niche' } })
     const c = resolveOpeningLayerContract(o)
     expect(c.cutsShell).toBe(true)
     expect(c.showsWindowChrome).toBe(false)
     expect(c.attachmentsAllowed).toBe(false)
+    expect(openingSupportsFrameProfiles(o)).toBe(true)
   })
 })
 
