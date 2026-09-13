@@ -26,6 +26,8 @@ export interface RoofConfig {
   tileColor: string
   /** Dachrinne an der Traufe (nur belegte Seiten). */
   gutter: boolean
+  /** Farbe der Dachrinne (Titanzink-Default). */
+  gutterColor?: string
   /** Ziegel-Sichtbreite (cm), 8-cm-Raster. */
   tileWidth: number
   /** Ziegel-Sichthöhe / Schichthöhe (cm). */
@@ -47,6 +49,41 @@ export interface RoofConfig {
 }
 
 export type RoofTileProfile = 'barrel' | 'pantile'
+
+/** Einbau des Fallrohrs: vor der Fassade oder in einer Wandnische. */
+export type DownpipeMount = 'surface' | 'niche'
+
+/** Unteres Ende: senkrecht in den Boden oder Auslaufschuh zum Gehweg. */
+export type DownpipeFoot = 'ground' | 'shoe'
+
+/**
+ * Mehrgeschossiges Fallrohr (Gebäude-Fixture).
+ * Optional gekoppelte Cutout-Nischen pro Etagenwand (`nicheOpeningIds`).
+ */
+export interface DownpipeFixture {
+  id: string
+  /** Ankerwand der vertikalen Kette (`findVerticalAlignedWalls`). */
+  anchorWallId: string
+  /** Position entlang der Wand (cm vom Start). */
+  localX: number
+  /** Außendurchmesser (cm). Default DN 80 = 8. */
+  diameterCm: number
+  mount: DownpipeMount
+  nicheWidthCm?: number
+  nicheDepthCm?: number
+  foot: DownpipeFoot
+  color: string
+  /**
+   * Fassadenschmuck (Gesims/Zierband/Sockel) an der Rohr-/Nischenstelle unterbrechen,
+   * Enden links/rechts bündig geschlossen. Default true.
+   */
+  breakDecor?: boolean
+  /**
+   * Gekoppelte Cutout-IDs pro Wand-ID:
+   * Nische → `fill.niche`; Aufsatz + breakDecor → `fill.flush` (nur Schmuck).
+   */
+  nicheOpeningIds?: Record<string, string>
+}
 
 export interface WallDimensions {
   width: number
@@ -1131,6 +1168,8 @@ export interface Building {
   walls: Wall[]
   groups?: WallGroup[]
   roof?: RoofConfig
+  /** Fallrohre (über alle Etagen der Ankerwand-Kette). */
+  downpipes?: DownpipeFixture[]
   wallHeight: number
   wallDepth: number
   windowDepthOffset?: number
@@ -1229,6 +1268,8 @@ export interface EditorState {
   selectedSceneLightId?: string
   /** Mehrfachauswahl von Lichtern (Ebenen: Shift+Klick, Gruppieren). */
   selectedSceneLightIds?: string[]
+  /** Gewähltes Fallrohr (`buildingId` + `downpipeId`). */
+  selectedDownpipe?: { buildingId: string; downpipeId: string }
 }
 
 export const DEFAULT_WALL_ID = 'wall-1'
@@ -1278,6 +1319,10 @@ export function cloneBuilding(building: Building): Building {
       memberWallIds: [...group.memberWallIds],
     })) ?? [],
     roof: building.roof ? { ...building.roof } : undefined,
+    downpipes: building.downpipes?.map((dp) => ({
+      ...dp,
+      nicheOpeningIds: dp.nicheOpeningIds ? { ...dp.nicheOpeningIds } : undefined,
+    })),
   }
 }
 
@@ -1291,6 +1336,7 @@ export function createDefaultEditorState(): EditorState {
     selectedRoofPart: undefined,
     selectedCeiling: undefined,
     selectedBuildingId: undefined,
+    selectedDownpipe: undefined,
   }
 }
 

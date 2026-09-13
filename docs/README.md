@@ -30,6 +30,7 @@
 | [opening-motion.md](opening-motion.md) | Flügel-Öffnen/Schließen: Kurveneditor, Vorlagen, Uhrzeiten, Datensatz `fassaden-opening-motion/v1` |
 | [roller-shutter.md](roller-shutter.md) | Rollläden: Lamellen, Höhe, Stapel, Animation (Ein Zug / Kabelzug), Uhrzeiten |
 | [roof.md](roof.md) | Berliner Mansarde: Ziegel/Trapez, bündige Traufe, Gehrungsrinne |
+| [downpipes.md](downpipes.md) | Fallrohre (mehrgeschossig), Nische optional, Regenrinnen-Farbe |
 | [gallery.md](gallery.md) | QA-Galerie: alle Standards im Raster, Abstand, Zufall, Projekt-Schutz |
 | [deploy-allinkl.md](deploy-allinkl.md) | Auto-Deploy auf All-Inkl (GitHub Actions, FTPS, Passwortschutz) |
 | [versioning.md](versioning.md) | App-Version, Release Notes, Quellen-Dialog, GitHub-Link, Pflege-Workflow |

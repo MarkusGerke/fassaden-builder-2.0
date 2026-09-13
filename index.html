@@ -716,9 +716,79 @@
                     Dachrinne
                   </label>
                 </div>
+                <p class="settings-subheading settings-subheading-nested">Farbe</p>
+                <div class="toolbar-group">
+                  <span class="toolbar-label">Rinnen-Farbe</span>
+                  <div id="roof-gutter-color-swatches" class="color-swatches"></div>
+                </div>
                 </div>
               </div>
               <p id="roof-hint" class="toolbar-hint compact-hint is-error">Benötigt einen geschlossenen Grundriss auf der obersten Etage.</p>
+          </div>
+          <div id="toolbar-downpipe" hidden>
+            <div class="settings-section ui-stack" data-settings-section="dimensions" data-settings-label="Maße" data-settings-order="10">
+              <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                <span class="toolbar-label">Position X (cm)</span>
+                <div class="preset-group">
+                  <button id="downpipe-x-minus" class="preset-btn" type="button">−</button>
+                  <input id="downpipe-x" type="number" min="0" step="8" value="96" aria-label="Fallrohr Position X" />
+                  <button id="downpipe-x-plus" class="preset-btn" type="button">+</button>
+                </div>
+              </div>
+              <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                <span class="toolbar-label">Durchmesser (cm)</span>
+                <div class="preset-group">
+                  <button id="downpipe-diameter-minus" class="preset-btn" type="button">−</button>
+                  <input id="downpipe-diameter" type="number" min="4" max="24" step="1" value="8" aria-label="Fallrohr Durchmesser" />
+                  <button id="downpipe-diameter-plus" class="preset-btn" type="button">+</button>
+                </div>
+              </div>
+            </div>
+            <div class="settings-section ui-stack" data-settings-section="colors" data-settings-label="Farbe" data-settings-order="20">
+              <div class="toolbar-group">
+                <span class="toolbar-label">Farbe</span>
+                <div id="downpipe-color-swatches" class="color-swatches"></div>
+              </div>
+            </div>
+            <div class="settings-section ui-stack" data-settings-section="downpipe-mount" data-settings-label="Einbau" data-settings-order="30">
+              <div class="toolbar-group">
+                <span class="toolbar-label">Einbau</span>
+                <div class="preset-group" role="group" aria-label="Fallrohr Einbau">
+                  <button id="downpipe-mount-surface" class="preset-btn active" type="button" aria-pressed="true">Aufsatz</button>
+                  <button id="downpipe-mount-niche" class="preset-btn" type="button" aria-pressed="false">Nische</button>
+                </div>
+              </div>
+              <div id="downpipe-niche-options" class="ui-stack" hidden>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Nischenbreite (cm)</span>
+                  <div class="preset-group">
+                    <button id="downpipe-niche-width-minus" class="preset-btn" type="button">−</button>
+                    <input id="downpipe-niche-width" type="number" min="8" max="48" step="8" value="16" />
+                    <button id="downpipe-niche-width-plus" class="preset-btn" type="button">+</button>
+                  </div>
+                </div>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Nischentiefe (cm)</span>
+                  <div class="preset-group">
+                    <button id="downpipe-niche-depth-minus" class="preset-btn" type="button">−</button>
+                    <input id="downpipe-niche-depth" type="number" min="4" max="48" step="1" value="12" />
+                    <button id="downpipe-niche-depth-plus" class="preset-btn" type="button">+</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="settings-section ui-stack" data-settings-section="downpipe-foot" data-settings-label="Fuß" data-settings-order="40">
+              <div class="toolbar-group">
+                <span class="toolbar-label">Unteres Ende</span>
+                <div class="preset-group" role="group" aria-label="Fallrohr Fuß">
+                  <button id="downpipe-foot-shoe" class="preset-btn active" type="button" aria-pressed="true">Schräge Gehweg</button>
+                  <button id="downpipe-foot-ground" class="preset-btn" type="button" aria-pressed="false">In den Boden</button>
+                </div>
+              </div>
+            </div>
+            <div class="settings-section ui-stack">
+              <button id="downpipe-delete" type="button" class="preset-btn toolbar-danger">Fallrohr löschen</button>
+            </div>
           </div>
           <div id="toolbar-studio" hidden>
 

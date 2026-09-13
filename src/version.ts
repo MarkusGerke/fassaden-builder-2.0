@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.401'
+export const APP_VERSION = '2.0.403'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,25 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.403',
+    date: '2026-09-13',
+    title: 'Fallrohr und Regenrinne',
+    changes: [
+      'Neues Fallrohr (DN 80) über alle Geschosse: Aufsatz standardmäßig, optionale Nische, Fuß Boden oder Schräge zum Gehweg',
+      'Bibliothek Nischen → Fallrohr DN 80; Einstellungen Maße → Farbe → Einbau → Fuß',
+      'Dachrinne: Titanzink-Farbe wählbar (#8E8A88 Default), Ablaufstutzen zum Fallrohrokopf',
+    ],
+  },
+  {
+    version: '2.0.402',
+    date: '2026-09-13',
+    title: 'Konche ohne Innenfensterbank in der Kalotte',
+    changes: [
+      'Große Konche: kein weißer Fleck mehr hinten an der Unterkante — Innenbank wird für Konchen nicht gebaut',
+      'Außenfensterbank und UI bleiben; Innenbank-Einstellungen bei Konche ausgeblendet',
+    ],
+  },
   {
     version: '2.0.401',
     date: '2026-09-12',

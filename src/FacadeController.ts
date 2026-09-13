@@ -123,6 +123,12 @@ import { floorIndex, storeyFloorSurfaceY, storeyTopY } from './utils/layers'
 import { isStudioWall, leafOpenSignForWall, outerSillBoardPose, studioFacadeOutwardLocalZ, studioFacadeSelectionLocalZ, studioProfileAnchorLocalZ, studioWallTransform, studioWindowOriginZ, wallEndPoint, wallHasPanels, wallStartPoint, windowDepthForwardSign } from './studio/walls'
 import { buildMansardRoof } from './studio/roof'
 import {
+  buildDownpipeGeometry,
+  DEFAULT_DOWNPIPE_COLOR,
+  DOWNPIPE_METALNESS,
+  DOWNPIPE_ROUGHNESS,
+} from './studio/downpipe'
+import {
   createWallLabelMeshSpec,
   isWallLabelFontReady,
   isWallLabelFlatFontReady,
@@ -184,6 +190,7 @@ export class FacadeController {
   /** Nur Punktlicht-Cube-Shadows: unsichtbare Außenring-Platten (Layer 3). */
   public readonly pointLightOccluderGroup: THREE.Group = new THREE.Group()
   public readonly roofGroup: THREE.Group = new THREE.Group()
+  public readonly downpipeGroup: THREE.Group = new THREE.Group()
   public readonly lineGroup: THREE.Group = new THREE.Group()
   public readonly guideGroup: THREE.Group = new THREE.Group()
   /** Kanten der Zeichnungsansicht, als Kinder der jeweiligen Meshes (folgen sitePivot). */
@@ -390,6 +397,7 @@ export class FacadeController {
     this.pointLightOccluderGroup.name = 'pointLightOccluders'
     scene.add(this.pointLightOccluderGroup)
     scene.add(this.roofGroup)
+    scene.add(this.downpipeGroup)
     scene.add(this.lineGroup)
     scene.add(this.guideGroup)
     // Wie volles setState: ohne Indoor/Dach bleiben Decken & Dach nach Reload unsichtbar
@@ -397,6 +405,7 @@ export class FacadeController {
     this.rebuild()
     this.rebuildIndoorFloor()
     this.rebuildRoof()
+    this.rebuildDownpipes()
     this.rebuildFarHulls()
     void this.loadMeshes()
   }
@@ -1030,6 +1039,7 @@ export class FacadeController {
         // Selektion-only nach Kaltstart: Decken/Böden nachziehen, falls Konstruktor-Pfad fehlte.
         this.rebuildIndoorFloor()
         this.rebuildRoof()
+        this.rebuildDownpipes()
         this.rebuildFarHulls()
         this.applySelection()
       }
@@ -1042,6 +1052,7 @@ export class FacadeController {
       this.rebuild()
       this.rebuildIndoorFloor()
       this.rebuildRoof()
+      this.rebuildDownpipes()
       this.rebuildFarHulls()
       this.finalizeGeometryRebuild()
       this.applyRenderStyle()
@@ -2213,7 +2224,7 @@ export class FacadeController {
 
       if (built.gutter) {
         const gutterMat = new THREE.MeshStandardMaterial({
-          color: 0x4a4a4a,
+          color: new THREE.Color(built.gutterColor ?? '#8E8A88'),
           roughness: 0.45,
           metalness: 0.55,
           side: THREE.DoubleSide,
@@ -2224,6 +2235,51 @@ export class FacadeController {
         gutterMesh.userData.roofPart = 'gutter'
         gutterMesh.userData.buildingId = building.id
         this.roofGroup.add(gutterMesh)
+      }
+    }
+  }
+
+  rebuildDownpipes(buildingId?: string) {
+    if (!buildingId) {
+      while (this.downpipeGroup.children.length > 0) {
+        const child = this.downpipeGroup.children[0] as THREE.Mesh
+        this.downpipeGroup.remove(child)
+        child.geometry?.dispose()
+        if (Array.isArray(child.material)) child.material.forEach((m) => m.dispose())
+        else child.material?.dispose()
+      }
+    } else {
+      for (let i = this.downpipeGroup.children.length - 1; i >= 0; i -= 1) {
+        const child = this.downpipeGroup.children[i] as THREE.Mesh
+        if (child.userData.buildingId !== buildingId) continue
+        this.downpipeGroup.remove(child)
+        child.geometry?.dispose()
+        if (Array.isArray(child.material)) child.material.forEach((m) => m.dispose())
+        else child.material?.dispose()
+      }
+    }
+
+    for (const building of this.state.buildings) {
+      if (buildingId && building.id !== buildingId) continue
+      if (building.hidden) continue
+      if (buildingShowsBareWalls(building)) continue
+      for (const dp of building.downpipes ?? []) {
+        const geo = buildDownpipeGeometry(building, dp)
+        if (!geo) continue
+        const mat = new THREE.MeshStandardMaterial({
+          color: new THREE.Color(dp.color || DEFAULT_DOWNPIPE_COLOR),
+          roughness: DOWNPIPE_ROUGHNESS,
+          metalness: DOWNPIPE_METALNESS,
+          side: THREE.DoubleSide,
+        })
+        const mesh = new THREE.Mesh(geo, mat)
+        mesh.castShadow = true
+        mesh.receiveShadow = true
+        mesh.userData.kind = 'downpipe'
+        mesh.userData.downpipeId = dp.id
+        mesh.userData.buildingId = building.id
+        mesh.userData.originalMaterial = mat
+        this.downpipeGroup.add(mesh)
       }
     }
   }
@@ -2440,6 +2496,7 @@ export class FacadeController {
       this.windowGroup,
       this.casingGroup,
       this.roofGroup,
+      this.downpipeGroup,
       this.indoorFloorGroup,
     ]
 
@@ -2540,6 +2597,9 @@ export class FacadeController {
       selectedRoofPart: editor.selectedRoofPart,
       selectedCeiling: editor.selectedCeiling ? { ...editor.selectedCeiling } : undefined,
       selectedBuildingId: editor.selectedBuildingId,
+      selectedDownpipe: editor.selectedDownpipe
+        ? { ...editor.selectedDownpipe }
+        : undefined,
     }
     this.applySelection()
   }
@@ -2972,6 +3032,13 @@ export class FacadeController {
       child.visible = effectiveFarHullLevel(base, simplify.farHull, lodOn) !== 'far'
     }
 
+    for (const child of this.downpipeGroup.children) {
+      const buildingId = child.userData.buildingId as string | undefined
+      if (!buildingId) continue
+      const base = this.lodLevelByBuilding.get(buildingId) ?? (lodOn ? 'medium' : 'high')
+      child.visible = effectiveFarHullLevel(base, simplify.farHull, lodOn) !== 'far'
+    }
+
     for (const mesh of this.claddingLodLowMeshes) {
       const wallId = mesh.userData.wallId as string
       if (this.isPerfPresentation()) {
@@ -3368,6 +3435,15 @@ export class FacadeController {
       else child.material?.dispose()
     }
 
+    for (let i = this.downpipeGroup.children.length - 1; i >= 0; i -= 1) {
+      const child = this.downpipeGroup.children[i] as THREE.Mesh
+      if (child.userData.buildingId !== buildingId) continue
+      this.downpipeGroup.remove(child)
+      child.geometry?.dispose()
+      if (Array.isArray(child.material)) child.material.forEach((m) => m.dispose())
+      else child.material?.dispose()
+    }
+
     for (let i = this.farHullMeshes.length - 1; i >= 0; i -= 1) {
       if (this.farHullMeshes[i].userData.buildingId !== buildingId) continue
       this.farHullMeshes[i].removeFromParent()
@@ -3403,6 +3479,7 @@ export class FacadeController {
     this.rebuildStairsForBuilding(buildingId)
     this.rebuildRollerShuttersForBuilding(buildingId)
     this.rebuildRoofForBuilding(buildingId)
+    this.rebuildDownpipes(buildingId)
     this.rebuildFarHullForBuilding(buildingId)
     if (this.isPerfPresentation()) {
       this.rebuildWindowsForWalls(walls, 'high')
@@ -4877,6 +4954,9 @@ export class FacadeController {
         const sill = opening.sillInner
         if (!sill?.enabled || !openingActsAsWindow(opening) || opening.y <= 0) continue
         if (basementWindowEnabled(opening)) continue
+        // Konche: Innenbank sitzt an der Wandinnenkante und ragt in die Kalotte
+        // (weißer Oval-Fleck hinten unten). Außenbank bleibt.
+        if (opening.type === 'conch') continue
         const depth = Math.max(1, sill.depth ?? 16)
         const thickness = Math.max(0.5, sill.thickness ?? 4)
         const overhang = sill.overhang ?? 8
@@ -5172,6 +5252,21 @@ export class FacadeController {
           (ref) => ref.wallId === wallId && ref.openingId === openingId,
         )
       mesh.material = !this.suppressSelectionHighlight && selected ? this.selectedMaterial : base
+    }
+
+    for (const child of this.downpipeGroup.children) {
+      const mesh = child as THREE.Mesh
+      if (isLine) {
+        mesh.material = this.whiteMaterial
+        continue
+      }
+      const base =
+        (mesh.userData.originalMaterial as THREE.Material | undefined) ?? this.material
+      const selected =
+        !this.suppressSelectionHighlight &&
+        this.editor.selectedDownpipe?.buildingId === mesh.userData.buildingId &&
+        this.editor.selectedDownpipe?.downpipeId === mesh.userData.downpipeId
+      mesh.material = selected ? this.selectedMaterial : base
     }
 
     for (const mesh of this.profileMeshes) {
