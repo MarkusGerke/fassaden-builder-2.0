@@ -12,6 +12,7 @@ import type {
   OpeningStairs,
   OpeningRollerShutter,
   OpeningTrimConfig,
+  ProfileAssignment,
   SurfaceFinish,
   Wall,
   WallDimensions,
@@ -687,6 +688,81 @@ export function replaceOpeningsWithPreset(
           )
         }),
       }
+    })
+  }
+  return next
+}
+
+/**
+ * Ersetzt Ziel-Öffnungen durch eine kopierte Öffnung (Maße, Stil, Profile).
+ * ID bleibt; Position mittelaxial zum Vorgänger (Türen y = 0).
+ */
+export function replaceOpeningsFromSource(
+  state: FacadeState,
+  refs: OpeningRef[],
+  source: { opening: Opening; profiles: ProfileAssignment[] },
+): FacadeState {
+  if (refs.length === 0) return state
+
+  const byWall = new Map<string, Set<string>>()
+  for (const ref of refs) {
+    const set = byWall.get(ref.wallId) ?? new Set()
+    set.add(ref.openingId)
+    byWall.set(ref.wallId, set)
+  }
+
+  let next = state
+  for (const [wallId, openingIds] of byWall) {
+    next = mapWall(next, wallId, (wall) => {
+      const grid = openingGridForWall(wall)
+      const openings = wall.openings.map((opening) => {
+        if (!openingIds.has(opening.id)) return opening
+        const width = snapToGrid(source.opening.width, grid)
+        const height = snapToGrid(source.opening.height, grid)
+        const centerY = opening.y + opening.height / 2
+        const x = centeredOpeningX(opening, width, grid)
+        const y =
+          source.opening.type === 'door' || source.opening.type === 'cutout'
+            ? 0
+            : snapToGrid(centerY - height / 2, grid)
+        const cloned = JSON.parse(JSON.stringify(source.opening)) as Opening
+        const awning = cloned.awning
+          ? {
+              ...cloned.awning,
+              // Gruppen-Markise der Quelle nicht mit fremden openingIds übernehmen.
+              openingIds: undefined,
+              id: cloned.awning.id ?? opening.awning?.id,
+            }
+          : undefined
+        return clampOpeningToWall(
+          {
+            ...cloned,
+            id: opening.id,
+            x,
+            y,
+            width,
+            height,
+            awning,
+            hidden: opening.hidden,
+          },
+          wall,
+          grid,
+        )
+      })
+      const profiles = [
+        ...wall.profiles.filter((p) => !openingIds.has(p.openingId)),
+        ...[...openingIds].flatMap((openingId) =>
+          source.profiles.map((profile) => ({
+            ...profile,
+            openingId,
+          })),
+        ),
+      ]
+      return syncAwningGeometryOnWall({
+        ...cloneWall(wall),
+        openings,
+        profiles,
+      })
     })
   }
   return next

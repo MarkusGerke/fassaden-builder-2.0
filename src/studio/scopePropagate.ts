@@ -73,6 +73,11 @@ function deepApplyChanged<T>(target: T, before: T, after: T): T {
     if (beforeObj[key] === afterObj[key]) continue
     out[key] = deepApplyChanged(targetObj[key], beforeObj[key], afterObj[key])
   }
+  // Entfernte Keys (z. B. Bogenhöhe Auto → kein `riseCm`) mitübertragen —
+  // sonst bleibt der Peer-Wert stehen und Toast Typ/Etage/Fassade ändert nichts.
+  for (const key of Object.keys(beforeObj)) {
+    if (!(key in afterObj)) delete out[key]
+  }
   return out as T
 }
 
@@ -244,18 +249,22 @@ function applyOpeningPropertyDelta(peer: Opening, before: Opening, after: Openin
         out.arch = merged
         continue
       }
-      // Voll-Zuweisen: before === peer. Formwechsel: Stichmaß spannweitenabhängig → Auto.
-      // Absolutes Donor-riseCm (z. B. 8) darf Peers nicht zu Mini-Bögen machen (v2.0.444).
       const isFullAssign = before === peer
       const beforeArch = normalizeOpeningArch(beforeRec.arch as OpeningArch | undefined)
       const afterArch = normalizeOpeningArch(afterRec.arch as OpeningArch | undefined)
       const formChanged =
         beforeArch.form !== afterArch.form || beforeArch.enabled !== afterArch.enabled
+      const afterRise = (afterRec.arch as OpeningArch | undefined)?.riseCm
+      // Toast: letzte Änderung ist das Stichmaß (Auto = Key weg, sonst neuer Wert).
+      // Voll-Zuweisen / Formwechsel: kein fremdes Absolutmaß — Auto je Peer-Breite.
       if (isFullAssign || formChanged) {
         const { riseCm: _omit, ...rest } = merged
         out.arch = rest
+      } else if (afterRise != null && afterRise > 0) {
+        out.arch = { ...merged, riseCm: afterRise }
       } else {
-        out.arch = merged
+        const { riseCm: _omit, ...rest } = merged
+        out.arch = rest
       }
       continue
     }

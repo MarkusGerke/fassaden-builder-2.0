@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.445'
+export const APP_VERSION = '2.0.447'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,24 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.447',
+    date: '2026-09-13',
+    title: 'Fenster ersetzen, Feindrehung weg, Stein-Kontrast inline',
+    changes: [
+      'Rechtsklick: kopiertes Fenster/Tür als „… ersetzen“ auf ein anderes Fenster legen (mittelaxial)',
+      'Wand-Einstellungen: Position/Feindrehung ausgeblendet (90°-Drehen bleibt per Rechtsklick)',
+      'Stein-Kontrast: Stepper in einer Zeile wie die anderen Felder',
+    ],
+  },
+  {
+    version: '2.0.446',
+    date: '2026-09-13',
+    title: 'Toast Typ/Etage/Fassade: Auto-Bogenhöhe wird übernommen',
+    changes: [
+      'Nach „Bogenhöhe → Auto“ überträgt der Toast Typ/Etage/Fassade die letzte Änderung (Auto) auf die anderen Öffnungen',
+    ],
+  },
   {
     version: '2.0.445',
     date: '2026-09-13',

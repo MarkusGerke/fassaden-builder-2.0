@@ -835,11 +835,13 @@
                 <span class="toolbar-label">Wandstärke (cm)</span>
                 <input id="studio-wall-depth" type="number" min="8" max="80" step="8" value="32" aria-label="Wandstärke in cm" />
               </div>
-              <p class="settings-subheading settings-subheading-nested">Position</p>
-              <div class="toolbar-group">
-                <span class="toolbar-label">Feindrehung</span>
-                <input id="studio-wall-yaw" type="number" step="1" value="0" aria-label="Wand-Ausrichtung in Grad" data-unit="°" />
-                <p class="toolbar-hint compact-hint">90°-Drehung: Rechtsklick auf die Wand → Drehen.</p>
+              <div id="studio-wall-yaw-row" hidden>
+                <p class="settings-subheading settings-subheading-nested">Position</p>
+                <div class="toolbar-group">
+                  <span class="toolbar-label">Feindrehung (°)</span>
+                  <input id="studio-wall-yaw" type="number" step="1" value="0" aria-label="Wand-Ausrichtung in Grad" data-unit="°" />
+                  <p class="toolbar-hint compact-hint">90°-Drehung: Rechtsklick auf die Wand → Drehen.</p>
+                </div>
               </div>
               <div id="studio-end-piece-section" class="toolbar-group" hidden>
                 <span class="toolbar-label">Endstück (48 cm)</span>
@@ -887,7 +889,7 @@
                 <div id="cladding-color-swatches-studio" class="color-swatches"></div>
               </div>
               <div id="studio-tile-color-section">
-              <div class="toolbar-group" id="studio-tile-variance-row">
+              <div class="toolbar-group toolbar-inline-value ui-field-inline" id="studio-tile-variance-row">
                 <span class="toolbar-label">Stein-Kontrast</span>
                 <div class="preset-group">
                   <button id="studio-tile-variance-minus" class="preset-btn" type="button">−</button>

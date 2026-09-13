@@ -126,6 +126,7 @@ import {
   removeProfilesFromOpenings,
   anchoredOpeningX,
   replaceOpeningsWithPreset,
+  replaceOpeningsFromSource,
   normalizeOpeningSillOuter,
   outerSillUsesProfile,
   updateOpening,
@@ -6434,6 +6435,24 @@ function pasteOpeningsFromClipboard(
   rebuildFloorPlanOverlay()
   planStatus.textContent =
     newRefs.length === 1 ? 'Öffnung eingefügt' : `${newRefs.length} Öffnungen eingefügt`
+}
+
+/** Kopierte Öffnung an Stelle der Auswahl (mittelaxial); ID bleibt. */
+function replaceOpeningsFromElementClipboard(refs: OpeningRef[]) {
+  if (elementClipboard?.kind !== 'openings' || elementClipboard.items.length === 0) return
+  if (refs.length === 0) return
+  const source = elementClipboard.items[0]!
+  const next = finalizeStudioGeometry(replaceOpeningsFromSource(state, refs, source))
+  commitState(next, {
+    ...editor,
+    selectedWallIds: [...new Set(refs.map((r) => r.wallId))],
+    selectedOpenings: refs,
+    selectedEdges: [],
+  })
+  rebuildFloorPlanOverlay()
+  const label = openingObjectCopyLabel(source.opening.type)
+  planStatus.textContent =
+    refs.length === 1 ? `${label} ersetzt` : `${refs.length} Öffnungen ersetzt`
 }
 
 function pasteWallsFromClipboard(opts?: {
@@ -14666,6 +14685,16 @@ function openingContextItems(wallId: string, openingId: string): MenuItem[] {
       copyOpeningsToClipboard([...editor.selectedOpenings])
     },
   })
+  if (elementClipboard?.kind === 'openings' && elementClipboard.items.length > 0) {
+    const srcType = elementClipboard.items[0]!.opening.type
+    items.push({
+      label: `${openingObjectCopyLabel(srcType)} ersetzen`,
+      action: () => {
+        ensureOpeningSelected(wallId, openingId)
+        replaceOpeningsFromElementClipboard(openingRefsForContextAction(wallId, openingId))
+      },
+    })
+  }
   items.push({
     label: 'Stil kopieren',
     action: () => {

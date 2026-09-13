@@ -2,6 +2,26 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Fenster ersetzen, Feindrehung, Stein-Kontrast (2026-09-13) — v2.0.447
+
+1. **Rechtsklick Öffnung:** Bei gefüllter Öffnungs-Zwischenablage **„Fenster/Tür ersetzen“** — ersetzt die Auswahl mittelaxial (`replaceOpeningsFromSource`), ID bleibt.
+2. **Feindrehung:** `#studio-wall-yaw-row` (Position + Feindrehung) in den Wand-Maßen `hidden` — 90°-Drehen bleibt per Rechtsklick.
+3. **Stein-Kontrast:** `#studio-tile-variance-row` als `toolbar-inline-value ui-field-inline` (Titel links, Stepper rechts).
+
+Docs: [ux.md](ux.md). Test: `openings.test.ts`.
+
+### Toast überträgt Auto-Bogenhöhe (2026-09-13) — v2.0.446
+
+**Symptom:** Bogenhöhe **Auto**, dann Toast **Typ / Etage / Fassade** → Peers unverändert (manuelles Stichmaß blieb).
+
+**Hypothesen / Versuche:**
+- v2.0.444: bei Formwechsel/`Zuweisen für` `riseCm` weglassen. **Nicht ausreichend** — Toast nach Auto ist kein Formwechsel, sondern ein gelöschtes Feld.
+- `deepApplyChanged` kopierte nur Keys, die im After-Objekt **noch da** sind. Auto entfernt `riseCm` → Peer behielt 8 cm.
+
+**Fix:** Gelöschte Nested-Keys mitpropagieren. Toast-Delta: Auto löscht `riseCm` auf Peers; manuelles Stichmaß als letzte Änderung wird kopiert; Formwechsel/`Zuweisen für` bleibt Auto je Breite.
+
+Docs: [ux.md](ux.md), [opening-features.md](opening-features.md). Test: `scopePropagate.test.ts`.
+
 ### Rechtsklick-Menüs teilbezogen (2026-09-13) — v2.0.445
 
 **Symptom:** Rechtsklick auf Sockel/Gesims/Paneele öffnete das volle Wandmenü (Drehen, Öffnung einfügen, Wand lösen, Kopieren→Verdachung, …).
