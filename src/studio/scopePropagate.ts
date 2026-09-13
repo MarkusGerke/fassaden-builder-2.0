@@ -5,19 +5,20 @@ import {
   filterOpeningRefsByBasementParity,
 } from './editScope'
 import type {
+  AwningConfig,
   EditorState,
   FacadeState,
   Opening,
+  OpeningArch,
   OpeningRef,
   ProfileAssignment,
   Wall,
 } from '../types/facade'
 import { cloneFacadeState, cloneWall } from '../types/facade'
 import { findBuildingForWall, getAllWalls } from '../utils/buildings'
-import { openingSupportsFrameProfiles } from '../utils/openingGeometry'
+import { normalizeOpeningArch, openingSupportsFrameProfiles } from '../utils/openingGeometry'
 import { getWall } from '../utils/walls'
 import { defaultOpeningAwningWidth, normalizeAwningConfig } from './awning'
-import type { AwningConfig } from '../types/facade'
 
 /** Ob zwei Zustände dieselbe Wand-/Öffnungs-Topologie haben (nur Property-Edit). */
 export function isPropertyOnlyFacadeEdit(before: FacadeState, after: FacadeState): boolean {
@@ -71,6 +72,11 @@ function deepApplyChanged<T>(target: T, before: T, after: T): T {
     }
     if (beforeObj[key] === afterObj[key]) continue
     out[key] = deepApplyChanged(targetObj[key], beforeObj[key], afterObj[key])
+  }
+  // Entfernte Keys (z. B. Bogenhöhe Auto → kein `riseCm`) mitübertragen —
+  // sonst bleibt der Peer-Wert stehen und Toast Typ/Etage/Fassade ändert nichts.
+  for (const key of Object.keys(beforeObj)) {
+    if (!(key in afterObj)) delete out[key]
   }
   return out as T
 }
@@ -231,6 +237,35 @@ function applyOpeningPropertyDelta(peer: Opening, before: Opening, after: Openin
         id: peer.awning?.id ?? merged.id,
         openingIds: undefined,
       })
+      continue
+    }
+    if (key === 'arch') {
+      const merged = deepApplyChanged(
+        peerRec.arch,
+        beforeRec.arch,
+        afterRec.arch,
+      ) as OpeningArch | undefined
+      if (!merged || typeof merged !== 'object') {
+        out.arch = merged
+        continue
+      }
+      const isFullAssign = before === peer
+      const beforeArch = normalizeOpeningArch(beforeRec.arch as OpeningArch | undefined)
+      const afterArch = normalizeOpeningArch(afterRec.arch as OpeningArch | undefined)
+      const formChanged =
+        beforeArch.form !== afterArch.form || beforeArch.enabled !== afterArch.enabled
+      const afterRise = (afterRec.arch as OpeningArch | undefined)?.riseCm
+      // Toast: letzte Änderung ist das Stichmaß (Auto = Key weg, sonst neuer Wert).
+      // Voll-Zuweisen / Formwechsel: kein fremdes Absolutmaß — Auto je Peer-Breite.
+      if (isFullAssign || formChanged) {
+        const { riseCm: _omit, ...rest } = merged
+        out.arch = rest
+      } else if (afterRise != null && afterRise > 0) {
+        out.arch = { ...merged, riseCm: afterRise }
+      } else {
+        const { riseCm: _omit, ...rest } = merged
+        out.arch = rest
+      }
       continue
     }
     // Nested Opening-Configs (gruenderzeit, pediment, …) per deepApplyChanged mergen —

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { FacadeState, Opening, Wall } from '../types/facade'
 import { emptyNeighbors } from '../types/facade'
-import { centeredOpeningX, anchoredOpeningX, resetOpenings, resolveOuterSillLayout, updateOpening, createOpening, defaultOuterSillDepth } from './openings'
+import { centeredOpeningX, anchoredOpeningX, resetOpenings, resolveOuterSillLayout, updateOpening, createOpening, defaultOuterSillDepth, replaceOpeningsFromSource } from './openings'
 import { STUDIO_MASONRY, DEFAULT_STUDIO_PANEL } from '../studio/constants'
 import { WALL_DEPTH } from '../constants/presets'
 
@@ -38,6 +38,41 @@ function facadeWithOpening(opening: Opening): FacadeState {
     activeBuildingId: 'b1',
   }
 }
+
+describe('replaceOpeningsFromSource', () => {
+  it('ersetzt Ziel mittelaxial und behält id', () => {
+    const target: Opening = {
+      id: 'o-target',
+      type: 'window',
+      x: 96,
+      y: 128,
+      width: 96,
+      height: 192,
+    }
+    const source: Opening = {
+      id: 'o-src',
+      type: 'window',
+      x: 0,
+      y: 0,
+      width: 120,
+      height: 160,
+      frameColor: '#A54040',
+    }
+    const state = facadeWithOpening(target)
+    const next = replaceOpeningsFromSource(
+      state,
+      [{ wallId: 'wall-1', openingId: 'o-target' }],
+      { opening: source, profiles: [] },
+    )
+    const open = next.buildings[0]!.walls[0]!.openings[0]!
+    expect(open.id).toBe('o-target')
+    expect(open.width).toBe(120)
+    expect(open.height).toBe(160)
+    expect(open.frameColor).toBe('#A54040')
+    // Mittelachse der alten Öffnung (ggf. per clamp an die Wand gerundet).
+    expect(Math.abs(open.x + open.width / 2 - (target.x + target.width / 2))).toBeLessThanOrEqual(4)
+  })
+})
 
 describe('centeredOpeningX', () => {
   it('hält die Mitte bei Breitenänderung (+16 cm → je 8 cm links/rechts)', () => {

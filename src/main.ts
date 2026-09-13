@@ -126,6 +126,7 @@ import {
   removeProfilesFromOpenings,
   anchoredOpeningX,
   replaceOpeningsWithPreset,
+  replaceOpeningsFromSource,
   normalizeOpeningSillOuter,
   outerSillUsesProfile,
   updateOpening,
@@ -552,6 +553,11 @@ import { computePresentCameraFrame } from './studio/presentCamera'
 import { normalizeYawDeg, snapYawTo1, snapYawTo45, solarAzimuthToWallYaw, viewedFacadeYaw, wallCompassLabel, wallDockAxisFromFacadeYaw, yawFromCompassSvgPoint } from './studio/compass'
 import { panelCourseCount, visiblePanelRowRange, layoutPanelTiles } from './studio/panelLayout'
 import { APP_VERSION } from './version'
+import {
+  isTouchChromeLayout,
+  LIBRARY_TAB_EDIT_SECTIONS,
+  shouldForcePresentView,
+} from './ui/touchChrome'
 
 import {
   DEFAULT_STUDIO_PANEL,
@@ -1775,6 +1781,10 @@ type LibraryTab =
   | 'lights'
 
 /** Objekt-Affinität: welche Bibliothek-Tabs zur aktuellen Auswahl gehören (docs/ux.md). */
+function wallGeomLockedByTouchChrome(): boolean {
+  return isTouchChromeLayout(currentView)
+}
+
 function allowedLibraryTabs(): Set<LibraryTab> {
   if (lightEditMode || editor.selectedSceneLightId || (editor.selectedSceneLightIds?.length ?? 0) > 0) {
     return new Set<LibraryTab>(['lights'])
@@ -1814,6 +1824,20 @@ function allowedLibraryTabs(): Set<LibraryTab> {
     if (part === 'awning') return new Set<LibraryTab>(['awnings', 'farbe'])
     // Fassade (cladding) = Wand ganz: dieselben Kataloge (Highlight bleibt auf Paneel).
     // Wände/Licht nur ohne Auswahl — bei Wand auf der Bühne redundant.
+    if (wallGeomLockedByTouchChrome()) {
+      return new Set<LibraryTab>([
+        'panels',
+        'farbe',
+        'cornice',
+        'trimBands',
+        'plinth',
+        'label',
+        'awnings',
+        'windows',
+        'doors',
+        'niches',
+      ])
+    }
     return new Set<LibraryTab>([
       'bay',
       'balcony',
@@ -1835,6 +1859,10 @@ function allowedLibraryTabs(): Set<LibraryTab> {
   }
 
   // Keine Auswahl / Dach/Decke: Platzieren — Fenster/Türen neben Wänden sichtbar (v2.0.231).
+  // Touch-/Fassade-Chrome: keine Wand-/Erker-Geometrie anlegen.
+  if (wallGeomLockedByTouchChrome()) {
+    return new Set<LibraryTab>(['windows', 'doors', 'farbe', 'lights', 'awnings', 'panels'])
+  }
   return new Set<LibraryTab>(['windows', 'doors', 'walls', 'farbe', 'bay', 'balcony', 'lights', 'awnings'])
 }
 
@@ -1857,8 +1885,13 @@ let armedInteriorWallDepthCm: number | null = null
 /** Standard-Segmentbreite wenn nur Innenwand-Stärke gewählt (wie Wand 96). */
 const INTERIOR_WALL_DEFAULT_LENGTH_CM = 96
 /** Hover-Segment: Außenwand-Split oder Innenwand-Platzierung. */
-let wallSplitHover: { wallId: string; startCm: number; endCm: number; mode?: 'split' | 'interior' } | null =
-  null
+let wallSplitHover: {
+  wallId: string
+  startCm: number
+  endCm: number
+  mode?: 'split' | 'interior'
+  fromFace?: 'inner' | 'outer'
+} | null = null
 /** Aktuell gefilterte Farbkategorie in der Bibliothek (Dropdown). */
 let libraryColorCategory: FacadeColorCategoryId | null = null
 
@@ -2005,11 +2038,6 @@ function syncLibraryTabs() {
 
 function setLibraryTab(tab: LibraryTab) {
   if (tab !== 'walls') {
-    // #region agent log
-    if (armedInteriorWallDepthCm != null || armedLibraryWallPresetId) {
-      fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-A',location:'main.ts:setLibraryTab',message:'clearing wall arming on tab leave',data:{fromTab:libraryTab,toTab:tab,armedInteriorWallDepthCm,armedLibraryWallPresetId},timestamp:Date.now()})}).catch(()=>{});
-    }
-    // #endregion
     armedLibraryWallPresetId = null
     armedInteriorWallDepthCm = null
     if (wallSplitHover) clearWallSplitHover()
@@ -3416,6 +3444,10 @@ function applyPanelPresetFromLibrary(
 }
 
 function placeWallPresetFromLibrary(presetId: string, clientX?: number, clientY?: number) {
+  if (wallGeomLockedByTouchChrome()) {
+    planStatus.textContent = 'Im Touch-/Fassade-Modus keine Wände platzieren'
+    return
+  }
   if (!isSceneEditView() && clientX == null) {
     setView('top')
     planStatus.textContent = 'Wand-Preset: in der Draufsicht ablegen oder erneut klicken'
@@ -3496,6 +3528,10 @@ function armLibraryWallPreset(presetId: string) {
 }
 
 function onWallLibraryCardClick(presetId: string) {
+  if (wallGeomLockedByTouchChrome()) {
+    planStatus.textContent = 'Im Touch-/Fassade-Modus keine Wände platzieren'
+    return
+  }
   const hand = endPieceHandFromPresetId(presetId)
   if (hand) {
     planStatus.textContent = 'Endstück: in die Fläche oder an ein Wandende ziehen'
@@ -3513,14 +3549,15 @@ function disarmLibraryWallPreset() {
 }
 
 function armInteriorWallDepth(depthCm: number) {
+  if (wallGeomLockedByTouchChrome()) {
+    planStatus.textContent = 'Im Touch-/Fassade-Modus keine Innenwände platzieren'
+    return
+  }
   armedInteriorWallDepthCm = depthCm
   clearWallSplitHover()
   updateWallLibraryGizmos()
   syncLibraryAppliedOutline()
   const len = armedInteriorSegmentCm() ?? INTERIOR_WALL_DEFAULT_LENGTH_CM
-  // #region agent log
-  fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-E',location:'main.ts:armInteriorWallDepth',message:'interior wall armed',data:{depthCm,libraryTab,segmentCm:len,placeActive:interiorWallPlaceModeActive(),selectedWalls:editor.selectedWallIds.length,view:currentView},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   planStatus.textContent = `Innenwand ${depthCm} cm — nur von innen auf die Wandfläche klicken (90° in den Raum, Länge ${len} cm); dann Länge ± / Shift-Winkel (oder Grundriss zeichnen)`
 }
 
@@ -3698,12 +3735,13 @@ function drawWallSplitGhost(stack: Wall[], range: { startCm: number; endCm: numb
   if (isPerspectiveSceneView()) render3dFrame()
 }
 
-/** Cyan: 90°-Stummel von der Host-Innenseite in den Raum. */
+/** Cyan: 90°-Stummel — Mittelachse an Host-Fläche, Dicke ±½ (wie createInteriorWallFromHostNormal). */
 function drawInteriorWallPlaceGhost(
   host: Wall,
   localXCm: number,
   lengthCm: number,
   depthCm: number,
+  fromFace: 'inner' | 'outer' = 'inner',
 ) {
   clearWallDockSceneGhost()
   const preview = createInteriorWallFromHostNormal({
@@ -3711,6 +3749,7 @@ function drawInteriorWallPlaceGhost(
     localXCm,
     lengthCm,
     depthCm,
+    fromFace,
   })
   if (!preview) return
   const fillMat = new THREE.MeshBasicMaterial({
@@ -3787,9 +3826,6 @@ function pickInteriorHostFaceAtClient(
         const accept = hostIsInterior
           ? true
           : !camOutside && distInner <= distOuter + 2
-        // #region agent log
-        fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-G',location:'main.ts:pickInteriorHostFaceAtClient',message:'interior face pick',data:{wallId,hostIsInterior,fromFace,localX,localZ,inner,outer,distInner,distOuter,camOutside,accept},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         if (!accept) return null
         return { wall, localX, localY, localZ, fromFace }
       }
@@ -3830,6 +3866,7 @@ function updateWallSplitHover(event: { clientX: number; clientY: number }) {
       wallSplitHover &&
       wallSplitHover.mode === 'interior' &&
       wallSplitHover.wallId === hit.wall.id &&
+      wallSplitHover.fromFace === hit.fromFace &&
       Math.abs(wallSplitHover.startCm - localX) < 0.5
     ) {
       return
@@ -3839,9 +3876,10 @@ function updateWallSplitHover(event: { clientX: number; clientY: number }) {
       startCm: localX,
       endCm: localX,
       mode: 'interior',
+      fromFace: hit.fromFace,
     }
-    drawInteriorWallPlaceGhost(hit.wall, localX, lengthCm, depthCm)
-    planStatus.textContent = `Klick: Innenwand 90° in den Raum (${Math.round(lengthCm)}×${Math.round(depthCm)} cm)`
+    drawInteriorWallPlaceGhost(hit.wall, localX, lengthCm, depthCm, hit.fromFace)
+    planStatus.textContent = `Klick: Innenwand 90° (${Math.round(lengthCm)}×${Math.round(depthCm)} cm, Mittelachse ±½)`
     return
   }
 
@@ -3892,6 +3930,7 @@ function mergeSelectedWallSegments() {
 
 /** Innenwand: 90°-Stummel an Host-Innenseite, Host unverändert. */
 function tryInteriorWallPlaceAtEvent(event: { clientX: number; clientY: number }): boolean {
+  if (wallGeomLockedByTouchChrome()) return false
   if (!interiorWallPlaceModeActive() || armedInteriorWallDepthCm == null) return false
   let hit = pickInteriorHostFaceAtClient(event.clientX, event.clientY)
   let usedHoverFallback = false
@@ -3905,14 +3944,11 @@ function tryInteriorWallPlaceAtEvent(event: { clientX: number; clientY: number }
         localX: wallSplitHover.startCm,
         localY: hoverWall.height / 2,
         localZ: studioWallInnerLocalZ(hoverWall),
-        fromFace: 'inner',
+        fromFace: wallSplitHover.fromFace ?? 'inner',
       }
       usedHoverFallback = true
     }
   }
-  // #region agent log
-  fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-K',location:'main.ts:tryInteriorWallPlaceAtEvent',message:'interior place attempt',data:{hasHit:Boolean(hit),usedHoverFallback,hostId:hit?.wall.id,localX:hit?.localX,depthCm:armedInteriorWallDepthCm,hoverMode:wallSplitHover?.mode},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   if (!hit) {
     planStatus.textContent = 'Innenwand nur von innen auf die Wandfläche setzen'
     return true
@@ -3930,17 +3966,11 @@ function tryInteriorWallPlaceAtEvent(event: { clientX: number; clientY: number }
   })
   clearWallSplitHover()
   if (!wall) {
-    // #region agent log
-    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-M',location:'main.ts:tryInteriorWallPlaceAtEvent',message:'create returned null',data:{localX,lengthCm,depthCm,hostWidth:hit.wall.width},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     planStatus.textContent = 'Innenwand konnte hier nicht erzeugt werden'
     return true
   }
   const building = findBuildingForWall(state, hit.wall.id) ?? activeBuilding()
   if (studioWallsCollideIdentical(building.walls, wall)) {
-    // #region agent log
-    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-L',location:'main.ts:tryInteriorWallPlaceAtEvent',message:'collide with existing',data:{hostId:hit.wall.id,newYaw:wall.yawDeg,newWidth:wall.width},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     planStatus.textContent = 'Innenwand überlappt bestehende Wand'
     return true
   }
@@ -3967,9 +3997,6 @@ function tryInteriorWallPlaceAtEvent(event: { clientX: number; clientY: number }
   rebuildFloorPlanOverlay()
   const hostAfter = getWall(state, hostId)
   const placed = getWall(state, wall.id)
-  // #region agent log
-  fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',runId:'post-fix',hypothesisId:'H-N',location:'main.ts:tryInteriorWallPlaceAtEvent',message:'interior place success + disarmed',data:{usedHoverFallback,hostId,hostIsInterior:isInteriorWall(hit.wall),fromFace:hit.fromFace,newId:wall.id,hostYaw,newYaw:placed?.yawDeg,yawDelta:((placed?.yawDeg ?? 0) - hostYaw + 360) % 360,hostWidthBefore:hostBefore?.width,hostWidthAfter:hostAfter?.width,newWidth:placed?.width,armedAfter:armedInteriorWallDepthCm,startTouchesHost:placed?wallEndTouchesForeignSpine(placed,'start',activeBuilding().walls):false},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   planStatus.textContent = `Innenwand ${Math.round(placed?.width ?? wall.width)} cm (${depthCm} cm stark) — Länge ± / Shift-Winkel; weitere: Bibliothek erneut wählen`
   return true
 }
@@ -3978,16 +4005,10 @@ function tryInteriorWallPlaceAtEvent(event: { clientX: number; clientY: number }
 function tryWallSplitAtEvent(event: { clientX: number; clientY: number }): boolean {
   if (!wallSplitModeActive()) return false
   const target = resolveWallSplitTarget(event)
-  // #region agent log
-  fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-D',location:'main.ts:tryWallSplitAtEvent',message:'split attempt',data:{hasTarget:Boolean(target),wallId:target?.wall.id,range:target?.range,armedInteriorWallDepthCm},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   if (!target) return false
   const result = splitWallStackRange(state, target.wall.id, target.range)
   clearWallSplitHover()
   if (!result) {
-    // #region agent log
-    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-D',location:'main.ts:tryWallSplitAtEvent',message:'splitWallStackRange failed',data:{wallId:target.wall.id,range:target.range,wallWidth:target.wall.width},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     planStatus.textContent =
       target.range.startCm <= 0.5 && target.wall.width - target.range.endCm <= 0.5
         ? `Wand ist bereits ${Math.round(target.wall.width)} cm — nichts zu teilen`
@@ -4380,6 +4401,10 @@ function projectWorldToOverlay(
 function updateWallResizeGizmos() {
   const host = document.querySelector<HTMLDivElement>('#wall-resize-gizmos')
   if (!host) return
+  if (wallGeomLockedByTouchChrome()) {
+    host.hidden = true
+    return
+  }
   const walls = selectedStudioWallsForGizmos()
   const wall = walls[0]
   const show =
@@ -4581,9 +4606,6 @@ function applyWallResizePreview(
 
     // Verknüpfte Ecke: Außenwände nur strecken/Winkel; Innenwände dürfen dritte Wand (T) abzweigen.
     const interiorTFromCorner = isInteriorWall(wall) && yaw !== null
-    // #region agent log
-    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-T',location:'main.ts:applyWallResizePreview',message:'shift branch corner check',data:{wallId:wall.id,role:wall.role,linkedCorner:Boolean(linkedCorner),yaw,interiorTFromCorner,willBranch:!(linkedCorner && !interiorTFromCorner) || yaw!==null && (!linkedCorner || interiorTFromCorner)},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     if (linkedCorner && !interiorTFromCorner) {
       if (yaw === null) {
         const raw = alongWidthDeltaFromMove(wall.yawDeg ?? 0, wallEnd, dx, dz)
@@ -5338,7 +5360,227 @@ function syncLibraryAppliedOutline() {
       card.classList.toggle('active', applied)
     }
   }
+  decorateLibraryEditButtons()
 }
+
+function libraryTabEditTitle(tab: string): string {
+  const btn = document.querySelector<HTMLElement>(`.library-tab[data-library-tab="${tab}"]`)
+  return (btn?.textContent ?? tab).trim() || 'Bearbeiten'
+}
+
+function decorateLibraryEditButtons() {
+  const host = document.querySelector('#opening-library-items')
+  if (!host) return
+  const sections = LIBRARY_TAB_EDIT_SECTIONS[libraryTab]
+  if (!sections?.length) return
+  if (libraryTab === 'walls' || libraryTab === 'bay' || libraryTab === 'balcony' || libraryTab === 'loggia') {
+    return
+  }
+  for (const card of host.querySelectorAll<HTMLElement>('.opening-library-card')) {
+    if (!card.classList.contains('library-card-applied') && !card.classList.contains('active')) continue
+    if (card.dataset.libraryNone === '1') continue
+    const existing = card.querySelector<HTMLElement>('.library-card-edit')
+    if (existing) continue
+    const label = card.querySelector<HTMLElement>(':scope > span')
+    if (!label || label.classList.contains('opening-library-card-del')) continue
+    label.classList.add('library-card-edit')
+    label.textContent = 'Bearbeiten'
+    label.addEventListener('click', (event) => {
+      event.preventDefault()
+      event.stopPropagation()
+      openLibraryEdit(sections, libraryTabEditTitle(libraryTab))
+    })
+  }
+}
+
+function selectionToolbarPanelsEl(): HTMLElement | null {
+  return document.querySelector<HTMLElement>('#selection-toolbar-panels')
+}
+
+function portalSelectionPanelsToSheet() {
+  const panels = selectionToolbarPanelsEl()
+  if (!panels || !libraryEditSheetBody) return
+  if (!selectionToolbarPanelsHome) {
+    selectionToolbarPanelsHome = panels.parentElement
+  }
+  if (panels.parentElement !== libraryEditSheetBody) {
+    libraryEditSheetBody.appendChild(panels)
+  }
+}
+
+function restoreSelectionPanelsHome() {
+  const panels = selectionToolbarPanelsEl()
+  if (!panels || !selectionToolbarPanelsHome) return
+  if (panels.parentElement !== selectionToolbarPanelsHome) {
+    selectionToolbarPanelsHome.appendChild(panels)
+  }
+}
+
+function syncLibraryEditSheetChrome() {
+  const touch = isTouchChromeLayout(currentView)
+  const open = Boolean(libraryEditFocusSections && libraryEditSheetOpen && touch)
+  libraryDockEl?.classList.toggle('is-edit-sheet-open', open)
+  if (!libraryEditSheet) return
+  if (open) {
+    libraryEditSheet.hidden = false
+    libraryEditSheet.setAttribute('aria-hidden', 'false')
+    requestAnimationFrame(() => libraryEditSheet?.classList.add('is-open'))
+    portalSelectionPanelsToSheet()
+  } else {
+    libraryEditSheet.classList.remove('is-open')
+    libraryEditSheet.setAttribute('aria-hidden', 'true')
+    restoreSelectionPanelsHome()
+    window.setTimeout(() => {
+      if (!libraryEditSheetOpen && libraryEditSheet) libraryEditSheet.hidden = true
+    }, 300)
+  }
+  if (libraryEditSheetTitle) libraryEditSheetTitle.textContent = libraryEditFocusTitle
+  const showBack =
+    open &&
+    libraryEditFocusSections?.includes('pediment') &&
+    pedimentCatalogDepth !== 'root'
+  if (libraryEditSheetBack) libraryEditSheetBack.hidden = !showBack
+}
+
+function openLibraryEdit(sections: string[], title: string) {
+  libraryEditFocusSections = [...sections]
+  libraryEditFocusTitle = title || 'Bearbeiten'
+  pedimentCatalogDepth = 'root'
+  libraryEditSheetOpen = isTouchChromeLayout(currentView)
+  document.documentElement.classList.toggle('ui-library-edit-focus', true)
+  if (sections[0]) {
+    pendingSelectionToolbarTab = sections[0]
+    selectionToolbarTab = sections[0]
+  }
+  syncLibraryEditSheetChrome()
+  syncPedimentCatalogChrome()
+  syncSelectionToolbarTabs()
+  renderUi({ skipLayerList: true })
+}
+
+function closeLibraryEdit() {
+  libraryEditFocusSections = null
+  libraryEditSheetOpen = false
+  pedimentCatalogDepth = 'root'
+  document.documentElement.classList.remove('ui-library-edit-focus')
+  syncLibraryEditSheetChrome()
+  syncPedimentCatalogChrome()
+  syncSelectionToolbarTabs()
+}
+
+function setPedimentCatalogDepth(depth: PedimentCatalogDepth) {
+  pedimentCatalogDepth = depth
+  syncPedimentCatalogChrome()
+  syncLibraryEditSheetChrome()
+}
+
+function syncPedimentCatalogChrome() {
+  const options = document.querySelector<HTMLElement>('#pediment-options')
+  const tiles = document.querySelector<HTMLElement>('#pediment-summary-tiles')
+  const formGal = document.querySelector<HTMLElement>('#pediment-form-gallery')
+  const profileGal = document.querySelector<HTMLElement>('#pediment-profile-gallery')
+  const profileDeep = document.querySelector<HTMLElement>('#pediment-profile-deep')
+  const useCatalog = Boolean(libraryEditFocusSections?.includes('pediment'))
+  if (!options || !tiles) return
+  options.classList.toggle('pediment-catalog-root', useCatalog)
+  tiles.hidden = !useCatalog
+  if (!useCatalog) {
+    if (formGal) formGal.hidden = false
+    if (profileGal) profileGal.hidden = false
+    if (profileDeep) profileDeep.hidden = false
+    return
+  }
+  options.dataset.pedimentDepth = pedimentCatalogDepth
+  tiles.hidden = pedimentCatalogDepth !== 'root'
+  if (formGal) formGal.hidden = pedimentCatalogDepth !== 'form'
+  if (profileGal) profileGal.hidden = pedimentCatalogDepth !== 'profile'
+  if (profileDeep) profileDeep.hidden = pedimentCatalogDepth !== 'profile-deep'
+
+  const sel = selectedWindowOpening()
+  const pediment = sel ? normalizeOpeningPediment(sel.opening.pediment) : null
+  const formValue = document.querySelector<HTMLElement>('#pediment-summary-form-value')
+  const formThumb = document.querySelector<HTMLElement>('#pediment-summary-form-thumb')
+  const profileValue = document.querySelector<HTMLElement>('#pediment-summary-profile-value')
+  const profileThumb = document.querySelector<HTMLElement>('#pediment-summary-profile-thumb')
+  const consolesValue = document.querySelector<HTMLElement>('#pediment-summary-consoles-value')
+  const consolesThumb = document.querySelector<HTMLElement>('#pediment-summary-consoles-thumb')
+  if (!pediment?.enabled) {
+    if (formValue) formValue.textContent = 'Keine Form'
+    if (profileValue) profileValue.textContent = 'Kein Profil'
+    if (consolesValue) consolesValue.textContent = 'Keine Konsole'
+    formThumb?.replaceChildren()
+    profileThumb?.replaceChildren()
+    consolesThumb?.replaceChildren()
+    return
+  }
+  const formBtn = pedimentFormCards.querySelector<HTMLElement>(
+    `.pediment-form-btn[data-form="${pediment.form}"]`,
+  )
+  if (formValue) {
+    formValue.textContent =
+      formBtn?.querySelector('span')?.textContent?.trim() || pediment.form || 'Form'
+  }
+  if (formThumb) {
+    const thumb = formBtn?.querySelector('.tpl-card-thumb')
+    formThumb.replaceChildren()
+    if (thumb) formThumb.appendChild(thumb.cloneNode(true))
+  }
+  const profile = pediment.profileId
+    ? resolveProfile(pediment.profileId, state.customProfiles)
+    : null
+  if (profileValue) {
+    profileValue.textContent = profile
+      ? profileCardDisplayLabel(profile.label)
+      : 'Kein Profil'
+  }
+  if (profileThumb) {
+    profileThumb.replaceChildren()
+    const activeCard = pedimentProfileCards?.querySelector<HTMLElement>('.tpl-card.active .tpl-card-thumb')
+    if (activeCard) profileThumb.appendChild(activeCard.cloneNode(true))
+  }
+  const consoleOn = Boolean(pediment.consoles?.enabled && pediment.consoles.profileId)
+  if (consolesValue) {
+    if (!consoleOn) {
+      consolesValue.textContent = 'Keine Konsole'
+    } else {
+      const cProfile = resolveProfile(pediment.consoles!.profileId!, state.customProfiles)
+      consolesValue.textContent = cProfile
+        ? profileCardDisplayLabel(cProfile.label)
+        : 'Konsole'
+    }
+  }
+  if (consolesThumb) {
+    consolesThumb.replaceChildren()
+    const activeCard = pedimentConsoleCards?.querySelector<HTMLElement>('.tpl-card.active .tpl-card-thumb')
+    if (activeCard) consolesThumb.appendChild(activeCard.cloneNode(true))
+  }
+}
+
+function syncTouchChromeLayout() {
+  if (shouldForcePresentView(currentView)) {
+    setView('present')
+    return
+  }
+  const touch = isTouchChromeLayout(currentView)
+  document.documentElement.classList.toggle('ui-touch-chrome', touch)
+  if (!touch && libraryEditSheetOpen) {
+    libraryEditSheetOpen = false
+    restoreSelectionPanelsHome()
+    libraryEditSheet?.classList.remove('is-open')
+    if (libraryEditSheet) libraryEditSheet.hidden = true
+  }
+  if (touch && (armedLibraryWallPresetId || armedInteriorWallDepthCm != null)) {
+    disarmLibraryWallPreset()
+  }
+  syncLibraryEditSheetChrome()
+  updateWallResizeGizmos()
+  syncLibraryTabVisibility()
+}
+
+window.matchMedia('(pointer: coarse)').addEventListener('change', () => syncTouchChromeLayout())
+window
+  .matchMedia(`(max-width: 900px)`)
+  .addEventListener('change', () => syncTouchChromeLayout())
 
 /** Anker für Shift-Bereichsauswahl im sichtbaren Ebenenbaum (Licht/Wand/Öffnung). */
 let lastLayerTreeAnchor: number | null = null
@@ -6459,6 +6701,24 @@ function pasteOpeningsFromClipboard(
     newRefs.length === 1 ? 'Öffnung eingefügt' : `${newRefs.length} Öffnungen eingefügt`
 }
 
+/** Kopierte Öffnung an Stelle der Auswahl (mittelaxial); ID bleibt. */
+function replaceOpeningsFromElementClipboard(refs: OpeningRef[]) {
+  if (elementClipboard?.kind !== 'openings' || elementClipboard.items.length === 0) return
+  if (refs.length === 0) return
+  const source = elementClipboard.items[0]!
+  const next = finalizeStudioGeometry(replaceOpeningsFromSource(state, refs, source))
+  commitState(next, {
+    ...editor,
+    selectedWallIds: [...new Set(refs.map((r) => r.wallId))],
+    selectedOpenings: refs,
+    selectedEdges: [],
+  })
+  rebuildFloorPlanOverlay()
+  const label = openingObjectCopyLabel(source.opening.type)
+  planStatus.textContent =
+    refs.length === 1 ? `${label} ersetzt` : `${refs.length} Öffnungen ersetzt`
+}
+
 function pasteWallsFromClipboard(opts?: {
   targetWallId?: string
   side?: 'left' | 'right' | 'above'
@@ -6673,6 +6933,19 @@ let lastStickySelectionToolbarTab = ''
 /** Nach 3D-Klick auf Wandteil: gewünschter Reiter einmalig übernehmen. */
 let pendingSelectionToolbarTab: string | null = null
 let selectionToolbarKind = ''
+/** Fokussierter Inspector: nur diese Settings-Sektionen (Bibliothek → Bearbeiten). */
+let libraryEditFocusSections: string[] | null = null
+let libraryEditFocusTitle = 'Bearbeiten'
+type PedimentCatalogDepth = 'root' | 'form' | 'profile' | 'profile-deep' | 'consoles'
+let pedimentCatalogDepth: PedimentCatalogDepth = 'root'
+let libraryEditSheetOpen = false
+let selectionToolbarPanelsHome: HTMLElement | null = null
+const libraryEditSheet = document.querySelector<HTMLElement>('#library-edit-sheet')
+const libraryEditSheetBody = document.querySelector<HTMLElement>('#library-edit-sheet-body')
+const libraryEditSheetTitle = document.querySelector<HTMLElement>('#library-edit-sheet-title')
+const libraryEditSheetBack = document.querySelector<HTMLButtonElement>('#library-edit-sheet-back')
+const libraryEditSheetClose = document.querySelector<HTMLButtonElement>('#library-edit-sheet-close')
+const libraryDockEl = document.querySelector<HTMLElement>('#library-dock')
 let sceneToolbarTab = 'all'
 const lightingAccordion = document.querySelector<HTMLElement>('#lighting-accordion')!
 const toolbarWall = document.querySelector<HTMLDivElement>('#toolbar-wall')!
@@ -13245,7 +13518,7 @@ let pendingScopePropagate: {
   fromScope: EditScope
 } | null = null
 
-const SCOPE_OFFER_SECONDS = 5
+const SCOPE_OFFER_SECONDS = 7
 let scopeOfferTimerId: ReturnType<typeof setInterval> | null = null
 let scopeOfferHideTimeoutId: ReturnType<typeof setTimeout> | null = null
 
@@ -13471,15 +13744,9 @@ function syncLibraryTabForOpeningSelection() {
   const allowed = allowedLibraryTabs()
   // Bewaffnete Wand-/Innenwand-Aktion nicht durch Auto-Farben abbrechen.
   if (armedInteriorWallDepthCm != null || armedLibraryWallPresetId) {
-    // #region agent log
-    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-A',location:'main.ts:syncLibraryTabForOpeningSelection',message:'skip farbe auto-switch while wall armed',data:{prevTab:libraryTab,armedInteriorWallDepthCm,armedLibraryWallPresetId,wallKey,openingKey,part},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     return
   }
   if (allowed.has('farbe') && libraryTab !== 'farbe') {
-    // #region agent log
-    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-A',location:'main.ts:syncLibraryTabForOpeningSelection',message:'auto-switch to farbe',data:{prevTab:libraryTab,armedInteriorWallDepthCm,armedLibraryWallPresetId,wallKey,openingKey,part},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     setLibraryTab('farbe')
   } else if (libraryTab === 'farbe') {
     initOpeningLibrary()
@@ -13510,6 +13777,9 @@ function renderUi(opts?: { skipLayerList?: boolean }) {
   const showSelectionUi =
     !SHOWCASE_VIEW_MODE &&
     (hasWall || hasOpening || hasRoof || hasCeiling || hasSceneLight || hasDownpipe)
+  if (!showSelectionUi && libraryEditFocusSections) {
+    closeLibraryEdit()
+  }
   lightingAccordion.hidden = SHOWCASE_VIEW_MODE ? false : showSelectionUi
   planSidebar.hidden = true
   syncSceneToolbarTabs()
@@ -13785,7 +14055,7 @@ function copyStylesFromWall(wallId: string, keys?: string[]) {
   planStatus.textContent = `${label} kopiert — Rechtsklick auf ein Ziel zum Einfügen`
 }
 
-function copyStylesFromOpening(wallId: string, openingId: string) {
+function copyStylesFromOpening(wallId: string, openingId: string, keys?: string[]) {
   const wall = getWall(state, wallId)
   const opening = wall?.openings.find((item) => item.id === openingId)
   if (!wall || !opening) return
@@ -13794,8 +14064,9 @@ function copyStylesFromOpening(wallId: string, openingId: string) {
     frameProfileId:
       wall.profiles.find((profile) => profile.openingId === opening.id)?.profileId ?? null,
   }
-  styleClipboardKeys = null
-  planStatus.textContent = 'Stil kopiert — Rechtsklick auf ein Ziel zum Einfügen'
+  styleClipboardKeys = keys && keys.length > 0 ? [...keys] : null
+  const label = !keys || keys.length === 0 ? 'Stil' : keys.length === 1 ? 'Eigenschaft' : 'Eigenschaften'
+  planStatus.textContent = `${label} kopiert — Rechtsklick auf ein Ziel zum Einfügen`
 }
 
 function openingObjectCopyLabel(type: Opening['type'] | undefined): string {
@@ -14199,6 +14470,93 @@ function runDuplicateWallsAbove(wallId: string) {
   rebuildFloorPlanOverlay()
 }
 
+/** Zuweisen-Untermenü für Kontextaktionen (Wand-/Öffnungsteil). */
+function scopeAssignMenuItem(before: () => void): MenuItem {
+  return {
+    label: 'Zuweisen für',
+    children: [
+      {
+        label: 'Typ',
+        action: () => {
+          before()
+          commitAssignSelectionToScope('type')
+        },
+      },
+      {
+        label: 'Etage',
+        action: () => {
+          before()
+          commitAssignSelectionToScope('floor')
+        },
+      },
+      {
+        label: 'Fassade',
+        action: () => {
+          before()
+          commitAssignSelectionToScope('facade')
+        },
+      },
+    ],
+  }
+}
+
+/**
+ * Rechtsklick auf Sockel / Gesims / Paneele: nur stilbezogene Aktionen
+ * (kein Drehen, Wand lösen, Öffnung einfügen, …).
+ */
+function wallPartContextItems(
+  wallId: string,
+  wallPart: 'plinth' | 'cornice' | 'cladding',
+): MenuItem[] {
+  const ensure = () => selectWall(wallId, false, wallPart)
+  const copyStylePart = (keys: string[]) => () => {
+    ensure()
+    copyStylesFromWall(wallId, keys)
+  }
+  const items: MenuItem[] = []
+  if (wallPart === 'plinth') {
+    items.push({ label: 'Sockel kopieren', action: copyStylePart(['plinth']) })
+  } else if (wallPart === 'cornice') {
+    items.push({ label: 'Gesims kopieren', action: copyStylePart(['cornice']) })
+  } else {
+    items.push(
+      { label: 'Paneele kopieren', action: copyStylePart(['panel']) },
+      { label: 'Wandfarbe kopieren', action: copyStylePart(['wallColor']) },
+      { label: 'Bekleidungsfarbe kopieren', action: copyStylePart(['claddingColor']) },
+    )
+  }
+  if (styleClipboard) {
+    items.push({
+      label: 'Stile einfügen…',
+      action: () => {
+        ensure()
+        askStylePaste({ kind: 'wall', ids: scopedWallIds() })
+      },
+    })
+  }
+  items.push(scopeAssignMenuItem(ensure))
+  if (wallPart === 'plinth') {
+    items.push({
+      label: 'Sockel entfernen',
+      danger: true,
+      action: () => {
+        ensure()
+        commitStudioPanelPatch({ plinthEnabled: false })
+      },
+    })
+  } else if (wallPart === 'cornice') {
+    items.push({
+      label: 'Gesims entfernen',
+      danger: true,
+      action: () => {
+        ensure()
+        commitCornicePatch({ enabled: false })
+      },
+    })
+  }
+  return items
+}
+
 function wallContextItems(
   wallId: string,
   pasteAt?: { localX: number; localY: number },
@@ -14436,6 +14794,146 @@ function wallContextItems(
   return items
 }
 
+/**
+ * Rechtsklick auf Öffnungs-Teil (Verdachung, Bank, …): nur passende Stil-/Entfernen-Aktionen.
+ * Ganz-Öffnung (`group` / `frame`) und Markise nutzen andere Menüs.
+ */
+function openingPartContextItems(
+  wallId: string,
+  openingId: string,
+  part: OpeningPart,
+): MenuItem[] {
+  const ensure = () => selectOpening(wallId, openingId, false, part)
+  const items: MenuItem[] = []
+
+  const copyLabel =
+    part === 'pediment'
+      ? 'Verdachung kopieren'
+      : part === 'consoles'
+        ? 'Konsolen kopieren'
+        : part === 'sillOuter' || part === 'sillInner'
+          ? 'Fensterbank kopieren'
+          : part === 'stairs'
+            ? 'Treppe kopieren'
+            : part === 'grille'
+              ? 'Gitter kopieren'
+              : part === 'rollerShutter'
+                ? 'Rollladen kopieren'
+                : part === 'trim'
+                  ? 'Rahmenprofil kopieren'
+                  : 'Stil kopieren'
+
+  const copyKeys: string[] | undefined =
+    part === 'pediment' || part === 'consoles'
+      ? ['pediment']
+      : part === 'sillOuter' || part === 'sillInner'
+        ? ['sills']
+        : part === 'trim'
+          ? ['frameProfile']
+          : undefined
+
+  items.push({
+    label: copyLabel,
+    action: () => {
+      ensure()
+      copyStylesFromOpening(wallId, openingId, copyKeys)
+    },
+  })
+
+  if (styleClipboard) {
+    items.push({
+      label: 'Stile einfügen…',
+      action: () => {
+        ensure()
+        askStylePaste({ kind: 'opening', refs: scopedOpeningRefs() })
+      },
+    })
+  }
+
+  items.push(scopeAssignMenuItem(ensure))
+
+  const removeLabel =
+    part === 'pediment'
+      ? 'Verdachung entfernen'
+      : part === 'consoles'
+        ? 'Konsolen entfernen'
+        : part === 'sillOuter'
+          ? 'Außenbank entfernen'
+          : part === 'sillInner'
+            ? 'Innenbank entfernen'
+            : part === 'stairs'
+              ? 'Treppe entfernen'
+              : part === 'grille'
+                ? 'Gitter entfernen'
+                : part === 'rollerShutter'
+                  ? 'Rollladen entfernen'
+                  : null
+
+  if (removeLabel) {
+    items.push({
+      label: removeLabel,
+      danger: true,
+      action: () => {
+        ensure()
+        disableOpeningPartOnSelection(part)
+      },
+    })
+  }
+
+  return items
+}
+
+function disableOpeningPartOnSelection(part: OpeningPart) {
+  const refs = scopedOpeningRefs()
+  if (refs.length === 0) return
+  let next = state
+  for (const ref of refs) {
+    const wall = getWall(next, ref.wallId)
+    const opening = wall?.openings.find((o) => o.id === ref.openingId)
+    if (!opening) continue
+    if (part === 'pediment') {
+      if (!opening.pediment) continue
+      next = updateOpening(next, ref.wallId, ref.openingId, {
+        pediment: { ...opening.pediment, enabled: false },
+      })
+    } else if (part === 'consoles') {
+      const ped = opening.pediment
+      if (!ped?.consoles) continue
+      next = updateOpening(next, ref.wallId, ref.openingId, {
+        pediment: {
+          ...ped,
+          consoles: { ...ped.consoles, enabled: false },
+        },
+      })
+    } else if (part === 'sillOuter') {
+      if (!opening.sillOuter) continue
+      next = updateOpening(next, ref.wallId, ref.openingId, {
+        sillOuter: { ...opening.sillOuter, enabled: false },
+      })
+    } else if (part === 'sillInner') {
+      if (!opening.sillInner) continue
+      next = updateOpening(next, ref.wallId, ref.openingId, {
+        sillInner: { ...opening.sillInner, enabled: false },
+      })
+    } else if (part === 'stairs') {
+      if (!opening.stairs) continue
+      next = updateOpening(next, ref.wallId, ref.openingId, {
+        stairs: { ...opening.stairs, enabled: false },
+      })
+    } else if (part === 'grille') {
+      next = updateOpening(next, ref.wallId, ref.openingId, {
+        guard: normalizeOpeningGuard({ ...opening.guard, enabled: false }),
+      })
+    } else if (part === 'rollerShutter') {
+      if (!opening.rollerShutter) continue
+      next = updateOpening(next, ref.wallId, ref.openingId, {
+        rollerShutter: { ...opening.rollerShutter, enabled: false },
+      })
+    }
+  }
+  commitState(next)
+}
+
 function openingContextItems(wallId: string, openingId: string): MenuItem[] {
   const wall = getWall(state, wallId)
   const opening = wall?.openings.find((o) => o.id === openingId)
@@ -14467,6 +14965,16 @@ function openingContextItems(wallId: string, openingId: string): MenuItem[] {
       copyOpeningsToClipboard([...editor.selectedOpenings])
     },
   })
+  if (elementClipboard?.kind === 'openings' && elementClipboard.items.length > 0) {
+    const srcType = elementClipboard.items[0]!.opening.type
+    items.push({
+      label: `${openingObjectCopyLabel(srcType)} ersetzen`,
+      action: () => {
+        ensureOpeningSelected(wallId, openingId)
+        replaceOpeningsFromElementClipboard(openingRefsForContextAction(wallId, openingId))
+      },
+    })
+  }
   items.push({
     label: 'Stil kopieren',
     action: () => {
@@ -14953,11 +15461,22 @@ function showElementContextMenu(
     return
   }
   if (hit.wallId && hit.openingId) {
+    const part = hit.openingPart ?? 'group'
     const inSel = editor.selectedOpenings.some(
       (ref) => ref.wallId === hit.wallId && ref.openingId === hit.openingId,
     )
-    if (!inSel) selectOpening(hit.wallId, hit.openingId, false)
-    showContextMenu(clientX, clientY, openingContextItems(hit.wallId, hit.openingId))
+    if (!inSel) selectOpening(hit.wallId, hit.openingId, false, part)
+    const slimPart =
+      part !== 'group' &&
+      part !== 'frame' &&
+      part !== 'awning'
+    showContextMenu(
+      clientX,
+      clientY,
+      slimPart
+        ? openingPartContextItems(hit.wallId, hit.openingId, part)
+        : openingContextItems(hit.wallId, hit.openingId),
+    )
     return
   }
   // Öffnungs-Mehrfachauswahl: Treffer auf die Wandfläche nicht zu einer Einzelwand kollabieren.
@@ -14988,6 +15507,19 @@ function showElementContextMenu(
   if (hit.wallId && hit.wallPart === 'label') {
     selectWall(hit.wallId, false, 'label', undefined, hit.labelId)
     showContextMenu(clientX, clientY, labelContextItems(hit.wallId, hit.labelId))
+    return
+  }
+  if (
+    hit.wallId &&
+    (hit.wallPart === 'plinth' || hit.wallPart === 'cornice' || hit.wallPart === 'cladding')
+  ) {
+    const part = hit.wallPart
+    const inSel =
+      editor.selectedWallIds.includes(hit.wallId) &&
+      editor.selectedOpenings.length === 0 &&
+      editor.selectedWallPart === part
+    if (!inSel) selectWall(hit.wallId, false, part)
+    showContextMenu(clientX, clientY, wallPartContextItems(hit.wallId, part))
     return
   }
   if (hit.wallId) {
@@ -15029,30 +15561,13 @@ function labelContextItems(wallId: string, labelId?: string): MenuItem[] {
         copyWallLabelToClipboard(wallId, labelId)
       },
     },
-    {
-      label: 'Stil kopieren',
-      action: () => {
-        selectWall(wallId, false, 'label', undefined, labelId)
-        copyStylesFromWall(wallId)
-      },
-    },
   ]
-  items.push(...elementPasteMenuItems({ wallId }))
   if (labelClipboard) {
     items.push({
       label: 'Schrift einfügen',
       action: () => {
         selectWall(wallId, false, 'label', undefined, labelId)
         pasteWallLabelClipboard(wallId)
-      },
-    })
-  }
-  if (styleClipboard) {
-    items.push({
-      label: 'Stile einfügen…',
-      action: () => {
-        selectWall(wallId, false, 'label', undefined, labelId)
-        askStylePaste({ kind: 'wall', ids: scopedWallIds() })
       },
     })
   }
@@ -16840,7 +17355,6 @@ function makeColorNumberInput(min: number, max: number, step: number): HTMLInput
   return el
 }
 
-
 function hideFinishSelectHost(select: HTMLSelectElement) {
   select.hidden = true
   const prev = select.previousElementSibling
@@ -17987,6 +18501,9 @@ function rebuildPedimentProfileCards(disabled = false) {
     onSelect: (id) => {
       if (!id) commitOpeningPedimentPatch({ enabled: false })
       else commitOpeningPedimentPatch({ enabled: true, profileId: id })
+      if (libraryEditFocusSections?.includes('pediment')) {
+        setPedimentCatalogDepth('profile-deep')
+      }
     },
   })
 }
@@ -18003,6 +18520,9 @@ function rebuildPedimentConsoleCards(disabled = false) {
     onSelect: (id) => {
       if (!id) commitOpeningPedimentPatch({ consoles: { enabled: false, profileId: undefined } })
       else commitOpeningPedimentPatch({ consoles: { enabled: true, profileId: id } })
+      if (libraryEditFocusSections?.includes('pediment')) {
+        setPedimentCatalogDepth('root')
+      }
     },
   })
 }
@@ -18383,6 +18903,10 @@ function placeBayWindowAtWall(presetId: string, clientX: number, clientY: number
 
 function placeBayWindowFromLibrary(presetId: string) {
   if (!canEditActiveBuildingNow()) return
+  if (wallGeomLockedByTouchChrome()) {
+    planStatus.textContent = 'Im Touch-/Fassade-Modus keine Erker platzieren'
+    return
+  }
   const preset = BAY_WINDOW_PRESETS.find((item) => item.id === presetId)
   if (!preset) return
   // Markierte Erker → alle durch anderes Preset austauschen (Mundzentren bleiben).
@@ -18941,7 +19465,10 @@ function syncPedimentControls() {
     if (el.id === 'pediment-enabled') return
     el.disabled = !pediment.enabled
   })
-  if (!pediment.enabled) return
+  if (!pediment.enabled) {
+    syncPedimentCatalogChrome()
+    return
+  }
   for (const btn of pedimentFormCards.querySelectorAll<HTMLButtonElement>('.pediment-form-btn')) {
     btn.classList.toggle('active', btn.dataset.form === pediment.form)
     btn.disabled = false
@@ -19016,6 +19543,7 @@ function syncPedimentControls() {
       onChange: (finish) => commitOpeningPedimentPatch({ finish }),
     },
   )
+  syncPedimentCatalogChrome()
 }
 
 function syncTaperedFieldControls() {
@@ -19485,11 +20013,21 @@ function collectSelectionTabSections(toolbar: HTMLElement): HTMLElement[] {
 
 function applySelectionToolbarTabFilter(toolbar: HTMLElement | null) {
   if (!toolbar) return
+  const focus = libraryEditFocusSections
   for (const section of toolbar.querySelectorAll<HTMLElement>('.settings-section')) {
     if (!settingsSectionVisibleForUi(section)) {
       section.classList.remove('selection-tab-filtered-out')
+      section.classList.remove('library-edit-filtered-out')
       continue
     }
+    if (focus && focus.length > 0) {
+      const id = section.dataset.settingsSection ?? ''
+      const keep = focus.includes(id)
+      section.classList.toggle('library-edit-filtered-out', !keep)
+      section.classList.remove('selection-tab-filtered-out')
+      continue
+    }
+    section.classList.remove('library-edit-filtered-out')
     // Alle sichtbaren Sektionen im Fluss — Register scrollen/sticky, nicht ausfiltern.
     section.classList.remove('selection-tab-filtered-out')
   }
@@ -19554,12 +20092,19 @@ function syncSelectionToolbarTabs() {
     syncStudioPanelColorControls(wall)
   }
 
-  // Bei neuer Auswahl zu Farben scrollen (v2.0.434).
-  if (selectionToolbarTab === 'colors') {
+  // Bei neuer Auswahl zu Farben scrollen (v2.0.434) — nicht im fokussierten Bearbeiten.
+  if (selectionToolbarTab === 'colors' && !libraryEditFocusSections) {
     const colorsSection = tabSections.find((s) => s.dataset.settingsSection === 'colors')
     const panel = colorsSection?.closest('.selection-toolbar-panels') as HTMLElement | null
     if (colorsSection && panel) {
       requestAnimationFrame(() => scrollToSettingsSection(panel, colorsSection, 'auto'))
+    }
+  } else if (libraryEditFocusSections?.[0]) {
+    const focusId = libraryEditFocusSections[0]
+    const focusSection = tabSections.find((s) => s.dataset.settingsSection === focusId)
+    const panel = focusSection?.closest('.selection-toolbar-panels') as HTMLElement | null
+    if (focusSection && panel) {
+      requestAnimationFrame(() => scrollToSettingsSection(panel, focusSection, 'auto'))
     }
   }
 }
@@ -20710,6 +21255,7 @@ function openingPartToSettingsTab(part: OpeningPart): string | null {
 /** Bei jeder Auswahl: rechter Bereich startet auf „Farben“. */
 function queueSelectionToolbarTab(_preferredTab: string | null) {
   if (selectionToolbarTabLocked) return
+  if (libraryEditFocusSections) return
   pendingSelectionToolbarTab = 'colors'
 }
 
@@ -22209,7 +22755,52 @@ pedimentFormCards.addEventListener('click', (event) => {
     ...(pedimentFormIsClosed(form) ? { sideArmWidth: 0, sealedBack: true } : {}),
   })
   syncPedimentControls()
+  if (libraryEditFocusSections?.includes('pediment')) {
+    setPedimentCatalogDepth('root')
+  }
 })
+
+document.querySelector('#pediment-summary-tiles')?.addEventListener('click', (event) => {
+  const tile = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-pediment-summary]')
+  if (!tile) return
+  const kind = tile.dataset.pedimentSummary
+  if (kind === 'form') setPedimentCatalogDepth('form')
+  else if (kind === 'profile') setPedimentCatalogDepth('profile')
+  else if (kind === 'consoles') {
+    pedimentConsolesEnabled.checked = true
+    commitOpeningPedimentPatch({ consoles: { enabled: true } })
+    setPedimentCatalogDepth('consoles')
+    // Konsolen-Sektion einblenden
+    const consolesSection = document.querySelector<HTMLElement>(
+      '[data-settings-section="consoles"]',
+    )
+    consolesSection?.classList.remove('library-edit-filtered-out')
+    const gallery = document.querySelector<HTMLElement>('#pediment-console-gallery')
+    if (gallery) gallery.hidden = false
+    pedimentConsoleOptions.hidden = false
+  }
+})
+
+libraryEditSheetBack?.addEventListener('click', () => {
+  if (pedimentCatalogDepth === 'profile-deep') setPedimentCatalogDepth('profile')
+  else if (pedimentCatalogDepth !== 'root') setPedimentCatalogDepth('root')
+})
+libraryEditSheetClose?.addEventListener('click', () => closeLibraryEdit())
+libraryEditSheet
+  ?.querySelector('[data-library-edit-dismiss]')
+  ?.addEventListener('click', () => closeLibraryEdit())
+
+window.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && libraryEditFocusSections) {
+    if (pedimentCatalogDepth !== 'root') {
+      setPedimentCatalogDepth('root')
+      event.preventDefault()
+      return
+    }
+    closeLibraryEdit()
+  }
+})
+
 pedimentOverhang.addEventListener('change', () => {
   commitOpeningPedimentPatch({
     overhang: snapToGrid(Number(pedimentOverhang.value), STUDIO_MASONRY),
@@ -24015,9 +24606,6 @@ canvas.addEventListener('pointerdown', (event) => {
   if (interiorMeshPick) {
     const meshWall = getWall(state, interiorMeshPick.wallId)
     if (meshWall && isInteriorWall(meshWall)) {
-      // #region agent log
-      fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-N',location:'main.ts:pointerdown',message:'prefer interior mesh pick over ceiling/other',data:{interiorId:meshWall.id,prevKind:hit?.ceiling?'ceiling':hit?.wallId?'wall':hit?'other':'null',prevWallId:hit?.wallId},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       hit = { wallId: meshWall.id, wallPart: 'group' }
     }
   }
@@ -24042,23 +24630,12 @@ canvas.addEventListener('pointerdown', (event) => {
     if (currentView === '3d') controls.enabled = true
     return
   }
-  // Innenwand-Modus VOR Decke/Öffnung — aber bestehende Innenwand → Auswahl, nicht neu platzieren.
+  // Innenwand-Platzierung VOR Decke/Auswahl — auch auf bestehende Innenwände (Ghost = Klick).
+  // Nach Erfolg entwaffnet tryInteriorWallPlaceAtEvent → nächster Klick wählt wieder.
   if (interiorWallPlaceModeActive()) {
-    const pickId = hit?.wallId
-    const pickWall = pickId ? getWall(state, pickId) : undefined
-    if (pickWall && isInteriorWall(pickWall)) {
-      // #region agent log
-      fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-N',location:'main.ts:pointerdown',message:'place mode: select existing interior instead of place',data:{wallId:pickWall.id},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
-      // fall through to normal wall selection below
-    } else {
-      // #region agent log
-      fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-K',location:'main.ts:pointerdown',message:'interior place before ceiling',data:{pickKind:hit?.ceiling?'ceiling':hit?.openingId?'opening':hit?.wallId?'wall':hit?'other':'null',wallId:hit?.wallId,hover:wallSplitHover},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
-      if (tryInteriorWallPlaceAtEvent(event)) {
-        if (currentView === '3d') controls.enabled = true
-        return
-      }
+    if (tryInteriorWallPlaceAtEvent(event)) {
+      if (currentView === '3d') controls.enabled = true
+      return
     }
   }
   if (hit?.ceiling) {
@@ -24089,17 +24666,9 @@ canvas.addEventListener('pointerdown', (event) => {
   }
   // Segment-Modus (Wände-Tab, Breite gewählt, nichts markiert): Klick teilt statt zu wählen.
   if (hit?.wallId && wallSplitModeActive() && tryWallSplitAtEvent(event)) {
-    // #region agent log
-    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-C',location:'main.ts:pointerdown',message:'split path taken',data:{wallId:hit.wallId,armedInteriorWallDepthCm},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     if (currentView === '3d') controls.enabled = true
     return
   }
-  // #region agent log
-  if (armedInteriorWallDepthCm != null && hit?.wallId) {
-    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-B',location:'main.ts:pointerdown',message:'interior armed but place path skipped',data:{wallId:hit.wallId,placeActive:interiorWallPlaceModeActive(),splitActive:wallSplitModeActive(),libraryTab,segmentCm:armedInteriorSegmentCm(),selectedWalls:editor.selectedWallIds.length,selectedOpenings:editor.selectedOpenings.length,view:currentView,canEdit:canEditActiveBuildingNow()},timestamp:Date.now()})}).catch(()=>{});
-  }
-  // #endregion
   if (hit?.openingId && hit.wallId) {
     const wall = getWall(state, hit.wallId)
     const opening = wall?.openings.find(o => o.id === hit.openingId)
@@ -24198,7 +24767,7 @@ canvas.addEventListener('pointerdown', (event) => {
         return
       }
       // Fassaden-Scope: nur Eigenschaften ändern, Geometrie nicht verschieben.
-      if (editScope === 'facade') {
+      if (editScope === 'facade' || wallGeomLockedByTouchChrome()) {
         pointerDown = { x: event.clientX, y: event.clientY, additive, rangeSelect }
         return
       }
@@ -25179,6 +25748,7 @@ function setView(mode: AppView) {
 
   requestAnimationFrame(positionToolbar)
   markViewportDirty()
+  syncTouchChromeLayout()
 }
 
 function syncViewChromeButtons() {
@@ -27577,6 +28147,7 @@ window.addEventListener('resize', () => {
     resizeCanvasView()
   }
   positionToolbar()
+  syncTouchChromeLayout()
 })
 
 if (typeof ResizeObserver !== 'undefined') {
@@ -27645,9 +28216,6 @@ canvas.addEventListener('contextmenu', (event) => {
   if (interiorMeshPick) {
     const meshWall = getWall(state, interiorMeshPick.wallId)
     if (meshWall && isInteriorWall(meshWall)) {
-      // #region agent log
-      fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-CTX',location:'main.ts:contextmenu',message:'prefer interior mesh over pickFromEvent',data:{interiorId:meshWall.id,prevKind:hit?.ceiling?'ceiling':hit?.wallId?'wall':hit?'other':'null',prevWallId:hit?.wallId},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       hit = { wallId: meshWall.id, wallPart: 'group' }
     }
   }
@@ -28052,6 +28620,10 @@ wallResizeGizmos?.addEventListener(
     if (grip === 'front' && gripEl?.classList.contains('is-locked')) return
     if (grip === 'front' && editScope === 'facade') {
       planStatus.textContent = 'Im Fassaden-Modus keine Wand verschieben'
+      return
+    }
+    if (wallGeomLockedByTouchChrome()) {
+      planStatus.textContent = 'Im Touch-/Fassade-Modus keine Wand-Geometrie ändern'
       return
     }
     const wall = selectedStudioWallsForGizmos()[0] ?? selectedStudioWallForResize()
@@ -29199,6 +29771,10 @@ viewport.addEventListener('drop', (event) => {
       return WALL_LENGTH_PRESETS.some((p) => p.id === plain) || WALL_WITH_OPENING_PRESETS.some((p) => p.id === plain) ? plain : ''
     })()
   if (wallPresetId) {
+    if (wallGeomLockedByTouchChrome()) {
+      planStatus.textContent = 'Im Touch-/Fassade-Modus keine Wände platzieren'
+      return
+    }
     const endHand = endPieceHandFromPresetId(wallPresetId)
     if (endHand) {
       dropEndPieceAtClient(event.clientX, event.clientY, endHand)
@@ -29793,6 +30369,7 @@ try {
   applyState(state, editor)
   syncAutoSceneLightsWithSun(true)
   syncLeafModeUi()
+  syncTouchChromeLayout()
   markViewportDirty()
   animate()
   void bootstrapSceneLighting()

@@ -255,6 +255,12 @@ describe('awning relative width + groups', () => {
     // Höhe über Sturz relativ (0 = auf Span-Top)
     expect(group.mountY).toBe(0)
     expect(next.buildings[0]!.walls[0]!.openings.every((o) => !o.awning?.enabled)).toBe(true)
+
+    const wider = updateWallAwning(next, [wall.id], { overhangCm: 32 }, awningId)
+    const g2 = wallAwnings(wider.buildings[0]!.walls[0]!).find((x) => x.id === awningId)!
+    expect(g2.overhangCm).toBe(32)
+    // span 216 + 2×32 = 280
+    expect(g2.widthCm).toBe(280)
   })
 })
 

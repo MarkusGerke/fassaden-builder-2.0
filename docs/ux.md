@@ -53,8 +53,11 @@ OS-artiges Textmenü (`position: fixed`), Untermenü nach rechts per Hover, Esc 
 
 | Ziel | Einträge |
 |---|---|
-| Wand | **Kopieren** (Untermenü: **Objekt** = Geometrie, **Alles** = Geometrie + Stile, **Stile**, oder Paneele / Farben / Gesims / Sockel / …), **Einfügen** (Untermenü: Nach links / Nach rechts / Darüber; Geometrie-Zwischenablage), **Duplizieren** (Untermenü: Nach links / Nach rechts / Darüber / Separiert bei Studio), Löschen, **Stile kopieren**, **Stil als Vorlage speichern…**, **Stil-Vorlage anwenden** (Untermenü gespeicherter Vorlagen), **Stile einfügen…** (wenn Zwischenablage gefüllt; Dialog `#style-paste-dialog`); bei Studio-Wänden **Wand lösen** (wenn verknüpft) und **Wand verknüpfen** (wenn freie Enden anstoßen); bei Blender-Wänden **Ersetzen durch** (Module) |
-| Fenster/Tür | **Fenster/Tür/Ausschnitt kopieren**, **Stil kopieren** (v2.0.223, flach ohne Untermenü), **Markise kopieren** (wenn aktiv, v2.0.429), **Markise einfügen/ersetzen** (eigene Markisen-Zwischenablage), **Eine Markise über Auswahl** (≥2 Öffnungen derselben Wand, v2.0.430), **Öffnung einfügen**, Duplizieren nach links / rechts, **Ersetzen durch** (`WALL_OPENING_PRESETS`, alle ausgewählten, mittelaxial), **Stile einfügen…** (Öffnungsstile aus der Zwischenablage), Löschen |
+| Wand (ganz) | **Kopieren** (Untermenü: **Objekt** = Geometrie, **Alles** = Geometrie + Stile, **Stile**, oder Paneele / Farben / Gesims / Sockel / …), **Einfügen** (Untermenü: Nach links / Nach rechts / Darüber; Geometrie-Zwischenablage), **Duplizieren** (Untermenü: Nach links / Nach rechts / Darüber / Separiert bei Studio), Löschen, **Stile kopieren**, **Stil als Vorlage speichern…**, **Stil-Vorlage anwenden** (Untermenü gespeicherter Vorlagen), **Stile einfügen…** (wenn Zwischenablage gefüllt; Dialog `#style-paste-dialog`); bei Studio-Wänden **Wand lösen** (wenn verknüpft) und **Wand verknüpfen** (wenn freie Enden anstoßen); bei Blender-Wänden **Ersetzen durch** (Module) |
+| Sockel / Gesims / Paneele | **v2.0.445:** schlank — Teil kopieren, Stile einfügen, Zuweisen, Sockel/Gesims entfernen. Kein Drehen, Wand lösen, Öffnung/Schrift/Markise einfügen, Duplizieren der Wand |
+| Fenster/Tür (ganz) | **Fenster/Tür/Ausschnitt kopieren**, **Fenster/Tür ersetzen** (wenn Zwischenablage eine Öffnung hält, v2.0.447), **Stil kopieren** (v2.0.223, flach ohne Untermenü), **Markise kopieren** (wenn aktiv, v2.0.429), **Markise einfügen/ersetzen** (eigene Markisen-Zwischenablage), **Eine Markise über Auswahl** (≥2 Öffnungen derselben Wand, v2.0.430), **Öffnung einfügen**, Duplizieren nach links / rechts, **Ersetzen durch** (`WALL_OPENING_PRESETS`, alle ausgewählten, mittelaxial), **Stile einfügen…** (Öffnungsstile aus der Zwischenablage), Löschen |
+| Öffnungsteil (Verdachung, Bank, Treppe, Gitter, …) | **v2.0.445:** nur passende Kopieren-/Entfernen-/Zuweisen-Einträge (kein Ersetzen durch Fenster-Presets) |
+| Schrift | Ein-/Ausblenden, Duplizieren links/rechts, Schrift kopieren/einfügen, Löschen (**v2.0.445:** kein Wand-/Fassaden-Einfügen) |
 | Markise | Rechtsklick auf Markisen-Mesh: Ein-/Ausblenden, **Markise kopieren** / **einfügen** / **ersetzen**, Gruppe lösen/teilen, Zuweisen (Öffnungs-Markise), Löschen (v2.0.432); Wand-Rechtsklick: **Markise einfügen** an Klickposition |
 | Haus | **Kopieren** / **Haus einfügen**, Duplizieren (Himmelsrichtung), Löschen, … |
 | Etage | Duplizieren, Löschen (letzte Etage gesperrt) |
@@ -146,7 +149,7 @@ Unter **Bibliothek** (sticky unten, Tabs Wände/Fenster/Türen): bei Fenster/Tü
 
 ## Paneel-Zufallsfarben
 
-Unter **Farben → Paneele / Ziegel** (wenn Paneele/Mauerwerk aktiv): **Stein-Kontrast** und **Stein-Häufigkeit** (0–100 %) — für **alle** Muster (Streifen, Ziegel, Klinker …), nicht nur Mauerwerk. **v2.0.265:** Kontrast als −/Zahl/+ (`#studio-tile-variance`), mehr Abstand zur Farbe darüber; Häufigkeit bleibt Slider. Kontrast steuert Hell/Dunkel um die Paneelfarbe (`claddingColor`, HSL). Häufigkeit mappt auf 1…8 Farbstufen, zufällig auf die Steine verteilt. Bei Kontrast 0 ist Häufigkeit ausgeblendet; der erste Kontrast > 0 setzt Häufigkeit auf 40, falls sie noch 0 war. Beim Laden setzt `normalizeStudioPanel` Häufigkeit ebenfalls auf 40, wenn Kontrast > 0 aber Häufigkeit 0 ist. Seed pro Wand-ID + Config + **Rasterposition (x/y)** → stabile Zuordnung auch nach Jamb-Siegel; eine Mesh-Gruppe pro Stufe (`tileColors.ts`, `createStudioPanelGeometriesByColorIndex`). **v0.7.248:** Kontrast wirkt auch in der Gesamtansicht (Medium-LOD baut mehrfarbige Low-Meshes). Felder gehören zum Edit-Scope „Typ“ (`panelConfigKey`).
+Unter **Farben → Paneele / Ziegel** (wenn Paneele/Mauerwerk aktiv): **Stein-Kontrast** und **Stein-Häufigkeit** (0–100 %) — für **alle** Muster (Streifen, Ziegel, Klinker …), nicht nur Mauerwerk. **v2.0.265 / v2.0.447:** Kontrast als −/Zahl/+ (`#studio-tile-variance`), **v2.0.447** inline wie andere Stepper (`toolbar-inline-value`); Häufigkeit bleibt Slider. Kontrast steuert Hell/Dunkel um die Paneelfarbe (`claddingColor`, HSL). Häufigkeit mappt auf 1…8 Farbstufen, zufällig auf die Steine verteilt. Bei Kontrast 0 ist Häufigkeit ausgeblendet; der erste Kontrast > 0 setzt Häufigkeit auf 40, falls sie noch 0 war. Beim Laden setzt `normalizeStudioPanel` Häufigkeit ebenfalls auf 40, wenn Kontrast > 0 aber Häufigkeit 0 ist. Seed pro Wand-ID + Config + **Rasterposition (x/y)** → stabile Zuordnung auch nach Jamb-Siegel; eine Mesh-Gruppe pro Stufe (`tileColors.ts`, `createStudioPanelGeometriesByColorIndex`). **v0.7.248:** Kontrast wirkt auch in der Gesamtansicht (Medium-LOD baut mehrfarbige Low-Meshes). Felder gehören zum Edit-Scope „Typ“ (`panelConfigKey`).
 
 **3D-Steine (v2.0.25):** Reststeine an Öffnungen (Outline nach Clip) nutzen Ear-Clipping-Triangulation — keine Fächer-Diagonalen in der Fensterecke.
 
@@ -237,7 +240,7 @@ Yaw-Konvention überall gleich: **0=N, 90=W, 180=S, 270=O** (gegen Uhrzeigersinn
 - **v2.0.207:** Bibliothek-Paneele und Stil einfügen / Stil-Vorlage nutzen `scopedWallIds()` / `scopedOpeningRefs()` — Scope **Etage** gilt auch dafür
 - Öffnungs-Edits (Profil, Fensterbank, Treppe, Rahmen/Glas, Gründerzeit, **Position/Nudge/Drag**): `editOpeningTargets` / `scopedOpeningRefs()`
 - Beim Verschieben: Delta gilt für alle Scoped-Refs. Türen mit aktiver Treppe behalten Auto-Y aus Stufen.
-- **v2.0.233 / v2.0.234 / v2.0.321 / v2.0.322 / v2.0.323 / v2.0.324 / v2.0.381 / v2.0.412 / v2.0.429:** Nach Edit mit Scope **Auswahl**/**Typ**/**Etage** ggf. `#scope-propagate-offer` — **Typ / Etage / Fassade**, **5-s-Countdown**. **v2.0.324:** Toast-Typ auch bei unterschiedlicher Größe (gleicher Öffnungstyp). **v2.0.323:** Farbe/Profil auf Fenster und Türen. **v2.0.412:** Etage/Fassade auch Einbuchtungen und Konchen (`openingSupportsFrameProfiles`). **v2.0.381:** auch nach **Verschieben**; Gesims/`cornice` als Ganzes; Rechtsklick **Zuweisen für** → Typ/Etage/Fassade (`assignSelectionPropertiesToScope`). **v2.0.429:** Toast propagiert nur **Deltas** in Nested-Opening-Configs (z. B. nur `boxWindow`); **Zuweisen für** bleibt Vollstil.
+- **v2.0.233 / v2.0.234 / v2.0.321 / v2.0.322 / v2.0.323 / v2.0.324 / v2.0.381 / v2.0.412 / v2.0.429 / v2.0.444 / v2.0.446 / v2.0.448:** Nach Edit mit Scope **Auswahl**/**Typ**/**Etage** ggf. `#scope-propagate-offer` — **Typ / Etage / Fassade**, **7-s-Countdown** (`SCOPE_OFFER_SECONDS`, v2.0.448; zuvor 5 s). Der Toast überträgt die **letzte Änderung** (Deltas), inkl. **Auto** (gelöschte Felder, z. B. Bogenhöhe `riseCm`, v2.0.446). **v2.0.324:** Toast-Typ auch bei unterschiedlicher Größe (gleicher Öffnungstyp). **v2.0.323:** Farbe/Profil auf Fenster und Türen. **v2.0.412:** Etage/Fassade auch Einbuchtungen und Konchen (`openingSupportsFrameProfiles`). **v2.0.381:** auch nach **Verschieben**; Gesims/`cornice` als Ganzes; Rechtsklick **Zuweisen für** → Typ/Etage/Fassade (`assignSelectionPropertiesToScope`). **v2.0.429:** Toast propagiert nur **Deltas** in Nested-Opening-Configs (z. B. nur `boxWindow`); **Zuweisen für** bleibt Vollstil. **v2.0.444:** Bogen-Stichmaß bei Zuweisen/Formwechsel → Auto (kein fremdes Absolutmaß).
 
 | Scope | Wände | Öffnungen |
 |---|---|---|
@@ -257,6 +260,26 @@ Gesims-Höhe/Tiefe (cm) unter Etage/Fassade/Typ: letzte Eingabe gilt für alle Z
 Profil-Assign (`#profile-select-cards`, Kanten-Buttons, Draft-Save) und Öffnungs-Modell nutzen `scopedOpeningRefs()` — nicht nur `editor.selectedOpenings`. Rahmenprofil-Kacheln: nur `FRAME_PROFILE_IDS` (Fensterprofil 32×120 / 35×130 / 40×140).
 
 Persistiert als `editScope` / `editFacadeYawFilter` in localStorage (`PersistedAppState`).
+
+---
+
+## Touch-/Fassade-Chrome (v2.0.448)
+
+Layout-Schalter: `html.ui-touch-chrome`, wenn **`(pointer: coarse)` ODER Viewport ≤ 900 px ODER Ansicht Fassade (`present`)**. Desktop-**3D** bleibt das klassische Drei-Spalten-Layout ohne Bottom-Sheet.
+
+| Verhalten | Details |
+|---|---|
+| Ansicht | Auf Touch/schmal → **Fassade** erzwungen (`#view-btn-present`) |
+| HUD aus | 2D/3D/Oben/Export, Farbe/Zeichnung, Vorschau/Render, Himmel/Neutral, Licht, linke Ebenen (`#ui`), Kompass, Nav-Hilfe, **Gültig für** (`#edit-scope-bar`) |
+| Toast | `#scope-propagate-offer` bleibt (über dem Sheet, 7 s) |
+| Bibliothek-Tabs | horizontal swipebar (`overflow-x`, `scroll-snap`) |
+| Wand-Geometrie | kein Place/DnD/Resize/Move/Innenwand/Erker-Platzieren; Styling (Farben, Paneele, Gesims, Öffnungen) bleibt |
+| Bearbeiten | Aktive Bibliothek-Karte: Titel → **Bearbeiten**; Thumb wendet weiter an |
+| Touch/Fassade | Bottom-Sheet portiert `#selection-toolbar-panels` (keine Kopie); Bibliothek gleitet nach unten |
+| Desktop-3D | Rechts nur der per Bearbeiten gewählte Settings-Block (`libraryEditFocusSections`); kein Auto-Tab Farben |
+| Verdachung | Summary-Kacheln Form/Profil/Konsole → Galerie → Profil-Maße eine Ebene tiefer |
+
+Implementierung: `src/ui/touchChrome.ts`, Wiring in `src/main.ts` / `src/style.css` / `index.html` (`#library-edit-sheet`).
 
 ---
 
@@ -557,7 +580,7 @@ Gelb hinterlegter Hinweiskasten (`<p class="toolbar-infobox" role="note">`) dire
 - Andocken: Front-Flush (`yawDeg`/`panelFlip`); Dialog **Wände verbinden** mit drei Optionen — **Auswahl auf Nachbarn**, **Nachbarn auf Auswahl**, **Nur verbinden** (Paneel, Farben, Gesims, Sockel, `panelFlip`; keine Öffnungen). **Ablegen am Nachbar:** Verbindung entsteht sofort (auch die bisher freie Nachbarwand wird verknüpft); Abbrechen oder Esc überspringt nur die Stilübernahme. **Freie Wand anschieben:** Dialog vor der Verknüpfung; Abbrechen lässt sie frei.
 - **Verknüpfung / Loslösen:** `Wall.planLinked` (`false` = frei). **Wand lösen** (Toolbar `#studio-wall-unlink` oder Rechtsklick) setzt `planLinked: false`, entfernt `groupId` und Gehrung — die Wand ist danach **unabhängig** verschiebbar (nur sie selbst, Nachbarn bleiben). Verknüpfte Wände mit nicht mitselektierten Nachbarn lassen sich erst nach Loslösen **bewegen/drehen**; **Strecken** (Maße-Breite, Links/Rechts ±, 3D-Greifer) bleibt erlaubt und passt Nachbarn an der Stoßecke an (`stretchStudioFacade`). Beim erneuten Anstoßen Dialog wie beim Andocken, oder Rechtsklick **Wand verknüpfen**.
 - **Verschieben:** Plan-Navigieren sowie Drag auf Wand/Paneel in 3D/2D (`offsetStudioWallsByGrid`); Öffnungen/Gesims/Sockel/Treppen bleiben an der Wand. Wände mit gleichem Fußabdriff auf **allen Etagen** ziehen mit (**Shift** = nur die aktuelle Etage). Grundrisse/Decke folgen über `syncFloorPlansFromWalls`. Verknüpfte Einzelwände rasten nicht aus dem Grundriss — Statuszeile **Zuerst Wand lösen (Rechtsklick)**. **v2.0.140 — Front-Pfeil:** verschiebt nur die Auswahl (+ kollinear verknüpfte Flucht, Etagen), **nicht** den ganzen Grundriss-Ring (`expandWallMoveIds(..., { planLinked: false })` + `offsetStudioWallsAlongFront`). **90°-Nachbarn** am Stoß werden länger/kürzer; die **Gegenseite** der Nachbarwand bleibt (v2.0.191). Während des Ziehens: **orange Andockkappen** an Nachbar-Wandseiten (`updateWallMoveDockHighlight`, auch im Grundriss) — auf der **Etage der gezogenen Wand**, pro Ende nur die **nächste** Fläche (keine höheren Etagen). Raster **8 cm** (`PLAN_GRID` / `WALL_MOVE_SNAP`, v2.0.221; vorher 48); Endpunkte und Längen immer auf diesem Raster — auch nach Magnet-Andocken. Endpunkte in ±48 cm springen magnetisch an Nachbarenden. Kollision belässt die letzte gültige Position (kein Rücksprung zum Start). **v0.7.159:** Ohne Paneele/Mauerwerk keine sichtbaren Seitenfugen an kollinear angedockten Wänden (`createStudioWallGeometry`).
-- **Drehen:** **90°** nur per Rechtsklick auf die Wand → **Drehen** → im/gegen Uhrzeigersinn. **Feindrehung** in den Wand-Einstellungen (`#studio-wall-yaw`, 1°-Schritte, nur Eingabefeld). Mehrfachauswahl bzw. Gruppen drehen gemeinsam um einen Schwerpunkt.
+- **Drehen:** **90°** nur per Rechtsklick auf die Wand → **Drehen** → im/gegen Uhrzeigersinn. **Feindrehung** (`#studio-wall-yaw`) ist in den Wand-Maßen ausgeblendet (v2.0.447); 1°-Eingabe bleibt intern verdrahtet. Mehrfachauswahl bzw. Gruppen drehen gemeinsam um einen Schwerpunkt.
 - **Maße (Gebäude):** Tab **Maße** — **Breite** `#studio-wall-width` (live beim Ziehen), darüber Segment `#studio-wall-width-dir-left|right` (**nach links** / **nach rechts**, Default rechts) für die Maß-Eingabe; Geschosshöhe `#studio-wall-height` (Standard **448 cm**, Schritt 16) und Wandstärke `#studio-wall-depth` (8–80 cm, Schritt 8). Die **Außenkante** bleibt stehen; Innenseite, Gehrung und Decke folgen der neuen Stärke. Decke: 0 cm Abstand zur Innenwand, Abstand zur Außenwand = Wandstärke. **v2.0.212:** Breite und Links/Rechts ± strecken auch bei `planLinked` (wie 3D-Greifer über `stretchStudioFacade`); „Zuerst Wand lösen“ gilt nur noch für Verschieben/Drehen.
 - **Duplizieren:** Wände und Öffnungen mit **48 cm** Kante-zu-Kante-Abstand (`DUPLICATE_GAP_CM`). **Kellerfenster (v2.0.391):** **144 cm** (`BASEMENT_DUPLICATE_OPENING_GAP_CM`).
 - **Leere Öffnung:** Bibliothek Fenster → **Keines (leer)** (`opening-empty-96`) bzw. Typ **Keines (leer)** — Loch ohne Fenster/Tür-Chrome (`type: 'cutout'`, `fill.mode: 'opening'`).
@@ -586,7 +609,7 @@ Datenfelder bleiben (`endBossStart` / `endBossEnd` …). **v2.0.265:** Der recht
 
 ### Wand-Vorschau Bibliothek (v0.7.58)
 
-Karten Tab **Wände**: SVG ohne cm-Zahl über der Box; Thumb füllt die Höhe, Seitenverhältnis **Länge : 448** (`WALL_HEIGHT`). Klasse `.opening-library-thumb-wall`. **v2.0.437–440:** **Innenwand 24/36/48** — von innen auf Außen- **und** Innenwände; 90°-Stummel; Front-Pfeil + Länge ±; Shift 90°/45° inkl. T/Kreuz von Ecken; Andocken an Außenwand-**Innenseite**; Rechtsklick Löschen/Ausblenden; kein Höhen-Greifer/Sockel; Grundriss zeichnen bleibt. Tab **Farben**: Palette Naturstein/Backstein/… mit Kategorie-Dropdown und Vorauswahl je Objekt; Klick wendet auf die aktuelle Auswahl an (inkl. Markise, Rollladen, Bänke, …).
+Karten Tab **Wände**: SVG ohne cm-Zahl über der Box; Thumb füllt die Höhe, Seitenverhältnis **Länge : 448** (`WALL_HEIGHT`). Klasse `.opening-library-thumb-wall`. **v2.0.437–441:** **Innenwand 24/36/48** — von innen auf Außen- **und** Innenwände; Mittelachse an Host-Fläche, Dicke ±½; Ghost = Klick; Front-Pfeil + Länge ±; Shift 90°/45° inkl. T/Kreuz; Andocken an Außen-Innenseite; Rechtsklick Löschen/Ausblenden; kein Höhen-Greifer/Sockel. Tab **Farben**: Palette Naturstein/Backstein/… mit Kategorie-Dropdown und Vorauswahl je Objekt; Klick wendet auf die aktuelle Auswahl an (inkl. Markise, Rollladen, Bänke, …).
 
 ### Paneele in der Bibliothek (v0.7.55)
 
@@ -898,7 +921,7 @@ Andocken, lösen, Etage darüber, Ghost-Platzierung: Abschnitte oben („Wände 
 
 - **Fugenfarbe:** `panel.jointColor`, Default `#c8c0b8`; UI `#joint-color-swatches-studio` sobald Paneele an; Tiefe-Block nur bei `joint > 0`.
 - **Schrift speichern:** ändert nur Text/`enabled` (Position bleibt). Drag/X/Y auf 8-cm-Raster. Schriften: [fonts.md](fonts.md).
-- **Schrift Rechtsklick (v2.0.236):** wie Öffnung — Ein-/Ausblenden, Duplizieren nach links/rechts, Schrift kopieren, Stil kopieren, Einfügen, Löschen (`labelContextItems`).
+- **Schrift Rechtsklick (v2.0.236 / v2.0.445):** Ein-/Ausblenden, Duplizieren nach links/rechts, Schrift kopieren/einfügen, Löschen (`labelContextItems`). Kein Wand-/Fassaden-Stil-Einfügen.
 - **Bibliothek-DnD:** Ghost 50 % opacity; Raster an Dock-Zielen; kollinear → `mergeCollinearDockedWalls`.
 - **3D-Pick:** nächste Fassadenebene gewinnt (keine Auswahl durch Öffnung hindurch). **v2.0.232:** Decke/Boden nur wenn klar näher als Wand/Paneel; Schatten-Okkluder nicht pickbar — sonst ab 2. OG keine Wandwahl. **v2.0.236:** Auswahl auf `pointerdown` bleibt — `pointerup` darf sie nicht mit Decken-Nachpick verwerfen (`pointerDownDidSelect`). Cursor Pfeil; Greifer nur an `.wall-resize-grip`.
 - **Glas-Default:** neue Öffnungen `glassMode: 'tint'`.

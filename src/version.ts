@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.440'
+export const APP_VERSION = '2.0.448'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,80 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.448',
+    date: '2026-09-13',
+    title: 'Touch-/Fassade-Chrome und fokussierter Inspector',
+    changes: [
+      'Touch, schmales Fenster oder Ansicht Fassade: schlankes Chrome, Bibliothek mit Bearbeiten und Bottom-Sheet',
+      'Keine Wand-Geometrie in diesem Modus — Farben, Paneele und Öffnungsstile bleiben',
+      'Desktop-3D: Bearbeiten zeigt rechts nur den gewählten Einstellungsblock; Toast-Countdown 7 s',
+    ],
+  },
+  {
+    version: '2.0.447',
+    date: '2026-09-13',
+    title: 'Fenster ersetzen, Feindrehung weg, Stein-Kontrast inline',
+    changes: [
+      'Rechtsklick: kopiertes Fenster/Tür als „… ersetzen“ auf ein anderes Fenster legen (mittelaxial)',
+      'Wand-Einstellungen: Position/Feindrehung ausgeblendet (90°-Drehen bleibt per Rechtsklick)',
+      'Stein-Kontrast: Stepper in einer Zeile wie die anderen Felder',
+    ],
+  },
+  {
+    version: '2.0.446',
+    date: '2026-09-13',
+    title: 'Toast Typ/Etage/Fassade: Auto-Bogenhöhe wird übernommen',
+    changes: [
+      'Nach „Bogenhöhe → Auto“ überträgt der Toast Typ/Etage/Fassade die letzte Änderung (Auto) auf die anderen Öffnungen',
+    ],
+  },
+  {
+    version: '2.0.445',
+    date: '2026-09-13',
+    title: 'Rechtsklick: Menüs passend zum Teil',
+    changes: [
+      'Sockel, Gesims und Paneele: schlankes Menü (kopieren / zuweisen / entfernen) — kein Drehen, Wand lösen oder Öffnung einfügen',
+      'Öffnungsteile (Verdachung, Bank, Treppe, …): nur passende Stil- und Entfernen-Aktionen',
+      'Schrift: kein Wand-/Fassaden-Einfügen mehr im Schrift-Menü',
+    ],
+  },
+  {
+    version: '2.0.444',
+    date: '2026-09-13',
+    title: 'Bogen: Stichmaß Auto beim Zuweisen auf Etage/Typ/Fassade',
+    changes: [
+      '„Zuweisen für“ und Formwechsel im Scope-Toast: manuelles Stichmaß wird nicht mehr absolut auf andere Öffnungen kopiert — Auto je Fensterbreite',
+    ],
+  },
+  {
+    version: '2.0.443',
+    date: '2026-09-13',
+    title: 'Fallarm: Seitenüberstand wie bei den anderen Typen',
+    changes: [
+      'Seitenüberstand auch bei Fallarm (Öffnung und Gruppen-Markise) — Breite = Span/Öffnung + 2×Überstand',
+    ],
+  },
+  {
+    version: '2.0.442',
+    date: '2026-09-13',
+    title: 'Erker-Rock, Markisolette-Stoff, Gruppen-Überstand',
+    changes: [
+      'Erker nach unten: Verlängerung in Wandfarbe (ohne Gegenlicht-Schwarz)',
+      'Markisolette: Fensterprofil schimmert nicht mehr durch den Stoff',
+      'Gruppen-Markise: Seitenüberstand wieder sichtbar und wirksam',
+    ],
+  },
+  {
+    version: '2.0.441',
+    date: '2026-09-13',
+    title: 'Innenwand Phase A: Mittelachse ±½, Platzierung auf Innenwände',
+    changes: [
+      'Klick im Platzier-Modus setzt auch auf bestehende Innenwände (Ghost und Klick gleich)',
+      'Neue Innenwand: Mittelachse dockt an Host-Fläche, Dicke je ±½ der Stärke',
+      'Bestehende Häuser unverändert (kein Origin-Rewrite); Außenwand-Asymmetrie folgt in Phase B',
+    ],
+  },
   {
     version: '2.0.440',
     date: '2026-09-13',

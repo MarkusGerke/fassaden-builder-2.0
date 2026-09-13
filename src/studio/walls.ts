@@ -945,9 +945,6 @@ function sealInteriorEndsToForeignFaces(walls: Wall[]): Wall[] {
       { ...posed, planLinked: true },
       { keepOpenings: true },
     )
-    // #region agent log
-    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-DOCK',location:'walls.ts:sealInteriorEndsToForeignFaces',message:'seal interior end to face',data:{wallId:best.wallId,end:best.end,dist:best.dist,meet:best.meet},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     next = next.map((item) => (item.id === sealed.id ? sealed : item))
     const after = next.find((item) => item.id === sealed.id)!
     const afterPt = best.end === 'start' ? wallStartPoint(after) : wallEndPoint(after)
@@ -1304,9 +1301,6 @@ export function attachAngledWallFromEnd(
       walls = replaceSplitWall(walls, close.split.wallId, close.split.atCm)
     }
   }
-  // #region agent log
-  fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-O',location:'walls.ts:attachAngledWallFromEnd',message:'branch attach',data:{sourceId,sourceRole:source.role,newRole:wall.role,hasMeet:Boolean(close?.meet),hasSplit:Boolean(close?.split),splitOnInterior:Boolean(close?.split && walls.some((w)=>w.id===close.split?.wallId && w.role==='interior')),width,yawDeg},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   return updateBuilding(state, building.id, (b) => ({
     ...b,
     walls,
@@ -2379,9 +2373,12 @@ export function createInteriorWallFromPlanSegment(opts: {
 }
 
 /**
- * Innenwand-Stummel: an Host-Fläche, 90° davon weg (Länge = `lengthCm`).
- * Host bleibt ungeteilt. `localXCm` = Anker entlang der Host-Achse (Mitte der Stärke).
- * `fromFace`: welche Host-Seite angeklickt wurde (Außenwände: innen; Innenwände: beide).
+ * Innenwand-Stummel (Phase A): Mittelachse der neuen Wand dockt an die Host-Fläche,
+ * Dicke je ±½ `depthCm` entlang der Host-Richtung; Länge 90° von der Fläche weg.
+ * Host bleibt ungeteilt. `localXCm` = Anker der Mittelachse entlang der Host-Achse.
+ * Persistierter `origin` bleibt die Flanke (panelFlip true), wie bei Plan-Segmenten —
+ * geometrische Mitte = origin + perp·(depth/2). Alt-Innenwände werden nicht umgeschrieben.
+ * `fromFace`: Außenwände nur innen; Innenwände beide Seiten.
  */
 export function createInteriorWallFromHostNormal(opts: {
   host: Wall
@@ -2403,33 +2400,38 @@ export function createInteriorWallFromHostNormal(opts: {
   const hostOut = facadeOutward(hostYaw, hostFlip)
   const intoRoom = { x: -hostOut.x, z: -hostOut.z }
   const fromFace = opts.fromFace ?? 'inner'
-  // Wachstum von der getroffenen Fläche weg.
+  // Wachstum von der getroffenen Fläche weg (Mittelachse zeigt in diese Richtung).
   const yawDeg =
     fromFace === 'inner'
       ? inwardYawDeg(hostYaw, hostFlip)
       : normalizeYawDeg(inwardYawDeg(hostYaw, hostFlip) + 180)
   const along = wallAlongDelta(yawDeg, 1)
+  // Dicke ±½ senkrecht zur Längsachse (= entlang Host bei 90°).
   const perp = { x: -along.z, z: along.x }
 
   const hostAlong = wallAlongDelta(hostYaw, 1)
   const hostStart = wallStartPoint(host)
-  let ax = hostStart.x + hostAlong.x * opts.localXCm
-  let az = hostStart.z + hostAlong.z * opts.localXCm
+  // Mittelachsen-Start auf der Host-Fläche.
+  let midX = hostStart.x + hostAlong.x * opts.localXCm
+  let midZ = hostStart.z + hostAlong.z * opts.localXCm
   const d = host.depth ?? WALL_DEPTH
   if (fromFace === 'inner') {
     // panelFlip true: Plan = Außenkante → Innenseite um depth nach innen.
     if (hostFlip) {
-      ax += intoRoom.x * d
-      az += intoRoom.z * d
+      midX += intoRoom.x * d
+      midZ += intoRoom.z * d
     }
-  } else if (!hostFlip) {
+  } else if (hostFlip) {
+    // Außenseite = Planlinie (kein Versatz).
+  } else {
     // panelFlip false: Plan = Innenkante → Außenseite um depth nach außen.
-    ax += hostOut.x * d
-    az += hostOut.z * d
+    midX += hostOut.x * d
+    midZ += hostOut.z * d
   }
 
-  const originX = ax - perp.x * half
-  const originZ = az - perp.z * half
+  // Origin = Flanke; Mittelachse = origin + perp·half liegt auf (midX, midZ).
+  const originX = midX - perp.x * half
+  const originZ = midZ - perp.z * half
   return normalizeStudioWall({
     ...createStudioWall(originX, host.y),
     id: createId(),
@@ -2455,6 +2457,25 @@ export function createInteriorWallFromHostNormal(opts: {
     openings: [],
     profiles: [],
   })
+}
+
+/** Mittelachsen-Punkt einer Studio-Wand (panelFlip true: Plan + Inward·depth/2). */
+export function wallThicknessCenterlinePoint(
+  wall: Wall,
+  alongCm: number,
+): { x: number; z: number } {
+  const start = wallStartPoint(wall)
+  const along = wallAlongDelta(wall.yawDeg ?? 0, alongCm)
+  const flip = wall.panelFlip ?? true
+  const out = facadeOutward(wall.yawDeg ?? 0, flip)
+  const inward = { x: -out.x, z: -out.z }
+  const half = (wall.depth ?? WALL_DEPTH) / 2
+  // panelFlip true: Plan = Außenflanke → Mitte nach innen; false: Plan = Innenflanke → Mitte nach außen.
+  const towardMid = flip ? inward : out
+  return {
+    x: start.x + along.x + towardMid.x * half,
+    z: start.z + along.z + towardMid.z * half,
+  }
 }
 
 /** @deprecated Nutze createInteriorWallFromHostNormal (90° in den Raum). */

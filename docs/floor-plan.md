@@ -17,7 +17,7 @@ interface FloorPlan {
   hidden?: boolean
 }
 
-/** v2.0.440: Andocken an Außen-Innenseite (`dockSegmentsForInteriorMeet` / `sealInteriorEndsToForeignFaces`); Platzierung auch auf Innenwänden (`fromFace`). v2.0.436: Innenwand an Innenseite (`createInteriorWallFromHostNormal`), Host ungeteilt; Extrude nach innen; Grundriss zeichnen bleibt. v2.0.433/434: `Wall.role: 'interior'`, Bibliothek 24/36/48. */
+/** v2.0.441 Phase A: Innenwand-Mittelachse dockt an Host-Fläche (±½ Dicke); Platzierung auch auf Innenwänden (Ghost=`fromFace`). Alt-Origins unverändert. v2.0.440: Andocken an Außen-Innenseite (`dockSegmentsForInteriorMeet` / `sealInteriorEndsToForeignFaces`). v2.0.436: Host ungeteilt; Extrude nach innen. v2.0.433/434: `Wall.role: 'interior'`, Bibliothek 24/36/48. */
 
 interface PlanNode {
   id: string
