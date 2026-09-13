@@ -44,6 +44,11 @@ import { defaultOpeningStairs, syncStairsToDoorWidth } from '../studio/stairs'
 import { normalizeSceneLightState } from '../scene/sceneLights'
 import { normalizeGroundLeafState } from '../scene/groundLeaves'
 import { defaultOpeningRollerShutter, normalizeOpeningRollerShutter } from '../studio/rollerShutter'
+import {
+  defaultAwningConfig,
+  defaultOpeningAwningWidth,
+  normalizeAwningConfig,
+} from '../studio/awning'
 import { gruenderzeitConfigForOpening } from '../windows/gruenderzeit'
 import {
   normalizeOpeningDoor,
@@ -193,6 +198,13 @@ export function hydrateOpening(
     next.panelWrappedReveal = normalizePanelWrappedReveal(next.panelWrappedReveal)
     // Cutout-Maske = rect/Stadion; Rest-Bogen würde Profilrahmen löchern (v2.0.406).
     next.arch = undefined
+    next.awning = normalizeAwningConfig(
+      next.awning ??
+        defaultAwningConfig({
+          enabled: false,
+          widthCm: defaultOpeningAwningWidth(next),
+        }),
+    )
     next.hidden = Boolean(next.hidden)
     next.needsReview =
       typeof next.needsReview === 'string' && next.needsReview.trim()
@@ -221,6 +233,13 @@ export function hydrateOpening(
     if (next.sillInner) {
       next.sillInner = { ...next.sillInner, enabled: false }
     }
+    next.awning = normalizeAwningConfig(
+      next.awning ??
+        defaultAwningConfig({
+          enabled: false,
+          widthCm: defaultOpeningAwningWidth(next),
+        }),
+    )
     next.hidden = Boolean(next.hidden)
     next.needsReview =
       typeof next.needsReview === 'string' && next.needsReview.trim()
@@ -264,6 +283,13 @@ export function hydrateOpening(
     )
     next.rollerShutter = normalizeOpeningRollerShutter(
       next.rollerShutter ?? defaultOpeningRollerShutter(),
+    )
+    next.awning = normalizeAwningConfig(
+      next.awning ??
+        defaultAwningConfig({
+          enabled: false,
+          widthCm: defaultOpeningAwningWidth(next),
+        }),
     )
     next.guard = normalizeOpeningGuard(next.guard)
     next.interiorShade = normalizeOpeningInteriorShade(next.interiorShade)
@@ -399,6 +425,9 @@ export function hydrateWall(wall: Wall): Wall {
     trimBands: cloned.trimBands?.map((band) => normalizeWallTrimBand(band)),
     labels,
     label,
+    awnings: Array.isArray(cloned.awnings)
+      ? cloned.awnings.map((item) => normalizeAwningConfig(item))
+      : [],
     storeyIndex,
     openings,
     profiles: cloned.profiles.map((p) => ({ ...p })),

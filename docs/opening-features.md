@@ -1,6 +1,6 @@
 # Öffnungs-Features: Bogen, Nischen, Bänke, Verdachung, Treppe, Keller
 
-Dekor und Öffnungsarten an `Opening`. **Fenster-/Türteilung (Gründerzeit):** [windows-doors.md](windows-doors.md). Flügel-Kurven: [opening-motion.md](opening-motion.md). Rollläden: [roller-shutter.md](roller-shutter.md). Clip/Geometrie: [panel-geometry.md](panel-geometry.md). UI-Navigation: [ux.md](ux.md).
+Dekor und Öffnungsarten an `Opening`. **Fenster-/Türteilung (Gründerzeit):** [windows-doors.md](windows-doors.md). Flügel-Kurven: [opening-motion.md](opening-motion.md). Rollläden: [roller-shutter.md](roller-shutter.md). Markisen: [awnings.md](awnings.md). Clip/Geometrie: [panel-geometry.md](panel-geometry.md). UI-Navigation: [ux.md](ux.md).
 
 ## Typen
 

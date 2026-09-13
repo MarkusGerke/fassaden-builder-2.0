@@ -660,10 +660,11 @@ Checkbox **Abwechselnde Ebenen** (`panel.alternateFloors`): nur bei Muster **Str
 
 Unter **Szene → Animation** (v2.0.130 / Hinweise v2.0.209 / **v2.0.254**):
 
-- **Animationen pausieren** — Master-Stop für Blaulicht-Blinken, Fenster-/Tür-Abspielen, Rollläden-Lauf und (falls aktiv) den Tageszyklus. **Pause aus allein startet die Sonne nicht.** Einmaliges **Abspielen** läuft trotzdem.
+- **Animationen pausieren** — Master-Stop für Blaulicht-Blinken, Fenster-/Tür-Abspielen, Rollläden-Lauf, Markisen und (falls aktiv) den Tageszyklus sowie Bühnen-Wind. **Pause aus allein startet die Sonne nicht.** Einmaliges **Abspielen** läuft trotzdem.
 - **Tageszyklus** — muss **explizit an** sein: Uhrzeit und Sonne laufen dann kontinuierlich beschleunigt (`dayCycleEnabled`, Default an). Ist der Haken aus (z. B. nach Persistenz oder Licht-Modus), bleibt die Uhrzeit stehen — auch wenn Animationen nicht pausiert sind. **v2.0.334:** Manueller Sonnenwinkel, Sonnenlicht, Schatten-Weichheit oder Farbtemperatur schaltet den Tageszyklus automatisch aus — sonst überschreibt jeder Frame den Azimut aus der Uhrzeit (wirkte wie „Slider geht nicht“).
 - **Tagesdauer (Min.)** — Echtzeit-Minuten für einen Szene-Tag (`dayCycleRealMinutes`, Default **60** = 1 Stunde). Bereich 1…1440. Beispiel: 60 Min. Echtzeit ≈ 24 h Szenezeit.
-- **Lichter mit Sonne** — bei Sonnenuntergang Bibliotheks-Lichter an, bei Sonnenaufgang aus (Default an; kein Undo-Eintrag; soft mit Fade, v2.0.150). **Uhrzeiten** pro Licht parallel (`desiredOn = Sonne-Nacht || Schedule`). Öffnungen/Rollläden nur Schedule. **v2.0.183:** Manuelles „Alle ausblenden“ / „Alle Lichter an“ setzt einen Hold gegen Auto/Schedule; „Lichter mit Sonne“ wieder anhaken hebt den Hold auf.
+- **Wind** (v2.0.421) — Intensität windstill→stürmisch für Markisenstoffe; Default leichter Zug. Details: [wind.md](wind.md).
+- **Lichter mit Sonne** — bei Sonnenuntergang Bibliotheks-Lichter an, bei Sonnenaufgang aus (Default an; kein Undo-Eintrag; soft mit Fade, v2.0.150). **Uhrzeiten** pro Licht parallel (`desiredOn = Sonne-Nacht || Schedule`). Öffnungen/Rollläden/Markisen nur Schedule. **v2.0.183:** Manuelles „Alle ausblenden“ / „Alle Lichter an“ setzt einen Hold gegen Auto/Schedule; „Lichter mit Sonne“ wieder anhaken hebt den Hold auf.
 - **Szene abspielen (v2.0.254 / v2.0.255):** einmalige Animation mit **Dauer (5…120 s)** und Modus:
   - **Tagesverlauf** — Von/Bis-Uhrzeit; Sonne folgt dem Berlin-Sonnenstand (Winkel, Intensität, Weichheit, Farbtemperatur).
   - **Licht** — beliebige Kanäle aus dem Licht-Tab inkl. Bloom (Sonnenwinkel, Sonnenlicht, Umgebung, Schatten-Kontrast/-Weichheit, Farbtemperatur, Bloom-Schwelle/-Stärke/-Radius/-Belichtung) mit je Von/Bis. Buttons **Aktuell → Von/Bis**. Während des Abspielens pausiert der Tageszyklus.
@@ -800,6 +801,10 @@ Ruhewinkel: Slider **Einzeln öffnen** (`leafOpenDeg` / `transomOpenDeg`) **oben
 ### Rollläden (v0.7.177)
 
 Reiter **Rollläden** bei Fenster/Tür **immer** sichtbar; Checkbox standardmäßig aus. Nur Lamellen, kein Kasten und keine Schienen. Höhe `drop` 0…1; freier Spalt bis die unterste Lamelle die Bank berührt, danach Stapel; volle Laibungsbreite; lichtdicht. Animation: Dauer in **Sekunden**; Vorlagen **Ein Zug** / **Linear** / **Kabelzug** mit editierbarer Kurve; Abspielen **Rollo schließen** / **Rollo öffnen** / Zyklus untereinander volle Breite. Details: [roller-shutter.md](roller-shutter.md).
+
+### Markisen (v2.0.421 / v2.0.426)
+
+Reiter **Markise** an Öffnungen und Wand. Bibliothek startet mit **Keine**. Typen: **Gelenkarm** (zwei Glieder fester Länge, Ellbogen klappt zur Mitte), **Fallarm** (ein starrer Arm an Wandkonsole „Konsole unter Kasten“, fällt auf Kreisbogen; Konsole min. 8 cm neben Öffnung/Profil), **Markisolette** (Führungsschienen, senkrecht bis „Senkrecht“, dann schwenkt der Arm um das Schienenende). Typwechsel setzt typgerechte Maße; ungenutzte Felder (Ausladung beim Fallarm, Konsole bei der Markisolette) sind ausgeblendet. Neigung, Volant, Stoff grau über dem Gestänge. Details: [awnings.md](awnings.md). Wind: [wind.md](wind.md).
 
 ---
 

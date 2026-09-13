@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.420'
+export const APP_VERSION = '2.0.426'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,67 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.426',
+    date: '2026-09-13',
+    title: 'Markise: Fallarm starr, Gelenkarm-IK, Markisolette',
+    changes: [
+      'Fallarm: ein starrer Arm ohne Gelenk, fällt auf Kreisbogen um die Wandkonsole („Konsole unter Kasten“)',
+      'Gelenkarm: Glieder fester Länge, Ellbogen klappt je nach Ausfahrt zur Mitte ein',
+      'Markisolette nach realer Mechanik: senkrecht in Führungsschienen, Arm schwenkt um das Schienenende (Blockadeelement)',
+      'Typwechsel setzt typgerechte Maße; ungenutzte Felder ausgeblendet',
+    ],
+  },
+  {
+    version: '2.0.425',
+    date: '2026-09-13',
+    title: 'Markise: Keine, Scharnier, Halterung',
+    changes: [
+      'Bibliothek Markisen startet mit „Keine“',
+      'Fallarme mit fester Länge und Scharnier am Ausfallprofil (Länge bleibt beim Ein-/Ausfahren)',
+      'Wandhalterung an der Fassade, Abstand zur Öffnung/zum Profil min. 8 cm',
+      'Stoff und Volant liegen über dem Gestänge, ohne Durchscheinen',
+    ],
+  },
+  {
+    version: '2.0.424',
+    date: '2026-09-13',
+    title: 'Markise: Volant, Neigung, Markisolette',
+    changes: [
+      'Stoff über dem Gestänge ohne Durchscheinen; Gelenkarme klappen nach innen',
+      'Stoff standardmäßig grau; Gelenkarm-Breite = Öffnung + 2×16 cm Seitenüberstand',
+      'Neigung einstellbar; Fallarm-Befestigung positionierbar; Volant senkrecht',
+      'Neuer Typ Markisolette (senkrecht + ausgestellt)',
+    ],
+  },
+  {
+    version: '2.0.423',
+    date: '2026-09-13',
+    title: 'Markise Pose und vorderer Überhang',
+    changes: [
+      'Fallarm fährt nach vorne unten (nicht mehr nach oben)',
+      'Gelenkarm-Gestänge liegt unter dem Stoff',
+      'Vorderer Stoff-Überhang (Volant) einstellbar 0…48 cm, Default 16',
+    ],
+  },
+  {
+    version: '2.0.422',
+    date: '2026-09-13',
+    title: 'Markise fährt nach außen',
+    changes: [
+      'Markisen fahren vor die Fassade aus (nicht mehr nach innen)',
+    ],
+  },
+  {
+    version: '2.0.421',
+    date: '2026-09-13',
+    title: 'Markisen und Bühnen-Wind',
+    changes: [
+      'Gelenkarm- und Fallarm-Markisen an Fenstern/Türen/Öffnungen und frei an der Wand',
+      'Ausfahrt 0…100 % mit Gestänge unter dem Stoff und Ein-/Ausfahr-Animation',
+      'Bühnen-Wind einstellbar (windstill bis stürmisch) für Markisenstoffe',
+    ],
+  },
   {
     version: '2.0.420',
     date: '2026-09-13',

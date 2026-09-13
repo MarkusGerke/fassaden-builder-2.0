@@ -363,6 +363,7 @@ import {
   applyYawAroundYToBox,
   buildingWorldBox,
   DEFAULT_SUN_SETTINGS,
+  DEFAULT_SUN_WIND_INTENSITY,
   fitDirectionalShadowCamera,
   formatTimeOfDay,
   normalizeSunSettings,
@@ -746,6 +747,19 @@ import {
   type DaySchedule,
 } from './utils/daySchedule'
 import { bindDayScheduleEditor } from './ui/dayScheduleEditor'
+import {
+  initAwningUi,
+  syncAwningControls,
+  syncStudioAwningControls,
+  tickAwningPlayback,
+  isAwningPlaybackActive,
+  placeLibraryAwning,
+  clearLibraryAwning,
+  playAwning,
+} from './ui/awningUi'
+import { tickWindFabrics } from './scene/windRuntime'
+import { openingSupportsAwning } from './studio/awning'
+import { ensureOpeningAwning } from './utils/awnings'
 import {
   BEAM_ANGLE_MAX_DEG,
   BEAM_ANGLE_MIN_DEG,
@@ -1732,6 +1746,7 @@ type LibraryTab =
   | 'trimBands'
   | 'plinth'
   | 'label'
+  | 'awnings'
   | 'profiles'
   | 'openingForm'
   | 'pediment'
@@ -1753,6 +1768,7 @@ function allowedLibraryTabs(): Set<LibraryTab> {
 
     if (part === 'stairs') return new Set<LibraryTab>(['stairs'])
     if (part === 'rollerShutter') return new Set<LibraryTab>()
+    if (part === 'awning') return new Set<LibraryTab>(['awnings'])
     if (part === 'sillInner' || part === 'sillOuter') return new Set<LibraryTab>(['profiles'])
     if (part === 'pediment' || part === 'consoles') return new Set<LibraryTab>(['pediment'])
     if (part === 'trim') return new Set<LibraryTab>(['profiles'])
@@ -1762,9 +1778,9 @@ function allowedLibraryTabs(): Set<LibraryTab> {
       return new Set<LibraryTab>(['windows', 'profiles', 'openingForm'])
     }
     // Öffnung ganz
-    if (isDoor) return new Set<LibraryTab>(['doors', 'profiles', 'openingForm', 'pediment', 'stairs'])
-    if (isNiche) return new Set<LibraryTab>(['niches', 'profiles'])
-    return new Set<LibraryTab>(['windows', 'profiles', 'openingForm', 'pediment'])
+    if (isDoor) return new Set<LibraryTab>(['doors', 'profiles', 'openingForm', 'pediment', 'stairs', 'awnings'])
+    if (isNiche) return new Set<LibraryTab>(['niches', 'profiles', 'awnings'])
+    return new Set<LibraryTab>(['windows', 'profiles', 'openingForm', 'pediment', 'awnings'])
   }
 
   if (editor.selectedWallIds.length > 0) {
@@ -1773,6 +1789,7 @@ function allowedLibraryTabs(): Set<LibraryTab> {
     if (part === 'plinth') return new Set<LibraryTab>(['plinth'])
     if (part === 'trimBand') return new Set<LibraryTab>(['trimBands'])
     if (part === 'label') return new Set<LibraryTab>(['label'])
+    if (part === 'awning') return new Set<LibraryTab>(['awnings'])
     // Fassade (cladding) = Wand ganz: dieselben Kataloge (Highlight bleibt auf Paneel).
     // Wände/Licht nur ohne Auswahl — bei Wand auf der Bühne redundant.
     return new Set<LibraryTab>([
@@ -1783,6 +1800,7 @@ function allowedLibraryTabs(): Set<LibraryTab> {
       'trimBands',
       'plinth',
       'label',
+      'awnings',
       'windows',
       'doors',
       'niches',
@@ -1790,7 +1808,7 @@ function allowedLibraryTabs(): Set<LibraryTab> {
   }
 
   // Keine Auswahl / Dach/Decke: Platzieren — Fenster/Türen neben Wänden sichtbar (v2.0.231).
-  return new Set<LibraryTab>(['windows', 'doors', 'walls', 'bay', 'balcony', 'lights'])
+  return new Set<LibraryTab>(['windows', 'doors', 'walls', 'bay', 'balcony', 'lights', 'awnings'])
 }
 
 function loadUiMode(): UiMode {
@@ -4898,6 +4916,12 @@ function isLibraryCardApplied(card: HTMLElement): boolean {
     return card.dataset.libraryNone === '1' || card.dataset.panelPattern === 'none'
   }
   if (card.dataset.libraryNone === '1') {
+    if (libraryTab === 'awnings') {
+      const opening = selectedWindowOpening()?.opening
+      if (opening && openingSupportsAwning(opening)) return !opening.awning?.enabled
+      const wall = selectedWalls()[0]
+      return !wall?.awnings?.some((item) => item.enabled)
+    }
     if (libraryTab === 'bay' || libraryTab === 'balcony' || libraryTab === 'loggia') {
       return !selectedWalls().some((wall) => bayMetaForWall(getAllWalls(state), wall))
     }
@@ -4940,6 +4964,17 @@ function isLibraryCardApplied(card: HTMLElement): boolean {
   const bayPresetId = card.dataset.bayPresetId
   if (bayPresetId) {
     return selectedWalls().some((wall) => matchingBayLibraryPresetId(wall) === bayPresetId)
+  }
+  const awningKind = card.dataset.awningKind
+  if (awningKind && libraryTab === 'awnings') {
+    const opening = selectedWindowOpening()?.opening
+    if (opening?.awning?.enabled) return opening.awning.kind === awningKind
+    const wall = selectedWalls()[0]
+    const list = wall?.awnings?.filter((item) => item.enabled) ?? []
+    const current =
+      (editor.selectedAwningId ? list.find((item) => item.id === editor.selectedAwningId) : undefined) ??
+      list[0]
+    return current?.kind === awningKind
   }
   return false
 }
@@ -5174,6 +5209,7 @@ function selectWallFromViewport(
     wallPart?: NonNullable<EditorState['selectedWallPart']>
     trimBandId?: string
     labelId?: string
+    awningId?: string
   } = {},
 ) {
   const additive = Boolean(opts.additive)
@@ -5187,7 +5223,14 @@ function selectWallFromViewport(
     selectWallsInRange(lastWallRangeAnchorId, wallId)
     return
   }
-  selectWall(wallId, additive, opts.wallPart ?? 'group', opts.trimBandId, opts.labelId)
+  selectWall(
+    wallId,
+    additive,
+    opts.wallPart ?? 'group',
+    opts.trimBandId,
+    opts.labelId,
+    opts.awningId,
+  )
 }
 
 function selectLayerTreeEntry(
@@ -10292,6 +10335,52 @@ function initOpeningLibrary() {
     return
   }
 
+  if (libraryTab === 'awnings') {
+    const none = document.createElement('button')
+    none.type = 'button'
+    none.className = 'opening-library-card'
+    none.dataset.libraryNone = '1'
+    none.title = 'Keine Markise'
+    const noneThumb = document.createElement('div')
+    noneThumb.className = 'opening-library-thumb tpl-card-thumb-empty'
+    noneThumb.textContent = '—'
+    const noneLabel = document.createElement('span')
+    noneLabel.textContent = 'Keine'
+    none.append(noneThumb, noneLabel)
+    none.addEventListener('click', () => {
+      clearLibraryAwning()
+      initOpeningLibrary()
+    })
+    host.appendChild(none)
+
+    const kinds: Array<{ id: 'foldingArm' | 'dropArm' | 'markisolette'; label: string; title: string }> = [
+      { id: 'foldingArm', label: 'Gelenkarm', title: 'Gelenkarm-Markise' },
+      { id: 'dropArm', label: 'Fallarm', title: 'Fallarm-Markise' },
+      { id: 'markisolette', label: 'Markisolette', title: 'Markisolette' },
+    ]
+    for (const kind of kinds) {
+      const card = document.createElement('button')
+      card.type = 'button'
+      card.className = 'opening-library-card'
+      card.dataset.awningKind = kind.id
+      card.title = kind.title
+      const thumb = document.createElement('div')
+      thumb.className = 'opening-library-thumb'
+      thumb.textContent =
+        kind.id === 'foldingArm' ? '⟷' : kind.id === 'markisolette' ? '⊓' : '∠'
+      const label = document.createElement('span')
+      label.textContent = kind.label
+      card.append(thumb, label)
+      card.addEventListener('click', () => {
+        placeLibraryAwning(kind.id)
+        initOpeningLibrary()
+      })
+      host.appendChild(card)
+    }
+    syncLibraryAppliedOutline()
+    return
+  }
+
   if (libraryTab === 'profiles') {
     const openingSel = selectedWindowOpening()
     const part = editor.selectedOpeningPart ?? 'group'
@@ -10863,6 +10952,13 @@ function normalizeEditor(nextState: FacadeState, nextEditor: EditorState): Edito
       selectedLabelId = nextEditor.selectedLabelId
     }
   }
+  let selectedAwningId: string | undefined
+  if (selectedWallPart === 'awning' && nextEditor.selectedAwningId && selectedWallIds[0]) {
+    const wall = getWall(nextState, selectedWallIds[0])
+    if (wall?.awnings?.some((item) => item.id === nextEditor.selectedAwningId)) {
+      selectedAwningId = nextEditor.selectedAwningId
+    }
+  }
 
   return {
     selectedWallIds,
@@ -10873,6 +10969,7 @@ function normalizeEditor(nextState: FacadeState, nextEditor: EditorState): Edito
     selectedWallPart,
     selectedTrimBandId,
     selectedLabelId,
+    selectedAwningId,
     selectedRoofBuildingId: nextEditor.selectedRoofBuildingId,
     selectedRoofPart: nextEditor.selectedRoofBuildingId
       ? nextEditor.selectedRoofPart ?? 'group'
@@ -11309,6 +11406,11 @@ function syncSunUi() {
   animDayCycleInput.checked = sunSettings.dayCycleEnabled !== false
   animDayCycleMinutesInput.value = String(clampDayCycleRealMinutes(sunSettings.dayCycleRealMinutes))
   animAutoLightsInput.checked = sunSettings.autoSceneLightsWithSun !== false
+  const windInput = document.querySelector<HTMLInputElement>('#scene-wind-intensity')
+  const windValue = document.querySelector<HTMLOutputElement>('#scene-wind-value')
+  const wind = sunSettings.windIntensity ?? DEFAULT_SUN_WIND_INTENSITY
+  if (windInput) windInput.value = String(wind)
+  if (windValue) windValue.textContent = wind.toFixed(2)
   syncSunAnimUi()
 }
 
@@ -12964,6 +13066,7 @@ function renderUi(opts?: { skipLayerList?: boolean }) {
     syncOpeningPositionControls()
     syncDoorStairsControls()
     syncRollerShutterControls()
+    syncAwningControls()
     applyOpeningPartVisibility()
     applyWallPartVisibility()
     syncOpeningColorsHub()
@@ -12975,6 +13078,8 @@ function renderUi(opts?: { skipLayerList?: boolean }) {
     windowSillSection.hidden = true
     doorStairsSection.hidden = true
     openingRollerShutterSection.hidden = true
+    const awningSection = document.querySelector<HTMLElement>('#opening-awning-section')
+    if (awningSection) awningSection.hidden = true
     const pedimentSection = document.querySelector<HTMLElement>('#opening-pediment-section')
     const consolesSection = document.querySelector<HTMLElement>('#opening-consoles-section')
     const taperedFieldSection = document.querySelector<HTMLElement>('#opening-tapered-field-section')
@@ -12984,6 +13089,7 @@ function renderUi(opts?: { skipLayerList?: boolean }) {
     const motionSection = document.querySelector<HTMLElement>('#opening-motion-section')
     if (motionSection) motionSection.hidden = true
     applyWallPartVisibility()
+    syncStudioAwningControls()
   }
 
   if (hasSceneLight) {
@@ -14285,6 +14391,8 @@ function showElementContextMenu(
     openingId?: string
     wallPart?: NonNullable<EditorState['selectedWallPart']>
     bandId?: string
+    labelId?: string
+    awningId?: string
     ceiling?: { buildingId: string; floorIndex: number }
     sceneLightId?: string
   },
@@ -17927,7 +18035,7 @@ function refreshAllProfileCards() {
 
 function fillAllProfileSelects() {
   refreshAllProfileCards()
-  if (libraryTab === 'profiles' || libraryTab === 'pediment' || libraryTab === 'openingForm' || libraryTab === 'cornice' || libraryTab === 'plinth' || libraryTab === 'label' || libraryTab === 'panels') initOpeningLibrary()
+  if (libraryTab === 'profiles' || libraryTab === 'pediment' || libraryTab === 'openingForm' || libraryTab === 'cornice' || libraryTab === 'plinth' || libraryTab === 'label' || libraryTab === 'panels' || libraryTab === 'awnings') initOpeningLibrary()
 }
 
 function selectedWindowOpening() {
@@ -18832,6 +18940,16 @@ function applyOpeningPartVisibility() {
   openingRollerShutterSection.hidden =
     !supportsShutter || Boolean(lacksChrome) || (focusPart && part !== 'rollerShutter')
 
+  const awningSection = document.querySelector<HTMLElement>('#opening-awning-section')
+  const supportsAwning = Boolean(sel && openingSupportsAwning(sel.opening))
+  if (awningSection) {
+    awningSection.hidden =
+      !supportsAwning || (focusPart && part !== 'awning' && part !== 'group')
+    if (focusPart && part === 'awning') {
+      awningSection.hidden = !supportsAwning
+    }
+  }
+
   const measuresSection = document.querySelector<HTMLElement>('#opening-measures-section')
   if (measuresSection) measuresSection.hidden = focusPart
   const actionsSection = document.querySelector<HTMLElement>('#opening-actions-section')
@@ -18935,6 +19053,21 @@ function applyOpeningPartVisibility() {
     windowSillSection.hidden = true
     doorStairsSection.hidden = true
     openingRollerShutterSection.hidden = !supportsShutter
+    const awningSec = document.querySelector<HTMLElement>('#opening-awning-section')
+    if (awningSec) awningSec.hidden = true
+  }
+  if (focusPart && part === 'awning') {
+    if (colorsSection) colorsSection.hidden = true
+    if (motionSection) motionSection.hidden = true
+    if (styleSection) styleSection.hidden = true
+    if (profileAssign) profileAssign.hidden = true
+    if (pedimentSection) pedimentSection.hidden = true
+    if (consolesSection) consolesSection.hidden = true
+    windowSillSection.hidden = true
+    doorStairsSection.hidden = true
+    openingRollerShutterSection.hidden = true
+    const awningSec = document.querySelector<HTMLElement>('#opening-awning-section')
+    if (awningSec) awningSec.hidden = !supportsAwning
   }
   if (focusPart && (part === 'sillInner' || part === 'sillOuter')) {
     if (colorsSection) colorsSection.hidden = true
@@ -19014,6 +19147,7 @@ function applyWallPartVisibility() {
     else if (part === 'trimBand') section.hidden = id !== 'trimBands'
     else if (part === 'plinth') section.hidden = id !== 'plinth'
     else if (part === 'label') section.hidden = id !== 'label'
+    else if (part === 'awning') section.hidden = id !== 'awning'
     else if (part === 'cladding') section.hidden = false
     else section.hidden = false
   }
@@ -19023,7 +19157,7 @@ function applyWallPartVisibility() {
   if (dims) dims.hidden = focusPart && part !== 'cladding'
   const colors = toolbar.querySelector<HTMLElement>('[data-settings-section="colors"]')
   if (colors) {
-    colors.hidden = focusPart && part !== 'label' && part !== 'cladding'
+    colors.hidden = focusPart && part !== 'label' && part !== 'cladding' && part !== 'awning'
   }
 
   // Schrift-Reiter nur wenn Labels vorhanden oder Schrift-Teil fokussiert.
@@ -19034,6 +19168,12 @@ function applyWallPartVisibility() {
       labelSection.hidden = true
     }
   }
+  const awningSection = toolbar.querySelector<HTMLElement>('[data-settings-section="awning"]')
+  if (awningSection && !focusPart) {
+    // Sektion bleibt sichtbar (Hinzufügen); Optionen steuert syncStudioAwningControls.
+    awningSection.hidden = false
+  }
+  syncStudioAwningControls()
   syncSelectionToolbarTabs()
 }
 
@@ -19718,6 +19858,8 @@ function wallPartToSettingsTab(
       return 'panels'
     case 'label':
       return 'label'
+    case 'awning':
+      return 'awning'
     default:
       return null
   }
@@ -19739,6 +19881,8 @@ function openingPartToSettingsTab(part: OpeningPart): string | null {
       return 'stairs'
     case 'rollerShutter':
       return 'roller-shutter'
+    case 'awning':
+      return 'awning'
     // Rahmen/Glas: Ganz-Öffnung — Tab nicht auf Farben erzwingen (erster bzw. Sticky).
     case 'frame':
     case 'group':
@@ -19762,6 +19906,7 @@ function selectWall(
   wallPart: NonNullable<EditorState['selectedWallPart']> = 'group',
   trimBandId?: string,
   labelId?: string,
+  awningId?: string,
 ) {
   if (id === null) {
     if (additive) return
@@ -19778,6 +19923,7 @@ function selectWall(
       selectedWallPart: undefined,
       selectedTrimBandId: undefined,
       selectedLabelId: undefined,
+      selectedAwningId: undefined,
       selectedOpeningPart: undefined,
     })
     // Nach Abwahl: „Gültig für“ immer zurück auf Auswahl.
@@ -19795,6 +19941,10 @@ function selectWall(
         (item) => item.id && (item.enabled || (item.text ?? '').trim()),
       )?.id
     }
+  }
+  let resolvedAwningId = awningId
+  if (wallPart === 'awning' && wall && !resolvedAwningId) {
+    resolvedAwningId = wall.awnings?.[0]?.id
   }
   const expandBayOrGroup =
     !additive &&
@@ -19816,6 +19966,7 @@ function selectWall(
         selectedWallPart: wallPart === 'group' ? 'group' : wallPart,
         selectedTrimBandId: undefined,
         selectedLabelId: undefined,
+        selectedAwningId: undefined,
         selectedOpeningPart: undefined,
       })
       if (isGalleryModeActive() && currentView === '3d') {
@@ -19844,6 +19995,7 @@ function selectWall(
         selectedWallPart: 'group',
         selectedTrimBandId: undefined,
         selectedLabelId: undefined,
+        selectedAwningId: undefined,
         selectedOpeningPart: undefined,
       })
       return
@@ -19870,6 +20022,8 @@ function selectWall(
       selectedTrimBandId:
         selectedWallIds.length === 1 && wallPart === 'trimBand' ? trimBandId : undefined,
       selectedLabelId: undefined,
+      selectedAwningId:
+        selectedWallIds.length === 1 && wallPart === 'awning' ? resolvedAwningId : undefined,
       selectedOpeningPart: undefined,
     })
     if (isGalleryModeActive() && currentView === '3d' && selectedWallIds.length > 0) {
@@ -19898,6 +20052,7 @@ function selectWall(
     selectedWallPart: wallPart,
     selectedTrimBandId: wallPart === 'trimBand' ? trimBandId : undefined,
     selectedLabelId: wallPart === 'label' ? resolvedLabelId : undefined,
+    selectedAwningId: wallPart === 'awning' ? resolvedAwningId : undefined,
     selectedOpeningPart: undefined,
   })
   if (isGalleryModeActive() && currentView === '3d') {
@@ -20128,6 +20283,7 @@ function syncSelectionHighlightSuppressed() {
   const suppress =
     Boolean(openingMotionPlayback) ||
     Boolean(rollerShutterPlayback) ||
+    isAwningPlaybackActive() ||
     isColorPickerSessionActive()
   facade.setSelectionHighlightSuppressed(suppress)
   svgView.setSelectionHighlightSuppressed(suppress)
@@ -20441,6 +20597,31 @@ const rollerShutterScheduleEditor = bindDayScheduleEditor(rollerShutterScheduleE
   setSchedule: (schedule: DaySchedule) => {
     commitRollerShutterPatch({ schedule })
   },
+})
+
+initAwningUi({
+  getState: () => state,
+  commitState,
+  previewState,
+  markViewportDirty,
+  scopedOpeningRefs,
+  selectedOpening: () => selectedWindowOpening(),
+  selectedWallIds: () => editor.selectedWallIds,
+  getWall,
+  selectedAwningId: () => editor.selectedAwningId,
+  setSelectedAwningId: (id) => {
+    editor = { ...editor, selectedAwningId: id, selectedWallPart: id ? 'awning' : editor.selectedWallPart }
+  },
+  applyAwningExtension: (wallId, extension, opts) =>
+    facade.applyAwningExtension(wallId, extension, opts),
+  ensureHighDetailForWall: (wallId) => facade.ensureHighDetailForWall(wallId),
+  stopOtherPlayback: () => {
+    stopRollerShutterPlayback(false)
+    stopOpeningMotionPlayback(false)
+  },
+  syncSelectionHighlightSuppressed,
+  renderColorSwatches,
+  previewSelectionColor,
 })
 
 function setFacadeMeshesVisible(visible: boolean) {
@@ -22447,6 +22628,7 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
   wallPart?: NonNullable<EditorState['selectedWallPart']>
   bandId?: string
   labelId?: string
+  awningId?: string
   ceiling?: { buildingId: string; floorIndex: number }
   sceneLightId?: string
   downpipe?: { buildingId: string; downpipeId: string }
@@ -22534,6 +22716,7 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
     wallPart?: NonNullable<EditorState['selectedWallPart']>
     bandId?: string
     labelId?: string
+    awningId?: string
   } | null => {
     let current: THREE.Object3D | null = object
     while (current) {
@@ -22544,11 +22727,12 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
       const wallPart = current.userData.wallPart as EditorState['selectedWallPart'] | undefined
       const bandId = current.userData.bandId as string | undefined
       const labelId = current.userData.labelId as string | undefined
+      const awningId = current.userData.awningId as string | undefined
       if (wallId && kind === 'opening' && openingId) {
         return { wallId, openingId, openingPart: openingPart ?? 'group' }
       }
       if (wallId && kind === 'wall' && wallPart && wallPart !== 'group') {
-        return { wallId, wallPart, bandId, labelId }
+        return { wallId, wallPart, bandId, labelId, awningId }
       }
       if (wallId && kind === 'wall') {
         return { wallId, wallPart: 'group' as const }
@@ -22593,9 +22777,10 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
     if (op === 'sillOuter' || op === 'sillInner') return 1
     if (op === 'pediment' || op === 'consoles') return 2
     if (op === 'rollerShutter') return 3
+    if (op === 'awning') return 2
     if (op === 'grille') return 3
     if (op === 'trim') return 4
-    if (wp === 'cornice' || wp === 'plinth' || wp === 'trimBand' || wp === 'label') return 1
+    if (wp === 'cornice' || wp === 'plinth' || wp === 'trimBand' || wp === 'label' || wp === 'awning') return 1
     if (op && op !== 'group' && op !== 'frame') return 5
     return 100
   }
@@ -23097,6 +23282,7 @@ canvas.addEventListener('pointerdown', (event) => {
         wallPart: hit.wallPart ?? 'group',
         trimBandId: hit.bandId,
         labelId: hit.labelId,
+        awningId: hit.awningId,
       })
       pointerDownDidSelect = true
       if (hit.wallPart === 'label' && wallHasLabel(wall)) {
@@ -23121,7 +23307,8 @@ canvas.addEventListener('pointerdown', (event) => {
         hit.wallPart === 'trimBand' ||
         hit.wallPart === 'cornice' ||
         hit.wallPart === 'plinth' ||
-        hit.wallPart === 'label'
+        hit.wallPart === 'label' ||
+        hit.wallPart === 'awning'
       ) {
         pointerDown = { x: event.clientX, y: event.clientY, additive, rangeSelect }
         return
@@ -24806,20 +24993,33 @@ function tickActorDaySchedules(prevTime: number | null, nextTime: number): void 
   const closeRefs: OpeningRef[] = []
   const raiseRefs: OpeningRef[] = []
   const lowerRefs: OpeningRef[] = []
+  const extendRefs: OpeningRef[] = []
+  const retractRefs: OpeningRef[] = []
 
   for (const wall of getAllWalls(state)) {
     for (const opening of wall.openings) {
-      if (opening.type !== 'window' && opening.type !== 'door') continue
+      if (opening.type !== 'window' && opening.type !== 'door' && opening.type !== 'cutout' && opening.type !== 'conch') {
+        continue
+      }
       const ref: OpeningRef = { wallId: wall.id, openingId: opening.id }
-      const motionCross = scheduleCrossings(opening.schedule, prevTime, nextTime)
-      if (motionCross.turnedOn) openRefs.push(ref)
-      if (motionCross.turnedOff) closeRefs.push(ref)
+      if (opening.type === 'window' || opening.type === 'door') {
+        const motionCross = scheduleCrossings(opening.schedule, prevTime, nextTime)
+        if (motionCross.turnedOn) openRefs.push(ref)
+        if (motionCross.turnedOff) closeRefs.push(ref)
 
-      if (!openingSupportsRollerShutter(opening) || !opening.rollerShutter?.enabled) continue
-      const shutter = normalizeOpeningRollerShutter(opening.rollerShutter)
-      const shutterCross = scheduleCrossings(shutter.schedule, prevTime, nextTime)
-      if (shutterCross.turnedOn) raiseRefs.push(ref)
-      if (shutterCross.turnedOff) lowerRefs.push(ref)
+        if (openingSupportsRollerShutter(opening) && opening.rollerShutter?.enabled) {
+          const shutter = normalizeOpeningRollerShutter(opening.rollerShutter)
+          const shutterCross = scheduleCrossings(shutter.schedule, prevTime, nextTime)
+          if (shutterCross.turnedOn) raiseRefs.push(ref)
+          if (shutterCross.turnedOff) lowerRefs.push(ref)
+        }
+      }
+      if (openingSupportsAwning(opening) && ensureOpeningAwning(opening).enabled) {
+        const awning = ensureOpeningAwning(opening)
+        const awningCross = scheduleCrossings(awning.schedule, prevTime, nextTime)
+        if (awningCross.turnedOn) extendRefs.push(ref)
+        if (awningCross.turnedOff) retractRefs.push(ref)
+      }
     }
   }
 
@@ -24828,6 +25028,18 @@ function tickActorDaySchedules(prevTime: number | null, nextTime: number): void 
 
   if (raiseRefs.length > 0) playRollerShutterOnRefs(raiseRefs, 'raise')
   else if (lowerRefs.length > 0) playRollerShutterOnRefs(lowerRefs, 'lower')
+
+  if (extendRefs.length > 0) {
+    const prev = editor.selectedOpenings
+    editor = { ...editor, selectedOpenings: extendRefs }
+    playAwning('extend', 'opening')
+    editor = { ...editor, selectedOpenings: prev }
+  } else if (retractRefs.length > 0) {
+    const prev = editor.selectedOpenings
+    editor = { ...editor, selectedOpenings: retractRefs }
+    playAwning('retract', 'opening')
+    editor = { ...editor, selectedOpenings: prev }
+  }
 }
 
 function noteScheduleTimeOfDay(nextTime: number, triggerActors = true): void {
@@ -25278,6 +25490,21 @@ animAutoLightsInput.addEventListener('change', () => {
   sunSettings = { ...sunSettings, autoSceneLightsWithSun: animAutoLightsInput.checked }
   sceneLightsManualHold = null
   if (animAutoLightsInput.checked) syncAutoSceneLightsWithSun(true)
+  persistApp()
+})
+
+const sceneWindIntensity = document.querySelector<HTMLInputElement>('#scene-wind-intensity')
+const sceneWindValue = document.querySelector<HTMLOutputElement>('#scene-wind-value')
+sceneWindIntensity?.addEventListener('input', () => {
+  const v = Math.max(0, Math.min(1, Number(sceneWindIntensity.value) || 0))
+  sunSettings = { ...sunSettings, windIntensity: v }
+  if (sceneWindValue) sceneWindValue.textContent = v.toFixed(2)
+  markViewportDirty()
+})
+sceneWindIntensity?.addEventListener('change', () => {
+  const v = Math.max(0, Math.min(1, Number(sceneWindIntensity.value) || 0))
+  sunSettings = { ...sunSettings, windIntensity: v }
+  if (sceneWindValue) sceneWindValue.textContent = v.toFixed(2)
   persistApp()
 })
 
@@ -26581,6 +26808,7 @@ function animate() {
   if (!paused) {
     if (openingMotionPlayback) tickOpeningMotionPlayback(nowMs)
     if (rollerShutterPlayback) tickRollerShutterPlayback(nowMs)
+    if (isAwningPlaybackActive()) tickAwningPlayback(nowMs)
   }
 
   const pathMoved = tickSunPathAnimation(nowMs, dayDt)
@@ -26599,6 +26827,13 @@ function animate() {
   }
   const sceneLightLive = fadingLights || sceneLightAnim
   if (sceneLightLive) viewportDirty = true
+
+  const windMoved =
+    !paused &&
+    tickWindFabrics(animClock / 1000, sunSettings.windIntensity ?? DEFAULT_SUN_WIND_INTENSITY, {
+      paused,
+    })
+  if (windMoved) viewportDirty = true
 
   const leafMoved =
     !paused &&
@@ -26621,6 +26856,8 @@ function animate() {
     sunPathAnimating ||
     (!paused && Boolean(openingMotionPlayback)) ||
     (!paused && Boolean(rollerShutterPlayback)) ||
+    (!paused && isAwningPlaybackActive()) ||
+    windMoved ||
     sceneLightLive ||
     leafMoved
 

@@ -416,6 +416,8 @@ export interface Opening {
   stairs?: OpeningStairs
   /** Rollläden (nur Lamellen) vor Fenster/Tür. */
   rollerShutter?: OpeningRollerShutter
+  /** Markise über der Öffnung (Gelenkarm / Fallarm). */
+  awning?: AwningConfig
   /** Fenstergitter (Default aus; Kellerfenster-Preset setzt enabled). */
   basementWindow?: BasementWindowConfig
   /**
@@ -611,6 +613,60 @@ export interface OpeningRollerShutter {
     lower: MotionCurve
   }
   /** Uhrzeiten: on = hoch, off = runter. */
+  schedule?: DaySchedule
+}
+
+/** Gelenkarm- oder Fallarm-Markise. */
+export type AwningKind = 'foldingArm' | 'dropArm' | 'markisolette'
+
+/**
+ * Markise an Öffnung oder frei an der Wand.
+ * `extension` 0 = eingerollt, 1 = voll ausgefahren.
+ */
+export interface AwningConfig {
+  id: string
+  enabled: boolean
+  kind: AwningKind
+  /** 0 = eingerollt, 1 = voll ausgefahren. */
+  extension: number
+  widthCm: number
+  /** Ausladung bei extension = 1 (cm). Bei Markisolette: ausgestellter Teil. */
+  projectionCm: number
+  /**
+   * Montage: Unterkante Kasten.
+   * Wand: cm von Wandfuß. Öffnung: cm relativ zum Sturz (0 = am Sturz, + nach oben).
+   */
+  mountY?: number
+  /** Wand: Anker links (cm). Öffnung: optionaler X-Versatz der Mitte. */
+  mountX?: number
+  /** Seitlicher Überstand über die Öffnung (cm). Default 16 (Gelenkarm). */
+  overhangCm?: number
+  /**
+   * Volant: senkrechter Stoff unter der Vorderkante (cm, 8er-Raster, 0…48).
+   * Default 16.
+   */
+  frontOverhangCm?: number
+  /** Tuchneigung unter der Horizontalen (Grad, 0…45). Default 15. */
+  slopeDeg?: number
+  /** Abstand der Arm-Befestigung von der Stoffaußenkante (cm). Wand-Markise. */
+  armInsetCm?: number
+  /**
+   * Fallarm/Markisolette an Öffnung: Abstand der Wandhalterung
+   * zur Öffnungskante bzw. zur Außenseite des Fensterprofils (cm, min. 8).
+   */
+  armClearanceCm?: number
+  /** Fallarm/Markisolette: Wandgelenk unter dem Kasten (cm nach unten). */
+  armMountYCm?: number
+  /** Markisolette: Höhe des senkrechten Tuchanteils (cm). */
+  verticalDropCm?: number
+  fabricColor?: string
+  frameColor?: string
+  finish?: SurfaceFinish
+  motion?: {
+    extend: MotionCurve
+    retract: MotionCurve
+  }
+  /** Uhrzeiten: on = ausfahren, off = einfahren. */
   schedule?: DaySchedule
 }
 
@@ -873,6 +929,7 @@ export type OpeningPart =
   | 'stairs'
   | 'grille'
   | 'rollerShutter'
+  | 'awning'
 
 export type WallKind = 'module' | 'studio'
 
@@ -1126,6 +1183,8 @@ export interface Wall extends WallDimensions {
   labels?: WallLabelConfig[]
   /** @deprecated Nutze `labels[]`. Einzellabel für Altstände / Sync mit labels[0]. */
   label?: WallLabelConfig
+  /** Frei platzierte Markisen an der Wand. */
+  awnings?: AwningConfig[]
   /** Zugehöriges Gebäude. */
   buildingId?: string
   /** Persistente Editor-Gruppe (z. B. Erker oder Nutzer-Gruppe). */
@@ -1256,11 +1315,13 @@ export interface EditorState {
   /** Fokus auf einen Teil der Öffnung (Toolbar); Drag bleibt die ganze Gruppe. */
   selectedOpeningPart?: OpeningPart
   /** Fokus auf Wand-Teil (Gesims, Sockel, …); nur bei Wandwahl ohne Öffnung. */
-  selectedWallPart?: 'group' | 'cornice' | 'plinth' | 'cladding' | 'label' | 'trimBand'
+  selectedWallPart?: 'group' | 'cornice' | 'plinth' | 'cladding' | 'label' | 'trimBand' | 'awning'
   /** Gewähltes Zierband (bei `selectedWallPart === 'trimBand'`). */
   selectedTrimBandId?: string
   /** Gewählte Fassaden-Schrift (bei `selectedWallPart === 'label'`). */
   selectedLabelId?: string
+  /** Gewählte Wand-Markise (bei `selectedWallPart === 'awning'`). */
+  selectedAwningId?: string
   /** Gewähltes Dach (Gebäude-ID); leert Wand/Öffnung bei Klick auf Dach-Zeile. */
   selectedRoofBuildingId?: string
   /** Fokus auf Dach-Teil (Toolbar). */
@@ -1337,6 +1398,7 @@ export function createDefaultEditorState(): EditorState {
     selectedOpenings: [],
     selectedEdges: [],
     selectedOpeningPart: undefined,
+    selectedAwningId: undefined,
     selectedRoofBuildingId: undefined,
     selectedRoofPart: undefined,
     selectedCeiling: undefined,
@@ -1399,6 +1461,31 @@ export function cloneWall(wall: Wall): Wall {
         guard: migrated.guard ? { ...migrated.guard } : undefined,
         door: migrated.door ? { ...migrated.door } : undefined,
         interiorShade: migrated.interiorShade ? { ...migrated.interiorShade } : undefined,
+        awning: migrated.awning
+          ? {
+              ...migrated.awning,
+              motion: migrated.awning.motion
+                ? {
+                    extend: {
+                      durationMs: migrated.awning.motion.extend?.durationMs ?? 2200,
+                      holdMs: migrated.awning.motion.extend?.holdMs,
+                      keys: (migrated.awning.motion.extend?.keys ?? []).map((k) => ({ ...k })),
+                    },
+                    retract: {
+                      durationMs: migrated.awning.motion.retract?.durationMs ?? 2000,
+                      holdMs: migrated.awning.motion.retract?.holdMs,
+                      keys: (migrated.awning.motion.retract?.keys ?? []).map((k) => ({ ...k })),
+                    },
+                  }
+                : undefined,
+              schedule: migrated.awning.schedule
+                ? {
+                    onTimes: [...(migrated.awning.schedule.onTimes ?? [])],
+                    offTimes: [...(migrated.awning.schedule.offTimes ?? [])],
+                  }
+                : undefined,
+            }
+          : undefined,
         motion: migrated.motion
           ? {
               maxDeg: migrated.motion.maxDeg,
@@ -1432,6 +1519,29 @@ export function cloneWall(wall: Wall): Wall {
     trimBands: wall.trimBands?.map((band) => ({ ...band })),
     labels: wall.labels?.map((item) => ({ ...item })),
     label: wall.label ? { ...wall.label } : undefined,
+    awnings: wall.awnings?.map((item) => ({
+      ...item,
+      motion: item.motion
+        ? {
+            extend: {
+              durationMs: item.motion.extend?.durationMs ?? 2200,
+              holdMs: item.motion.extend?.holdMs,
+              keys: (item.motion.extend?.keys ?? []).map((k) => ({ ...k })),
+            },
+            retract: {
+              durationMs: item.motion.retract?.durationMs ?? 2000,
+              holdMs: item.motion.retract?.holdMs,
+              keys: (item.motion.retract?.keys ?? []).map((k) => ({ ...k })),
+            },
+          }
+        : undefined,
+      schedule: item.schedule
+        ? {
+            onTimes: [...(item.schedule.onTimes ?? [])],
+            offTimes: [...(item.schedule.offTimes ?? [])],
+          }
+        : undefined,
+    })),
   }
 }
 

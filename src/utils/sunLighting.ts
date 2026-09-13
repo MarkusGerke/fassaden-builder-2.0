@@ -82,6 +82,11 @@ export interface SunSettings {
   animationsPaused?: boolean
   /** Bibliotheks-Lichter bei Sonnenuntergang an, bei Sonnenaufgang aus. */
   autoSceneLightsWithSun?: boolean
+  /**
+   * Bühnen-Wind 0…1 (windstill → stürmisch). Bewegt registrierte Stoffe
+   * (Markisen; später Vorhänge etc.). Default 0,15.
+   */
+  windIntensity?: number
 }
 
 /** Alte Saves: ein gemeinsames Von/Bis plus exklusiver Modus. */
@@ -171,6 +176,8 @@ export const SUN_SHADOW_CONTRAST_MIN = 0.5
 /** Slider-Maximum — höher = deutlich dunklere Schatten (v2.0.256: 10, zuvor 5). */
 export const SUN_SHADOW_CONTRAST_MAX = 10
 export const DEFAULT_SUN_SHADOW_DENSITY = 0.7
+/** Bühnen-Wind: leichter Zug als Default. */
+export const DEFAULT_SUN_WIND_INTENSITY = 0.15
 /** Slider `#sun-shade-depth`: Schattenseite Fassade + Innenraum (v2.0.364). */
 /** Default ≈ altes 0,75 nach Erweiterung (v2.0.419: (0,75+2)/3). */
 export const DEFAULT_SUN_SHADE_DEPTH = (0.75 + 2) / 3
@@ -244,6 +251,7 @@ export const DEFAULT_SUN_SETTINGS: SunSettings = {
   dayCycleRealMinutes: 60,
   animationsPaused: false,
   autoSceneLightsWithSun: true,
+  windIntensity: DEFAULT_SUN_WIND_INTENSITY,
 }
 
 /** Mindestabstand Licht→Ziel (cm). Wird bei großen Baukörpern angehoben, damit nichts hinter der Shadow-Camera liegt. */
@@ -634,6 +642,10 @@ export function normalizeSunSettings(
       typeof value.autoSceneLightsWithSun === 'boolean'
         ? value.autoSceneLightsWithSun
         : base.autoSceneLightsWithSun,
+    windIntensity:
+      typeof value.windIntensity === 'number' && Number.isFinite(value.windIntensity)
+        ? THREE.MathUtils.clamp(value.windIntensity, 0, 1)
+        : (base.windIntensity ?? DEFAULT_SUN_WIND_INTENSITY),
   }
   // Alt-Saves ohne elevationRad: Höhe aus Datum/Uhrzeit, Overrides (Intensität etc.) behalten.
   if (typeof value.elevationRad !== 'number') {

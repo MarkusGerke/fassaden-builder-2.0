@@ -2,6 +2,42 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Markisen + Bühnen-Wind (2026-09-13) — v2.0.421
+
+**Feature:** Gelenkarm- und Fallarm-Markisen an Öffnungen und frei an der Wand; Ausfahrt 0…100 % mit Gestänge unter dem Stoff und Animation. Globaler Wind-Slider (windstill→stürmisch) bewegt Markisenstoffe zufällig.
+
+**Dateien:** `awning.ts`, `awnings.ts`, `awningUi.ts`, `windRuntime.ts`, `FacadeController.ts`, `sunLighting.ts`, `main.ts`, `index.html`. Docs: [awnings.md](awnings.md), [wind.md](wind.md).
+
+### Markise Ausfahrrichtung (2026-09-13) — v2.0.422
+
+**Symptom:** Markise fuhr nach innen statt vor die Fassade. **Ursache:** Pose in +Z, Außenwand (`panelFlip`) hat Außennormale −Z. **Fix:** `group.scale.z = windowDepthForwardSign(wall)` bei Montage.
+
+**Dateien:** `FacadeController.ts`. Docs: [awnings.md](awnings.md).
+
+### Markise Pose + vorderer Überhang (2026-09-13) — v2.0.423
+
+**Symptom:** Fallarm zeigte nach oben; Gelenkarm-Gestänge lag über dem Stoff; kein Stoff vor dem Frontrohr. **Fix:** Fallarm-Winkel von der Lotrechten nach unten/außen; Stoff-Leitkurve über den Armen; `frontOverhangCm` 0…48 cm (Default 16, 8er-Raster) als Volant.
+
+**Dateien:** `awning.ts`, `FacadeController.ts`, `awningUi.ts`, `index.html`, `facade.ts`. Docs: [awnings.md](awnings.md).
+
+### Markise: Volant, Neigung, Markisolette (2026-09-13) — v2.0.424
+
+**Nutzer:** Stoff durchscheinend / Gestänge darüber; Gelenkarme nach unten statt innen; Volant fehlt; Defaults und Typen unvollständig. **Fix:** Depth/RenderOrder + Stoff über Gestänge; Gelenkarme klappen in X nach innen; Volant senkrecht (−Y); Stoff grau; Seitenüberstand Default 16; Neigung `slopeDeg`; Fallarm-Armposition; Typ **Markisolette**.
+
+**Dateien:** `awning.ts`, `FacadeController.ts`, `awningUi.ts`, `index.html`, `facade.ts`, `awnings.ts`, `main.ts`. Docs: [awnings.md](awnings.md).
+
+### Markise: Fallarm starr, Gelenkarm-IK, Markisolette-Mechanik (2026-09-13) — v2.0.426
+
+**Nutzer:** Fallarm hatte ein Gelenk (soll ein Segment sein); Gelenkarm-Ellbogen klappte nicht überzeugend ein; Markisolette-Mechanik falsch. **Fix:** Fallarm = ein starrer Arm auf Kreisbogen um die Wandkonsole (Länge = Konsole → Kasten, Feld „Konsole unter Kasten“, Default 144; „Ausladung“ ausgeblendet). Gelenkarm = Zwei-Glied-IK mit fester Gliedlänge, Ellbogen in der Tuchebene zur Mitte; gekreuzte Arme versetzt. Markisolette nach Referenzgeometrie (Gleiter in Führungsschiene, Blockadeelement = Drehpunkt am Schienenende, starrer Arm bis 90°+Neigung, Tuch senkrecht bis Austritt, dann gerade zum Profil). Stoffpfad generisch (`sampleFabricRows`, Normalen-Lift). Typwechsel setzt typgerechte Maße (`awningKindDefaults`). Schienen auf Arm-X, Ellbogen-Scharnier nur beim Gelenkarm.
+
+**Dateien:** `awning.ts`, `awning.test.ts`, `FacadeController.ts`, `awningUi.ts`, `index.html`. Docs: [awnings.md](awnings.md).
+
+### Markise: Keine, Scharnier, Halterung (2026-09-13) — v2.0.425
+
+**Nutzer:** Bibliothek ohne „Keine“; Fallarm-Länge änderte sich mit der Ausfahrt statt zu knicken; keine Fassadenhalterung; Stoff schien durchs Gestell. **Fix:** Bibliothek-Karte **Keine** zuerst; zwei-gliedrige IK mit fester Armlänge; Wandhalter + Scharniere; Abstand min. 8 cm zu Öffnung/Profil; Stoff/Volant geometrisch über dem Gestänge.
+
+**Dateien:** `awning.ts`, `FacadeController.ts`, `awningUi.ts`, `index.html`, `main.ts`, `profilePaths.ts`. Docs: [awnings.md](awnings.md).
+
 ### Ladeanimation bis Bootstrap (2026-09-13) — v2.0.420
 
 **Symptom:** Ladeanimation (Haus vom Nikolaus) fehlte / UI erschien zu früh. **Ursache:** `dismissAppLoading()` direkt nach `loadInitialState()` (v2.0.396) und HTML-Failsafe nach 1,2 s. **Fix:** Overlay bleibt bis `bootstrapSceneLighting()` (+ 2 Frames) in `finally`; `#app` per `body.app-ready` erst dann sichtbar; Failsafe nur noch 20 s.

@@ -926,7 +926,8 @@ function buildCornicePaths(state: FacadeState): ProfilePath[] {
   return paths
 }
 
-function openingFrameProfileOutwardCm(
+/** Rahmenprofil-Vorstand über die Öffnungskante (cm), 0 wenn keins. */
+export function openingFrameProfileOutwardCm(
   wall: Wall,
   opening: Opening,
   customProfiles: FacadeState['customProfiles'],
