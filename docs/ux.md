@@ -263,21 +263,20 @@ Persistiert als `editScope` / `editFacadeYawFilter` in localStorage (`PersistedA
 
 ---
 
-## Touch-/Fassade-Chrome (v2.0.448)
+## Touch-Chrome (v2.0.451)
 
-Layout-Schalter: `html.ui-touch-chrome`, wenn **`(pointer: coarse)` ODER Viewport ≤ 900 px ODER Ansicht Fassade (`present`)**. Desktop-**3D** bleibt das klassische Drei-Spalten-Layout ohne Bottom-Sheet.
+Layout-Schalter: `html.ui-touch-chrome`, **nur** wenn **`(pointer: coarse)` ODER Viewport ≤ 900 px**. **Nicht** allein wegen Ansicht Fassade (`present`) auf großem Desktop — dort bleibt das klassische Layout (2D/3D/Fassade/Export, Himmel/Neutral, Licht, Ebenen, Kompass, Nav-Hilfe, Gültig für, rechte Inspector-Leiste).
 
 | Verhalten | Details |
 |---|---|
-| Ansicht | Auf Touch/schmal → **Fassade** erzwungen (`#view-btn-present`) |
-| HUD aus | 2D/3D/Oben/Export, Farbe/Zeichnung, Vorschau/Render, Himmel/Neutral, Licht, linke Ebenen (`#ui`), Kompass, Nav-Hilfe, **Gültig für** (`#edit-scope-bar`) |
+| Ansicht | Auf Touch/schmal → **Fassade** erzwungen (`#view-btn-present`); großes Desktop behält freie Ansichtswahl |
+| HUD aus | gesamte Ansichts-Leiste (inkl. Fassade), Farbe/Zeichnung, Vorschau/Render, Himmel/Neutral, Licht, linke Ebenen (`#ui`), Kompass, Nav-Hilfe, **Gültig für** (`#edit-scope-bar`) — nur im Touch-Chrome |
 | Toast | `#scope-propagate-offer` bleibt (über dem Sheet, 7 s) |
 | Bibliothek-Tabs | horizontal swipebar (`overflow-x`, `scroll-snap`) |
 | Wand-Geometrie | kein Place/DnD/Resize/Move/Innenwand/Erker-Platzieren; Styling (Farben, Paneele, Gesims, Öffnungen) bleibt |
-| Bearbeiten | Aktive Bibliothek-Karte: Titel → **Bearbeiten**; Thumb wendet weiter an |
-| Touch/Fassade | Bottom-Sheet portiert `#selection-toolbar-panels` (keine Kopie); Bibliothek gleitet nach unten |
-| Desktop-3D | Rechts nur der per Bearbeiten gewählte Settings-Block (`libraryEditFocusSections`); kein Auto-Tab Farben |
-| Verdachung | Summary-Kacheln Form/Profil/Konsole → Galerie → Profil-Maße eine Ebene tiefer |
+| Bearbeiten | Nur Touch-Chrome: aktive Karte → unterstrichenes **Bearbeiten** (Hit-Zone unter Thumb); öffnet Bottom-Sheet am `document.body` (`openLibraryEdit`, portiert `#selection-toolbar-panels`). Desktop: Kartentitel + volle rechte Leiste |
+| Bibliothek-Cursor | Touch-Chrome: **kein** grab/grabbing, kein DnD (`draggable=false`); Tippen wendet an / Bearbeiten öffnet Sheet. Desktop: klassisches Ziehen bleibt |
+| Verdachung | Summary-Kacheln Form/Profil/Konsole → Galerie → Profil-Maße eine Ebene tiefer (im Sheet) |
 
 Implementierung: `src/ui/touchChrome.ts`, Wiring in `src/main.ts` / `src/style.css` / `index.html` (`#library-edit-sheet`).
 

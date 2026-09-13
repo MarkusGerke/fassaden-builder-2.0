@@ -5350,15 +5350,35 @@ function isLibraryCardApplied(card: HTMLElement): boolean {
   return false
 }
 
+function libraryCardOutlineIsEvaluable(card: HTMLElement): boolean {
+  return Boolean(
+    card.dataset.libraryNone ||
+      card.dataset.wallPresetId ||
+      card.dataset.presetId ||
+      card.dataset.templateId ||
+      card.dataset.panelPattern ||
+      card.dataset.bayPresetId ||
+      card.dataset.awningKind ||
+      card.dataset.facadeColorId ||
+      card.dataset.interiorWallDepth,
+  )
+}
+
 function syncLibraryAppliedOutline() {
   const host = document.querySelector('#opening-library-items')
   if (!host) return
   for (const card of host.querySelectorAll<HTMLElement>('.opening-library-card')) {
+    // Profil-/Asset-Karten setzen `.active` beim Aufbau — nicht durch false-Negatives löschen.
+    if (!libraryCardOutlineIsEvaluable(card)) {
+      if (card.classList.contains('active') || card.classList.contains('library-card-applied')) {
+        card.classList.add('active')
+        card.classList.add('library-card-applied')
+      }
+      continue
+    }
     const applied = isLibraryCardApplied(card)
     card.classList.toggle('library-card-applied', applied)
-    if (libraryTab !== 'profiles' && libraryTab !== 'pediment') {
-      card.classList.toggle('active', applied)
-    }
+    card.classList.toggle('active', applied)
   }
   decorateLibraryEditButtons()
 }
@@ -5368,28 +5388,115 @@ function libraryTabEditTitle(tab: string): string {
   return (btn?.textContent ?? tab).trim() || 'Bearbeiten'
 }
 
-function decorateLibraryEditButtons() {
-  const host = document.querySelector('#opening-library-items')
-  if (!host) return
+function libraryCardEditLabelFromEvent(event: Event): HTMLElement | null {
+  const t = event.target
+  if (!(t instanceof Element)) return null
+  const direct = t.closest('.library-card-edit')
+  if (direct instanceof HTMLElement) return direct
+  // Tap oft auf dem <button>-Parent (Thumb hat pointer-events:none) —
+  // .closest('.library-card-edit') findet dann nichts. Untere Label-Zone = Bearbeiten.
+  const card = t.closest('.opening-library-card')
+  if (!(card instanceof HTMLElement)) return null
+  const edit = card.querySelector<HTMLElement>(':scope > .library-card-edit')
+  if (!edit) return null
+  const pe = event as PointerEvent
+  if (typeof pe.clientY !== 'number') return null
+  const thumb = card.querySelector(':scope > .opening-library-thumb')
+  if (thumb) {
+    const tr = thumb.getBoundingClientRect()
+    if (pe.clientY >= tr.bottom - 4) return edit
+  } else {
+    const er = edit.getBoundingClientRect()
+    if (pe.clientY >= er.top - 10) return edit
+  }
+  return null
+}
+
+function onLibraryCardEditClick(event: Event) {
+  event.preventDefault()
+  event.stopPropagation()
+  event.stopImmediatePropagation()
   const sections = LIBRARY_TAB_EDIT_SECTIONS[libraryTab]
   if (!sections?.length) return
   if (libraryTab === 'walls' || libraryTab === 'bay' || libraryTab === 'balcony' || libraryTab === 'loggia') {
     return
   }
+  openLibraryEdit(sections, libraryTabEditTitle(libraryTab))
+}
+
+/** Verhindert, dass die Karte (parent button) den Bearbeiten-Tap als Drag schluckt. */
+function onLibraryCardEditPointerDown(event: Event) {
+  event.stopPropagation()
+  const card = (event.currentTarget as HTMLElement | null)?.closest?.('.opening-library-card')
+  if (card instanceof HTMLElement) {
+    delete card.dataset.didDrag
+    card.draggable = false
+  }
+}
+
+/**
+ * Touch-Chrome: keine Library-DnD-Affordance (kein grab, kein HTML5-Drag).
+ * Desktop behält klassisches Ziehen, wo `data-library-drag` gesetzt wurde.
+ */
+function syncLibraryCardDragAffordances() {
+  const host = document.querySelector('#opening-library-items')
+  if (!host) return
+  const touch = isTouchChromeLayout(currentView)
   for (const card of host.querySelectorAll<HTMLElement>('.opening-library-card')) {
-    if (!card.classList.contains('library-card-applied') && !card.classList.contains('active')) continue
-    if (card.dataset.libraryNone === '1') continue
-    const existing = card.querySelector<HTMLElement>('.library-card-edit')
-    if (existing) continue
-    const label = card.querySelector<HTMLElement>(':scope > span')
-    if (!label || label.classList.contains('opening-library-card-del')) continue
-    label.classList.add('library-card-edit')
-    label.textContent = 'Bearbeiten'
-    label.addEventListener('click', (event) => {
-      event.preventDefault()
-      event.stopPropagation()
-      openLibraryEdit(sections, libraryTabEditTitle(libraryTab))
-    })
+    if (card.draggable || card.dataset.libraryDrag === '1') {
+      card.dataset.libraryDrag = '1'
+    }
+    card.draggable = card.dataset.libraryDrag === '1' && !touch
+    if (touch) delete card.dataset.didDrag
+  }
+}
+
+function decorateLibraryEditButtons() {
+  const host = document.querySelector('#opening-library-items')
+  if (!host) return
+  syncLibraryCardDragAffordances()
+  const sections = LIBRARY_TAB_EDIT_SECTIONS[libraryTab]
+  // „Bearbeiten“-Link nur im Touch-Chrome (Mobile/coarse/narrow), nicht auf großem Desktop.
+  const editEnabled =
+    isTouchChromeLayout(currentView) &&
+    Boolean(sections?.length) &&
+    libraryTab !== 'walls' &&
+    libraryTab !== 'bay' &&
+    libraryTab !== 'balcony' &&
+    libraryTab !== 'loggia'
+
+  for (const card of host.querySelectorAll<HTMLElement>('.opening-library-card')) {
+    const label = card.querySelector<HTMLElement>(':scope > span:not(.opening-library-card-del)')
+    if (!label) continue
+
+    const labelText = (label.textContent ?? '').trim()
+    if (card.dataset.libraryCardTitle == null && labelText && labelText !== 'Bearbeiten') {
+      card.dataset.libraryCardTitle = labelText
+    }
+
+    const isActive =
+      card.classList.contains('library-card-applied') || card.classList.contains('active')
+
+    label.removeEventListener('click', onLibraryCardEditClick)
+    label.removeEventListener('pointerdown', onLibraryCardEditPointerDown)
+
+    if (editEnabled && isActive) {
+      if (labelText && labelText !== 'Bearbeiten') {
+        card.dataset.libraryCardTitle = labelText
+      }
+      label.classList.add('library-card-edit')
+      label.textContent = 'Bearbeiten'
+      label.addEventListener('pointerdown', onLibraryCardEditPointerDown)
+      label.addEventListener('click', onLibraryCardEditClick)
+      // DnD am Parent würde den Link-Klick oft schlucken (didDrag / kein click).
+      card.draggable = false
+      continue
+    }
+
+    label.classList.remove('library-card-edit')
+    if (card.dataset.libraryCardTitle) {
+      label.textContent = card.dataset.libraryCardTitle
+    }
   }
 }
 
@@ -5422,6 +5529,10 @@ function syncLibraryEditSheetChrome() {
   libraryDockEl?.classList.toggle('is-edit-sheet-open', open)
   if (!libraryEditSheet) return
   if (open) {
+    // #viewport hat overflow:hidden — fixed Sheet dort wird abgeschnitten → an body.
+    if (libraryEditSheet.parentElement !== document.body) {
+      document.body.appendChild(libraryEditSheet)
+    }
     libraryEditSheet.hidden = false
     libraryEditSheet.setAttribute('aria-hidden', 'false')
     requestAnimationFrame(() => libraryEditSheet?.classList.add('is-open'))
@@ -5443,10 +5554,13 @@ function syncLibraryEditSheetChrome() {
 }
 
 function openLibraryEdit(sections: string[], title: string) {
+  // Fokussierter Inspector / Bottom-Sheet nur Touch-Chrome — Desktop bleibt klassisch.
+  const touch = isTouchChromeLayout(currentView)
+  if (!touch) return
   libraryEditFocusSections = [...sections]
   libraryEditFocusTitle = title || 'Bearbeiten'
   pedimentCatalogDepth = 'root'
-  libraryEditSheetOpen = isTouchChromeLayout(currentView)
+  libraryEditSheetOpen = true
   document.documentElement.classList.toggle('ui-library-edit-focus', true)
   if (sections[0]) {
     pendingSelectionToolbarTab = sections[0]
@@ -5563,16 +5677,15 @@ function syncTouchChromeLayout() {
   }
   const touch = isTouchChromeLayout(currentView)
   document.documentElement.classList.toggle('ui-touch-chrome', touch)
-  if (!touch && libraryEditSheetOpen) {
-    libraryEditSheetOpen = false
-    restoreSelectionPanelsHome()
-    libraryEditSheet?.classList.remove('is-open')
-    if (libraryEditSheet) libraryEditSheet.hidden = true
+  if (!touch && (libraryEditSheetOpen || libraryEditFocusSections)) {
+    closeLibraryEdit()
   }
   if (touch && (armedLibraryWallPresetId || armedInteriorWallDepthCm != null)) {
     disarmLibraryWallPreset()
   }
   syncLibraryEditSheetChrome()
+  syncLibraryCardDragAffordances()
+  decorateLibraryEditButtons()
   updateWallResizeGizmos()
   syncLibraryTabVisibility()
 }
@@ -10259,6 +10372,7 @@ function appendLibraryNoneCard(
   if (last) {
     last.dataset.libraryNone = '1'
     last.classList.toggle('active', selected)
+    last.classList.toggle('library-card-applied', selected)
   }
 }
 
@@ -10292,7 +10406,13 @@ function appendLibraryProfileCards(
     const cardTitle = profileCardDisplayLabel(profile.label)
     appendLibraryAssetCard(host, { kind, id: profile.id } as LibraryAsset, cardTitle, thumb)
     const last = host.lastElementChild as HTMLElement | null
-    last?.classList.toggle('active', !noneSelected && profile.id === canonicalProfileId(selectedId))
+    if (last) {
+      last.dataset.libraryAssetKind = kind
+      last.dataset.libraryAssetId = profile.id
+      const selected = !noneSelected && profile.id === canonicalProfileId(selectedId)
+      last.classList.toggle('active', selected)
+      last.classList.toggle('library-card-applied', selected)
+    }
   }
 }
 
@@ -11230,7 +11350,11 @@ function initOpeningLibrary() {
       thumb.innerHTML = item.svg
       appendLibraryAssetCard(host, { kind: 'pediment-form', form: item.form }, item.label, thumb)
       const last = host.lastElementChild as HTMLElement | null
-      last?.classList.toggle('active', Boolean(pediment?.enabled) && pediment?.form === item.form)
+      if (last) {
+        const selected = Boolean(pediment?.enabled) && pediment?.form === item.form
+        last.classList.toggle('active', selected)
+        last.classList.toggle('library-card-applied', selected)
+      }
     }
     appendLibraryGroupLabel(host, 'Profil')
     appendLibraryProfileCards(
@@ -22789,6 +22913,34 @@ libraryEditSheetClose?.addEventListener('click', () => closeLibraryEdit())
 libraryEditSheet
   ?.querySelector('[data-library-edit-dismiss]')
   ?.addEventListener('click', () => closeLibraryEdit())
+
+document.querySelector('#opening-library-items')?.addEventListener(
+  'dragstart',
+  (event) => {
+    if (!isTouchChromeLayout(currentView)) return
+    event.preventDefault()
+    const card = (event.target as Element | null)?.closest?.('.opening-library-card')
+    if (card instanceof HTMLElement) {
+      delete card.dataset.didDrag
+      card.draggable = false
+      card.classList.remove('is-dragging')
+    }
+  },
+  true,
+)
+
+document.querySelector('#opening-library-items')?.addEventListener(
+  'click',
+  (event) => {
+    const t = event.target
+    if (!(t instanceof Element)) return
+    const edit = libraryCardEditLabelFromEvent(event)
+    if (!edit) return
+    // Capture: läuft vor dem Karten-Click (Apply) und vor didDrag-Früh-Returns.
+    onLibraryCardEditClick(event)
+  },
+  true,
+)
 
 window.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && libraryEditFocusSections) {

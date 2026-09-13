@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.448'
+export const APP_VERSION = '2.0.453'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,51 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.453',
+    date: '2026-09-13',
+    title: 'Bibliothek Bearbeiten öffnet Bottom-Sheet',
+    changes: [
+      'Tap unter dem Vorschaubild der aktiven Karte öffnet zuverlässig das Einstellungs-Sheet',
+      'Sheet liegt am document.body — nicht mehr hinter dem Viewport-Overflow versteckt',
+    ],
+  },
+  {
+    version: '2.0.452',
+    date: '2026-09-13',
+    title: 'Bibliothek Bearbeiten und kein Greifen',
+    changes: [
+      '„Bearbeiten“ auf der aktiven Bibliothek-Karte öffnet zuverlässig das Bottom-Sheet mit den passenden Einstellungen',
+      'Im Touch-Chrome kein Greif-Cursor und kein Ziehen von Bibliothek-Karten — Tippen genügt',
+    ],
+  },
+  {
+    version: '2.0.451',
+    date: '2026-09-13',
+    title: 'Touch-Chrome nur Mobile',
+    changes: [
+      'Touch-Chrome (schlankes HUD, Bottom-Sheet, Bearbeiten-Link) nur bei Touch oder schmalem Fenster — nicht mehr allein durch Ansicht Fassade auf dem Desktop',
+      'Große Screens behalten wieder 2D/3D/Fassade/Export und das klassische Layout',
+    ],
+  },
+  {
+    version: '2.0.450',
+    date: '2026-09-13',
+    title: 'Bibliothek-Bearbeiten als Link',
+    changes: [
+      'Nur die aktive Bibliothek-Karte zeigt „Bearbeiten“ als unterstrichenen Link; bei Auswahlwechsel erscheint wieder der Kartentitel',
+      'Thumb wendet weiter an, „Bearbeiten“ öffnet den Inspector',
+    ],
+  },
+  {
+    version: '2.0.449',
+    date: '2026-09-13',
+    title: 'Bibliothek-Bearbeiten und Fassade-Button',
+    changes: [
+      'Aktive Bibliothek-Karte behält „Bearbeiten“ auch bei Gesims/Sockel/Profilen',
+      'Touch-/Fassade-Chrome: Ansichts-Button „Fassade“ oben links ausgeblendet',
+    ],
+  },
   {
     version: '2.0.448',
     date: '2026-09-13',

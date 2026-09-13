@@ -5340,7 +5340,7 @@ html[data-ui-mode='simple'] [data-ui-level='advanced'] {
   border-left: 1px solid #ccc;
 }
 
-/* ── Touch-/Fassade-Chrome (html.ui-touch-chrome) ───────────────────────── */
+/* ── Touch-Chrome (html.ui-touch-chrome): nur Mobile/coarse/≤900px ───────── */
 html.ui-touch-chrome #ui,
 html.ui-touch-chrome #ui-left-collapse,
 html.ui-touch-chrome #view-compass,
@@ -5351,10 +5351,7 @@ html.ui-touch-chrome #wall-resize-gizmos {
   display: none !important;
 }
 
-html.ui-touch-chrome #viewport-chrome .view-mode-toggle[aria-label='Ansicht'] #view-btn-top,
-html.ui-touch-chrome #viewport-chrome .view-mode-toggle[aria-label='Ansicht'] #view-btn-front,
-html.ui-touch-chrome #viewport-chrome .view-mode-toggle[aria-label='Ansicht'] #view-btn-3d,
-html.ui-touch-chrome #viewport-chrome .view-mode-toggle[aria-label='Ansicht'] #view-btn-export,
+html.ui-touch-chrome #viewport-chrome .view-mode-toggle[aria-label='Ansicht'],
 html.ui-touch-chrome #viewport-chrome .view-mode-toggle[aria-label='Darstellung'],
 html.ui-touch-chrome #viewport-chrome .view-mode-toggle[aria-label='Darstellungsmodus'],
 html.ui-touch-chrome #viewport-chrome .view-mode-toggle[aria-label='Umgebung'],
@@ -5405,22 +5402,53 @@ html.ui-touch-chrome #library-dock > .library-chrome {
   transition: transform 0.28s ease, opacity 0.28s ease;
 }
 
+/* Touch-Chrome: Bibliothek tippen/klicken — kein grab/DnD-Cursor */
+html.ui-touch-chrome .opening-library-card,
+html.ui-touch-chrome .opening-library-card:active,
+html.ui-touch-chrome .opening-library-card.is-dragging {
+  cursor: pointer;
+}
+
+html.ui-touch-chrome .opening-library-card .library-card-edit {
+  cursor: pointer;
+  position: relative;
+  z-index: 1;
+  pointer-events: auto;
+  /* Größere Hit-Zone unter dem Thumb (Tap trifft oft den button, nicht den Span) */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 1.6rem;
+  margin-top: auto;
+  padding: 0.35rem 0.15rem 0.15rem;
+  box-sizing: border-box;
+}
+
 .library-card-edit {
   display: block;
   width: 100%;
   text-align: center;
-  font-size: 0.7rem;
-  font-weight: 600;
+  font-size: 0.72rem;
+  font-weight: 700;
   line-height: 1.2;
-  color: #1a1a1a;
-  padding: 0.1rem 0;
+  color: #111;
+  padding: 0.15rem 0 0;
   cursor: pointer;
   user-select: none;
+  pointer-events: auto;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .opening-library-card .library-card-edit {
   /* ersetzt den Titel — gleiche Kartenhöhe */
-  min-height: 1.1em;
+  min-height: 1.15em;
+}
+
+.opening-library-card.library-card-applied .library-card-edit,
+.opening-library-card.active .library-card-edit {
+  color: #000;
 }
 
 .library-edit-sheet {
@@ -5496,13 +5524,9 @@ html.ui-touch-chrome #library-dock > .library-chrome {
   gap: var(--space-4, 32px);
 }
 
-/* Desktop-3D: fokussierter Inspector (nur Bearbeiten-Block) */
-html.ui-library-edit-focus:not(.ui-touch-chrome) #selection-toolbar-panels .settings-section.library-edit-filtered-out {
+/* Fokussierter Inspector nur im Touch-Chrome (Bottom-Sheet); Desktop klassisch. */
+html.ui-touch-chrome.ui-library-edit-focus #selection-toolbar-panels .settings-section.library-edit-filtered-out {
   display: none !important;
-}
-
-html.ui-library-edit-focus:not(.ui-touch-chrome) #selection-toolbar {
-  outline: 2px solid rgba(0, 0, 0, 0.06);
 }
 
 .settings-summary-tiles {

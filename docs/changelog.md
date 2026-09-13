@@ -2,12 +2,60 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Bibliothek Bearbeiten öffnet Bottom-Sheet (2026-09-13) — v2.0.453
+
+**Symptom:** Klick auf „Bearbeiten“ öffnete kein Bottom-Sheet.
+
+**Ursache:** Thumb hat `pointer-events: none` — Tap traf den `<button>`-Parent; `closest('.library-card-edit')` findet nur Vorfahren, nicht das Kind-Label. Zusätzlich: `#library-edit-sheet` in `#viewport` mit `overflow: hidden` wurde abgeschnitten.
+
+**Fix:** Hit-Zone unter dem Thumb als Bearbeiten; Sheet beim Öffnen an `document.body`.
+
+Docs: [ux.md](ux.md).
+
+### Bibliothek Bearbeiten und kein Greifen (2026-09-13) — v2.0.452
+
+**Symptom:** „Bearbeiten“ öffnete das Sheet nicht zuverlässig; Bibliothek-Karten zeigten Greif-Cursor und wirkten ziehbar.
+
+**Ursache / Versuche:** HTML5-`draggable` + `didDrag` auf der Karte schluckten den Label-Klick (Pointer-Capture / Dragstart vor `click`). Nur `stopPropagation` am Label reichte nicht, solange die Karte ziehbar blieb.
+
+**Fix:** Im Touch-Chrome `draggable=false` (`syncLibraryCardDragAffordances`), Cursor `pointer` statt grab/grabbing; Capture-Click + `pointerdown`-Stop auf `.library-card-edit`; `dragstart` im Touch-Chrome abbrechen. Desktop behält klassisches DnD.
+
+Docs: [ux.md](ux.md).
+
+### Touch-Chrome nur Mobile (2026-09-13) — v2.0.451
+
+**Symptom:** Auf großen Desktop-Screens wirkte alles „neu“ (fehlende Modi, HUD weg), sobald Ansicht Fassade aktiv war.
+
+**Ursache:** `isTouchChromeLayout` aktivierte `html.ui-touch-chrome` auch allein bei `view === 'present'` (unabhängig von Pointer/Breite). CSS blendete Ansichts-Toggle und mehr aus.
+
+**Fix:** Touch-Chrome nur bei `(pointer: coarse)` oder Viewport ≤ 900 px. Fassade auf Desktop ändert das Layout nicht. Bottom-Sheet, „Bearbeiten“-Link und fokussierter Inspector nur im Touch-Chrome; großer Desktop bleibt klassisch (volle rechte Leiste).
+
+Docs: [ux.md](ux.md). Test: `src/ui/touchChrome.test.ts`.
+
+### Bibliothek-Bearbeiten als Link (2026-09-13) — v2.0.450
+
+**Symptom:** „Bearbeiten“ blieb auf Karten stehen, wenn die Auswahl wechselte; wirkte nicht klar als Link.
+
+**Fix:** Originaltitel in `data-library-card-title`; `decorateLibraryEditButtons` setzt nur auf aktiver/applied Karte „Bearbeiten“ + `.library-card-edit` (unterstrichen, `pointer-events: auto`); inaktive Karten stellen den Titel wieder her und entfernen Handler. Thumb bleibt Apply-Hit-Zone.
+
+Docs: [ux.md](ux.md).
+
+### Bibliothek-Bearbeiten und Fassade-Button (2026-09-13) — v2.0.449
+
+**Symptom:** Aktive Gesims-/Sockel-/Profil-Karten verloren „Bearbeiten“; oben links blieb der alleinige Button „Fassade“.
+
+**Ursache / Fix:** `syncLibraryAppliedOutline` überschrieb `.active` bei Karten ohne Outline-Marker (Profile) mit `false`. Marker-lose Karten und „Keines“ behalten jetzt die Markierung und bekommen Bearbeiten. Ansichts-Toggle im Touch-Chrome komplett ausgeblendet.
+
+Docs: [ux.md](ux.md).
+
 ### Touch-/Fassade-Chrome und fokussierter Inspector (2026-09-13) — v2.0.448
 
 1. **Chrome:** `html.ui-touch-chrome` bei grobem Pointer, schmalem Viewport (≤ 900 px) oder Ansicht Fassade — HUD aus, Ansicht Fassade, Bibliothek-Tabs swipebar, Toast-Countdown **7 s**.
 2. **Geometrie-Lock:** In diesem Chrome keine Wand-/Erker-Platzierung, kein Resize/Move; Styling bleibt.
 3. **Bearbeiten:** Aktive Bibliothek-Karte öffnet Bottom-Sheet (Portal der bestehenden Panels) bzw. Desktop-3D nur den gewählten Inspector-Block.
 4. **Verdachung:** Summary-Kacheln Form/Profil/Konsole mit Galerie und Profil-Tiefe.
+
+**Hinweis:** v2.0.451 entfernt die Aktivierung allein über Ansicht Fassade; Desktop-3D-Fokus-Inspector entfällt zugunsten klassischer Leiste.
 
 Docs: [ux.md](ux.md). Test: `src/ui/touchChrome.test.ts`.
 
