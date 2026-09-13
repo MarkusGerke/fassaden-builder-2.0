@@ -67,8 +67,8 @@ export function setExteriorEnvFillFactor(factor: number): void {
 }
 
 function scaledEnvIntensity(base: number): number {
-  const wallScale = THREE.MathUtils.lerp(1, 0.05, facadeWallUnlitForEnv)
-  return base * exteriorEnvFillFactor * wallScale
+  // v2.0.428: keine zusätzliche wallUnlit-Env-Dämpfung (415) — heller Look.
+  return base * exteriorEnvFillFactor
 }
 
 const glassWallUnlitUniform = { value: 0 }

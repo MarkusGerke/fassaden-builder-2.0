@@ -7,9 +7,9 @@ alwaysApply: true
 
 Beim Anlegen oder Umsortieren von Einstellungen in der **rechten Toolbar** / Sektionen / Dialogen:
 
-0. **Übersicht** zuerst (synthetischer Tab `all` — bei jedem Objekt-Klick aktiv)
+0. **Übersicht** zuerst in der Tab-Leiste (synthetischer Tab `all` — manuell wählbar)
 1. **Maße** danach (Breite, Höhe, Tiefe, Position, Stärken, …)
-2. **Farbe** danach (Flächen-, Rahmen-, Glas-, Fugenfarben, …)
+2. **Farben** danach (Flächen-, Rahmen-, Glas-, Fugenfarben, …) — **bei jedem Objekt-Klick aktiv** (v2.0.434)
 3. **Übliche Einstellungen** erst danach (Enable-Checkboxen, Profile, Muster, Orientierung, erweiterte Optionen, …)
 
 ## Gilt für
@@ -17,10 +17,11 @@ Beim Anlegen oder Umsortieren von Einstellungen in der **rechten Toolbar** / Sek
 - Reihenfolge der **Tabs** (`data-settings-order`): Übersicht → Maße → Farben → weitere Sektionen.
 - Reihenfolge der **Felder innerhalb** einer Sektion, wenn Maße und Farbe gemischt vorkommen würden — Maße-Blöcke vor Farb-Blöcken.
 - Neue Features: nicht Farbe oder Dekor vor den Maßen platzieren.
+- Bibliothek-Reiter heißt **Farben** (nicht „Farbe“); bei Auswahl ebenfalls vorausgewählt.
 
 ## Nicht
 
-- Übersicht bleibt vorne (Gesamtblick) und wird bei Objekt-Klick immer gewählt.
+- Übersicht bleibt als erster Tab in der Leiste, wird aber **nicht** mehr automatisch bei Objekt-Klick gewählt (Farben statt Übersicht).
 - Bestehende IDs/`hidden`-Logik nicht löschen — nur Reihenfolge und Sichtbarkeit.
 
 Docs: `docs/ux.md` (Tab-Reihenfolge rechts).

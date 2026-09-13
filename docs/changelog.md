@@ -2,6 +2,116 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Innenwände Rechtsklick, Host-Innenwände, Andocken Innenseite (2026-09-13) — v2.0.440
+
+**Nutzer:** (1) Rechtsklick löschen/ausblenden, (2) Platzierung auf Innenwänden, (3) T/Kreuz von Ecken, (4) Andocken an Außenwände.
+
+**Ursachen / Fix:**
+1. Kontextmenü: `pickFromEvent` traf Decke vor Innenwand-Mesh → Mesh-Pick wie bei Linksklick.
+2. `pickInteriorHostFaceAtClient` lehnte Innen-Hosts ab (`camOutside`/`distOuter`) → beide Seiten + `fromFace` an `createInteriorWallFromHostNormal`.
+3. Shift an `linkedCorner` blockierte Abzweig → Ausnahme für Innenwände.
+4. T-/Seal an Außen-**Planlinie** (Lücke ≈ Wandstärke) → `dockSegmentsForInteriorMeet` (Innenseite) + `sealInteriorEndsToForeignFaces`.
+
+Docs: [ux.md](ux.md), [floor-plan.md](floor-plan.md).
+
+### Innenwand Front-Pfeil und T-Stoß (2026-09-13) — v2.0.439
+
+**Nutzer:** Verschiebe-Pfeil fehlte; kein Andocken; nur Ecken, keine T-/Kreuz-Wände.
+
+**Fix:** Front-Greifer für Innenwände wieder an (nur Höhe aus). `snapBranchClose`: T gegen Außenwand = `meet` ohne Split; T gegen Innenwand = Split + Meet. `attachAngledWallFromEnd`: Abzweig von Innenwand bleibt `role: interior`. Docs: [ux.md](ux.md).
+
+### Innenwände wieder markierbar (2026-09-13) — v2.0.438
+
+**Symptom:** Nach Platzieren keine Auswahl/Skalierung/Löschen von Innenwänden. **Logs:** `armedInteriorWallDepthCm` blieb 24, `pickKind: ceiling` — Platzier-Pfad schluckte Klicks. **Fix:** nach Setzen entwaffnen; Mesh-Pick Innenwand vor Decke; Klick auf bestehende Innenwand = Auswahl. Docs: [changelog](changelog.md) v2.0.437.
+
+### Innenwand nur von innen, 90° (2026-09-13) — v2.0.437
+
+**Nutzer:** Platzierung nur von außen möglich; parallel zur Fassade statt 90°; Sockel; Höhen-Greifer unerwünscht.
+
+**Fix:** `pickInteriorHostFaceAtClient` — Kamera im Raum + Treffer näher an Innenkante. `createInteriorWallFromHostNormal` — Stummel 90° in den Raum (`inwardYawDeg`), `planLinked`, Höhe = Host, `plinthEnabled: false`. Greifer: nur links/rechts (kein top/front). Shift-Winkel wie Außenwand.
+
+**Klick ohne Platzierung:** Cyan-Ghost sichtbar, Klick setzte nichts — `pointerdown` behandelte `hit.ceiling` vor dem Innenwand-Pfad (von innen oft Decke/Boden). Fix: Innenwand-Platzierung vor Decke; Fallback auf Hover-Anker.
+
+**Keine Auswahl nach Platzieren:** Armierung blieb aktiv → jeder Klick wurde erneut als Platzierung geschluckt. Fix: nach erfolgreichem Setzen entwaffnen; Mesh-Pick für Innenwände hat Vorrang vor Decke; Klick auf bestehende Innenwand im Platzier-Modus = Auswahl.
+
+Dateien: `walls.ts`, `main.ts`, `hydrate.ts`, Test. Docs: [ux.md](ux.md).
+
+### Innenwand ohne Außenwand-Split (2026-09-13) — v2.0.436
+
+**Symptom:** Innenwand 24/36/48 teilte die Außenwand (Fenster/Paneele zerlegt). **Ursache:** v2.0.434 nutzte denselben Split-Pfad wie Längen-Karten. **Fix:** neue Innenwand an der Innenseite; Host ungeteilt. In v2.0.437 weiter präzisiert (90°, nur innen). Docs: [ux.md](ux.md), [floor-plan.md](floor-plan.md).
+
+### Markisen-Seitenüberstand 4 cm (2026-09-13) — v2.0.435
+
+**Seitenüberstand** (`overhangCm`): UI-`step` und Snap `AWNING_OVERHANG_STEP_CM = 4` (statt 8). Breite/Mount aus Span + Überstand folgen dem 4‑cm‑Raster. Docs: [awnings.md](awnings.md).
+
+### Etage-Reste, Innenwand-Extrude, Farben-Reiter (2026-09-13) — v2.0.434
+
+**Etage aus:** Partial-Rebuild entfernt Bank/Sturz/Verdachung/Laibung/Casing auch ohne `userData.buildingId` (alle Wände des Gebäudes + Clear in `rebuildReveals`/`rebuild*Sills`/`rebuildPediments`/`rebuildCasings`). Meshes bekommen `buildingId`.
+
+**Innenwände (ersetzt in v2.0.436):** damals Segment-Split + `role: 'interior'` — führte zu Außenwand-Zerlegung; siehe v2.0.436.
+
+**Farben:** Reiter heißt **Farben**; bei Objektauswahl Bibliothek und rechter Tab starten auf Farben. Kategorie-Dropdown mit Vorauswahl (Fenster→Rahmen, Markise→Markise, …). Apply deckt Markise/Rollladen/Bänke/Verdachung/Gesims/Sockel/… ab. Kurznamen: Anstrich, Backstein, Rahmen, Stuck, Metall, Holz, Markise.
+
+**Dateien:** `FacadeController.ts`, `main.ts`, `walls.ts`, `facadeColorLibrary.ts`, `index.html`, `style.css`. Docs: [ux.md](ux.md), [floor-plan.md](floor-plan.md).
+
+### Etage aus, Innenwände, Farbbibliothek (2026-09-13) — v2.0.433
+
+**Etage ausblenden:** Force-Rebuild + Indoor; Picking ignoriert ausgeblendete Etagen (keine Bank/Sturz/Laibung/Wand-Auswahl); Decke/Boden bleiben wählbar. Auswahl auf der Etage wird gelöst.
+
+**Innenwände:** `Wall.role: 'interior'`; Bibliothek **Innenwand 24/36/48** → Grundriss zeichnen; keine Paneele/Gesims, `planLinked: false` (kein Außenring).
+
+**Farbe:** Bibliothek-Reiter mit Palette aus Naturstein/Backstein/…; Klick wendet je Kategorie auf Auswahl an (Stein→Bekleidung, Fuge, Rahmen, Markise, Dach, …).
+
+**Dateien:** `buildings.ts`, `main.ts`, `walls.ts`, `hydrate.ts`, `FacadeController.ts`, `facadeColorLibrary.ts`, `index.html`, `presets.ts`. Docs: [ux.md](ux.md), [floor-plan.md](floor-plan.md).
+
+### Glas ohne Transparent, Gruppen-Markise voll, Markisen-Kontextmenü (2026-09-13) — v2.0.432
+
+**Glas:** Swatch/Button **Transparent** entfernt (`GLASS_COLORS` ohne `transparent`). Alt-`glassColor: transparent` → `DEFAULT_GLASS_COLOR` (#575757) beim Hydrate und beim Commit.
+
+**Gruppen-Markise:** Volles Einstellungsset wie Öffnungs-Markise (Ausladung, Neigung, Volant, Seitenüberstand, Abstand Öffnung, Senkrecht, Höhe über Sturz, Stoff/Gestänge/Oberfläche, Typ, Animation inkl. Zyklus, Uhrzeiten). Bei Auswahl einer Mitglieds-Öffnung bleiben die Felder sichtbar und patchen die Wand-Gruppe. `mountY` der Gruppe ist relativ zum Span-Sturz (Legacy-Absolutwerte werden umgerechnet).
+
+**Kontextmenü Markise:** Ein-/Ausblenden, Kopieren/Einfügen/Ersetzen, Eine Markise über Auswahl, Verknüpfung lösen / Aufteilen, Zuweisen für (Öffnungs-Markise), Löschen — analog Fenster, ohne unsinnige Fenster-Aktionen.
+
+**Dateien:** `colorPalettes.ts`, `hydrate.ts`, `main.ts`, `awningUi.ts`, `awnings.ts`, `FacadeController.ts`, `index.html`. Docs: [ux.md](ux.md), [awnings.md](awnings.md).
+
+### Glasfarbe wählbar + Gruppen-Markisen-Maße (2026-09-13) — v2.0.431
+
+**Glasfarbe:** `allowTransparent` für Palette `glass` war fälschlich aus (v2.0.389) — bei `transparent` wirkten Swatch/Overlay ausgegraut und gesperrt. Fix: Transparent wieder an; Farbfeld bleibt bedienbar, um aus Transparent heraus eine Farbe zu wählen.
+
+**Gruppen-Markise:** Studio-UI zeigt öffnungsbezogene Maße (**Abstand Öffnung**, Konsole, Senkrecht, Seitenüberstand) wie die Öffnungs-Markise; freie Wand-Markise behält **Arm von Kante**.
+
+**Dateien:** `main.ts`, `awningUi.ts`, `index.html`. Docs: [ux.md](ux.md), [awnings.md](awnings.md).
+
+### Glasfarbe, Markisenbreite, Gruppen-Markise (2026-09-13) — v2.0.430
+
+**Glasfarbe:** `applyOpeningPartVisibility` blendete Rahmen/Glas nach Teil-Fokus bei normalen Fenstern nicht wieder ein (nur Keller). Fix: im `showFrame`-Zweig immer einblenden.
+
+**Markisenbreite:** Öffnungs-Markisen immer `Öffnung + 2×Seitenüberstand` — bei Größenänderung (`updateOpening`/`moveOpening`), Scope-Toast (`awning`-Delta ohne Donor-`widthCm`) und UI ohne festes Breitenfeld. Gruppen: Span der Öffnungen + Überstand.
+
+**Gruppen-Markise:** `AwningConfig.openingIds` an `wall.awnings`; Mehrfachauswahl → „Eine Markise über Auswahl“; Lösen / In Einzel-Markisen aufteilen.
+
+**Dateien:** `main.ts`, `awnings.ts`, `openings.ts`, `scopePropagate.ts`, `FacadeController.ts`, `awningUi.ts`, `index.html`. Docs: [awnings.md](awnings.md), [ux.md](ux.md).
+
+### Markise kopieren + Scope nur Deltas (2026-09-13) — v2.0.429
+
+**Markise:** Eigene Zwischenablage; Rechtsklick auf Markisen-Mesh und Öffnungs-/Wandmenü für kopieren / einfügen / ersetzen. Fenster-Geometrie-Kopie inkl. Markise unverändert.
+
+**Scope-Toast:** Nested Opening-Configs nicht mehr ganz ersetzen (`OPENING_REPLACE_WHOLE` entfernt) — `deepApplyChanged` übernimmt nur geänderte Keys (z. B. `boxWindow`). Peer ohne Nested-Objekt bekommt After komplett. Wand-`WALL_REPLACE_WHOLE` und Rechtsklick **Zuweisen für** unverändert.
+
+**Dateien:** `awnings.ts`, `main.ts`, `scopePropagate.ts`, Tests. Docs: [awnings.md](awnings.md), [ux.md](ux.md), [views-and-state.md](views-and-state.md).
+
+### Hellerer Sonnen-Look (2026-09-13) — v2.0.428
+
+**Nutzer:** Ab ~v2.0.420/426 wirkte die Szene grauer/matter. **Ursache:** v2.0.410/411 (`shadow.intensity` 0,95…1 + Bounce/Env-Density-Dämpfung) und v2.0.413–418 (edgeShade/wallUnlit auf Kanten/Glas/Env). **Fix:** Intensity wieder `0,55+0,45×density`; Bounce/Env voll; Fassaden-Shader wieder `dimMask` (Prä-413); wallUnlit-Env/Glas-Dimmung aus. **Markisen-Live-Schatten (v2.0.427) unverändert.**
+
+**Dateien:** `main.ts`, `facadeShade.ts`, `threeColors.ts`. Docs: [shadows.md](shadows.md).
+
+### Markisen-Schatten folgt Ausfahrt (2026-09-13) — v2.0.427
+
+**Symptom:** Markisenschatten blieb während Ein-/Ausfahren auf der Startpose (`autoUpdate = false`). **Versuche (verworfen):** Scrub-Bake 8192 (ruckelig); Live-Map 1024 (Haus pixelig); nur Markisen casten (Hausschatten weg); Extra-Directional-/Spot-Licht (Umbra-Fill). **Fix:** während Live Voll-Bake aller Caster bei max. 4096² ~alle 48 ms; Settle stellt Map-Größe wieder her.
+
+**Dateien:** `main.ts`, `awningUi.ts`. Docs: [awnings.md](awnings.md), [shadows.md](shadows.md).
+
 ### Markisen + Bühnen-Wind (2026-09-13) — v2.0.421
 
 **Feature:** Gelenkarm- und Fallarm-Markisen an Öffnungen und frei an der Wand; Ausfahrt 0…100 % mit Gestänge unter dem Stoff und Animation. Globaler Wind-Slider (windstill→stürmisch) bewegt Markisenstoffe zufällig.

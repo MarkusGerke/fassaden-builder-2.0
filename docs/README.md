@@ -29,7 +29,7 @@
 | [style-templates.md](style-templates.md) | Stil-Vorlagen speichern/anwenden (localStorage) |
 | [opening-motion.md](opening-motion.md) | Flügel-Öffnen/Schließen: Kurveneditor, Vorlagen, Uhrzeiten, Datensatz `fassaden-opening-motion/v1` |
 | [roller-shutter.md](roller-shutter.md) | Rollläden: Lamellen, Höhe, Stapel, Animation (Ein Zug / Kabelzug), Uhrzeiten |
-| [awnings.md](awnings.md) | Markisen: Gelenkarm/Fallarm/Markisolette, Volant, Neigung |
+| [awnings.md](awnings.md) | Markisen: Gelenkarm/Fallarm/Markisolette, Volant, Neigung, Live-Schatten |
 | [wind.md](wind.md) | Bühnen-Wind: Intensität windstill→stürmisch, Stoff-Registry |
 | [roof.md](roof.md) | Berliner Mansarde: Ziegel/Trapez, bündige Traufe, Gehrungsrinne |
 | [downpipes.md](downpipes.md) | Fallrohre (mehrgeschossig), Nische/Schmuck-Durchbruch, Schellen, Regenrinne |

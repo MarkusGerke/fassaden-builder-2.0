@@ -897,6 +897,62 @@ function sealNearWallEndGapsInWalls(walls: Wall[]): Wall[] {
     const afterPt = gap.end === 'start' ? wallStartPoint(after) : wallEndPoint(after)
     if (!pointsMeet(afterPt, gap.meet, CORNER_EPS + 0.5)) break
   }
+  return sealInteriorEndsToForeignFaces(next)
+}
+
+/**
+ * Innenwand-Ende nahe einer Außen-/Innen-Dockfläche → auf die Fläche ziehen (T-Stoß).
+ * Ohne das bleibt oft eine Lücke ≈ Außenwand-Stärke (Andock an Planlinie statt Innenseite).
+ */
+function sealInteriorEndsToForeignFaces(walls: Wall[]): Wall[] {
+  let next = walls.map((w) => cloneWall(w))
+  for (let pass = 0; pass < 12; pass += 1) {
+    let best: {
+      wallId: string
+      end: 'start' | 'end'
+      meet: { x: number; z: number }
+      dist: number
+    } | null = null
+    for (const wall of next) {
+      if (!isStudioWall(wall) || !isInteriorWall(wall) || isProtectedFromPoseReverse(wall)) continue
+      for (const end of ['start', 'end'] as const) {
+        if (findAdjacentWalls(wall, end, next, { ignorePlanLink: true }).length > 0) continue
+        if (wallEndTouchesForeignSpine(wall, end, next, CORNER_EPS + 0.5)) continue
+        const pt = end === 'start' ? wallStartPoint(wall) : wallEndPoint(wall)
+        for (const other of next) {
+          if (other.id === wall.id || !isStudioWall(other)) continue
+          if (Math.abs((other.y ?? 0) - (wall.y ?? 0)) > 1) continue
+          for (const seg of dockSegmentsForInteriorMeet(other)) {
+            const hit = closestPointOnSegment(pt, seg.start, seg.end)
+            if (hit.t < 0.02 || hit.t > 0.98) continue
+            if (hit.dist <= CORNER_EPS || hit.dist > WALL_END_SEAL_GAP_CM + 1e-6) continue
+            if (!best || hit.dist < best.dist - 1e-6) {
+              best = { wallId: wall.id, end, meet: hit.point, dist: hit.dist }
+            }
+          }
+        }
+      }
+    }
+    if (!best) break
+    const wall = next.find((item) => item.id === best!.wallId)
+    if (!wall || !isStudioWall(wall)) break
+    const posed = poseWallEndAt(wall, best.end, best.meet, {
+      lockYaw: true,
+      preserveLocalOpenings: true,
+    })
+    if (!posed) break
+    const sealed = normalizeStudioWall(
+      { ...posed, planLinked: true },
+      { keepOpenings: true },
+    )
+    // #region agent log
+    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-DOCK',location:'walls.ts:sealInteriorEndsToForeignFaces',message:'seal interior end to face',data:{wallId:best.wallId,end:best.end,dist:best.dist,meet:best.meet},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    next = next.map((item) => (item.id === sealed.id ? sealed : item))
+    const after = next.find((item) => item.id === sealed.id)!
+    const afterPt = best.end === 'start' ? wallStartPoint(after) : wallEndPoint(after)
+    if (!pointsMeet(afterPt, best.meet, CORNER_EPS + 0.5)) break
+  }
   return next
 }
 
@@ -1063,7 +1119,12 @@ export function snapBranchClose(
   awayYawDeg: number,
   widthCm: number,
   walls: Wall[],
-  opts: { floorY: number; excludeIds: Iterable<string> },
+  opts: {
+    floorY: number
+    excludeIds: Iterable<string>
+    /** Innenwand-Abzweig: T gegen Außenwand auf Innenseite (nicht Außen-Planlinie). */
+    meetInteriorOnExteriorInner?: boolean
+  },
 ): BranchCloseSnap | null {
   const dir = unitXZ(wallAlongDelta(awayYawDeg, 1))
   const exclude = new Set(opts.excludeIds)
@@ -1118,11 +1179,27 @@ export function snapBranchClose(
     if (exclude.has(wall.id) || !isStudioWall(wall)) continue
     if (isProtectedFromPoseReverse(wall)) continue
     if (Math.abs((wall.y ?? 0) - opts.floorY) > 1) continue
-    const hit = rayHitSegment(joint, dir, wallStartPoint(wall), wallEndPoint(wall))
-    if (!hit || hit.tSeg <= 0.02 || hit.tSeg >= 0.98) continue
-    const atCm = hit.tSeg * wall.width
-    if (atCm < minT || wall.width - atCm < minT) continue
-    consider(hit.tRay, 1, { wallId: wall.id, atCm })
+    const useInner =
+      Boolean(opts.meetInteriorOnExteriorInner) && !isInteriorWall(wall)
+    const segs = useInner ? dockSegmentsForInteriorMeet(wall) : [
+      { start: wallStartPoint(wall), end: wallEndPoint(wall) },
+    ]
+    for (const seg of segs) {
+      const hit = rayHitSegment(joint, dir, seg.start, seg.end)
+      if (!hit || hit.tSeg <= 0.02 || hit.tSeg >= 0.98) continue
+      const atCm = hit.tSeg * wall.width
+      if (atCm < minT || wall.width - atCm < minT) continue
+      const along = {
+        x: seg.end.x - seg.start.x,
+        z: seg.end.z - seg.start.z,
+      }
+      const meet = {
+        x: seg.start.x + along.x * hit.tSeg,
+        z: seg.start.z + along.z * hit.tSeg,
+      }
+      // Immer Treffpunkt setzen; Split entscheidet attachAngledWallFromEnd (Innen→Außen ohne Host-Split).
+      consider(hit.tRay, 1, { wallId: wall.id, atCm }, meet)
+    }
   }
 
   if (bestDist === Infinity) return null
@@ -1166,6 +1243,7 @@ export function attachAngledWallFromEnd(
   const close = snapBranchClose(joint, yawDeg, requested, building.walls, {
     floorY: source.y,
     excludeIds: [sourceId, newId],
+    meetInteriorOnExteriorInner: isInteriorWall(source),
   })
   const width = Math.max(step, close?.widthCm ?? requested)
   let pose = poseAngledWallFromEnd(source, wallEnd, yawDeg, width)
@@ -1200,6 +1278,16 @@ export function attachAngledWallFromEnd(
     panelFlip: pose.panelFlip,
     buildingId: source.buildingId ?? building.id,
   }
+  if (isInteriorWall(source)) {
+    wall = {
+      ...styleWallAsInterior(wall, source.depth ?? wall.depth),
+      id: newId,
+      planLinked: true,
+      height: source.height,
+      y: source.y,
+      buildingId: source.buildingId ?? building.id,
+    }
+  }
   const ids = new Set([sourceId, newId])
   let walls = [
     ...building.walls.map((item) =>
@@ -1207,7 +1295,18 @@ export function attachAngledWallFromEnd(
     ),
     wall,
   ]
-  if (close?.split) walls = replaceSplitWall(walls, close.split.wallId, close.split.atCm)
+  // T-Split: Innen→Innen und Außen→Außen wie bisher. Innen→Außen: nur meet, Host ungeteilt.
+  if (close?.split) {
+    const splitTarget = walls.find((w) => w.id === close.split!.wallId)
+    const skipHostSplit =
+      isInteriorWall(source) && Boolean(splitTarget && !isInteriorWall(splitTarget))
+    if (!skipHostSplit) {
+      walls = replaceSplitWall(walls, close.split.wallId, close.split.atCm)
+    }
+  }
+  // #region agent log
+  fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-O',location:'walls.ts:attachAngledWallFromEnd',message:'branch attach',data:{sourceId,sourceRole:source.role,newRole:wall.role,hasMeet:Boolean(close?.meet),hasSplit:Boolean(close?.split),splitOnInterior:Boolean(close?.split && walls.some((w)=>w.id===close.split?.wallId && w.role==='interior')),width,yawDeg},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   return updateBuilding(state, building.id, (b) => ({
     ...b,
     walls,
@@ -2053,7 +2152,85 @@ export function rotateStudioWallAroundCenter(wall: Wall, nextYawDeg: number): Wa
 
 /** True, wenn am Wandende kein Nachbar anknüpft. */
 export function wallEndIsFree(wall: Wall, end: 'start' | 'end', walls: Wall[]): boolean {
-  return !findAdjacentWall(wall, end, walls)
+  if (findAdjacentWall(wall, end, walls)) return false
+  // Innenwand-Ende auf Dock-Fläche einer anderen Wand (T an Außen-/Innenwand) = angedockt.
+  if (isInteriorWall(wall) && wallEndTouchesForeignSpine(wall, end, walls)) return false
+  return true
+}
+
+/**
+ * Segmente, an die eine Innenwand andocken soll.
+ * Außenwände: Innenseite (nicht Außen-Planlinie — sonst Lücke ≈ Wandstärke).
+ * Innenwände: Plan + gegenüberliegende Flanke.
+ */
+export function dockSegmentsForInteriorMeet(wall: Wall): Array<{
+  start: { x: number; z: number }
+  end: { x: number; z: number }
+}> {
+  const planStart = wallStartPoint(wall)
+  const planEnd = wallEndPoint(wall)
+  const flip = wall.panelFlip ?? true
+  const out = facadeOutward(wall.yawDeg ?? 0, flip)
+  const d = wall.depth ?? WALL_DEPTH
+  const inward = { x: -out.x, z: -out.z }
+  const innerStart = { x: planStart.x + inward.x * d, z: planStart.z + inward.z * d }
+  const innerEnd = { x: planEnd.x + inward.x * d, z: planEnd.z + inward.z * d }
+  if (!isInteriorWall(wall)) {
+    // Außen: nur Raumseite.
+    return [{ start: innerStart, end: innerEnd }]
+  }
+  return [
+    { start: planStart, end: planEnd },
+    { start: innerStart, end: innerEnd },
+  ]
+}
+
+/** Punkt liegt auf einer Dock-Fläche einer anderen Wand (T-Stoß ohne gemeinsamen Endpunkt). */
+export function wallEndTouchesForeignSpine(
+  wall: Wall,
+  end: 'start' | 'end',
+  walls: Wall[],
+  eps = CORNER_EPS,
+): boolean {
+  const pt = end === 'start' ? wallStartPoint(wall) : wallEndPoint(wall)
+  for (const other of walls) {
+    if (other.id === wall.id || !isStudioWall(other)) continue
+    if (Math.abs((other.y ?? 0) - (wall.y ?? 0)) > 1) continue
+    for (const seg of dockSegmentsForInteriorMeet(other)) {
+      if (pointDistToSegment(pt, seg.start, seg.end) <= eps) return true
+    }
+  }
+  return false
+}
+
+function pointDistToSegment(
+  p: { x: number; z: number },
+  a: { x: number; z: number },
+  b: { x: number; z: number },
+): number {
+  const dx = b.x - a.x
+  const dz = b.z - a.z
+  const len2 = dx * dx + dz * dz
+  if (len2 < 1e-9) return Math.hypot(p.x - a.x, p.z - a.z)
+  const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / len2))
+  return Math.hypot(p.x - (a.x + dx * t), p.z - (a.z + dz * t))
+}
+
+function closestPointOnSegment(
+  p: { x: number; z: number },
+  a: { x: number; z: number },
+  b: { x: number; z: number },
+): { point: { x: number; z: number }; t: number; dist: number } {
+  const dx = b.x - a.x
+  const dz = b.z - a.z
+  const len2 = dx * dx + dz * dz
+  if (len2 < 1e-9) {
+    const dist = Math.hypot(p.x - a.x, p.z - a.z)
+    return { point: { x: a.x, z: a.z }, t: 0, dist }
+  }
+  const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / len2))
+  const point = { x: a.x + dx * t, z: a.z + dz * t }
+  return { point, t, dist: Math.hypot(p.x - point.x, p.z - point.z) }
 }
 
 export const END_PIECE_ARM_LENGTH_CM = 48
@@ -2100,7 +2277,27 @@ export function copyStudioWallStyle(from: Wall, to: Wall): Wall {
     cornice: from.cornice ? { ...from.cornice } : to.cornice,
     height: from.height,
     depth: from.depth,
+    role: from.role ?? to.role,
   }
+}
+
+/** Innenwand-Optik: keine Paneele/Gesims/Sockel, gewählte Stärke, nicht Außenring. */
+export function styleWallAsInterior(wall: Wall, depthCm: number): Wall {
+  return normalizeStudioWall({
+    ...wall,
+    role: 'interior',
+    depth: Math.max(8, depthCm),
+    planLinked: false,
+    panel: {
+      ...DEFAULT_STUDIO_PANEL,
+      enabled: false,
+      pattern: 'none',
+      plinthEnabled: false,
+      plinthHeight: 0,
+    },
+    cornice: { enabled: false },
+    profiles: [],
+  })
 }
 
 export function buildStudioWallAt(opts: {
@@ -2126,6 +2323,153 @@ export function buildStudioWallAt(opts: {
       : {}),
   })
   return opts.styleFrom ? copyStudioWallStyle(opts.styleFrom, wall) : wall
+}
+
+/**
+ * Innenwand aus Grundriss-Segment: Linie = Mittelachse, Stärke beidseitig,
+ * keine Paneele/Gesims, nicht plan-verknüpft (kein Außenring).
+ */
+export function createInteriorWallFromPlanSegment(opts: {
+  fromGx: number
+  fromGz: number
+  toGx: number
+  toGz: number
+  depthCm: number
+  y: number
+  height: number
+}): Wall | null {
+  const from = { x: opts.fromGx * PLAN_GRID, z: opts.fromGz * PLAN_GRID }
+  const to = { x: opts.toGx * PLAN_GRID, z: opts.toGz * PLAN_GRID }
+  const width = Math.hypot(to.x - from.x, to.z - from.z)
+  if (width < PLAN_GRID * 0.5) return null
+  const deg = (Math.atan2(-(to.z - from.z), to.x - from.x) * 180) / Math.PI
+  const normalized = ((deg % 360) + 360) % 360
+  const yawDeg = (Math.round(normalized / 45) * 45) % 360
+  const along = wallAlongDelta(yawDeg, 1)
+  const perp = { x: -along.z, z: along.x }
+  const half = Math.max(8, opts.depthCm) / 2
+  // Origin an der „linken“ Kante der Stärke (panelFlip true → Körper nach −lokaler Z).
+  const originX = from.x - perp.x * half
+  const originZ = from.z - perp.z * half
+  return normalizeStudioWall({
+    ...createStudioWall(originX, opts.y),
+    id: createId(),
+    role: 'interior',
+    planLinked: false,
+    originX,
+    originZ,
+    x: originX,
+    y: opts.y,
+    yawDeg,
+    width,
+    height: opts.height,
+    depth: Math.max(8, opts.depthCm),
+    panelFlip: true,
+    panel: {
+      ...DEFAULT_STUDIO_PANEL,
+      enabled: false,
+      pattern: 'none',
+      plinthEnabled: false,
+      plinthHeight: 0,
+    },
+    cornice: { enabled: false },
+    openings: [],
+    profiles: [],
+  })
+}
+
+/**
+ * Innenwand-Stummel: an Host-Fläche, 90° davon weg (Länge = `lengthCm`).
+ * Host bleibt ungeteilt. `localXCm` = Anker entlang der Host-Achse (Mitte der Stärke).
+ * `fromFace`: welche Host-Seite angeklickt wurde (Außenwände: innen; Innenwände: beide).
+ */
+export function createInteriorWallFromHostNormal(opts: {
+  host: Wall
+  localXCm: number
+  lengthCm: number
+  depthCm: number
+  fromFace?: 'inner' | 'outer'
+}): Wall | null {
+  const host = opts.host
+  if (!isStudioWall(host)) return null
+  const lengthCm = opts.lengthCm
+  const depthCm = Math.max(8, opts.depthCm)
+  if (lengthCm < PLAN_GRID * 0.5) return null
+  const half = depthCm / 2
+  if (opts.localXCm < half - 0.5 || opts.localXCm > host.width - half + 0.5) return null
+
+  const hostFlip = host.panelFlip ?? true
+  const hostYaw = host.yawDeg ?? 0
+  const hostOut = facadeOutward(hostYaw, hostFlip)
+  const intoRoom = { x: -hostOut.x, z: -hostOut.z }
+  const fromFace = opts.fromFace ?? 'inner'
+  // Wachstum von der getroffenen Fläche weg.
+  const yawDeg =
+    fromFace === 'inner'
+      ? inwardYawDeg(hostYaw, hostFlip)
+      : normalizeYawDeg(inwardYawDeg(hostYaw, hostFlip) + 180)
+  const along = wallAlongDelta(yawDeg, 1)
+  const perp = { x: -along.z, z: along.x }
+
+  const hostAlong = wallAlongDelta(hostYaw, 1)
+  const hostStart = wallStartPoint(host)
+  let ax = hostStart.x + hostAlong.x * opts.localXCm
+  let az = hostStart.z + hostAlong.z * opts.localXCm
+  const d = host.depth ?? WALL_DEPTH
+  if (fromFace === 'inner') {
+    // panelFlip true: Plan = Außenkante → Innenseite um depth nach innen.
+    if (hostFlip) {
+      ax += intoRoom.x * d
+      az += intoRoom.z * d
+    }
+  } else if (!hostFlip) {
+    // panelFlip false: Plan = Innenkante → Außenseite um depth nach außen.
+    ax += hostOut.x * d
+    az += hostOut.z * d
+  }
+
+  const originX = ax - perp.x * half
+  const originZ = az - perp.z * half
+  return normalizeStudioWall({
+    ...createStudioWall(originX, host.y),
+    id: createId(),
+    role: 'interior',
+    planLinked: true,
+    originX,
+    originZ,
+    x: originX,
+    y: host.y,
+    yawDeg,
+    width: lengthCm,
+    height: host.height,
+    depth: depthCm,
+    panelFlip: true,
+    panel: {
+      ...DEFAULT_STUDIO_PANEL,
+      enabled: false,
+      pattern: 'none',
+      plinthEnabled: false,
+      plinthHeight: 0,
+    },
+    cornice: { enabled: false },
+    openings: [],
+    profiles: [],
+  })
+}
+
+/** @deprecated Nutze createInteriorWallFromHostNormal (90° in den Raum). */
+export function createInteriorWallFromHostSegment(opts: {
+  host: Wall
+  startCm: number
+  endCm: number
+  depthCm: number
+}): Wall | null {
+  return createInteriorWallFromHostNormal({
+    host: opts.host,
+    localXCm: (opts.startCm + opts.endCm) / 2,
+    lengthCm: Math.max(PLAN_GRID, opts.endCm - opts.startCm),
+    depthCm: opts.depthCm,
+  })
 }
 
 function styledArmBase(parent: Wall, origin: { x: number; z: number }, existing?: Wall): Wall {
@@ -2331,9 +2675,14 @@ export function studioWallsCollideIdentical(
 }
 
 export function wallHasPanels(wall: Wall): boolean {
+  if (wall.role === 'interior') return false
   const panel = wall.panel
   if (!panel) return false
   return panel.enabled !== false && panel.pattern !== 'none'
+}
+
+export function isInteriorWall(wall: Wall): boolean {
+  return wall.role === 'interior'
 }
 
 /** Erker-Fläche (Front/Schenkel/Host-Segment mit bayWindow) — für Paneel-Gehrung. */

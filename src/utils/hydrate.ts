@@ -20,6 +20,7 @@ import {
   DEFAULT_GLASS_COLOR,
   DEFAULT_INTERIOR_COLOR,
   defaultOpeningFrameColor,
+  isTransparentGlass,
 } from '../constants/colorPalettes'
 import { normalizeSurfaceFinish } from './surfaceFinish'
 import {
@@ -262,6 +263,7 @@ export function hydrateOpening(
   )
   next.frameFinish = normalizeSurfaceFinish(next.frameFinish)
   next.glassColor = next.glassColor ?? DEFAULT_GLASS_COLOR
+  if (isTransparentGlass(next.glassColor)) next.glassColor = DEFAULT_GLASS_COLOR
   const glass = openingGlassConfig(next)
   next.glassMode = next.glassMode === 'physical' ? 'physical' : 'tint'
   next.glassIor = next.glassIor ?? glass.ior
@@ -328,6 +330,15 @@ export function hydrateWall(wall: Wall): Wall {
   let panel = cloned.panel
   if (isStudioKind(cloned)) {
     panel = normalizeStudioPanel(cloned.panel ?? DEFAULT_STUDIO_PANEL)
+    if (cloned.role === 'interior') {
+      panel = normalizeStudioPanel({
+        ...panel,
+        enabled: false,
+        pattern: 'none',
+        plinthEnabled: false,
+        plinthHeight: 0,
+      })
+    }
   }
 
   // UX v2.0.153: Zwei-Bänder-Verkleidung tot — persistierte Zonen verwerfen.
@@ -410,7 +421,10 @@ export function hydrateWall(wall: Wall): Wall {
   return {
     ...cloned,
     kind: cloned.kind,
-    planLinked: cloned.planLinked !== false,
+    role: cloned.role === 'interior' ? 'interior' : 'exterior',
+    // Innenwände: planLinked nur wenn explizit true (Extrude/Andocken); sonst false (kein Außenring).
+    planLinked:
+      cloned.role === 'interior' ? cloned.planLinked === true : cloned.planLinked !== false,
     panelFlip: cloned.panelFlip ?? true,
     originX: cloned.originX ?? cloned.x,
     originZ: cloned.originZ ?? 0,
@@ -426,7 +440,17 @@ export function hydrateWall(wall: Wall): Wall {
     labels,
     label,
     awnings: Array.isArray(cloned.awnings)
-      ? cloned.awnings.map((item) => normalizeAwningConfig(item))
+      ? cloned.awnings.map((item) => {
+          const normalized = normalizeAwningConfig(item)
+          if (!normalized.openingIds?.length) return normalized
+          const valid = normalized.openingIds.filter((id) =>
+            openings.some((o) => o.id === id),
+          )
+          return normalizeAwningConfig({
+            ...normalized,
+            openingIds: valid.length > 0 ? valid : undefined,
+          })
+        })
       : [],
     storeyIndex,
     openings,

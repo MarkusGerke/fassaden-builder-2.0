@@ -14,6 +14,10 @@
 - **Volant** — senkrechter Stoff unter der Vorderkante (0…48 cm, 8er-Raster, Default 16).
 - Stoff standardmäßig **grau** (`#9ca3af`); Gestänge darunter, Stoff darüber (kein Durchscheinen).
 - Animation: Ausfahren / Einfahren / Zyklus; optional Uhrzeiten.
+- **Schatten während Animation (v2.0.427):** Markisenschatten folgt der Pose; übrige Hausschatten bleiben. Live: Shadow-Map mit allen Castern, temporär max. **4096²**, Bake ~alle 48 ms; nach Settle wieder Präsentationsgröße (oft 8192) + voller Bake.
+- **Kopieren (v2.0.429):** Rechtsklick auf Markisen-Mesh → **Markise kopieren** / **einfügen** / **ersetzen** (eigene Zwischenablage, nur `AwningConfig`). Öffnungsmenü: **Markise kopieren**, wenn aktiv. Wand-Rechtsklick: **Markise einfügen** an Klickposition. „Fenster kopieren“ enthält weiter die Markise an der Öffnung.
+- **Breite (v2.0.430):** An Öffnungen immer `Öffnungsbreite + 2×Seitenüberstand` (kein festes Breitenfeld). Gilt beim Einfügen, Scope-Toast und wenn die Fensterbreite geändert wird. **Seitenüberstand** in **4‑cm‑Schritten** (0…64, Default 16, v2.0.435).
+- **Gruppe (v2.0.430–v2.0.432):** ≥2 Öffnungen derselben Wand markieren → **Eine Markise über Auswahl** (Kontextmenü oder Button). Eine Wand-Markise mit `openingIds`; Breite = Span links…rechts + Überstand. **Verknüpfung lösen** / **In Einzel-Markisen aufteilen** in der Wand-Markisen-Toolbar bzw. Rechtsklick. Individuelle Öffnungs-Markise und Gruppen-Markise schließen sich aus (Mitglied → Einzel-Markise aus). **UI:** gleiche Felder wie Öffnungs-Markise (inkl. Höhe über Sturz, Oberfläche, Zyklus-Animation, Uhrzeiten); Öffnungsauswahl eines Mitglieds bearbeitet die Gruppe. `mountY` relativ zum Span-Sturz.
 
 UI-Reihenfolge: Maße → Farbe → Typ → Animation. Typabhängig ausgeblendet: Fallarm ohne *Ausladung*, Markisolette ohne *Konsole unter Kasten*, Gelenkarm ohne beides.
 
@@ -23,7 +27,7 @@ UI-Reihenfolge: Maße → Farbe → Typ → Animation. Typabhängig ausgeblendet
 AwningConfig {
   kind: 'foldingArm' | 'dropArm' | 'markisolette'
   extension, widthCm, projectionCm   // projectionCm: Gelenkarm Tuch-Ausladung, Markisolette Reichweite voll; Fallarm ungenutzt
-  overhangCm?          // Seitenüberstand, Default 16
+  overhangCm?          // Seitenüberstand, Default 16, Raster 4 cm (v2.0.435)
   frontOverhangCm?     // Volant-Höhe, Default 16
   slopeDeg?            // Neigung unter Horizontal, Default 15
   armInsetCm?          // Wand: Arm von Stoffaußenkante
@@ -31,6 +35,7 @@ AwningConfig {
   armMountYCm?         // Fallarm: Konsole unter Kasten (16…320, Default 144) → Armlänge
   verticalDropCm?      // Markisolette: senkrechter Anteil bis Stoffaustritt (24…320, Default 120)
   fabricColor?         // Default grau
+  openingIds?          // Wand: verknüpfte Öffnungen (≥1) → Span-Breite (v2.0.430)
   …
 }
 ```
@@ -55,15 +60,16 @@ Wand-lokal: X quer, Y hoch, Z nach außen; Kasten bei (0,0), Rolle bei `z = 4,5`
 |---|---|
 | `src/types/facade.ts` | `AwningConfig`, `AwningKind` |
 | `src/studio/awning.ts` | Normalize, Kinematik, Stoff/Volant, `awningKindDefaults` |
-| `src/utils/awnings.ts` | CRUD; Seitenüberstand → Breite |
+| `src/utils/awnings.ts` | CRUD; Clipboard; Span-Layout; Gruppen (`createGroupAwningForOpenings`, …) |
 | `src/FacadeController.ts` | Rebuild, Depth/RenderOrder, Schienen, Scharniere |
-| `src/ui/awningUi.ts` | Sync, kind-abhängige Felder, Typwechsel mit Defaults |
-| `index.html` / `main.ts` | UI + Bibliothek |
+| `src/ui/awningUi.ts` | Sync, kind-abhängige Felder, Typwechsel mit Defaults; `settleAwningLiveShadow` nach Playback |
+| `index.html` / `main.ts` | UI + Bibliothek; `flushAwningLiveShadowBake` / `settleAwningLiveShadow` |
 | `src/studio/awning.test.ts` | Kinematik-Tests (Armlängen, Phasen, Ellbogen) |
 
 ## Fallstricke
 
 - **Ausfahrrichtung:** `group.scale.z = windowDepthForwardSign(wall)`.
+- **Schatten live (v2.0.427):** `shadowMap.autoUpdate = false` → ohne Bake bleibt der Schatten auf der Startpose. **Verworfen:** kein Bake; Voll-Bake 8192 jedes ~200 ms (ruckelig); globale 1024-Map (Haus pixelig); Nicht-Markisen-Caster aus (Hausschatten weg); zweites Directional-/Spot-Licht nur Markise (füllt Umbras auf). **Richtig:** ein Licht, alle Caster, Map temporär ≤4096, ~20×/s; Settle stellt Map-Größe wieder her.
 - **Gelenkarme nach unten:** Ellbogen müssen in **X zur Mitte** klappen, nicht stark in −Y hängen. Heuristiken mit variabler Gliedlänge (v2.0.424/425) verworfen — nur echte IK mit fester Länge sieht beim Einklappen richtig aus.
 - **Gestänge durch Stoff:** Stoff-Leitkurve um `AWNING_FABRIC_ABOVE_ARMS_CM` plus Normalen-Offset über den Armen; Volant vor dem Frontrohr (+Z); `polygonOffset` Stoff negativ, Gestänge positiv; `renderOrder` Stoff höher.
 - **Fallarm (v2.0.426):** **kein** Gelenk. Versuche: Länge mit `extension` skalieren (v2.0.424, falsch), zwei-gliedrige IK `twoLinkElbowYZ` (v2.0.425, „Stütze aus einem Segment ohne Gelenk“ gefordert). Richtig: starrer Arm auf Kreisbogen um die Konsole, Länge aus `armMountYCm`.

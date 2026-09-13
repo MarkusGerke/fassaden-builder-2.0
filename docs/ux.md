@@ -54,7 +54,8 @@ OS-artiges Textmenü (`position: fixed`), Untermenü nach rechts per Hover, Esc 
 | Ziel | Einträge |
 |---|---|
 | Wand | **Kopieren** (Untermenü: **Objekt** = Geometrie, **Alles** = Geometrie + Stile, **Stile**, oder Paneele / Farben / Gesims / Sockel / …), **Einfügen** (Untermenü: Nach links / Nach rechts / Darüber; Geometrie-Zwischenablage), **Duplizieren** (Untermenü: Nach links / Nach rechts / Darüber / Separiert bei Studio), Löschen, **Stile kopieren**, **Stil als Vorlage speichern…**, **Stil-Vorlage anwenden** (Untermenü gespeicherter Vorlagen), **Stile einfügen…** (wenn Zwischenablage gefüllt; Dialog `#style-paste-dialog`); bei Studio-Wänden **Wand lösen** (wenn verknüpft) und **Wand verknüpfen** (wenn freie Enden anstoßen); bei Blender-Wänden **Ersetzen durch** (Module) |
-| Fenster/Tür | **Fenster/Tür/Ausschnitt kopieren**, **Stil kopieren** (v2.0.223, flach ohne Untermenü), **Öffnung einfügen**, Duplizieren nach links / rechts, **Ersetzen durch** (`WALL_OPENING_PRESETS`, alle ausgewählten, mittelaxial), **Stile einfügen…** (Öffnungsstile aus der Zwischenablage), Löschen |
+| Fenster/Tür | **Fenster/Tür/Ausschnitt kopieren**, **Stil kopieren** (v2.0.223, flach ohne Untermenü), **Markise kopieren** (wenn aktiv, v2.0.429), **Markise einfügen/ersetzen** (eigene Markisen-Zwischenablage), **Eine Markise über Auswahl** (≥2 Öffnungen derselben Wand, v2.0.430), **Öffnung einfügen**, Duplizieren nach links / rechts, **Ersetzen durch** (`WALL_OPENING_PRESETS`, alle ausgewählten, mittelaxial), **Stile einfügen…** (Öffnungsstile aus der Zwischenablage), Löschen |
+| Markise | Rechtsklick auf Markisen-Mesh: Ein-/Ausblenden, **Markise kopieren** / **einfügen** / **ersetzen**, Gruppe lösen/teilen, Zuweisen (Öffnungs-Markise), Löschen (v2.0.432); Wand-Rechtsklick: **Markise einfügen** an Klickposition |
 | Haus | **Kopieren** / **Haus einfügen**, Duplizieren (Himmelsrichtung), Löschen, … |
 | Etage | Duplizieren, Löschen (letzte Etage gesperrt) |
 | Leere Bühne (3D/Front) | **Einfügen**, wenn Geometrie-Zwischenablage gefüllt (Fassade/Haus; Öffnung nur mit Wandauswahl) |
@@ -105,7 +106,7 @@ Defaults in `src/constants/colorPalettes.ts`:
 | `DEFAULT_WALL_COLOR` | `#ffffff` | Wand / Sockel |
 | `DEFAULT_FRAME_COLOR` | `#ffffff` | Fensterrahmen |
 | `DEFAULT_DOOR_COLOR` | `#ffffff` | Türblatt/-rahmen beim Anlegen |
-| `DEFAULT_GLASS_COLOR` | `transparent` | Glas (Klarglas; physisch `#ffffff` + EnvMap) |
+| `DEFAULT_GLASS_COLOR` | `#575757` | Glas (getönt; kein UI-Transparent mehr seit v2.0.432) |
 | `DEFAULT_PROFILE_COLOR` | `#c4b49a` | Gesims/Profile |
 
 Sonne (`DEFAULT_SUN_SETTINGS`): **heutiges Datum**, **13:15** (13,25 h), Sonnenwinkel **210°**, Sonnenlicht **3,9**, Umgebungslicht **0,53**, Schatten-Kontrast **1,40** (Slider **0,5…10**, v2.0.256), Schatten-Weichheit **5,0**, Farbtemperatur **4500 K**. Beim Start setzt `applyTodaySunDate` nur Monat/Tag auf heute — die Standard-Lichtwerte bleiben erhalten. **Datum + Tageszeit** (0:00–23:59) setzen beim manuellen Anpassen Azimut, Elevation, Intensität, Weichheit und Farbtemperatur aus dem Berlin-Sonnenstand (`applySolarLook: true`). **Sonnenwinkel**, **Sonnenlicht**, **Umgebungslicht**, **Schatten-Kontrast**, **Schatten-Dunkelheit**, **Schatten-Weichheit** und **Farbtemperatur** sind sonst manuell. Slider Intensität 0,3…**8**. Schatten-Dunkelheit (Legacy) Default **0,55**. Persistierte Saves behalten eigene Lichtwerte; das Datum wird beim Laden auf heute gesetzt.
@@ -125,7 +126,7 @@ Im Modus **Himmel** sind die Neutral-Farb-Inputs ausgeblendet (physikalischer Hi
 
 Anwendung über `applySceneAppearance()` / `sceneColorsForLighting()`. Farb-Picker haben Live-Vorschau während des Ziehens (v2.0.11).
 
-Rahmen-/Glas-Farben in der **Öffnungs-Toolbar** (`#frame-color-swatches`) über `<input type="color">`. **v2.0.376:** Titel links, Swatch rechtsbündig auf einer Höhe (kein HEX in der Zeile); Abstand zwischen Farbzeilen **16 px**. Nach Klick: Overlay mit **HEX** (zuerst) und **RGB** direkt sichtbar (kein Dropdown); Klasse `color-picker-expanded`, Klick außerhalb klappt zu. **v2.0.388:** Öffnen nur per `pointerdown` (der folgende `click` schließt nicht mehr sofort). Gleiches Muster für **Szene**, **Nebel**, Wand-, Fugen-, Profil-, Gesims- und Dachziegel-Farben (`renderColorControl`). Bei Glas zusätzlich Button **Transparent**. Die Inputs werden bei UI-Sync **wiederverwendet**; während eines aktiven Pickers (`activeColorPickerCount`) wird `renderUi` nicht für Farb-Hosts aufgerufen. Hover-Livevorschau (`previewSelectionColor`) aktualisiert nur 3D/2D, kein vollständiges `renderUi`.
+Rahmen-/Glas-Farben in der **Öffnungs-Toolbar** (`#frame-color-swatches`) über `<input type="color">`. **v2.0.376:** Titel links, Swatch rechtsbündig auf einer Höhe (kein HEX in der Zeile); Abstand zwischen Farbzeilen **16 px**. Nach Klick: Overlay mit **HEX** (zuerst) und **RGB** direkt sichtbar (kein Dropdown); Klasse `color-picker-expanded`, Klick außerhalb klappt zu. **v2.0.388:** Öffnen nur per `pointerdown` (der folgende `click` schließt nicht mehr sofort). Gleiches Muster für **Szene**, **Nebel**, Wand-, Fugen-, Profil-, Gesims- und Dachziegel-Farben (`renderColorControl`). Bei Glas **kein** Transparent-Button mehr (v2.0.432). Die Inputs werden bei UI-Sync **wiederverwendet**; während eines aktiven Pickers (`activeColorPickerCount`) wird `renderUi` nicht für Farb-Hosts aufgerufen. Hover-Livevorschau (`previewSelectionColor`) aktualisiert nur 3D/2D, kein vollständiges `renderUi`.
 
 **Studio:** **Wandfarbe** färbt die Außenfläche (`wallColor`). **Laibung außen/innen** (`revealExteriorColor` / `revealInteriorColor` am Öffnung, Farben-Tab) sind unabhängig — fehlen sie, Fallback Wand-/Innenwandfarbe. **v2.0.406 / v2.0.407:** Bei Nische/Konche ist das gesamte Innere Wandfarbe mit Außen-Oberfläche (Laibung innen ausgeblendet; nicht Innen-Finish). **Paneele / Ziegel** (`claddingColor`, Label `#cladding-color-section-studio`) steuert Steine/Paneele; darunter **Stein-Kontrast** / **Stein-Häufigkeit** (`#studio-tile-color-section`). **Fugenfarbe** (`panel.jointColor`, unter Tab Fassade) unabhängig davon. **Innenwandfarbe** (`interiorColor`, Default Weiß) nur die Raumseite.
 
@@ -201,7 +202,7 @@ Meshes sind per `userData.indoorRole` (`ceiling` \| `floor`) und `userData.kind`
 
 **Pick (v2.0.232):** Raycaster trifft Innen-Layer (sichtbare Platten). Unsichtbare `sunCeilingOccluder` und Öffnungs-Schattentunnel sind nicht raycastbar. Decke gewinnt nur, wenn sie klar näher ist als Wand/Paneel — sonst wirkte die Auswahl ab dem 2. OG „tot“ (Plattenkante/Okkluder vor der Fassade). Logik: `src/studio/facadePick.ts`, `pickFromEvent` in `main.ts`.
 
-**Sichtbarkeit (3D):** `floors[fi].showCeiling !== false && !floors[fi].hidden` — die Platte trennt die Etage darüber von der darunter. **v2.0.145:** Ohne geschlossenen Grundrissring gibt es keine Meshes — nach Extrusion konnten Wandenden 1 Rasterzelle auseinander landen (`floorPlanFromWalls` → `sealNearClosedPlanGaps` schließt das). Ebenen „Einblenden“ ruft zusätzlich `rebuildIndoorFloor` auf. **v2.0.199:** Nach Reload fehlten Decken/Böden/Dach trotz korrekter Flags — Konstruktor baute nur Wände; Fix: Indoor+Dach beim Start mitbauen (siehe [floor-plan.md](floor-plan.md#fallstricke)).
+**Sichtbarkeit (3D):** `floors[fi].showCeiling !== false && !floors[fi].hidden` — die Platte trennt die Etage darüber von der darunter. **v2.0.145:** Ohne geschlossenen Grundrissring gibt es keine Meshes — nach Extrusion konnten Wandenden 1 Rasterzelle auseinander landen (`floorPlanFromWalls` → `sealNearClosedPlanGaps` schließt das). Ebenen „Einblenden“ ruft zusätzlich `rebuildIndoorFloor` auf. **v2.0.199:** Nach Reload fehlten Decken/Böden/Dach trotz korrekter Flags — Konstruktor baute nur Wände; Fix: Indoor+Dach beim Start mitbauen (siehe [floor-plan.md](floor-plan.md#fallstricke)). **v2.0.433:** Etage ausblenden entfernt Wände inkl. Bank/Sturz/Laibung (Force-Rebuild); Picking trifft keine ausgeblendete Etage — Decke/Boden anderer Etagen bleiben wählbar.
 
 Versteckte Gebäude (`building.hidden`), Wände (`wall.hidden`) und Öffnungen (`opening.hidden`) werden nicht gerendert.
 
@@ -236,7 +237,7 @@ Yaw-Konvention überall gleich: **0=N, 90=W, 180=S, 270=O** (gegen Uhrzeigersinn
 - **v2.0.207:** Bibliothek-Paneele und Stil einfügen / Stil-Vorlage nutzen `scopedWallIds()` / `scopedOpeningRefs()` — Scope **Etage** gilt auch dafür
 - Öffnungs-Edits (Profil, Fensterbank, Treppe, Rahmen/Glas, Gründerzeit, **Position/Nudge/Drag**): `editOpeningTargets` / `scopedOpeningRefs()`
 - Beim Verschieben: Delta gilt für alle Scoped-Refs. Türen mit aktiver Treppe behalten Auto-Y aus Stufen.
-- **v2.0.233 / v2.0.234 / v2.0.321 / v2.0.322 / v2.0.323 / v2.0.324 / v2.0.381 / v2.0.412:** Nach Edit mit Scope **Auswahl**/**Typ**/**Etage** ggf. `#scope-propagate-offer` — **Typ / Etage / Fassade**, **5-s-Countdown**. **v2.0.324:** Toast-Typ auch bei unterschiedlicher Größe (gleicher Öffnungstyp). **v2.0.323:** Farbe/Profil auf Fenster und Türen. **v2.0.412:** Etage/Fassade auch Einbuchtungen und Konchen (`openingSupportsFrameProfiles`). **v2.0.381:** auch nach **Verschieben**; Gesims/`cornice` als Ganzes; Rechtsklick **Zuweisen für** → Typ/Etage/Fassade (`assignSelectionPropertiesToScope`).
+- **v2.0.233 / v2.0.234 / v2.0.321 / v2.0.322 / v2.0.323 / v2.0.324 / v2.0.381 / v2.0.412 / v2.0.429:** Nach Edit mit Scope **Auswahl**/**Typ**/**Etage** ggf. `#scope-propagate-offer` — **Typ / Etage / Fassade**, **5-s-Countdown**. **v2.0.324:** Toast-Typ auch bei unterschiedlicher Größe (gleicher Öffnungstyp). **v2.0.323:** Farbe/Profil auf Fenster und Türen. **v2.0.412:** Etage/Fassade auch Einbuchtungen und Konchen (`openingSupportsFrameProfiles`). **v2.0.381:** auch nach **Verschieben**; Gesims/`cornice` als Ganzes; Rechtsklick **Zuweisen für** → Typ/Etage/Fassade (`assignSelectionPropertiesToScope`). **v2.0.429:** Toast propagiert nur **Deltas** in Nested-Opening-Configs (z. B. nur `boxWindow`); **Zuweisen für** bleibt Vollstil.
 
 | Scope | Wände | Öffnungen |
 |---|---|---|
@@ -354,7 +355,7 @@ Tab **Schrift** (`data-settings-section="label"`): Checkbox, Textfeld mit **Spei
 
 - 3D: Raycast inkl. `claddingGroup` (Treppe) und `profileGroup`; Gesims-Meshes mit `wallPart: 'cornice'`, Sockel mit `plinth`, Paneele mit `cladding` (orange inkl. LOD-Kacheln).
 - Bei Teil-Fokus (`part !== 'group'`): rechte Toolbar zeigt **nur** den passenden Reiter (andere `.settings-section` per `hidden`; verschachtelte Sektionen zählen nur wenn kein Vorfahre ausgeblendet ist). Maße/Aktionen und irrelevante Farben ausgeblendet. **Ausnahme Paneele (`cladding`):** **v2.0.156** / v0.7.227 — **wie Wand ganz** (alle Bibliothek-Tabs und Studio-Reiter); nur 3D-Highlight bleibt auf dem Paneel.
-- **v0.7.176:** Anklicken in 3D behält Teil-Fokus für Profil, Bänke, Verdachung, Konsolen, Treppe, Gesims, Sockel, Paneele, Schrift. Rahmen/Glas → Ganz-Öffnung (`group`). **v2.0.394:** Stabgitter / franz. Balkon (`grille`) bleibt Teil-Fokus — Stäbe orange, nicht das ganze Fenster. **v2.0.230:** Bei jedem Objekt-Klick startet rechts der Tab **Übersicht** (`selectionToolbarTab = 'all'`); alle Sektionen sichtbar. Nutzer kann danach in Maße/Farben/… wechseln (Sticky bleibt für denselben Toolbar-Typ).
+- **v0.7.176:** Anklicken in 3D behält Teil-Fokus für Profil, Bänke, Verdachung, Konsolen, Treppe, Gesims, Sockel, Paneele, Schrift. Rahmen/Glas → Ganz-Öffnung (`group`). **v2.0.394:** Stabgitter / franz. Balkon (`grille`) bleibt Teil-Fokus — Stäbe orange, nicht das ganze Fenster. **v2.0.230 / v2.0.434:** Bei jedem Objekt-Klick startet rechts der Tab **Farben** (`selectionToolbarTab = 'colors'`); Bibliothek-Reiter **Farben** ebenfalls. Nutzer kann danach in Maße/… wechseln (Sticky bleibt für denselben Toolbar-Typ).
 - 3D-Highlight: Treppe = Stufen-Meshes orange (kein flaches Overlay in der Sockelzone); Wand-Teil = markierte Meshes + Overlay. **v2.0.205 / v2.0.206:** Gesims/Sockel/Zierband und Öffnungs-Teil Profile/Bänke/Verdachung orange per unbeleuchtetem `#ff6600` (`selectedUnlitMaterial`, `toneMapped: false`) — Standard-Material wirkte unter Tone-Mapping dunkelrot. Öffnungs-Overlay folgt der Maske (`openingForShellCut` + `openingWallFaceMaskPolyline`).
 - **Verschieben (v2.0.156 / v2.0.171 / v2.0.173 / v2.0.174 / v2.0.175 / v2.0.177 / v2.0.187 / v2.0.320):** Ghost, Hilfslinien und Pick-Ebene auf derselben Fassadentiefe (`OPENING_DRAG_FLOAT_CM` = 4 cm) und derselben Maskenkontur — Orange = Linien = Loch nach Drop. **v2.0.171:** kein Shadow-Bake beim Zug-Start (Sockel/Gesims). **v2.0.173 / v2.0.320:** beim Loslassen `live` (kein Profil-Grau); Schatten-Map ab v2.0.320 sofort forcen. **v2.0.174:** Profile/Bänke sofort mit Außen-EnvMap. **v2.0.175 / v2.0.177:** matte Rahmen kurz ohne Env (gegen Grau). **v2.0.187:** Rahmen wieder mit Außen-EnvMap + Facade-Shade wie Wand/Laibung (sonst dumpferes Weiß). **v2.0.372:** jeder Geometrie-Rebuild (nicht nur Öffnungs-Zug) nutzt `live` + sofort `bindMaterialsToGlassEnv` — kein kurzes Abdunkeln nach Änderung/Abwahl.
 - **v2.0.400:** Gesims/Sockel Profil oder Höhe bei Auswahl ändern: EnvMap-Bind auch auf `originalMaterial` — sonst nach Abwahl schwarzes Band (disposed Cube-Env).
@@ -422,8 +423,8 @@ UI-Felder und Konstanten: [profiles.md](profiles.md) / [opening-features.md](ope
 
 | Auswahl | Tabs | Preset-Sammlung (Muster) |
 |---|---|---|
-| Nichts | Fenster · Türen · Fassade · Wände · Erker · Balkone&Loggia · Licht | Platzieren |
-| Wand ganz | Fenster · Türen · Fassade · Gesims · Zierbänder · Sockel · Schrift · Nischen · Erker · Balkone (**ohne** Wände / Licht) | je Katalog **Keine/Keines** zuerst |
+| Nichts | Fenster · Türen · Fassade · Wände · Farben · Erker · Balkone&Loggia · Licht | Platzieren |
+| Wand ganz | Fenster · Türen · Fassade · Farben · Gesims · Zierbänder · Sockel · Schrift · Nischen · Erker · Balkone (**ohne** Wände / Licht) | je Katalog **Keine/Keines** zuerst |
 | Wand-Teil Fassade (`cladding`) | **wie Wand ganz** (Highlight bleibt auf Paneel) | Verbände + **Keine** |
 | Wand-Teil Gesims / Sockel / Zierband / Schrift | nur dieser Katalog | Profile/Fonts; Gesims/Sockel/Zierband **Keines** |
 | Fenster ganz | Fenster · Fensterform · Profile · Verdachung | Typen; Bogenformen; Rahmen+Bank; Verdachung |
@@ -494,7 +495,7 @@ Bei Wand-, Öffnungs-, Studio-, Dach- oder Decken-Auswahl:
 - Ohne Auswahl: rechts **immer** die Szeneneinstellungen (`#lighting-accordion`, Geschwister von `#selection-toolbar` unter `#ui-right` — nicht darin verschachtelt, sonst verschwindet die Szene mit `[hidden]` der Auswahl-Toolbar).
 - **`data-settings-inline-all`**: kein eigener Reiter, im aktiven rechten Panel mit sichtbar (Modell/Aktionen).
 - Tab-Wechsel filtert per CSS-Klasse `selection-tab-filtered-out` — bestehende `hidden`-Logik bleibt maßgeblich.
-- Wechsel der Auswahl setzt den Tab auf **Übersicht** (v2.0.230).
+- Wechsel der Auswahl setzt den Tab auf **Farben** (v2.0.434; zuvor Übersicht v2.0.230).
 - **Einfach/Komplex:** Sektionen mit `data-ui-level="advanced"` erscheinen nur im Modus Komplex auch als Reiter. **Bossensteine** stehen im Tab Paneele (unter Mauerwerk), auch im Modus Einfach.
 - **Keine Akkordeons** in den Auswahl-Panels; Navigation über sticky Sektionsköpfe (volle Breite).
 
@@ -506,9 +507,9 @@ Gilt für die **rechten Einstellungs-Register** bei jeder Objektauswahl (Wand, �
 
 | Position | Tab | Inhalt / Beispiele |
 |---|---|---|
-| **0.** | **Übersicht** | Alle Sektionen untereinander (`selectionToolbarTab === 'all'`) — bei jedem Objekt-Klick aktiv (v2.0.230) |
+| **0.** | **Übersicht** | Alle Sektionen untereinander (`selectionToolbarTab === 'all'`) — manuell wählbar |
 | **1.** | **Maße** / Größenangaben | Breite, Höhe, Tiefe, Position, Geschosshöhe, Wandstärke, … (`dimensions`, `measures`) |
-| **2.** | **Farben** | Flächen-, Rahmen-, Glas-, Paneele/Ziegel-Farben, … (`colors`) |
+| **2.** | **Farben** | Flächen-, Rahmen-, Glas-, Paneele/Ziegel-Farben, … (`colors`) — **bei Objekt-Klick aktiv** (v2.0.434) |
 | **3.** | **Formen** / Profile | Querschnitte, Profilwahl, Teilung/Stil wenn formgebend (`profile`, ggf. Dachform) |
 | **danach** | Dekor & Anbauteile **von oben nach unten** am Objekt | Reihenfolge wie an der Fassade gelesen |
 
@@ -524,7 +525,7 @@ Gilt für die **rechten Einstellungs-Register** bei jeder Objektauswahl (Wand, �
 
 **Technik:** Synthetischer Tab **Übersicht** zuerst; übrige Tabs aus `.settings-section[data-settings-section]` sortiert nach `data-settings-order`. Szene: ebenfalls **Übersicht** (`sceneToolbarTab === 'all'`).
 
-**Tab nach Markierung (v2.0.230):** Standard = **Übersicht**. Innerhalb derselben Auswahl kann der Nutzer andere Reiter wählen (Sticky bis zum nächsten Objekt-Klick).
+**Tab nach Markierung (v2.0.434):** Standard = **Farben** (rechts und Bibliothek). Innerhalb derselben Auswahl kann der Nutzer andere Reiter wählen (Sticky bis zum nächsten Objekt-Klick).
 
 **Nicht:** alphabetisch; nicht „was zufällig im HTML zuerst steht“, wenn Order fehlt — dann Order nachtragen.
 
@@ -585,7 +586,7 @@ Datenfelder bleiben (`endBossStart` / `endBossEnd` …). **v2.0.265:** Der recht
 
 ### Wand-Vorschau Bibliothek (v0.7.58)
 
-Karten Tab **Wände**: SVG ohne cm-Zahl über der Box; Thumb füllt die Höhe, Seitenverhältnis **Länge : 448** (`WALL_HEIGHT`). Klasse `.opening-library-thumb-wall`.
+Karten Tab **Wände**: SVG ohne cm-Zahl über der Box; Thumb füllt die Höhe, Seitenverhältnis **Länge : 448** (`WALL_HEIGHT`). Klasse `.opening-library-thumb-wall`. **v2.0.437–440:** **Innenwand 24/36/48** — von innen auf Außen- **und** Innenwände; 90°-Stummel; Front-Pfeil + Länge ±; Shift 90°/45° inkl. T/Kreuz von Ecken; Andocken an Außenwand-**Innenseite**; Rechtsklick Löschen/Ausblenden; kein Höhen-Greifer/Sockel; Grundriss zeichnen bleibt. Tab **Farben**: Palette Naturstein/Backstein/… mit Kategorie-Dropdown und Vorauswahl je Objekt; Klick wendet auf die aktuelle Auswahl an (inkl. Markise, Rollladen, Bänke, …).
 
 ### Paneele in der Bibliothek (v0.7.55)
 
@@ -802,9 +803,9 @@ Ruhewinkel: Slider **Einzeln öffnen** (`leafOpenDeg` / `transomOpenDeg`) **oben
 
 Reiter **Rollläden** bei Fenster/Tür **immer** sichtbar; Checkbox standardmäßig aus. Nur Lamellen, kein Kasten und keine Schienen. Höhe `drop` 0…1; freier Spalt bis die unterste Lamelle die Bank berührt, danach Stapel; volle Laibungsbreite; lichtdicht. Animation: Dauer in **Sekunden**; Vorlagen **Ein Zug** / **Linear** / **Kabelzug** mit editierbarer Kurve; Abspielen **Rollo schließen** / **Rollo öffnen** / Zyklus untereinander volle Breite. Details: [roller-shutter.md](roller-shutter.md).
 
-### Markisen (v2.0.421 / v2.0.426)
+### Markisen (v2.0.421 / v2.0.432)
 
-Reiter **Markise** an Öffnungen und Wand. Bibliothek startet mit **Keine**. Typen: **Gelenkarm** (zwei Glieder fester Länge, Ellbogen klappt zur Mitte), **Fallarm** (ein starrer Arm an Wandkonsole „Konsole unter Kasten“, fällt auf Kreisbogen; Konsole min. 8 cm neben Öffnung/Profil), **Markisolette** (Führungsschienen, senkrecht bis „Senkrecht“, dann schwenkt der Arm um das Schienenende). Typwechsel setzt typgerechte Maße; ungenutzte Felder (Ausladung beim Fallarm, Konsole bei der Markisolette) sind ausgeblendet. Neigung, Volant, Stoff grau über dem Gestänge. Details: [awnings.md](awnings.md). Wind: [wind.md](wind.md).
+Reiter **Markise** an Öffnungen und Wand. Bibliothek startet mit **Keine**. Typen: **Gelenkarm** (zwei Glieder fester Länge, Ellbogen klappt zur Mitte), **Fallarm** (ein starrer Arm an Wandkonsole „Konsole unter Kasten“, fällt auf Kreisbogen; Konsole min. 8 cm neben Öffnung/Profil), **Markisolette** (Führungsschienen, senkrecht bis „Senkrecht“, dann schwenkt der Arm um das Schienenende). Typwechsel setzt typgerechte Maße; ungenutzte Felder (Ausladung beim Fallarm, Konsole bei der Markisolette) sind ausgeblendet. Neigung, Volant, Stoff grau über dem Gestänge. **Gruppen-Markise** (v2.0.432): gleiches Einstellungsset; Mitglieds-Öffnung bearbeitet die Gruppe. Details: [awnings.md](awnings.md). Wind: [wind.md](wind.md).
 
 ---
 
@@ -856,7 +857,13 @@ Während des Ziehens: Vorschau im Plan (`previewPlanNodeMove` / `previewPlanEdge
 
 ## Glasfarbe und Spiegelung
 
-Swatch `transparent` (`TRANSPARENT_GLASS`) macht Klarverglasung. 3D-Glas (`applyGlassLook`): Opacity ~0,28, `envMapIntensity` ~2,45, sehr niedrige Rauheit — Umgebungsreflexion aus `RoomEnvironment`. `transmission` bleibt 0 (Shadow-Map). Siehe [shadows.md](shadows.md).
+**v2.0.430:** Glas-/Rahmenfarbe in `#opening-colors-section` wird bei Ganz-Öffnung wieder eingeblendet (Bug: nach Teil-Fokus blieb `glassColorSection` bei normalen Fenstern `hidden`).
+
+**v2.0.432:** Glas ohne Transparent-Option; Altwerte → `#575757`. Gruppen-Markise mit vollem Einstellungsset; Markisen-Rechtsklick erweitert.
+
+**v2.0.431:** Glas-Color-Picker kurz wieder mit Transparent (zurückgenommen in v2.0.432).
+
+Swatch `transparent` (`TRANSPARENT_GLASS`) wird beim Hydrate zu `DEFAULT_GLASS_COLOR` umgeschrieben. Physisches Klarglas bleibt im Renderer für Legacy möglich (`isTransparentGlass`), ist aber nicht mehr wählbar. Siehe [shadows.md](shadows.md).
 
 
 ## Ebenen-Baum (Multi-Haus)

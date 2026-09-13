@@ -4,6 +4,7 @@ import { emptyNeighbors } from '../types/facade'
 import { WALL_DEPTH } from '../constants/presets'
 import { assignProfilesToOpenings, removeProfilesFromOpenings } from '../utils/openings'
 import { ALL_EDGES } from '../constants/presets'
+import { defaultGruenderzeitConfig } from '../windows/gruenderzeit'
 import {
   applyOpeningProfilesDelta,
   assignSelectionPropertiesToScope,
@@ -353,6 +354,135 @@ describe('propagateSelectionEdit — Fensterprofile', () => {
     const peer = next.buildings[0]!.walls.find((w) => w.id === 'w2')!
     expect(peer.openings.find((o) => o.id === 'd2')?.frameColor).toBe('#A54040')
     expect(peer.openings.find((o) => o.id === 'o1')?.frameColor).toBe('#ffffff')
+  })
+})
+
+describe('propagateSelectionEdit — Öffnungs-Deltas nested', () => {
+  it('übernimmt nur boxWindow, behält Peer-casements', () => {
+    const donorGz = {
+      ...defaultGruenderzeitConfig(96, 192, 'window'),
+      casements: 2 as const,
+      boxWindow: false,
+    }
+    const peerGz = {
+      ...defaultGruenderzeitConfig(96, 192, 'window'),
+      casements: 3,
+      boxWindow: false,
+      splitHCount: 2 as const,
+    }
+    const before = stateWithWalls([
+      wall({ id: 'w1', openings: [win({ id: 'o1', gruenderzeit: donorGz })] }),
+      wall({
+        id: 'w2',
+        openings: [win({ id: 'o2', gruenderzeit: peerGz })],
+        originX: 400,
+      }),
+    ])
+    const afterGz = { ...donorGz, boxWindow: true }
+    const after = {
+      ...before,
+      buildings: [
+        {
+          ...before.buildings[0]!,
+          walls: [
+            {
+              ...before.buildings[0]!.walls[0]!,
+              openings: [{ ...before.buildings[0]!.walls[0]!.openings[0]!, gruenderzeit: afterGz }],
+            },
+            before.buildings[0]!.walls[1]!,
+          ],
+        },
+      ],
+    }
+    const next = propagateSelectionEdit(before, after, editorForOpening('w1', 'o1'), 'floor')
+    const peer = next.buildings[0]!.walls.find((w) => w.id === 'w2')!.openings.find((o) => o.id === 'o2')!
+    expect(peer.gruenderzeit?.boxWindow).toBe(true)
+    expect(peer.gruenderzeit?.casements).toBe(3)
+    expect(peer.gruenderzeit?.splitHCount).toBe(2)
+  })
+
+  it('Markise: übernimmt Stil, Breite aus Peer-Öffnung + Überstand', () => {
+    const donorAwning = {
+      id: 'da',
+      enabled: true,
+      kind: 'foldingArm' as const,
+      extension: 0.5,
+      widthCm: 200,
+      projectionCm: 144,
+      overhangCm: 16,
+    }
+    const peerAwning = {
+      id: 'pa',
+      enabled: false,
+      kind: 'foldingArm' as const,
+      extension: 0.65,
+      widthCm: 96,
+      projectionCm: 144,
+      overhangCm: 8,
+    }
+    const before = stateWithWalls([
+      wall({
+        id: 'w1',
+        openings: [win({ id: 'o1', width: 160, awning: donorAwning as never })],
+      }),
+      wall({
+        id: 'w2',
+        originX: 400,
+        openings: [win({ id: 'o2', width: 80, awning: peerAwning as never })],
+      }),
+    ])
+    const after = {
+      ...before,
+      buildings: [
+        {
+          ...before.buildings[0]!,
+          walls: [
+            {
+              ...before.buildings[0]!.walls[0]!,
+              openings: [
+                {
+                  ...before.buildings[0]!.walls[0]!.openings[0]!,
+                  awning: { ...donorAwning, enabled: true, fabricColor: '#112233' },
+                },
+              ],
+            },
+            before.buildings[0]!.walls[1]!,
+          ],
+        },
+      ],
+    }
+    // Peer before ohne enabled Markise → after donor mit Farbe: Delta vom Donor-Edit
+    const beforeDonorOff = {
+      ...before,
+      buildings: [
+        {
+          ...before.buildings[0]!,
+          walls: [
+            {
+              ...before.buildings[0]!.walls[0]!,
+              openings: [
+                {
+                  ...before.buildings[0]!.walls[0]!.openings[0]!,
+                  awning: { ...donorAwning, enabled: false },
+                },
+              ],
+            },
+            before.buildings[0]!.walls[1]!,
+          ],
+        },
+      ],
+    }
+    const next = propagateSelectionEdit(
+      beforeDonorOff,
+      after,
+      editorForOpening('w1', 'o1'),
+      'floor',
+    )
+    const peer = next.buildings[0]!.walls.find((w) => w.id === 'w2')!.openings.find((o) => o.id === 'o2')!
+    expect(peer.awning?.enabled).toBe(true)
+    expect(peer.awning?.fabricColor).toBe('#112233')
+    // 80 + 2*16 = 112
+    expect(peer.awning?.widthCm).toBe(112)
   })
 })
 

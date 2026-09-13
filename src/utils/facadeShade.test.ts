@@ -46,12 +46,10 @@ describe('facadeShade', () => {
     expect(shader.fragmentShader).not.toContain('normalMatrix *')
     expect(shader.fragmentShader).toContain('vFacadeView')
     expect(shader.fragmentShader).toContain('#include <lights_fragment_begin>')
-    expect(shader.fragmentShader).toContain('edgeShade')
-    expect(shader.fragmentShader).toContain('wallUnlit')
-    expect(shader.fragmentShader).toContain('mix(edgeShade, wallUnlit, uNormalBacklit)')
-    expect(shader.fragmentShader).toContain('uFacadeWallUnlit')
+    expect(shader.fragmentShader).toContain('dimMask')
+    expect(shader.fragmentShader).toContain('sideOrTop * 0.82')
     expect(shader.fragmentShader).toContain('horizExtra')
-    expect(shader.fragmentShader).not.toContain('sideOrTop * 0.82')
+    expect(shader.fragmentShader).not.toContain('edgeShade')
     expect(shader.vertexShader).not.toContain('vDirectionalShadowCoord[ 0 ].z -=')
   })
 
@@ -135,10 +133,9 @@ describe('facadeShade', () => {
     expect(shader.uniforms.uLabelShade.value).toBe(1)
     expect(shader.fragmentShader).toContain('uLabelDirectDim')
     expect(shader.fragmentShader).toContain('uLabelHemiDim')
-    expect(shader.fragmentShader).toContain('edgeShade')
-    expect(shader.fragmentShader).toContain('wallUnlit')
+    expect(shader.fragmentShader).toContain('dimMask')
     expect(shader.fragmentShader).toContain('horizExtra')
-    expect(shader.fragmentShader).not.toContain('sideOrTop * 0.82')
+    expect(shader.fragmentShader).toContain('sideOrTop * 0.82')
     expect(shader.vertexShader).toContain(
       `vDirectionalShadowCoord[ 0 ].z -= ${LABEL_SHADOW_COORD_Z_BIAS.toFixed(4)}`,
     )

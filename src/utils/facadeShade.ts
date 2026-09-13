@@ -3,10 +3,10 @@ import type { SunSettings } from './sunLighting'
 import { SKIP_POINT_LIGHTS_MARKER } from '../lighting/skipPointLights'
 
 /**
- * Gegenlicht: die große Fassadenfront wird dunkel (Wand-Z · Sonne). Seiten, Ober-
- * und Unterseiten derselben Geometrie folgen mit — sonst bleiben sie bei Streiflicht
- * / Gegenlicht weiß (Direct auf ±X/±Y), während die Front schon dunkel ist (v2.0.413).
- * **v2.0.414:** Rahmen/Flügel (Normalen-Modus) und Nischen folgen derselben Wand-`wallUnlit`-Dimmung.
+ * Gegenlicht: die große Fassadenfront wird dunkel (N·L), Seiten und Oberseiten
+ * bleiben ohne Nachhilfe hell (Sonne + Hemisphere). Shader dämpft Direct+Hemi
+ * auf Nicht-Frontflächen, wenn die Fassadennormale von der Sonne wegzeigt.
+ * **v2.0.428:** edgeShade/wallUnlit (413–418) zurückgenommen — heller Look.
  * **v2.0.312:** Hemi nur noch leicht dämpfen — Schlagschatten behalten Ambient;
  * zu starkes Hemi-Dim machte Erker-Schenkel pechschwarz dagegen.
  * Schrift: ganze Glyphe + stärkere Faktoren.
@@ -240,21 +240,16 @@ const FACADE_SHADE_DIRECT_PATCH = `
           float frontness = abs(objN.z);
           float sideOrTop = 1.0 - smoothstep(0.35, 0.85, frontness);
           facadeSideOrTop = sideOrTop;
-          float sunOnWall = 0.0;
-          float sunOnFace = 0.0;
+          float sunOnFront = 0.0;
           #if ( NUM_DIR_LIGHTS > 0 )
-            vec3 wallRef = normalize(vFacadeView);
-            sunOnWall = dot(wallRef, directionalLights[0].direction);
-            vec3 facadeRef = normalize(mix(wallRef, geometryNormal, uNormalBacklit));
-            sunOnFace = dot(facadeRef, directionalLights[0].direction);
+            vec3 facadeRef = normalize(mix(normalize(vFacadeView), geometryNormal, uNormalBacklit));
+            sunOnFront = dot(facadeRef, directionalLights[0].direction);
           #endif
-          float backlit = 1.0 - smoothstep(-0.28, -0.04, sunOnFace);
-          // Streiflicht / Gegenlicht der Wandfront (v2.0.413/414).
-          float wallUnlit = 1.0 - smoothstep(-0.02, 0.20, sunOnWall);
-          float edgeShade = sideOrTop * wallUnlit;
-          // Object-Z: Kanten. Normalen-Modus (Rahmen/Flügel): ganze Fläche wenn Wand unlit.
-          facadeDim = clamp(max(backlit, mix(edgeShade, wallUnlit, uNormalBacklit)), 0.0, 1.0);
-          facadeDim = clamp(max(facadeDim, uFacadeWallUnlit), 0.0, 1.0);
+          float backlit = 1.0 - smoothstep(-0.28, -0.04, sunOnFront);
+          // Front (sideOrTop≈0): volles Gegenlicht-Dim. Flache horizontale Facetten: stärker dimmen
+          // (v2.0.370/371). v2.0.428: kein Kanten-wallUnlit mehr.
+          float dimMask = max(mix(1.0 - sideOrTop * 0.82, 1.0, uLabelShade), uNormalBacklit);
+          facadeDim = clamp(backlit * dimMask, 0.0, 1.0);
           float directAmt = mix(uDirectDim, uLabelDirectDim, uLabelShade);
           facadeHemiAmt = mix(uHemiDim, uLabelHemiDim, uLabelShade);
           reflectedLight.directDiffuse *= mix(1.0, directAmt, facadeDim);
@@ -270,12 +265,11 @@ const FACADE_SHADE_DIRECT_PATCH = `
 const FACADE_SHADE_INDIRECT_PATCH = `
         {
           float facadeIndirect = mix(1.0, facadeHemiAmt, facadeDim);
-          // Extra-Indirect auf Kanten wenn dim aktiv (v2.0.371 / v2.0.413).
           float horizExtra = facadeSideOrTop * max(facadeDim, 0.22);
-          facadeIndirect *= mix(1.0, 0.28, horizExtra);
+          facadeIndirect *= mix(1.0, 0.35, horizExtra);
           irradiance *= facadeIndirect;
           iblIrradiance *= facadeIndirect;
-          radiance *= facadeIndirect;
+          radiance *= mix(1.0, mix(1.0, facadeHemiAmt, uLabelShade), facadeDim);
         }`
 
 export function facadeOutwardLocalZ(panelFlip: boolean | undefined): number {
@@ -312,7 +306,7 @@ export function applyFacadeShadeShader(
   material.userData.facadeShadeApplied = true
   const prevKey = material.customProgramCacheKey?.bind(material)
   material.customProgramCacheKey = () =>
-    `${prevKey ? prevKey() : ''}|facade-backlit-v18${isLabel ? '|label' : ''}`
+    `${prevKey ? prevKey() : ''}|facade-backlit-v19${isLabel ? '|label' : ''}`
   const prevCompile = material.onBeforeCompile
   material.onBeforeCompile = (shader, renderer) => {
     prevCompile?.(shader, renderer)

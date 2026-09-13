@@ -42,6 +42,12 @@ describe('awning normalize', () => {
     expect(a.slopeDeg).toBe(15)
   })
 
+  it('snaps Seitenüberstand to 4 cm steps', () => {
+    expect(normalizeAwningConfig({ overhangCm: 10 }).overhangCm).toBe(12)
+    expect(normalizeAwningConfig({ overhangCm: 4 }).overhangCm).toBe(4)
+    expect(defaultOpeningAwningWidth({ width: 96 }, 4)).toBe(104)
+  })
+
   it('accepts markisolette', () => {
     expect(normalizeAwningConfig({ kind: 'markisolette' }).kind).toBe('markisolette')
   })

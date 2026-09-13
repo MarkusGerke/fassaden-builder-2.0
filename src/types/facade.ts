@@ -639,7 +639,7 @@ export interface AwningConfig {
   mountY?: number
   /** Wand: Anker links (cm). Öffnung: optionaler X-Versatz der Mitte. */
   mountX?: number
-  /** Seitlicher Überstand über die Öffnung (cm). Default 16 (Gelenkarm). */
+  /** Seitlicher Überstand über die Öffnung (cm). Default 16; Raster 4 cm (v2.0.435). */
   overhangCm?: number
   /**
    * Volant: senkrechter Stoff unter der Vorderkante (cm, 8er-Raster, 0…48).
@@ -668,6 +668,12 @@ export interface AwningConfig {
   }
   /** Uhrzeiten: on = ausfahren, off = einfahren. */
   schedule?: DaySchedule
+  /**
+   * Wand-Markise über eine oder mehrere Öffnungen derselben Wand.
+   * Breite/Position folgen dem Span der Öffnungen + `overhangCm`.
+   * Fehlt / leer = freie Wand-Markise mit manueller Breite.
+   */
+  openingIds?: string[]
 }
 
 export interface OpeningSillInner {
@@ -1142,6 +1148,11 @@ export interface Wall extends WallDimensions {
     depthCm: number
     inward?: boolean
   }
+  /**
+   * Außenfassade (Default) vs. Innenwand ohne Paneele/Gesims/Außenoptik.
+   * Innenwände: `planLinked: false`, gewählte `depth`, schlichter Wandkörper.
+   */
+  role?: 'exterior' | 'interior'
   panel?: StudioPanelConfig
   /**
    * Verkleidungszonen (Schicht B). Fehlt oder leer → Ableitung aus `panel`

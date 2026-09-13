@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { createDefaultFacadeState, cloneWall } from '../types/facade'
+import { defaultAwningConfig } from '../studio/awning'
+import { updateOpening } from './openings'
 import {
   addWallAwning,
+  applyAwningToOpenings,
+  applyAwningToWall,
+  cloneAwningConfig,
+  createGroupAwningForOpenings,
   removeWallAwning,
   updateOpeningAwning,
   updateWallAwning,
@@ -61,6 +67,194 @@ describe('awnings CRUD', () => {
     expect(nextOp.awning?.enabled).toBe(true)
     expect(nextOp.awning?.kind).toBe('dropArm')
     expect(nextOp.awning?.widthCm).toBeGreaterThanOrEqual(op.width)
+  })
+})
+
+describe('awning clipboard apply', () => {
+  it('pastes opening awning style and keeps target id', () => {
+    let state = createDefaultFacadeState()
+    const wall = state.buildings[0]!.walls[0]!
+    const op = {
+      id: 'op-src',
+      type: 'window' as const,
+      x: 48,
+      y: 128,
+      width: 96,
+      height: 192,
+    }
+    const peer = {
+      id: 'op-peer',
+      type: 'window' as const,
+      x: 200,
+      y: 128,
+      width: 120,
+      height: 192,
+    }
+    state = {
+      ...state,
+      buildings: state.buildings.map((b) => ({
+        ...b,
+        walls: b.walls.map((w) =>
+          w.id === wall.id ? cloneWall({ ...w, openings: [op, peer] }) : w,
+        ),
+      })),
+    }
+    state = updateOpeningAwning(
+      state,
+      [{ wallId: wall.id, openingId: 'op-src' }],
+      { enabled: true, kind: 'markisolette', fabricColor: '#112233' },
+    )
+    const src = state.buildings[0]!.walls[0]!.openings.find((o) => o.id === 'op-src')!.awning!
+    state = applyAwningToOpenings(
+      state,
+      [{ wallId: wall.id, openingId: 'op-peer' }],
+      cloneAwningConfig(src),
+      'paste',
+    )
+    const nextPeer = state.buildings[0]!.walls[0]!.openings.find((o) => o.id === 'op-peer')!
+    expect(nextPeer.awning?.enabled).toBe(true)
+    expect(nextPeer.awning?.kind).toBe('markisolette')
+    expect(nextPeer.awning?.fabricColor).toBe('#112233')
+    expect(nextPeer.awning?.id).not.toBe(src.id)
+  })
+
+  it('replace skips openings without awning', () => {
+    let state = createDefaultFacadeState()
+    const wall = state.buildings[0]!.walls[0]!
+    const peer = {
+      id: 'op-peer',
+      type: 'window' as const,
+      x: 48,
+      y: 128,
+      width: 96,
+      height: 192,
+    }
+    state = {
+      ...state,
+      buildings: state.buildings.map((b) => ({
+        ...b,
+        walls: b.walls.map((w) =>
+          w.id === wall.id ? cloneWall({ ...w, openings: [peer] }) : w,
+        ),
+      })),
+    }
+    state = applyAwningToOpenings(
+      state,
+      [{ wallId: wall.id, openingId: 'op-peer' }],
+      defaultAwningConfig({ enabled: true, kind: 'foldingArm', extension: 0.5 }),
+      'replace',
+    )
+    expect(state.buildings[0]!.walls[0]!.openings[0]!.awning?.enabled ?? false).toBe(false)
+  })
+
+  it('adds wall awning at click and replaces keeping id/mount', () => {
+    let state = createDefaultFacadeState()
+    const wallId = state.buildings[0]!.walls[0]!.id
+    const { state: withAwning, awningId } = applyAwningToWall(
+      state,
+      wallId,
+      defaultAwningConfig({
+        enabled: true,
+        kind: 'foldingArm',
+        extension: 0.4,
+        fabricColor: '#aaaaaa',
+      }),
+      { at: { localX: 100, localY: 200 } },
+    )
+    state = withAwning
+    const prev = wallAwnings(state.buildings[0]!.walls[0]!)[0]!
+    expect(prev.id).toBe(awningId)
+    expect(prev.mountX).toBeDefined()
+
+    const { state: replaced, awningId: sameId } = applyAwningToWall(
+      state,
+      wallId,
+      defaultAwningConfig({
+        enabled: true,
+        kind: 'dropArm',
+        extension: 0.9,
+        fabricColor: '#00ff00',
+      }),
+      { awningId },
+    )
+    expect(sameId).toBe(awningId)
+    const next = wallAwnings(replaced.buildings[0]!.walls[0]!)[0]!
+    expect(next.kind).toBe('dropArm')
+    expect(next.fabricColor).toBe('#00ff00')
+    expect(next.mountX).toBe(prev.mountX)
+    expect(next.mountY).toBe(prev.mountY)
+  })
+})
+
+describe('awning relative width + groups', () => {
+  it('recomputes opening awning width when window width changes', () => {
+    let state = createDefaultFacadeState()
+    const wall = state.buildings[0]!.walls[0]!
+    const op = {
+      id: 'op-w',
+      type: 'window' as const,
+      x: 48,
+      y: 128,
+      width: 96,
+      height: 192,
+    }
+    state = {
+      ...state,
+      buildings: state.buildings.map((b) => ({
+        ...b,
+        walls: b.walls.map((w) =>
+          w.id === wall.id ? cloneWall({ ...w, openings: [op] }) : w,
+        ),
+      })),
+    }
+    state = updateOpeningAwning(
+      state,
+      [{ wallId: wall.id, openingId: 'op-w' }],
+      { enabled: true, overhangCm: 16 },
+    )
+    expect(state.buildings[0]!.walls[0]!.openings[0]!.awning!.widthCm).toBe(128)
+    state = updateOpening(state, wall.id, 'op-w', { width: 160 })
+    expect(state.buildings[0]!.walls[0]!.openings[0]!.awning!.widthCm).toBe(192)
+  })
+
+  it('creates group awning spanning two openings', () => {
+    let state = createDefaultFacadeState()
+    const wall = state.buildings[0]!.walls[0]!
+    const a = {
+      id: 'a',
+      type: 'window' as const,
+      x: 40,
+      y: 128,
+      width: 80,
+      height: 160,
+    }
+    const b = {
+      id: 'b',
+      type: 'window' as const,
+      x: 160,
+      y: 128,
+      width: 96,
+      height: 160,
+    }
+    state = {
+      ...state,
+      buildings: state.buildings.map((bld) => ({
+        ...bld,
+        walls: bld.walls.map((w) =>
+          w.id === wall.id ? cloneWall({ ...w, openings: [a, b] }) : w,
+        ),
+      })),
+    }
+    const { state: next, awningId } = createGroupAwningForOpenings(state, wall.id, ['a', 'b'], {
+      overhangCm: 16,
+    })
+    const group = wallAwnings(next.buildings[0]!.walls[0]!).find((x) => x.id === awningId)!
+    // span 40..256 = 216 + 32 overhang = 248
+    expect(group.widthCm).toBe(248)
+    expect(group.openingIds).toEqual(['a', 'b'])
+    // Höhe über Sturz relativ (0 = auf Span-Top)
+    expect(group.mountY).toBe(0)
+    expect(next.buildings[0]!.walls[0]!.openings.every((o) => !o.awning?.enabled)).toBe(true)
   })
 })
 

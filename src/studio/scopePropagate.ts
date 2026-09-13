@@ -16,6 +16,8 @@ import { cloneFacadeState, cloneWall } from '../types/facade'
 import { findBuildingForWall, getAllWalls } from '../utils/buildings'
 import { openingSupportsFrameProfiles } from '../utils/openingGeometry'
 import { getWall } from '../utils/walls'
+import { defaultOpeningAwningWidth, normalizeAwningConfig } from './awning'
+import type { AwningConfig } from '../types/facade'
 
 /** Ob zwei Zustände dieselbe Wand-/Öffnungs-Topologie haben (nur Property-Edit). */
 export function isPropertyOnlyFacadeEdit(before: FacadeState, after: FacadeState): boolean {
@@ -53,9 +55,13 @@ function deepApplyChanged<T>(target: T, before: T, after: T): T {
       deepApplyChanged((target as unknown[])[i], before[i], item),
     ) as T
   }
-  const out: Record<string, unknown> = {
-    ...(target as Record<string, unknown>),
-  }
+  const targetObj =
+    target !== null && typeof target === 'object' && !Array.isArray(target)
+      ? (target as Record<string, unknown>)
+      : undefined
+  // Peer ohne Nested-Objekt: After komplett (sonst nur Delta-Keys → unvollständige Config).
+  if (targetObj === undefined) return after as T
+  const out: Record<string, unknown> = { ...targetObj }
   const beforeObj = before as Record<string, unknown>
   const afterObj = after as Record<string, unknown>
   for (const key of Object.keys(afterObj)) {
@@ -64,11 +70,7 @@ function deepApplyChanged<T>(target: T, before: T, after: T): T {
       continue
     }
     if (beforeObj[key] === afterObj[key]) continue
-    out[key] = deepApplyChanged(
-      (target as Record<string, unknown>)[key],
-      beforeObj[key],
-      afterObj[key],
-    )
+    out[key] = deepApplyChanged(targetObj[key], beforeObj[key], afterObj[key])
   }
   return out as T
 }
@@ -200,22 +202,6 @@ function applyWallPropertyDelta(peer: Wall, before: Wall, after: Wall): Wall {
 
 const OPENING_SKIP = new Set(['id', 'width', 'height', 'type', 'hidden'])
 
-/** Nested Opening-Objekte ganz ersetzen (kein Partial-Merge). */
-const OPENING_REPLACE_WHOLE = new Set([
-  'pediment',
-  'rollerShutter',
-  'gruenderzeit',
-  'stairs',
-  'sillOuter',
-  'sillInner',
-  'taperedField',
-  'door',
-  'trim',
-  'guard',
-  'interiorShade',
-  'motion',
-])
-
 function applyOpeningPropertyDelta(peer: Opening, before: Opening, after: Opening): Opening {
   const out = { ...(peer as unknown as Record<string, unknown>) }
   for (const key of Object.keys(after) as (keyof Opening)[]) {
@@ -224,10 +210,31 @@ function applyOpeningPropertyDelta(peer: Opening, before: Opening, after: Openin
     const peerRec = peer as unknown as Record<string, unknown>
     const beforeRec = before as unknown as Record<string, unknown>
     const afterRec = after as unknown as Record<string, unknown>
-    if (OPENING_REPLACE_WHOLE.has(key as string)) {
-      out[key as string] = afterRec[key as string]
+    if (key === 'awning') {
+      const afterAwning = afterRec.awning as AwningConfig | undefined
+      const merged = deepApplyChanged(
+        peerRec.awning,
+        beforeRec.awning,
+        afterAwning,
+      ) as AwningConfig | undefined
+      if (!merged || typeof merged !== 'object') {
+        out.awning = merged
+        continue
+      }
+      // Stil inkl. Überstand vom Donor; Breite immer Peer-Öffnung + Überstand (v2.0.430).
+      const overhangCm = afterAwning?.overhangCm ?? merged.overhangCm
+      out.awning = normalizeAwningConfig({
+        ...merged,
+        overhangCm,
+        widthCm: defaultOpeningAwningWidth(peer, overhangCm),
+        mountX: peer.awning?.mountX,
+        id: peer.awning?.id ?? merged.id,
+        openingIds: undefined,
+      })
       continue
     }
+    // Nested Opening-Configs (gruenderzeit, pediment, …) per deepApplyChanged mergen —
+    // nur geänderte Keys, damit Scope-Toast z. B. nur boxWindow übernimmt (v2.0.429).
     out[key as string] = deepApplyChanged(
       peerRec[key as string],
       beforeRec[key as string],

@@ -11,9 +11,14 @@ import {
 } from '../studio/awning'
 import {
   addWallAwning,
+  createGroupAwningForOpenings,
+  dissolveGroupAwning,
   ensureOpeningAwning,
   findWallAwning,
+  findWallAwningCoveringOpening,
+  openingCoveredByWallAwning,
   removeWallAwning,
+  splitGroupAwningToOpenings,
   updateOpeningAwning,
   updateWallAwning,
   wallAwnings,
@@ -29,7 +34,7 @@ export type AwningUiDeps = {
   previewState: (next: FacadeState) => void
   markViewportDirty: () => void
   scopedOpeningRefs: () => OpeningRef[]
-  selectedOpening: () => { wall: Wall; opening: import('../types/facade').Opening } | null
+  selectedOpening: () => { wall: Wall; opening: import('../types/facade').Opening; wallId: string } | null
   selectedWallIds: () => string[]
   getWall: (state: FacadeState, wallId: string) => Wall | undefined
   selectedAwningId: () => string | undefined
@@ -39,6 +44,8 @@ export type AwningUiDeps = {
     extension: number,
     opts?: { openingId?: string; awningId?: string },
   ) => boolean
+  /** Nach Live-Ausfahrt / Playback: volle Shadow-Map-Qualität wiederherstellen. */
+  settleAwningLiveShadow: () => void
   ensureHighDetailForWall: (wallId: string) => void
   stopOtherPlayback: () => void
   syncSelectionHighlightSuppressed: () => void
@@ -91,15 +98,22 @@ export function stopAwningPlayback(commit: boolean): void {
   api.syncSelectionHighlightSuppressed()
   const stopBtn = document.querySelector<HTMLButtonElement>('#awning-stop')
   if (stopBtn) stopBtn.hidden = true
+  const studioStop = document.querySelector<HTMLButtonElement>('#studio-awning-stop')
+  if (studioStop) studioStop.hidden = true
   if (!p) return
   if (commit) {
     const ext =
       p.phase === 'hold'
         ? p.targetExt
-        : Number(document.querySelector<HTMLInputElement>('#awning-extension')?.value ?? 65) / 100
+        : Number(
+            document.querySelector<HTMLInputElement>('#awning-extension')?.value ??
+              document.querySelector<HTMLInputElement>('#studio-awning-extension')?.value ??
+              65,
+          ) / 100
     commitAwningExtensionOnTargets(p.targets, ext)
   }
   syncAwningControls()
+  syncStudioAwningControls()
   api.markViewportDirty()
 }
 
@@ -121,6 +135,7 @@ function commitAwningExtensionOnTargets(
   for (const [wallId, awningId] of wallPatches) {
     next = updateWallAwning(next, [wallId], { extension }, awningId)
   }
+  api.settleAwningLiveShadow()
   api.commitState(next)
 }
 
@@ -133,16 +148,24 @@ export function playAwning(mode: PlayMode, scope: 'opening' | 'wall' = 'opening'
   let sample: AwningConfig | null = null
 
   if (scope === 'opening') {
-    const refs = api.scopedOpeningRefs().filter((ref) => {
-      const wall = api.getWall(api.getState(), ref.wallId)
-      const opening = wall?.openings.find((o) => o.id === ref.openingId)
-      return opening && openingSupportsAwning(opening) && ensureOpeningAwning(opening).enabled
-    })
+    const refs = api.scopedOpeningRefs()
+    const seenGroups = new Set<string>()
     for (const ref of refs) {
       const wall = api.getWall(api.getState(), ref.wallId)
       const opening = wall?.openings.find((o) => o.id === ref.openingId)
-      if (!opening) continue
+      if (!wall || !opening || !openingSupportsAwning(opening)) continue
+      const group = findWallAwningCoveringOpening(wall, opening.id)
+      if (group?.enabled) {
+        if (!seenGroups.has(group.id)) {
+          seenGroups.add(group.id)
+          targets.push({ wallId: ref.wallId, awningId: group.id })
+          if (!sample) sample = group
+        }
+        api.ensureHighDetailForWall(ref.wallId)
+        continue
+      }
       const awning = ensureOpeningAwning(opening)
+      if (!awning.enabled) continue
       targets.push({ wallId: ref.wallId, openingId: ref.openingId, awningId: awning.id })
       if (!sample) sample = awning
       api.ensureHighDetailForWall(ref.wallId)
@@ -174,8 +197,10 @@ export function playAwning(mode: PlayMode, scope: 'opening' | 'wall' = 'opening'
     retractCurve: sample.motion!.retract,
   }
   api.syncSelectionHighlightSuppressed()
-  const stopBtn = document.querySelector<HTMLButtonElement>('#awning-stop')
-  if (stopBtn) stopBtn.hidden = false
+  for (const id of ['#awning-stop', '#studio-awning-stop']) {
+    const stopBtn = document.querySelector<HTMLButtonElement>(id)
+    if (stopBtn) stopBtn.hidden = false
+  }
   tickAwningPlayback(performance.now())
 }
 
@@ -231,13 +256,32 @@ export function tickAwningPlayback(now: number): void {
     const finalExt = p.targetExt
     const targets = p.targets
     playback = null
-    const stopBtn = document.querySelector<HTMLButtonElement>('#awning-stop')
-    if (stopBtn) stopBtn.hidden = true
+    for (const id of ['#awning-stop', '#studio-awning-stop']) {
+      const stopBtn = document.querySelector<HTMLButtonElement>(id)
+      if (stopBtn) stopBtn.hidden = true
+    }
     api.syncSelectionHighlightSuppressed()
     commitAwningExtensionOnTargets(targets, finalExt)
     return
   }
   api.markViewportDirty()
+}
+
+function coveringWallTargets(
+  refs: OpeningRef[],
+): Array<{ wallId: string; awningId: string }> {
+  const api = d()
+  const out: Array<{ wallId: string; awningId: string }> = []
+  const seen = new Set<string>()
+  for (const ref of refs) {
+    const wall = api.getWall(api.getState(), ref.wallId)
+    if (!wall) continue
+    const group = findWallAwningCoveringOpening(wall, ref.openingId)
+    if (!group || seen.has(group.id)) continue
+    seen.add(group.id)
+    out.push({ wallId: ref.wallId, awningId: group.id })
+  }
+  return out
 }
 
 function commitOpeningPatch(
@@ -251,9 +295,49 @@ function commitOpeningPatch(
     return opening && openingSupportsAwning(opening)
   })
   if (refs.length === 0) return
-  const next = updateOpeningAwning(api.getState(), refs, patch)
+
+  // Öffnungen unter Gruppen-Markise → Patch auf die Wand-Gruppe; restliche Öffnungen einzeln.
+  const groups = coveringWallTargets(refs)
+  const uncovered = refs.filter((ref) => {
+    const wall = api.getWall(api.getState(), ref.wallId)
+    return wall ? !findWallAwningCoveringOpening(wall, ref.openingId) : false
+  })
+  if (groups.length === 0 && uncovered.length === 0) return
+
+  if (groups.length > 0) {
+    let next = api.getState()
+    for (const g of groups) {
+      next = updateWallAwning(next, [g.wallId], patch, g.awningId)
+    }
+    if (uncovered.length > 0) {
+      next = updateOpeningAwning(next, uncovered, patch)
+    }
+    if (opts?.live && typeof patch.extension === 'number') {
+      for (const g of groups) {
+        api.applyAwningExtension(g.wallId, patch.extension, { awningId: g.awningId })
+      }
+      for (const ref of uncovered) {
+        const wall = api.getWall(next, ref.wallId)
+        const opening = wall?.openings.find((o) => o.id === ref.openingId)
+        const id = opening ? ensureOpeningAwning(opening).id : undefined
+        api.applyAwningExtension(ref.wallId, patch.extension, {
+          openingId: ref.openingId,
+          awningId: id,
+        })
+      }
+      api.previewState(next)
+      syncAwningControls()
+      api.markViewportDirty()
+      return
+    }
+    api.settleAwningLiveShadow()
+    api.commitState(next)
+    return
+  }
+
+  const next = updateOpeningAwning(api.getState(), uncovered, patch)
   if (opts?.live && typeof patch.extension === 'number') {
-    for (const ref of refs) {
+    for (const ref of uncovered) {
       const wall = api.getWall(next, ref.wallId)
       const opening = wall?.openings.find((o) => o.id === ref.openingId)
       const id = opening ? ensureOpeningAwning(opening).id : undefined
@@ -267,6 +351,7 @@ function commitOpeningPatch(
     api.markViewportDirty()
     return
   }
+  api.settleAwningLiveShadow()
   api.commitState(next)
 }
 
@@ -288,6 +373,7 @@ function commitWallPatch(
     api.markViewportDirty()
     return
   }
+  api.settleAwningLiveShadow()
   api.commitState(next)
 }
 
@@ -295,20 +381,42 @@ export function syncAwningControls(): void {
   const section = document.querySelector<HTMLElement>('#opening-awning-section')
   const options = document.querySelector<HTMLElement>('#awning-options')
   const enabled = document.querySelector<HTMLInputElement>('#awning-enabled')
+  const coveredHint = document.querySelector<HTMLElement>('#awning-group-covered-hint')
+  const groupBtn = document.querySelector<HTMLButtonElement>('#awning-group-from-selection')
   if (!section || !options || !enabled || !deps) return
 
+  const refs = deps.scopedOpeningRefs()
   const sel = deps.selectedOpening()
   const supports = Boolean(sel && openingSupportsAwning(sel.opening))
-  const show = deps.scopedOpeningRefs().length >= 1 && supports
+  const show = refs.length >= 1 && supports
   section.hidden = !show
   if (!show || !sel) {
     options.hidden = true
+    if (coveredHint) coveredHint.hidden = true
+    if (groupBtn) groupBtn.hidden = true
     return
   }
-  const awning = ensureOpeningAwning(sel.opening)
-  enabled.checked = awning.enabled
-  options.hidden = !awning.enabled
-  if (!awning.enabled) return
+
+  const sameWall = refs.length >= 2 && refs.every((r) => r.wallId === sel.wallId)
+  if (groupBtn) groupBtn.hidden = !sameWall
+
+  const covered = openingCoveredByWallAwning(sel.wall, sel.opening.id)
+  const groupAwning = covered ? findWallAwningCoveringOpening(sel.wall, sel.opening.id) : undefined
+  if (coveredHint) coveredHint.hidden = !covered
+  enabled.disabled = covered
+  if (enabled.parentElement) enabled.parentElement.hidden = covered
+
+  const awning = groupAwning ?? ensureOpeningAwning(sel.opening)
+  if (!groupAwning) {
+    enabled.checked = awning.enabled
+    options.hidden = !awning.enabled
+    if (!awning.enabled) return
+  } else {
+    options.hidden = false
+  }
+
+  const widthRow = document.querySelector<HTMLElement>('#awning-width-row')
+  if (widthRow) widthRow.hidden = true
 
   const ext = document.querySelector<HTMLInputElement>('#awning-extension')
   const extLabel = document.querySelector<HTMLElement>('#awning-extension-label')
@@ -345,9 +453,17 @@ export function syncAwningControls(): void {
       'wall',
       awning.fabricColor ?? '#9ca3af',
       (color) => commitOpeningPatch({ fabricColor: color }),
-      deps.previewSelectionColor((color) =>
-        updateOpeningAwning(deps!.getState(), deps!.scopedOpeningRefs(), { fabricColor: color }),
-      ),
+      deps.previewSelectionColor((color) => {
+        if (groupAwning) {
+          return updateWallAwning(
+            deps!.getState(),
+            [sel.wallId],
+            { fabricColor: color },
+            groupAwning.id,
+          )
+        }
+        return updateOpeningAwning(deps!.getState(), deps!.scopedOpeningRefs(), { fabricColor: color })
+      }),
       finish
         ? {
             value: normalizeSurfaceFinish(awning.finish),
@@ -363,34 +479,57 @@ export function syncAwningControls(): void {
       'profile',
       awning.frameColor ?? '#4b5563',
       (color) => commitOpeningPatch({ frameColor: color }),
-      deps.previewSelectionColor((color) =>
-        updateOpeningAwning(deps!.getState(), deps!.scopedOpeningRefs(), { frameColor: color }),
-      ),
+      deps.previewSelectionColor((color) => {
+        if (groupAwning) {
+          return updateWallAwning(
+            deps!.getState(),
+            [sel.wallId],
+            { frameColor: color },
+            groupAwning.id,
+          )
+        }
+        return updateOpeningAwning(deps!.getState(), deps!.scopedOpeningRefs(), { frameColor: color })
+      }),
     )
   }
 }
 
-function syncAwningKindFields(kind: AwningKind, scope: 'opening' | 'studio'): void {
+function syncAwningKindFields(
+  kind: AwningKind,
+  scope: 'opening' | 'studio',
+  opts?: { isGroup?: boolean },
+): void {
   const drop = document.querySelector<HTMLElement>(
     scope === 'opening' ? '#awning-drop-fields' : '#studio-awning-drop-fields',
   )
   const marki = document.querySelector<HTMLElement>(
     scope === 'opening' ? '#awning-markisolette-fields' : '#studio-awning-markisolette-fields',
   )
-  const overhangRow = document.querySelector<HTMLElement>('#awning-overhang-row')
+  const overhangRow = document.querySelector<HTMLElement>(
+    scope === 'opening' ? '#awning-overhang-row' : '#studio-awning-overhang-row',
+  )
   const projectionRow = document.querySelector<HTMLElement>(
     scope === 'opening' ? '#awning-projection-row' : '#studio-awning-projection-row',
   )
   const mountYRow = document.querySelector<HTMLElement>(
     scope === 'opening' ? '#awning-arm-mount-y-row' : '#studio-awning-arm-mount-y-row',
   )
+  const armInsetRow = document.querySelector<HTMLElement>('#studio-awning-arm-inset-row')
+  const armClearanceRow = document.querySelector<HTMLElement>('#studio-awning-arm-clearance-row')
   const showDrop = kind === 'dropArm' || kind === 'markisolette'
   if (drop) drop.hidden = !showDrop
   if (marki) marki.hidden = kind !== 'markisolette'
-  if (overhangRow && scope === 'opening') overhangRow.hidden = kind === 'dropArm'
+  // Seitenüberstand: Öffnung immer (außer Fallarm); Studio nur bei Gruppen-Markise.
+  if (overhangRow) {
+    if (scope === 'opening') overhangRow.hidden = kind === 'dropArm'
+    else overhangRow.hidden = !opts?.isGroup || kind === 'dropArm'
+  }
   // Fallarm: Armlänge kommt aus der Konsolenhöhe → keine Ausladung. Markisolette: Drehpunkt = Schienenende → keine Konsole.
   if (projectionRow) projectionRow.hidden = kind === 'dropArm'
   if (mountYRow) mountYRow.hidden = kind === 'markisolette'
+  // Freie Wand-Markise: Arm von Kante; Gruppen-Markise an Öffnungen: Abstand Öffnung.
+  if (armInsetRow) armInsetRow.hidden = Boolean(opts?.isGroup)
+  if (armClearanceRow) armClearanceRow.hidden = !opts?.isGroup || !showDrop
 }
 
 /** Typwechsel: `kind` plus typgerechte Maße (Ausladung/Konsole/Senkrecht), nur wenn sich der Typ ändert. */
@@ -402,6 +541,8 @@ function kindSwitchPatch(kind: AwningKind, current: AwningKind | undefined): Par
 export function syncStudioAwningControls(): void {
   const options = document.querySelector<HTMLElement>('#studio-awning-options')
   const removeBtn = document.querySelector<HTMLButtonElement>('#studio-awning-remove')
+  const groupActions = document.querySelector<HTMLElement>('#studio-awning-group-actions')
+  const groupHint = document.querySelector<HTMLElement>('#studio-awning-group-hint')
   if (!options || !deps) return
   const wallId = deps.selectedWallIds()[0]
   const wall = wallId ? deps.getWall(deps.getState(), wallId) : undefined
@@ -413,34 +554,55 @@ export function syncStudioAwningControls(): void {
   const has = Boolean(awning)
   options.hidden = !has
   if (removeBtn) removeBtn.hidden = !has
+  const isGroup = Boolean(awning?.openingIds?.length)
+  if (groupActions) groupActions.hidden = !isGroup
+  if (groupHint) groupHint.hidden = !isGroup
   if (!awning) return
+
+  const widthRow = document.querySelector<HTMLElement>('#studio-awning-width-row')
+  const overhangRow = document.querySelector<HTMLElement>('#studio-awning-overhang-row')
+  const mountYRelRow = document.querySelector<HTMLElement>('#studio-awning-mount-y-row')
+  const xRow = document.querySelector<HTMLElement>('#studio-awning-x-row')
+  const yRow = document.querySelector<HTMLElement>('#studio-awning-y-row')
+  if (widthRow) widthRow.hidden = isGroup
+  if (overhangRow) overhangRow.hidden = !isGroup
+  if (mountYRelRow) mountYRelRow.hidden = !isGroup
+  if (xRow) xRow.hidden = isGroup
+  if (yRow) yRow.hidden = isGroup
 
   const ext = document.querySelector<HTMLInputElement>('#studio-awning-extension')
   const extLabel = document.querySelector<HTMLElement>('#studio-awning-extension-label')
   const width = document.querySelector<HTMLInputElement>('#studio-awning-width')
+  const overhang = document.querySelector<HTMLInputElement>('#studio-awning-overhang')
   const projection = document.querySelector<HTMLInputElement>('#studio-awning-projection')
   const frontOverhang = document.querySelector<HTMLInputElement>('#studio-awning-front-overhang')
   const slope = document.querySelector<HTMLInputElement>('#studio-awning-slope')
   const armInset = document.querySelector<HTMLInputElement>('#studio-awning-arm-inset')
+  const armClearance = document.querySelector<HTMLInputElement>('#studio-awning-arm-clearance')
   const armMountY = document.querySelector<HTMLInputElement>('#studio-awning-arm-mount-y')
   const verticalDrop = document.querySelector<HTMLInputElement>('#studio-awning-vertical-drop')
+  const mountYRel = document.querySelector<HTMLInputElement>('#studio-awning-mount-y')
   const x = document.querySelector<HTMLInputElement>('#studio-awning-x')
   const y = document.querySelector<HTMLInputElement>('#studio-awning-y')
+  const finish = document.querySelector<HTMLSelectElement>('#studio-awning-finish')
   if (ext) ext.value = String(Math.round(awning.extension * 100))
   if (extLabel) extLabel.textContent = String(Math.round(awning.extension * 100))
   if (width) width.value = String(awning.widthCm)
+  if (overhang) overhang.value = String(awning.overhangCm ?? 16)
   if (projection) projection.value = String(awning.projectionCm)
   if (frontOverhang) frontOverhang.value = String(awning.frontOverhangCm ?? 16)
   if (slope) slope.value = String(awning.slopeDeg ?? 15)
   if (armInset) armInset.value = String(awning.armInsetCm ?? 16)
+  if (armClearance) armClearance.value = String(awning.armClearanceCm ?? 8)
   if (armMountY) armMountY.value = String(awning.armMountYCm ?? 144)
   if (verticalDrop) verticalDrop.value = String(awning.verticalDropCm ?? 120)
+  if (mountYRel) mountYRel.value = String(awning.mountY ?? 0)
   if (x) x.value = String(awning.mountX ?? 0)
   if (y) y.value = String(awning.mountY ?? 0)
   for (const btn of document.querySelectorAll<HTMLButtonElement>('[data-studio-awning-kind]')) {
     btn.classList.toggle('active', btn.dataset.studioAwningKind === awning.kind)
   }
-  syncAwningKindFields(awning.kind, 'studio')
+  syncAwningKindFields(awning.kind, 'studio', { isGroup })
   const fabricHost = document.querySelector<HTMLElement>('#studio-awning-fabric-color-swatches')
   const frameHost = document.querySelector<HTMLElement>('#studio-awning-frame-color-swatches')
   if (fabricHost) {
@@ -452,6 +614,13 @@ export function syncStudioAwningControls(): void {
       deps.previewSelectionColor((color) =>
         updateWallAwning(deps!.getState(), deps!.selectedWallIds(), { fabricColor: color }, deps!.selectedAwningId()),
       ),
+      finish
+        ? {
+            value: normalizeSurfaceFinish(awning.finish),
+            select: finish,
+            onChange: (f) => commitWallPatch({ finish: f }),
+          }
+        : undefined,
     )
   }
   if (frameHost) {
@@ -490,7 +659,6 @@ export function initAwningUi(api: AwningUiDeps): void {
   })
 
   for (const [id, key] of [
-    ['#awning-width', 'widthCm'],
     ['#awning-projection', 'projectionCm'],
     ['#awning-front-overhang', 'frontOverhangCm'],
     ['#awning-slope', 'slopeDeg'],
@@ -511,7 +679,10 @@ export function initAwningUi(api: AwningUiDeps): void {
       const kind = btn.dataset.awningKind
       if (!isAwningKind(kind)) return
       const sel = api.selectedOpening()
-      commitOpeningPatch(kindSwitchPatch(kind, sel ? ensureOpeningAwning(sel.opening).kind : undefined))
+      if (!sel) return
+      const group = findWallAwningCoveringOpening(sel.wall, sel.opening.id)
+      const current = group?.kind ?? ensureOpeningAwning(sel.opening).kind
+      commitOpeningPatch(kindSwitchPatch(kind, current))
     })
   })
 
@@ -523,6 +694,10 @@ export function initAwningUi(api: AwningUiDeps): void {
     const extension = Number(document.querySelector<HTMLInputElement>('#awning-extension')?.value ?? 0) / 100
     const targets = playback.targets
     playback = null
+    for (const id of ['#awning-stop', '#studio-awning-stop']) {
+      const stopBtn = document.querySelector<HTMLButtonElement>(id)
+      if (stopBtn) stopBtn.hidden = true
+    }
     commitAwningExtensionOnTargets(targets, extension)
   })
 
@@ -532,13 +707,29 @@ export function initAwningUi(api: AwningUiDeps): void {
       getSchedule: () => {
         const sel = api.selectedOpening()
         if (!sel) return normalizeDaySchedule(undefined)
-        return normalizeDaySchedule(ensureOpeningAwning(sel.opening).schedule)
+        const group = findWallAwningCoveringOpening(sel.wall, sel.opening.id)
+        return normalizeDaySchedule((group ?? ensureOpeningAwning(sel.opening)).schedule)
       },
       setSchedule: (schedule: DaySchedule) => {
         commitOpeningPatch({ schedule })
       },
     })
   }
+
+  document.querySelector('#awning-group-from-selection')?.addEventListener('click', () => {
+    const refs = api.scopedOpeningRefs()
+    if (refs.length < 2) return
+    const wallId = refs[0]!.wallId
+    if (!refs.every((r) => r.wallId === wallId)) return
+    const { state: next, awningId } = createGroupAwningForOpenings(
+      api.getState(),
+      wallId,
+      refs.map((r) => r.openingId),
+    )
+    if (!awningId) return
+    api.setSelectedAwningId(awningId)
+    api.commitState(next)
+  })
 
   document.querySelector('#studio-awning-add')?.addEventListener('click', () => {
     const wallId = api.selectedWallIds()[0]
@@ -556,6 +747,20 @@ export function initAwningUi(api: AwningUiDeps): void {
     api.commitState(removeWallAwning(api.getState(), wallId, api.selectedAwningId()))
     api.setSelectedAwningId(undefined)
   })
+  document.querySelector('#studio-awning-dissolve')?.addEventListener('click', () => {
+    const wallId = api.selectedWallIds()[0]
+    const awningId = api.selectedAwningId()
+    if (!wallId || !awningId) return
+    api.commitState(dissolveGroupAwning(api.getState(), wallId, awningId))
+    api.setSelectedAwningId(undefined)
+  })
+  document.querySelector('#studio-awning-split')?.addEventListener('click', () => {
+    const wallId = api.selectedWallIds()[0]
+    const awningId = api.selectedAwningId()
+    if (!wallId || !awningId) return
+    api.commitState(splitGroupAwningToOpenings(api.getState(), wallId, awningId))
+    api.setSelectedAwningId(undefined)
+  })
 
   const studioExt = document.querySelector<HTMLInputElement>('#studio-awning-extension')
   studioExt?.addEventListener('input', () => {
@@ -566,12 +771,15 @@ export function initAwningUi(api: AwningUiDeps): void {
   })
   for (const [id, key] of [
     ['#studio-awning-width', 'widthCm'],
+    ['#studio-awning-overhang', 'overhangCm'],
     ['#studio-awning-projection', 'projectionCm'],
     ['#studio-awning-front-overhang', 'frontOverhangCm'],
     ['#studio-awning-slope', 'slopeDeg'],
     ['#studio-awning-arm-inset', 'armInsetCm'],
+    ['#studio-awning-arm-clearance', 'armClearanceCm'],
     ['#studio-awning-arm-mount-y', 'armMountYCm'],
     ['#studio-awning-vertical-drop', 'verticalDropCm'],
+    ['#studio-awning-mount-y', 'mountY'],
     ['#studio-awning-x', 'mountX'],
     ['#studio-awning-y', 'mountY'],
   ] as const) {
@@ -597,6 +805,39 @@ export function initAwningUi(api: AwningUiDeps): void {
   document
     .querySelector('#studio-awning-play-retract')
     ?.addEventListener('click', () => playAwning('retract', 'wall'))
+  document
+    .querySelector('#studio-awning-play-cycle')
+    ?.addEventListener('click', () => playAwning('cycle', 'wall'))
+  document.querySelector('#studio-awning-stop')?.addEventListener('click', () => {
+    if (!playback) return
+    const extension =
+      Number(document.querySelector<HTMLInputElement>('#studio-awning-extension')?.value ?? 0) / 100
+    const targets = playback.targets
+    playback = null
+    for (const id of ['#awning-stop', '#studio-awning-stop']) {
+      const stopBtn = document.querySelector<HTMLButtonElement>(id)
+      if (stopBtn) stopBtn.hidden = true
+    }
+    commitAwningExtensionOnTargets(targets, extension)
+  })
+
+  const studioScheduleEl = document.querySelector<HTMLDivElement>('#studio-awning-schedule')
+  if (studioScheduleEl) {
+    bindDayScheduleEditor(studioScheduleEl, {
+      getSchedule: () => {
+        const wallId = api.selectedWallIds()[0]
+        const wall = wallId ? api.getWall(api.getState(), wallId) : undefined
+        const list = wall ? wallAwnings(wall) : []
+        const awning =
+          (api.selectedAwningId() ? list.find((a) => a.id === api.selectedAwningId()) : undefined) ??
+          list[0]
+        return normalizeDaySchedule(awning?.schedule)
+      },
+      setSchedule: (schedule: DaySchedule) => {
+        commitWallPatch({ schedule })
+      },
+    })
+  }
 }
 
 export function placeLibraryAwning(kind: AwningKind): void {

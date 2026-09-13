@@ -364,6 +364,7 @@
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="doors" id="library-tab-doors" data-library-when="wall">Türen</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="panels" id="library-tab-panels" data-library-when="wall">Fassade</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="walls" id="library-tab-walls" data-library-when="always">Wände</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="farbe" id="library-tab-farbe" data-library-when="always">Farben</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="bay" id="library-tab-bay" data-library-when="always">Erker</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="balcony" id="library-tab-balcony" data-library-when="always">Balkone &amp; Loggia</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="loggia" id="library-tab-loggia" data-library-when="always" hidden>Loggia</button>
@@ -1275,6 +1276,11 @@
                 <button id="studio-awning-add" class="preset-btn" type="button">Markise hinzufügen</button>
                 <button id="studio-awning-remove" class="preset-btn toolbar-danger" type="button" hidden>Markise löschen</button>
               </div>
+              <div id="studio-awning-group-actions" class="toolbar-group" hidden>
+                <button id="studio-awning-dissolve" class="preset-btn" type="button">Verknüpfung lösen</button>
+                <button id="studio-awning-split" class="preset-btn" type="button">In Einzel-Markisen aufteilen</button>
+              </div>
+              <p id="studio-awning-group-hint" class="toolbar-hint" hidden>Markise über verknüpfte Öffnungen — Breite = Span + Seitenüberstand</p>
               <div id="studio-awning-options" hidden>
                 <p class="settings-subheading settings-subheading-nested">Maße</p>
                 <div class="toolbar-group toolbar-inline-value ui-field-inline">
@@ -1282,7 +1288,7 @@
                   <span id="studio-awning-extension-label" class="toolbar-hint compact-hint" style="margin:0">65</span>
                 </div>
                 <input id="studio-awning-extension" type="range" min="0" max="100" step="1" value="65" aria-label="Wand-Markisen-Ausfahrt" />
-                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                <div class="toolbar-group toolbar-inline-value ui-field-inline" id="studio-awning-width-row">
                   <span class="toolbar-label">Breite (cm)</span>
                   <input id="studio-awning-width" type="number" min="48" max="960" step="8" value="192" />
                 </div>
@@ -1298,10 +1304,18 @@
                   <span class="toolbar-label">Volant (cm)</span>
                   <input id="studio-awning-front-overhang" type="number" min="0" max="48" step="8" value="16" />
                 </div>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline" id="studio-awning-overhang-row" hidden>
+                  <span class="toolbar-label">Seitenüberstand (cm)</span>
+                  <input id="studio-awning-overhang" type="number" min="0" max="64" step="4" value="16" />
+                </div>
                 <div id="studio-awning-drop-fields" class="ui-stack" hidden>
-                  <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <div class="toolbar-group toolbar-inline-value ui-field-inline" id="studio-awning-arm-inset-row">
                     <span class="toolbar-label">Arm von Kante (cm)</span>
                     <input id="studio-awning-arm-inset" type="number" min="0" max="160" step="8" value="16" />
+                  </div>
+                  <div class="toolbar-group toolbar-inline-value ui-field-inline" id="studio-awning-arm-clearance-row" hidden>
+                    <span class="toolbar-label">Abstand Öffnung (cm)</span>
+                    <input id="studio-awning-arm-clearance" type="number" min="8" max="160" step="8" value="8" />
                   </div>
                   <div id="studio-awning-arm-mount-y-row" class="toolbar-group toolbar-inline-value ui-field-inline">
                     <span class="toolbar-label">Konsole unter Kasten (cm)</span>
@@ -1314,11 +1328,15 @@
                     <input id="studio-awning-vertical-drop" type="number" min="24" max="320" step="8" value="120" />
                   </div>
                 </div>
-                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                <div class="toolbar-group toolbar-inline-value ui-field-inline" id="studio-awning-mount-y-row" hidden>
+                  <span class="toolbar-label">Höhe über Sturz (cm)</span>
+                  <input id="studio-awning-mount-y" type="number" min="-64" max="96" step="8" value="0" />
+                </div>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline" id="studio-awning-x-row">
                   <span class="toolbar-label">Position X (cm)</span>
                   <input id="studio-awning-x" type="number" min="0" step="8" value="0" />
                 </div>
-                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                <div class="toolbar-group toolbar-inline-value ui-field-inline" id="studio-awning-y-row">
                   <span class="toolbar-label">Höhe Y (cm)</span>
                   <input id="studio-awning-y" type="number" min="0" step="8" value="192" />
                 </div>
@@ -1327,6 +1345,12 @@
                 <div id="studio-awning-fabric-color-swatches" class="color-swatches"></div>
                 <span class="toolbar-label">Gestänge</span>
                 <div id="studio-awning-frame-color-swatches" class="color-swatches"></div>
+                <span class="toolbar-label">Oberfläche</span>
+                <select id="studio-awning-finish" aria-label="Reflexion Markise">
+                  <option value="matte">Stumpf</option>
+                  <option value="glossy">Glänzend</option>
+                  <option value="metal">Metallisch</option>
+                </select>
                 <p class="settings-subheading settings-subheading-nested">Typ</p>
                 <div id="studio-awning-kind-group" class="preset-group">
                   <button class="preset-btn active" type="button" data-studio-awning-kind="foldingArm">Gelenkarm</button>
@@ -1337,6 +1361,28 @@
                 <div class="action-row action-row-stack">
                   <button type="button" class="preset-btn" id="studio-awning-play-extend">Ausfahren</button>
                   <button type="button" class="preset-btn" id="studio-awning-play-retract">Einfahren</button>
+                  <button type="button" class="preset-btn" id="studio-awning-play-cycle">Aus → Pause → Ein</button>
+                </div>
+                <button type="button" class="preset-btn" id="studio-awning-stop" hidden>Stopp</button>
+                <p class="settings-subheading settings-subheading-nested">Uhrzeiten</p>
+                <div id="studio-awning-schedule" class="toolbar-group day-schedule-editor">
+                  <p class="toolbar-hint compact-hint">Ein = ausfahren, Aus = einfahren.</p>
+                  <div class="day-schedule-on">
+                    <span class="toolbar-label">Ausfahren</span>
+                    <div class="day-schedule-list-mount"></div>
+                    <div class="toolbar-row day-schedule-add-row">
+                      <input type="text" data-schedule-add="on" placeholder="HH:MM" aria-label="Ausfahr-Zeit hinzufügen" />
+                      <button type="button" class="preset-btn" data-schedule-add="on">+</button>
+                    </div>
+                  </div>
+                  <div class="day-schedule-off">
+                    <span class="toolbar-label">Einfahren</span>
+                    <div class="day-schedule-list-mount"></div>
+                    <div class="toolbar-row day-schedule-add-row">
+                      <input type="text" data-schedule-add="off" placeholder="HH:MM" aria-label="Einfahr-Zeit hinzufügen" />
+                      <button type="button" class="preset-btn" data-schedule-add="off">+</button>
+                    </div>
+                  </div>
                 </div>
               </div>
 </div>
@@ -2060,6 +2106,8 @@
                 <input id="awning-enabled" type="checkbox" />
                 Markise anzeigen
               </label>
+              <p id="awning-group-covered-hint" class="toolbar-hint" hidden>Gruppen-Markise — Einstellungen unten gelten für alle verknüpften Öffnungen.</p>
+              <button id="awning-group-from-selection" class="preset-btn" type="button" hidden>Eine Markise über Auswahl</button>
               <div id="awning-options" hidden>
                 <p class="settings-subheading settings-subheading-nested">Maße</p>
                 <div class="toolbar-group toolbar-inline-value ui-field-inline">
@@ -2067,7 +2115,7 @@
                   <span id="awning-extension-label" class="toolbar-hint compact-hint" style="margin:0">65</span>
                 </div>
                 <input id="awning-extension" type="range" min="0" max="100" step="1" value="65" aria-label="Markisen-Ausfahrt" />
-                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                <div class="toolbar-group toolbar-inline-value ui-field-inline" id="awning-width-row" hidden>
                   <span class="toolbar-label">Breite (cm)</span>
                   <input id="awning-width" type="number" min="48" max="960" step="8" value="192" />
                 </div>
@@ -2085,7 +2133,7 @@
                 </div>
                 <div class="toolbar-group toolbar-inline-value ui-field-inline" id="awning-overhang-row">
                   <span class="toolbar-label">Seitenüberstand (cm)</span>
-                  <input id="awning-overhang" type="number" min="0" max="64" step="8" value="16" />
+                  <input id="awning-overhang" type="number" min="0" max="64" step="4" value="16" />
                 </div>
                 <div id="awning-drop-fields" class="ui-stack" hidden>
                   <div class="toolbar-group toolbar-inline-value ui-field-inline">

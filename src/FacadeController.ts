@@ -21,6 +21,7 @@ import {
   getActiveBuilding,
   getAllWalls,
   getVisibleWalls,
+  isWallVisibleInState,
   wallWithoutOpenings,
 } from './utils/buildings'
 import {
@@ -128,7 +129,7 @@ import {
   openingSupportsAwning,
   type AwningPose,
 } from './studio/awning'
-import { wallAwnings } from './utils/awnings'
+import { wallAwnings, openingCoveredByWallAwning, layoutAwningForOpenings } from './utils/awnings'
 import {
   clearWindFabrics,
   registerWindFabric,
@@ -456,6 +457,9 @@ export class FacadeController {
 
   /** Paneel-Config für Raster/Clip — Sockel-Decor aus → plinthEnabled false. */
   private panelForCladdingGeometry(wall: Wall): StudioPanelConfig {
+    if (wall.role === 'interior') {
+      return { ...(wall.panel ?? DEFAULT_STUDIO_PANEL), enabled: false, pattern: 'none' }
+    }
     const panel = wall.panel ?? DEFAULT_STUDIO_PANEL
     if (!this.wallPlinthDecorHidden(wall)) return panel
     return { ...panel, plinthEnabled: false }
@@ -3536,17 +3540,18 @@ export class FacadeController {
   }
 
   private removeBuildingRenderables(buildingId: string) {
-    const currentWallIds = new Set(
-      getVisibleWalls(this.state)
+    // Alle Wände des Gebäudes (auch ausgeblendete Etagen) — sonst bleiben
+    // Laibung/Bank/Verdachung ohne userData.buildingId stehen (v2.0.434).
+    const buildingWallIds = new Set(
+      getAllWalls(this.state)
         .filter((w) => w.buildingId === buildingId)
         .map((w) => w.id),
     )
-    // Alle Wand-IDs im Projekt — gelöschte Wände sind Orphans und müssen mit weg.
     const allWallIds = new Set(getAllWalls(this.state).map((w) => w.id))
 
     const wallMeshShouldRemove = (wallId: string, meshBuildingId?: string) =>
       meshBuildingId === buildingId ||
-      currentWallIds.has(wallId) ||
+      buildingWallIds.has(wallId) ||
       !allWallIds.has(wallId)
 
     for (const [id, mesh] of [...this.meshes.entries()]) {
@@ -3968,6 +3973,22 @@ export class FacadeController {
         mesh.geometry.dispose()
       }
       this.revealMeshes.length = 0
+    } else {
+      for (let i = this.revealMeshes.length - 1; i >= 0; i -= 1) {
+        const mesh = this.revealMeshes[i]!
+        const wallId = mesh.userData.wallId as string | undefined
+        const wall = wallId ? findWall(this.state, wallId) : undefined
+        const meshBuildingId = mesh.userData.buildingId as string | undefined
+        const drop =
+          meshBuildingId === buildingId ||
+          wall?.buildingId === buildingId ||
+          (wallId != null && !wall) ||
+          (wall != null && !isWallVisibleInState(this.state, wall))
+        if (!drop) continue
+        this.profileGroup.remove(mesh)
+        mesh.geometry.dispose()
+        this.revealMeshes.splice(i, 1)
+      }
     }
 
     for (const wall of getVisibleWalls(this.state)) {
@@ -4072,6 +4093,7 @@ export class FacadeController {
         if (wrapReveal || geometry.groups.length >= 2) ensureShadowDepthMaterial(interiorMaterial)
         mesh.userData.originalMaterial = materials
         mesh.userData.wallId = wall.id
+        mesh.userData.buildingId = wall.buildingId
         // Zeichnung: Kanten wie Wandkörper bei Paneelen weglassen — Extrados besitzen
         // Steine/Sockel; sonst 64–128 Laibungs-Segmente als Reißverschluss.
         mesh.userData.skipLineEdges = true
@@ -4346,6 +4368,21 @@ export class FacadeController {
         this.casingGroup.remove(instance)
       }
       this.casingInstances.length = 0
+    } else {
+      for (let i = this.casingInstances.length - 1; i >= 0; i -= 1) {
+        const obj = this.casingInstances[i]!
+        const wallId = obj.userData.wallId as string | undefined
+        const wall = wallId ? findWall(this.state, wallId) : undefined
+        const meshBuildingId = obj.userData.buildingId as string | undefined
+        const drop =
+          meshBuildingId === buildingId ||
+          wall?.buildingId === buildingId ||
+          (wallId != null && !wall) ||
+          (wall != null && !isWallVisibleInState(this.state, wall))
+        if (!drop) continue
+        this.casingGroup.remove(obj)
+        this.casingInstances.splice(i, 1)
+      }
     }
     if (this.casingTemplates.size === 0) return
 
@@ -4830,6 +4867,22 @@ export class FacadeController {
         mesh.geometry.dispose()
       }
       this.stairMeshes.length = 0
+    } else {
+      for (let i = this.stairMeshes.length - 1; i >= 0; i -= 1) {
+        const mesh = this.stairMeshes[i]!
+        const wallId = mesh.userData.wallId as string | undefined
+        const wall = wallId ? findWall(this.state, wallId) : undefined
+        const meshBuildingId = mesh.userData.buildingId as string | undefined
+        const drop =
+          meshBuildingId === buildingId ||
+          wall?.buildingId === buildingId ||
+          (wallId != null && !wall) ||
+          (wall != null && !isWallVisibleInState(this.state, wall))
+        if (!drop) continue
+        this.claddingGroup.remove(mesh)
+        mesh.geometry.dispose()
+        this.stairMeshes.splice(i, 1)
+      }
     }
 
     for (const wall of getVisibleWalls(this.state)) {
@@ -5027,6 +5080,7 @@ export class FacadeController {
       for (const opening of wall.openings) {
         if (opening.hidden) continue
         if (!openingSupportsAwning(opening)) continue
+        if (openingCoveredByWallAwning(wall, opening.id)) continue
         const awning = normalizeAwningConfig(opening.awning)
         if (!awning.enabled) continue
         this.mountAwningGroup(wall, awning, {
@@ -5039,6 +5093,20 @@ export class FacadeController {
 
       for (const awning of wallAwnings(wall)) {
         if (!awning.enabled) continue
+        if (awning.openingIds?.length) {
+          const members = awning.openingIds
+            .map((id) => wall.openings.find((o) => o.id === id))
+            .filter((o): o is Opening => o != null && !o.hidden)
+          if (members.length === 0) continue
+          const layout = layoutAwningForOpenings(members, awning.overhangCm)
+          // mountY an der Gruppe: relativ zum Span-Sturz (wie Öffnungs-Markise).
+          this.mountAwningGroup(wall, awning, {
+            mountX: layout.mountX + layout.widthCm / 2,
+            mountY: layout.mountY + (awning.mountY ?? 0),
+            widthCm: layout.widthCm,
+          })
+          continue
+        }
         const widthCm = awning.widthCm
         const mountX = (awning.mountX ?? 0) + widthCm / 2
         const mountY = awning.mountY ?? wall.height * 0.72
@@ -5419,6 +5487,22 @@ export class FacadeController {
         mesh.geometry.dispose()
       }
       this.innerSillMeshes.length = 0
+    } else {
+      for (let i = this.innerSillMeshes.length - 1; i >= 0; i -= 1) {
+        const mesh = this.innerSillMeshes[i]!
+        const wallId = mesh.userData.wallId as string | undefined
+        const wall = wallId ? findWall(this.state, wallId) : undefined
+        const meshBuildingId = mesh.userData.buildingId as string | undefined
+        const drop =
+          meshBuildingId === buildingId ||
+          wall?.buildingId === buildingId ||
+          (wallId != null && !wall) ||
+          (wall != null && !isWallVisibleInState(this.state, wall))
+        if (!drop) continue
+        this.profileGroup.remove(mesh)
+        mesh.geometry.dispose()
+        this.innerSillMeshes.splice(i, 1)
+      }
     }
 
     for (const wall of getVisibleWalls(this.state)) {
@@ -5477,6 +5561,7 @@ export class FacadeController {
           openingPart: 'sillInner',
         })
         mesh.userData.wallId = wall.id
+        mesh.userData.buildingId = wall.buildingId
         this.profileGroup.add(mesh)
         this.innerSillMeshes.push(mesh)
       }
@@ -5490,6 +5575,22 @@ export class FacadeController {
         mesh.geometry.dispose()
       }
       this.outerSillMeshes.length = 0
+    } else {
+      for (let i = this.outerSillMeshes.length - 1; i >= 0; i -= 1) {
+        const mesh = this.outerSillMeshes[i]!
+        const wallId = mesh.userData.wallId as string | undefined
+        const wall = wallId ? findWall(this.state, wallId) : undefined
+        const meshBuildingId = mesh.userData.buildingId as string | undefined
+        const drop =
+          meshBuildingId === buildingId ||
+          wall?.buildingId === buildingId ||
+          (wallId != null && !wall) ||
+          (wall != null && !isWallVisibleInState(this.state, wall))
+        if (!drop) continue
+        this.profileGroup.remove(mesh)
+        mesh.geometry.dispose()
+        this.outerSillMeshes.splice(i, 1)
+      }
     }
 
     for (const wall of getVisibleWalls(this.state)) {
@@ -5570,6 +5671,22 @@ export class FacadeController {
         mesh.geometry.dispose()
       }
       this.pedimentMeshes.length = 0
+    } else {
+      for (let i = this.pedimentMeshes.length - 1; i >= 0; i -= 1) {
+        const mesh = this.pedimentMeshes[i]!
+        const wallId = mesh.userData.wallId as string | undefined
+        const wall = wallId ? findWall(this.state, wallId) : undefined
+        const meshBuildingId = mesh.userData.buildingId as string | undefined
+        const drop =
+          meshBuildingId === buildingId ||
+          wall?.buildingId === buildingId ||
+          (wallId != null && !wall) ||
+          (wall != null && !isWallVisibleInState(this.state, wall))
+        if (!drop) continue
+        this.profileGroup.remove(mesh)
+        mesh.geometry.dispose()
+        this.pedimentMeshes.splice(i, 1)
+      }
     }
 
     for (const wall of getVisibleWalls(this.state)) {
@@ -5607,6 +5724,7 @@ export class FacadeController {
             openingPart: 'pediment',
           })
           mesh.userData.wallId = wall.id
+          mesh.userData.buildingId = wall.buildingId
           if (isStudioWall(wall)) {
             mesh.position.set(transform.position.x, transform.position.y, transform.position.z)
             mesh.rotation.y = transform.rotationY
@@ -5631,6 +5749,7 @@ export class FacadeController {
             openingPart: 'pediment',
           })
           mesh.userData.wallId = wall.id
+          mesh.userData.buildingId = wall.buildingId
           if (isStudioWall(wall)) {
             mesh.position.set(transform.position.x, transform.position.y, transform.position.z)
             mesh.rotation.y = transform.rotationY
@@ -5655,6 +5774,7 @@ export class FacadeController {
             openingPart: 'pediment',
           })
           mesh.userData.wallId = wall.id
+          mesh.userData.buildingId = wall.buildingId
           if (isStudioWall(wall)) {
             mesh.position.set(transform.position.x, transform.position.y, transform.position.z)
             mesh.rotation.y = transform.rotationY

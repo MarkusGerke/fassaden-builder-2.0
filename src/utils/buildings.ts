@@ -222,14 +222,32 @@ export function getVisibleWalls(state: FacadeState): Wall[] {
   for (const building of state.buildings) {
     if (building.hidden) continue
     for (const wall of building.walls) {
-      if (wall.hidden) continue
-      const fi = floorIndex(wall, building.wallHeight)
-      const plan = building.floors[fi]
-      if (plan?.hidden) continue
+      if (!isWallVisibleOnBuilding(building, wall)) continue
       out.push(wall)
     }
   }
   return out
+}
+
+/** Wand sichtbar (Gebäude schon als nicht-hidden vorausgesetzt). */
+export function isWallVisibleOnBuilding(
+  building: Building,
+  wall: Wall,
+): boolean {
+  if (wall.hidden) return false
+  const fi = floorIndex(wall, building.wallHeight)
+  const plan = building.floors[fi]
+  if (plan?.hidden) return false
+  return true
+}
+
+/** Wand in der Fassade sichtbar (Gebäude + Etage + wall.hidden). */
+export function isWallVisibleInState(state: FacadeState, wall: Wall): boolean {
+  const building = state.buildings.find(
+    (b) => b.id === wall.buildingId || b.walls.some((w) => w.id === wall.id),
+  )
+  if (!building || building.hidden) return false
+  return isWallVisibleOnBuilding(building, wall)
 }
 
 export function withActiveBuilding(state: FacadeState, building: Building): FacadeState {

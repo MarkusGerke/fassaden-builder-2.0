@@ -12,6 +12,8 @@ export const DEFAULT_AWNING_WIDTH_CM = 192
 export const DEFAULT_AWNING_PROJECTION_CM = 144
 /** Seitenüberstand Öffnung links/rechts (Gelenkarm-Default). */
 export const DEFAULT_AWNING_OVERHANG_CM = 16
+/** Raster für Seitenüberstand (cm) — feiner als STUDIO_MASONRY. */
+export const AWNING_OVERHANG_STEP_CM = 4
 /** Volant: senkrechter Stoff unter der Vorderkante. */
 export const DEFAULT_AWNING_FRONT_OVERHANG_CM = 16
 export const AWNING_FRONT_OVERHANG_MAX_CM = 48
@@ -125,7 +127,7 @@ export function normalizeAwningConfig(raw?: Partial<AwningConfig> | null): Awnin
       : DEFAULT_AWNING_PROJECTION_CM
   const overhangCm =
     typeof raw?.overhangCm === 'number' && Number.isFinite(raw.overhangCm)
-      ? clamp(snapToGrid(raw.overhangCm, STUDIO_MASONRY), 0, 64)
+      ? clamp(snapToGrid(raw.overhangCm, AWNING_OVERHANG_STEP_CM), 0, 64)
       : DEFAULT_AWNING_OVERHANG_CM
   const frontOverhangCm =
     typeof raw?.frontOverhangCm === 'number' && Number.isFinite(raw.frontOverhangCm)
@@ -155,6 +157,11 @@ export function normalizeAwningConfig(raw?: Partial<AwningConfig> | null): Awnin
     typeof raw?.mountY === 'number' && Number.isFinite(raw.mountY) ? raw.mountY : undefined
   const mountX =
     typeof raw?.mountX === 'number' && Number.isFinite(raw.mountX) ? raw.mountX : undefined
+  const openingIds = Array.isArray(raw?.openingIds)
+    ? raw.openingIds
+        .filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+        .map((id) => id.trim())
+    : undefined
   const motionRaw = raw?.motion
   const motionFallback = defaultAwningMotion()
   return {
@@ -173,6 +180,7 @@ export function normalizeAwningConfig(raw?: Partial<AwningConfig> | null): Awnin
     verticalDropCm,
     mountY,
     mountX,
+    openingIds: openingIds && openingIds.length > 0 ? openingIds : undefined,
     fabricColor:
       typeof raw?.fabricColor === 'string' ? raw.fabricColor : DEFAULT_AWNING_FABRIC_COLOR,
     frameColor: typeof raw?.frameColor === 'string' ? raw.frameColor : DEFAULT_AWNING_FRAME_COLOR,
@@ -199,7 +207,7 @@ export function defaultOpeningAwningWidth(
   opening: Pick<Opening, 'width'>,
   overhangCm = DEFAULT_AWNING_OVERHANG_CM,
 ): number {
-  return clamp(snapToGrid(opening.width + 2 * overhangCm, STUDIO_MASONRY), 48, 960)
+  return clamp(snapToGrid(opening.width + 2 * overhangCm, AWNING_OVERHANG_STEP_CM), 48, 960)
 }
 
 export function awningFabricFinish(awning: AwningConfig): SurfaceFinish {

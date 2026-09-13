@@ -11,7 +11,7 @@ export const DEFAULT_CLADDING_COLOR_V1 = '#ffffff'
 export const DEFAULT_CLADDING_COLOR_V2 = '#ffffff'
 export const DEFAULT_FRAME_COLOR = '#ffffff'
 export const DEFAULT_DOOR_COLOR = '#ffffff'
-export const DEFAULT_GLASS_COLOR = '#575757'
+export const DEFAULT_GLASS_COLOR = '#777777'
 export const DEFAULT_PROFILE_COLOR = '#ffffff'
 
 /** Sichtbare Stein-/Bekleidungsfarbe — nicht die nackte Wandschale (`wallColor`). */
@@ -30,10 +30,10 @@ function wallShowsPanels(wall: {
   return panel.enabled !== false && panel.pattern !== 'none'
 }
 
-/** Gesims/Sockel/Zierband ohne eigene Farbe: Steine wenn Paneele an, sonst Putz. */
+/** Gesims/Sockel/Zierband ohne eigene Farbe: neutrales Profilweiß — nie Stein/Wandfarbe (v2.0.435). */
 export function wallDecorFallbackColor(
   explicit: string | undefined | null,
-  wall: {
+  _wall?: {
     claddingColor?: string
     wallColor?: string
     profileColor?: string
@@ -41,17 +41,15 @@ export function wallDecorFallbackColor(
   },
 ): string {
   if (explicit) return explicit
-  if (wallShowsPanels(wall)) {
-    return wall.claddingColor ?? wall.wallColor ?? wall.profileColor ?? DEFAULT_PROFILE_COLOR
-  }
-  return wall.wallColor ?? wall.profileColor ?? DEFAULT_PROFILE_COLOR
+  return DEFAULT_PROFILE_COLOR
 }
 
 export const WALL_COLORS = ['#ffffff', '#f5f5f5', '#e0e0e0', '#f0e6d8', '#e8dcc8', '#4a4a4a'] as const
 export const CLADDING_COLORS = ['#ffffff', '#cccccc', '#e8dcc8', '#c4704b', '#6b705c', '#4a4a4a'] as const
 export const FRAME_COLORS = ['#ffffff', '#4a4a4a', '#6b4f3a', '#1a1a1a', '#2d4a3e'] as const
 export const TRANSPARENT_GLASS = 'transparent'
-export const GLASS_COLORS = [DEFAULT_GLASS_COLOR, TRANSPARENT_GLASS, '#6fa3c4', '#a8d4e6', '#87ceeb', '#4a6a7a', '#c8e6f5'] as const
+/** Glas-Schnellfarben — ohne Transparent (v2.0.432: Transparent aus UI entfernt). */
+export const GLASS_COLORS = [DEFAULT_GLASS_COLOR, '#6fa3c4', '#a8d4e6', '#87ceeb', '#4a6a7a', '#c8e6f5'] as const
 
 export function isTransparentGlass(color: string | undefined): boolean {
   return color === TRANSPARENT_GLASS || color === 'none' || color === '#00000000'

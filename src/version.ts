@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.426'
+export const APP_VERSION = '2.0.440'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,140 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.440',
+    date: '2026-09-13',
+    title: 'Innenwände: Rechtsklick, T auf Innen, Andocken an Außen',
+    changes: [
+      'Rechtsklick auf Innenwände: Löschen/Ausblenden (Mesh vor Decke)',
+      'Innenwand auch auf andere Innenwände setzbar (beide Seiten)',
+      'Shift an verknüpfter Ecke: T-/Kreuz-Abzweig von Innenwänden',
+      'Andocken an Außenwand-Innenseite (nicht Außen-Planlinie); Lücken bis 48 cm schließen',
+    ],
+  },
+  {
+    version: '2.0.439',
+    date: '2026-09-13',
+    title: 'Innenwand: Front-Pfeil, T-Stoß, Andocken',
+    changes: [
+      'Front-Verschiebe-Pfeil wieder sichtbar (Höhe-Greifer bleibt aus)',
+      'Shift-Abzweig: T-Stoß an Außenwand ohne Host-Split; T/Kreuz an Innenwänden mit Split; Abzweige bleiben Innenwände',
+    ],
+  },
+  {
+    version: '2.0.438',
+    date: '2026-09-13',
+    title: 'Innenwände wieder markierbar',
+    changes: [
+      'Nach dem Setzen entwaffnet der Modus — Innenwände wieder wählbar, skalierbar und löschbar',
+      'Mesh-Pick für Innenwände hat Vorrang vor Decke/Boden',
+    ],
+  },
+  {
+    version: '2.0.437',
+    date: '2026-09-13',
+    title: 'Innenwand nur von innen, 90° in den Raum',
+    changes: [
+      'Innenwand nur von der Rauminnenseite platzierbar (nicht von außen)',
+      'Stummel 90° in den Raum; Länge ± und Shift 90°/45°; kein Höhen-/Front-Greifer; kein Sockel',
+    ],
+  },
+  {
+    version: '2.0.436',
+    date: '2026-09-13',
+    title: 'Innenwand ohne Außenwand-Split',
+    changes: [
+      'Innenwand 24/36/48: neue Wand an der Innenseite (Host ungeteilt); Front-Greifer nach innen; Türen/Andocken möglich',
+      'Außenwand-Segment herauslösen bleibt nur bei Längen-Karten (48…576)',
+    ],
+  },
+  {
+    version: '2.0.435',
+    date: '2026-09-13',
+    title: 'Markisen-Seitenüberstand in 4-cm-Schritten',
+    changes: [
+      'Seitenüberstand der Markise: Eingabe und Snap in 4 cm-Schritten (0…64)',
+    ],
+  },
+  {
+    version: '2.0.434',
+    date: '2026-09-13',
+    title: 'Etage-Reste, Innenwand-Extrude, Farben-Reiter',
+    changes: [
+      'Etage aus: Fenstersturz, Bänke, Verdachung und Laibung werden mitentfernt (buildingId + Partial-Clear)',
+      'Innenwand 24/36/48: Segment markieren und Front-Greifer extrudieren (wie Außenwand); Grundriss zeichnen bleibt',
+      'Bibliothek-Reiter „Farben“ (nicht Farbe); bei Objektauswahl aktiv; Kategorie-Dropdown mit Vorauswahl; Markise/Teilobjekte abgedeckt',
+      'Rechte Einstellungen starten auf Farben statt Übersicht',
+    ],
+  },
+  {
+    version: '2.0.433',
+    date: '2026-09-13',
+    title: 'Etage aus, Innenwände, Farbbibliothek',
+    changes: [
+      'Etage ausblenden: Bank, Sturz, Laibung und Auswahl mit weg; Decke/Boden weiter anwählbar',
+      'Bibliothek Wände: Innenwand 24/36/48 cm — im Grundriss zeichnen ohne Paneele/Außenoptik',
+      'Neuer Bibliothek-Reiter Farbe (Naturstein, Backstein, …) — Klick wendet auf die Auswahl an',
+    ],
+  },
+  {
+    version: '2.0.432',
+    date: '2026-09-13',
+    title: 'Glas ohne Transparent, Gruppen-Markise voll, Markisen-Kontextmenü',
+    changes: [
+      'Glasfarbe: Option „Transparent“ entfernt; Altwerte werden zu Standard-Glasfarbe',
+      'Gruppen-Markise: alle Maße/Farben/Typ/Animation/Uhrzeiten wie Öffnungs-Markise (auch bei Öffnungsauswahl)',
+      'Rechtsklick auf Markise: Ein-/Ausblenden, Kopieren/Einfügen, Gruppe lösen/teilen, Zuweisen, Löschen',
+    ],
+  },
+  {
+    version: '2.0.431',
+    date: '2026-09-13',
+    title: 'Glasfarbe wählbar + Gruppen-Markisen-Maße',
+    changes: [
+      'Glasfarbe: Transparent-Option wieder da; Farbfeld bei Transparent nicht mehr ausgegraut/gesperrt',
+      'Gruppen-Markise: Abstand Öffnung, Konsole, Senkrecht und Seitenüberstand wie an der Öffnungs-Markise',
+    ],
+  },
+  {
+    version: '2.0.430',
+    date: '2026-09-13',
+    title: 'Glasfarbe, Markisenbreite, Gruppen-Markise',
+    changes: [
+      'Glasfarbe in der Öffnungs-Toolbar wieder zuverlässig sichtbar (nach Teil-Fokus)',
+      'Öffnungs-Markise: Breite immer Öffnung + Seitenüberstand — auch bei Scope-Toast und Fensterbreiten-Änderung',
+      'Mehrere Öffnungen markieren → „Eine Markise über Auswahl“ (eine Markise über den Span)',
+    ],
+  },
+  {
+    version: '2.0.429',
+    date: '2026-09-13',
+    title: 'Markise kopieren + Scope nur Deltas',
+    changes: [
+      'Rechtsklick auf Markise: kopieren / einfügen / ersetzen (eigene Zwischenablage); Öffnungsmenü: Markise kopieren',
+      'Scope-Toast (Typ/Etage/Fassade) übernimmt nur geänderte Felder — z. B. Kastenfenster ohne Flügelteilung der Nachbarn zu überschreiben',
+      'Rechtsklick „Zuweisen für“ bleibt Vollstil',
+    ],
+  },
+  {
+    version: '2.0.428',
+    date: '2026-09-13',
+    title: 'Hellerer Sonnen-Look',
+    changes: [
+      'Schatten-Dunkelheit und Bounce/Env wieder wie vor v2.0.410 — hellerer, kontrastreicherer Gesamteindruck',
+      'Gegenlicht-Kanten/Glas nicht mehr zusätzlich grau gedimmt (413–418 zurück)',
+      'Markisen-Ausfahrt und Live-Schatten unverändert',
+    ],
+  },
+  {
+    version: '2.0.427',
+    date: '2026-09-13',
+    title: 'Markisen-Schatten folgt der Ausfahrt',
+    changes: [
+      'Während Ein-/Ausfahren folgt der Markisenschatten der Pose (Shadow-Map mit allen Castern, temporär max. 4096², ~20×/s)',
+      'Hausschatten bleiben sichtbar; nach der Animation volle Map-Qualität',
+    ],
+  },
   {
     version: '2.0.426',
     date: '2026-09-13',

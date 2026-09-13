@@ -18,6 +18,7 @@ import type {
 } from '../types/facade'
 import { cloneWall } from '../types/facade'
 import { DEFAULT_GLASS_COLOR, defaultOpeningFrameColor } from '../constants/colorPalettes'
+import { syncAwningGeometryOnWall } from './awnings'
 import {
   DEFAULT_GLASS_IOR,
   DEFAULT_GLASS_ROUGHNESS,
@@ -812,9 +813,8 @@ export function updateOpening(
   patch: Partial<Opening>,
 ): FacadeState {
   const allWalls = getAllWalls(state)
-  return mapWall(state, wallId, (wall) => ({
-    ...cloneWall(wall),
-    openings: wall.openings.map((opening) => {
+  return mapWall(state, wallId, (wall) => {
+    const openings = wall.openings.map((opening) => {
       if (opening.id !== id) return opening
       const grid = openingGridForWall(wall)
       let merged: Opening = { ...opening, ...patch }
@@ -846,8 +846,9 @@ export function updateOpening(
         merged = { ...merged, ...aligned }
       }
       return clampOpeningToWall(merged, wall, grid, { snapToGrid: !useMasonry })
-    }),
-  }))
+    })
+    return syncAwningGeometryOnWall({ ...cloneWall(wall), openings })
+  })
 }
 
 export function updateOpeningFrameColors(
@@ -1563,42 +1564,40 @@ export function moveOpening(
   return mapWall(state, wallId, (wall) => {
     const step = openingPositionStep(wall)
     const others = wall.openings.filter((o) => o.id !== openingId)
-    return {
-      ...cloneWall(wall),
-      openings: wall.openings.map((opening) => {
-        if (opening.id !== openingId) return opening
-        let newX = opening.x + dx
-        let newY =
-          opening.type === 'door' && opening.stairs?.enabled
-            ? stairTopY(normalizeOpeningStairs(opening.stairs, opening))
-            : opening.y + dy
-        const snapped = snapOpeningMoveToMasonry(
-          wall,
-          allWalls,
-          opening,
-          newX,
-          newY,
-          dx,
-          dy,
-          mode,
-        )
-        newX = snapped.x
-        newY = snapped.y
-        const clamped = clampOpeningToWall(
-          { ...opening, x: newX, y: newY, width: snapped.width, height: snapped.height },
-          wall,
-          step,
-          { snapToGrid: true },
-        )
-        // Verschieben: kein Mindestabstand — nur echte Überlappung blockieren.
-        if (mode === 'drag') {
-          const overlaps = others.some((o) => openingsTooClose(clamped, o, 0))
-          return overlaps ? opening : clamped
-        }
-        const hasConflict = others.some((o) => openingsTooClose(clamped, o, MIN_GAP))
-        return hasConflict ? opening : clamped
-      }),
-    }
+    const openings = wall.openings.map((opening) => {
+      if (opening.id !== openingId) return opening
+      let newX = opening.x + dx
+      let newY =
+        opening.type === 'door' && opening.stairs?.enabled
+          ? stairTopY(normalizeOpeningStairs(opening.stairs, opening))
+          : opening.y + dy
+      const snapped = snapOpeningMoveToMasonry(
+        wall,
+        allWalls,
+        opening,
+        newX,
+        newY,
+        dx,
+        dy,
+        mode,
+      )
+      newX = snapped.x
+      newY = snapped.y
+      const clamped = clampOpeningToWall(
+        { ...opening, x: newX, y: newY, width: snapped.width, height: snapped.height },
+        wall,
+        step,
+        { snapToGrid: true },
+      )
+      // Verschieben: kein Mindestabstand — nur echte Überlappung blockieren.
+      if (mode === 'drag') {
+        const overlaps = others.some((o) => openingsTooClose(clamped, o, 0))
+        return overlaps ? opening : clamped
+      }
+      const hasConflict = others.some((o) => openingsTooClose(clamped, o, MIN_GAP))
+      return hasConflict ? opening : clamped
+    })
+    return syncAwningGeometryOnWall({ ...cloneWall(wall), openings })
   })
 }
 
