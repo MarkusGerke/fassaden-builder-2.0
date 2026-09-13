@@ -73,6 +73,7 @@ import {
 } from './types/facade'
 import type {
   Building,
+  DownpipeFixture,
   EditorState,
   FacadeState,
   GruenderzeitPresetId,
@@ -566,6 +567,18 @@ import {
   normalizeRoof,
   type RoofConfig,
 } from './studio/roof'
+import {
+  addDownpipeToFacade,
+  createDownpipeFixture,
+  DEFAULT_DOWNPIPE_COLOR,
+  DEFAULT_DOWNPIPE_DIAMETER_CM,
+  DEFAULT_DOWNPIPE_NICHE_DEPTH_CM,
+  DEFAULT_DOWNPIPE_NICHE_WIDTH_CM,
+  deleteDownpipeFromFacade,
+  DOWNPIPE_LIBRARY_PRESET_ID,
+  isDownpipeLibraryPresetId,
+  patchDownpipeInFacade,
+} from './studio/downpipe'
 import { buildingCentroid, canRotateBuildingGeometry, canRotateStudioBuilding, rotateBuildingByDeg, rotateStudioBuilding } from './studio/rotateBuilding'
 import { defaultOpeningStairs, normalizeOpeningStairs, snapStairMeasure, syncStairsToDoorWidth } from './studio/stairs'
 import { normalizeOpeningPediment, pedimentFormIsClosed, pedimentFormSupportsGableDims } from './studio/pediment'
@@ -5780,6 +5793,17 @@ function updateLibraryPlacementPreview(clientX: number, clientY: number) {
     return
   }
 
+  if (activeLibraryDownpipe || activeLibraryOpeningPresetId === DOWNPIPE_LIBRARY_PRESET_ID) {
+    const width = DEFAULT_DOWNPIPE_DIAMETER_CM
+    const height = Math.min(wall.height, 192)
+    const x = Math.max(
+      0,
+      Math.min(wall.width - width, snapToGrid(hit.localX - width / 2, STUDIO_MASONRY)),
+    )
+    facade.setLibraryPlacementGhost(wall, { x, y: 0, width, height, type: 'cutout' })
+    return
+  }
+
   if (activeLibraryOpeningPresetId) {
     const preset = WALL_OPENING_PRESETS.find((item) => item.id === activeLibraryOpeningPresetId)
     if (!preset) {
@@ -6696,7 +6720,20 @@ const roofTileTaper = document.querySelector<HTMLInputElement>('#roof-tile-taper
 const roofTileTaperValue = document.querySelector<HTMLOutputElement>('#roof-tile-taper-value')!
 const roofTileColorSwatches = document.querySelector<HTMLDivElement>('#roof-tile-color-swatches')!
 const roofGutter = document.querySelector<HTMLInputElement>('#roof-gutter')!
+const roofGutterColorSwatches = document.querySelector<HTMLDivElement>('#roof-gutter-color-swatches')!
 const roofHint = document.querySelector<HTMLParagraphElement>('#roof-hint')!
+const toolbarDownpipe = document.querySelector<HTMLDivElement>('#toolbar-downpipe')!
+const downpipeX = document.querySelector<HTMLInputElement>('#downpipe-x')!
+const downpipeDiameter = document.querySelector<HTMLInputElement>('#downpipe-diameter')!
+const downpipeColorSwatches = document.querySelector<HTMLDivElement>('#downpipe-color-swatches')!
+const downpipeMountSurface = document.querySelector<HTMLButtonElement>('#downpipe-mount-surface')!
+const downpipeMountNiche = document.querySelector<HTMLButtonElement>('#downpipe-mount-niche')!
+const downpipeNicheOptions = document.querySelector<HTMLDivElement>('#downpipe-niche-options')!
+const downpipeNicheWidth = document.querySelector<HTMLInputElement>('#downpipe-niche-width')!
+const downpipeNicheDepth = document.querySelector<HTMLInputElement>('#downpipe-niche-depth')!
+const downpipeFootShoe = document.querySelector<HTMLButtonElement>('#downpipe-foot-shoe')!
+const downpipeFootGround = document.querySelector<HTMLButtonElement>('#downpipe-foot-ground')!
+const downpipeDelete = document.querySelector<HTMLButtonElement>('#downpipe-delete')!
 const buildingRotateCcw = document.querySelector<HTMLButtonElement>('#building-rotate-ccw')!
 const buildingRotateCw = document.querySelector<HTMLButtonElement>('#building-rotate-cw')!
 const sceneAllColorInput = document.querySelector<HTMLInputElement>('#scene-all-color')!
@@ -8248,6 +8285,14 @@ function syncRoofUI() {
   roofTileTaper.value = String(roof.tileTaper)
   roofTileTaperValue.textContent = roof.tileTaper.toFixed(2)
   roofGutter.checked = roof.gutter
+  renderColorControl(
+    roofGutterColorSwatches,
+    roof.gutterColor ?? DEFAULT_DOWNPIPE_COLOR,
+    (color) => commitRoofPatch({ gutterColor: color }),
+  )
+  for (const el of roofGutterColorSwatches.querySelectorAll('input,button')) {
+    ;(el as HTMLInputElement).disabled = !roofEnabled.checked || !roof.gutter
+  }
   for (const input of [
     roofPitchLower,
     roofPitchUpper,
@@ -10418,6 +10463,50 @@ function initOpeningLibrary() {
 
   if (libraryTab === 'niches') {
     appendLibraryIdleNoneCard(host, 'Keines')
+    {
+      const card = document.createElement('button')
+      card.type = 'button'
+      card.className = 'opening-library-card'
+      card.draggable = true
+      card.dataset.presetId = DOWNPIPE_LIBRARY_PRESET_ID
+      card.title = 'Fallrohr DN 80 — auf eine Wand ziehen'
+      const thumb = document.createElement('div')
+      thumb.className = 'opening-library-thumb'
+      thumb.innerHTML =
+        '<svg viewBox="0 0 48 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><rect x="20" y="4" width="8" height="48" rx="4" fill="#8E8A88"/><path d="M24 52 L36 60" stroke="#8E8A88" stroke-width="6" stroke-linecap="round"/></svg>'
+      const label = document.createElement('span')
+      label.textContent = 'Fallrohr DN 80'
+      card.append(thumb, label)
+      card.addEventListener('click', () => {
+        if (card.dataset.didDrag === '1') {
+          delete card.dataset.didDrag
+          return
+        }
+        if (editor.selectedWallIds.length === 1) {
+          const wall = getWall(state, editor.selectedWallIds[0]!)
+          if (wall) placeDownpipeOnWall(wall.id, wall.width / 2)
+        }
+      })
+      card.addEventListener('dragstart', (event) => {
+        card.dataset.didDrag = '1'
+        hideNativeDragImage(event)
+        event.dataTransfer?.setData('application/x-downpipe-preset', DOWNPIPE_LIBRARY_PRESET_ID)
+        event.dataTransfer?.setData('text/plain', DOWNPIPE_LIBRARY_PRESET_ID)
+        if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy'
+        card.classList.add('is-dragging')
+        activeLibraryDownpipe = true
+        activeLibraryOpeningPresetId = null
+        activeLibraryOpeningTemplateId = null
+        activeLibraryLabelFontId = null
+      })
+      card.addEventListener('dragend', () => {
+        card.classList.remove('is-dragging')
+        activeLibraryDownpipe = false
+        viewport.classList.remove('library-drop-target')
+        clearLibraryPlacementPreview()
+      })
+      host.appendChild(card)
+    }
     for (const preset of WALL_OPENING_PRESETS.filter(
       (p) => (p.type === 'cutout' || p.type === 'conch') && p.id !== 'opening-empty-96',
     )) {
@@ -10710,6 +10799,18 @@ function normalizeEditor(nextState: FacadeState, nextEditor: EditorState): Edito
     }
   }
 
+  const downpipeSel = nextEditor.selectedDownpipe
+  if (downpipeSel) {
+    const building = nextState.buildings.find((b) => b.id === downpipeSel.buildingId)
+    const exists = building?.downpipes?.some((d) => d.id === downpipeSel.downpipeId)
+    if (exists) {
+      return {
+        ...createDefaultEditorState(),
+        selectedDownpipe: { ...downpipeSel },
+      }
+    }
+  }
+
   const selectedWallIds = nextEditor.selectedWallIds.filter((id) =>
     getAllWalls(nextState).some((wall) => wall.id === id),
   )
@@ -10750,6 +10851,7 @@ function normalizeEditor(nextState: FacadeState, nextEditor: EditorState): Edito
       : undefined,
     selectedCeiling: nextEditor.selectedCeiling,
     selectedBuildingId: nextEditor.selectedBuildingId,
+    selectedDownpipe: undefined,
   }
 }
 
@@ -12250,6 +12352,9 @@ function editorLayerSelectionKey(ed: EditorState): string {
   const roof = ed.selectedRoofBuildingId
     ? `${ed.selectedRoofBuildingId}:${ed.selectedRoofPart ?? 'group'}`
     : ''
+  const downpipe = ed.selectedDownpipe
+    ? `${ed.selectedDownpipe.buildingId}:${ed.selectedDownpipe.downpipeId}`
+    : ''
   return [
     walls,
     openings,
@@ -12258,6 +12363,7 @@ function editorLayerSelectionKey(ed: EditorState): string {
     ceiling,
     ed.selectedBuildingId ?? '',
     lights,
+    downpipe,
   ].join('|')
 }
 
@@ -12741,9 +12847,11 @@ function renderUi(opts?: { skipLayerList?: boolean }) {
   const hasRoof = Boolean(editor.selectedRoofBuildingId)
   const hasCeiling = Boolean(editor.selectedCeiling)
   const hasSceneLight = Boolean(editor.selectedSceneLightId)
+  const hasDownpipe = Boolean(editor.selectedDownpipe)
   const studioWall = selectionIsStudioWall()
   const showSelectionUi =
-    !SHOWCASE_VIEW_MODE && (hasWall || hasOpening || hasRoof || hasCeiling || hasSceneLight)
+    !SHOWCASE_VIEW_MODE &&
+    (hasWall || hasOpening || hasRoof || hasCeiling || hasSceneLight || hasDownpipe)
   lightingAccordion.hidden = SHOWCASE_VIEW_MODE ? false : showSelectionUi
   planSidebar.hidden = true
   syncSceneToolbarTabs()
@@ -12754,13 +12862,22 @@ function renderUi(opts?: { skipLayerList?: boolean }) {
   // Auswahl-Optionen liegen unten; rechte Toolbar nur als DOM-Host (CSS blendet aus).
   selectionToolbar.hidden = !showSelectionUi
   appRoot.classList.toggle('has-selection', showSelectionUi)
-    toolbarWall.hidden = !hasWall || hasOpening || studioWall || hasRoof || hasCeiling || hasSceneLight
-  toolbarStudio.hidden = !hasWall || hasOpening || !studioWall || hasRoof || hasCeiling || hasSceneLight
+    toolbarWall.hidden =
+    !hasWall || hasOpening || studioWall || hasRoof || hasCeiling || hasSceneLight || hasDownpipe
+  toolbarStudio.hidden =
+    !hasWall || hasOpening || !studioWall || hasRoof || hasCeiling || hasSceneLight || hasDownpipe
   toolbarOpening.hidden = !hasOpening
-  toolbarRoof.hidden = !hasRoof || hasOpening || hasCeiling || hasSceneLight
-  toolbarCeiling.hidden = !hasCeiling || hasOpening || hasRoof || hasSceneLight
+  toolbarRoof.hidden = !hasRoof || hasOpening || hasCeiling || hasSceneLight || hasDownpipe
+  toolbarCeiling.hidden = !hasCeiling || hasOpening || hasRoof || hasSceneLight || hasDownpipe
   toolbarSceneLight.hidden = !hasSceneLight
+  toolbarDownpipe.hidden = !hasDownpipe
   syncWindowDepthControls()
+
+  if (hasDownpipe) {
+    syncDownpipeUI()
+    finishRenderUi()
+    return
+  }
 
   if (hasOpening) {
     fillAllProfileSelects()
@@ -14996,6 +15113,32 @@ function renderLayerList() {
       }
       buildingBody.appendChild(roofLi)
 
+      for (const dp of building.downpipes ?? []) {
+        const dpLi = document.createElement('li')
+        dpLi.className = 'layer-row-wrap'
+        const btn = document.createElement('button')
+        btn.type = 'button'
+        btn.className =
+          'layer-row' +
+          (editor.selectedDownpipe?.buildingId === building.id &&
+          editor.selectedDownpipe?.downpipeId === dp.id
+            ? ' selected'
+            : '')
+        const kind = document.createElement('span')
+        kind.className = 'layer-kind'
+        kind.textContent = 'Fallrohr'
+        const meta = document.createElement('span')
+        meta.className = 'layer-meta'
+        meta.textContent = `Ø${dp.diameterCm} · x${dp.localX}`
+        btn.append(kind, meta)
+        btn.addEventListener('click', () => {
+          if (!isActive) activateBuilding(building.id)
+          selectDownpipe(building.id, dp.id)
+        })
+        dpLi.appendChild(btn)
+        buildingBody.appendChild(dpLi)
+      }
+
       for (const floor of sortedFloorIndicesForBuilding(building)) {
         const collapsed = collapsedFloors.has(floor)
         const floorPlan = building.floors[floor]
@@ -15396,8 +15539,155 @@ function selectRoof(buildingId: string, part: 'group' | 'shell' | 'tiles' | 'gut
     selectedBuildingId: undefined,
     selectedRoofBuildingId: buildingId,
     selectedRoofPart: part,
+    selectedDownpipe: undefined,
+    selectedSceneLightId: undefined,
+    selectedSceneLightIds: [],
   })
 }
+
+function selectedDownpipeFixture():
+  | { buildingId: string; downpipe: DownpipeFixture }
+  | null {
+  const sel = editor.selectedDownpipe
+  if (!sel) return null
+  const building = state.buildings.find((b) => b.id === sel.buildingId)
+  const downpipe = building?.downpipes?.find((d) => d.id === sel.downpipeId)
+  if (!building || !downpipe) return null
+  return { buildingId: building.id, downpipe }
+}
+
+function selectDownpipe(buildingId: string, downpipeId: string) {
+  if (state.activeBuildingId !== buildingId) {
+    commitState(setActiveBuildingId(state, buildingId))
+  }
+  applyState(state, {
+    selectedWallIds: [],
+    selectedOpenings: [],
+    selectedEdges: [],
+    selectedOpeningPart: undefined,
+    selectedWallPart: undefined,
+    selectedCeiling: undefined,
+    selectedBuildingId: undefined,
+    selectedRoofBuildingId: undefined,
+    selectedRoofPart: undefined,
+    selectedSceneLightId: undefined,
+    selectedSceneLightIds: [],
+    selectedDownpipe: { buildingId, downpipeId },
+  })
+}
+
+function commitDownpipePatch(patch: Partial<DownpipeFixture>) {
+  const sel = editor.selectedDownpipe
+  if (!sel) return
+  commitState(patchDownpipeInFacade(state, sel.buildingId, sel.downpipeId, patch))
+}
+
+function placeDownpipeOnWall(wallId: string, localX: number) {
+  if (!canEditActiveBuildingNow()) return
+  const wall = getWall(state, wallId)
+  if (!wall || !isStudioWall(wall)) return
+  const buildingId = wall.buildingId ?? state.activeBuildingId
+  const x = Math.max(0, Math.min(wall.width, snapToGrid(localX, STUDIO_MASONRY)))
+  const dp = createDownpipeFixture(wallId, x)
+  commitState(addDownpipeToFacade(state, buildingId, dp), {
+    ...editor,
+    selectedDownpipe: { buildingId, downpipeId: dp.id },
+    selectedWallIds: [],
+    selectedOpenings: [],
+    selectedRoofBuildingId: undefined,
+    selectedRoofPart: undefined,
+    selectedCeiling: undefined,
+    selectedSceneLightId: undefined,
+    selectedSceneLightIds: [],
+  })
+  planStatus.textContent = 'Fallrohr platziert'
+}
+
+function syncDownpipeUI() {
+  const hit = selectedDownpipeFixture()
+  if (!hit) return
+  const { downpipe: dp } = hit
+  downpipeX.value = String(dp.localX)
+  downpipeDiameter.value = String(dp.diameterCm)
+  downpipeNicheWidth.value = String(dp.nicheWidthCm ?? DEFAULT_DOWNPIPE_NICHE_WIDTH_CM)
+  downpipeNicheDepth.value = String(dp.nicheDepthCm ?? DEFAULT_DOWNPIPE_NICHE_DEPTH_CM)
+  downpipeNicheOptions.hidden = dp.mount !== 'niche'
+  downpipeMountSurface.classList.toggle('active', dp.mount === 'surface')
+  downpipeMountNiche.classList.toggle('active', dp.mount === 'niche')
+  downpipeMountSurface.setAttribute('aria-pressed', String(dp.mount === 'surface'))
+  downpipeMountNiche.setAttribute('aria-pressed', String(dp.mount === 'niche'))
+  downpipeFootShoe.classList.toggle('active', dp.foot === 'shoe')
+  downpipeFootGround.classList.toggle('active', dp.foot === 'ground')
+  downpipeFootShoe.setAttribute('aria-pressed', String(dp.foot === 'shoe'))
+  downpipeFootGround.setAttribute('aria-pressed', String(dp.foot === 'ground'))
+  renderColorControl(downpipeColorSwatches, dp.color, (color) =>
+    commitDownpipePatch({ color }),
+  )
+}
+
+let activeLibraryDownpipe = false
+
+function wireDownpipeToolbar() {
+  const stepX = (dir: 1 | -1) => {
+    const hit = selectedDownpipeFixture()
+    if (!hit) return
+    commitDownpipePatch({ localX: hit.downpipe.localX + dir * STUDIO_MASONRY })
+  }
+  document.querySelector('#downpipe-x-minus')?.addEventListener('click', () => stepX(-1))
+  document.querySelector('#downpipe-x-plus')?.addEventListener('click', () => stepX(1))
+  downpipeX.addEventListener('change', () => {
+    commitDownpipePatch({ localX: Number(downpipeX.value) || 0 })
+  })
+  const stepDia = (dir: 1 | -1) => {
+    const hit = selectedDownpipeFixture()
+    if (!hit) return
+    commitDownpipePatch({
+      diameterCm: Math.max(4, Math.min(24, hit.downpipe.diameterCm + dir)),
+    })
+  }
+  document.querySelector('#downpipe-diameter-minus')?.addEventListener('click', () => stepDia(-1))
+  document.querySelector('#downpipe-diameter-plus')?.addEventListener('click', () => stepDia(1))
+  downpipeDiameter.addEventListener('change', () => {
+    commitDownpipePatch({
+      diameterCm: Math.max(4, Math.min(24, Number(downpipeDiameter.value) || DEFAULT_DOWNPIPE_DIAMETER_CM)),
+    })
+  })
+  downpipeMountSurface.addEventListener('click', () => commitDownpipePatch({ mount: 'surface' }))
+  downpipeMountNiche.addEventListener('click', () => commitDownpipePatch({ mount: 'niche' }))
+  downpipeFootShoe.addEventListener('click', () => commitDownpipePatch({ foot: 'shoe' }))
+  downpipeFootGround.addEventListener('click', () => commitDownpipePatch({ foot: 'ground' }))
+  const stepNicheW = (dir: 1 | -1) => {
+    const hit = selectedDownpipeFixture()
+    if (!hit) return
+    const w = (hit.downpipe.nicheWidthCm ?? DEFAULT_DOWNPIPE_NICHE_WIDTH_CM) + dir * STUDIO_MASONRY
+    commitDownpipePatch({ nicheWidthCm: Math.max(8, Math.min(48, w)) })
+  }
+  document.querySelector('#downpipe-niche-width-minus')?.addEventListener('click', () => stepNicheW(-1))
+  document.querySelector('#downpipe-niche-width-plus')?.addEventListener('click', () => stepNicheW(1))
+  downpipeNicheWidth.addEventListener('change', () => {
+    commitDownpipePatch({ nicheWidthCm: Number(downpipeNicheWidth.value) || DEFAULT_DOWNPIPE_NICHE_WIDTH_CM })
+  })
+  const stepNicheD = (dir: 1 | -1) => {
+    const hit = selectedDownpipeFixture()
+    if (!hit) return
+    const d = (hit.downpipe.nicheDepthCm ?? DEFAULT_DOWNPIPE_NICHE_DEPTH_CM) + dir
+    commitDownpipePatch({ nicheDepthCm: Math.max(4, Math.min(48, d)) })
+  }
+  document.querySelector('#downpipe-niche-depth-minus')?.addEventListener('click', () => stepNicheD(-1))
+  document.querySelector('#downpipe-niche-depth-plus')?.addEventListener('click', () => stepNicheD(1))
+  downpipeNicheDepth.addEventListener('change', () => {
+    commitDownpipePatch({ nicheDepthCm: Number(downpipeNicheDepth.value) || DEFAULT_DOWNPIPE_NICHE_DEPTH_CM })
+  })
+  downpipeDelete.addEventListener('click', () => {
+    const sel = editor.selectedDownpipe
+    if (!sel) return
+    commitState(deleteDownpipeFromFacade(state, sel.buildingId, sel.downpipeId), {
+      ...editor,
+      selectedDownpipe: undefined,
+    })
+  })
+}
+wireDownpipeToolbar()
 
 // Toolbar sitzt fest in #ui-right – keine Overlay-Positionierung nötig.
 function positionToolbar() {}
@@ -18053,6 +18343,7 @@ function openingSupportsPediment(opening: { type: string; basementWindow?: { ena
 
 function activeSelectionToolbar(): HTMLElement | null {
   if (editor.selectedSceneLightId) return toolbarSceneLight
+  if (editor.selectedDownpipe) return toolbarDownpipe
   if (editor.selectedOpenings.length > 0) return toolbarOpening
   if (editor.selectedCeiling) return document.querySelector<HTMLElement>('#toolbar-ceiling')
   if (editor.selectedRoofBuildingId) return document.querySelector<HTMLElement>('#toolbar-roof')
@@ -18112,6 +18403,7 @@ function settingsSectionVisibleForUi(section: HTMLElement): boolean {
       ancestor.id === 'toolbar-roof' ||
       ancestor.id === 'toolbar-ceiling' ||
       ancestor.id === 'toolbar-scene-light' ||
+      ancestor.id === 'toolbar-downpipe' ||
       ancestor.id === 'lighting-accordion'
     ) {
       break
@@ -18142,6 +18434,7 @@ function markEmptySettingsSections(root: HTMLElement) {
         ancestor.id === 'toolbar-roof' ||
         ancestor.id === 'toolbar-ceiling' ||
         ancestor.id === 'toolbar-scene-light' ||
+        ancestor.id === 'toolbar-downpipe' ||
         ancestor.id === 'lighting-accordion'
       ) {
         break
@@ -18336,6 +18629,12 @@ function applyOpeningPartVisibility() {
     showSillInner = false
     showSillOuter = false
     if (part === 'sillInner' || part === 'sillOuter') {
+      editor.selectedOpeningPart = 'group'
+    }
+  } else if (isConch) {
+    // Konche: nur Außenbank — Innenbank läge in der Kalotte (v2.0.402).
+    showSillInner = false
+    if (part === 'sillInner') {
       editor.selectedOpeningPart = 'group'
     }
   } else if (isBasement) {
@@ -19625,6 +19924,7 @@ for (const group of [
   facade.indoorFloorGroup,
   facade.pointLightOccluderGroup,
   facade.roofGroup,
+  facade.downpipeGroup,
   facade.lineGroup,
   facade.guideGroup,
   facade.openingDragGhostGroup,
@@ -22034,6 +22334,7 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
   labelId?: string
   ceiling?: { buildingId: string; floorIndex: number }
   sceneLightId?: string
+  downpipe?: { buildingId: string; downpipeId: string }
 } | null {
   const rect = canvas.getBoundingClientRect()
   pointerNdc.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
@@ -22051,6 +22352,16 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
   if (leafEditMode) {
     // Laub-Modus: keine Fassadenwahl — Platzierung über eigenen Pointer-Pfad.
     return null
+  }
+  const downpipeHits = raycaster.intersectObject(facade.downpipeGroup, true)
+  if (downpipeHits.length > 0) {
+    let obj: THREE.Object3D | null = downpipeHits[0]!.object
+    while (obj) {
+      const downpipeId = obj.userData.downpipeId as string | undefined
+      const buildingId = obj.userData.buildingId as string | undefined
+      if (downpipeId && buildingId) return { downpipe: { buildingId, downpipeId } }
+      obj = obj.parent
+    }
   }
   const hits = raycaster.intersectObjects(
     [
@@ -23366,6 +23677,10 @@ canvas.addEventListener('pointerup', (event) => {
   }
   if (hit.sceneLightId) {
     selectSceneLight(hit.sceneLightId)
+    return
+  }
+  if (hit.downpipe) {
+    selectDownpipe(hit.downpipe.buildingId, hit.downpipe.downpipeId)
     return
   }
   if (hit.ceiling) {
@@ -27218,10 +27533,12 @@ viewport.addEventListener('dragover', (event) => {
     !activeLibraryOpeningPresetId &&
     !activeLibraryOpeningTemplateId &&
     !activeLibraryLabelFontId &&
+    !activeLibraryDownpipe &&
     !types.some(
       (t) =>
         t === 'application/x-library-asset' ||
         t === 'application/x-opening-preset' ||
+        t === 'application/x-downpipe-preset' ||
         t === 'application/x-opening-template' ||
         t === 'application/x-label-font' ||
         t === 'application/x-wall-preset' ||
@@ -27387,11 +27704,22 @@ viewport.addEventListener('drop', (event) => {
     })
     return
   }
+  const downpipePreset =
+    event.dataTransfer?.getData('application/x-downpipe-preset') ||
+    (activeLibraryDownpipe ? DOWNPIPE_LIBRARY_PRESET_ID : '')
+  if (isDownpipeLibraryPresetId(downpipePreset)) {
+    clearLibraryPlacementPreview()
+    activeLibraryDownpipe = false
+    const hit = pickWallAtClient(event.clientX, event.clientY)
+    if (!hit) return
+    placeDownpipeOnWall(hit.wallId, hit.localX)
+    return
+  }
   const presetId =
     event.dataTransfer?.getData('application/x-opening-preset') ||
     activeLibraryOpeningPresetId ||
     event.dataTransfer?.getData('text/plain')
-  if (!presetId) {
+  if (!presetId || isDownpipeLibraryPresetId(presetId)) {
     clearLibraryPlacementPreview()
     return
   }

@@ -36,6 +36,7 @@ export const DEFAULT_ROOF: RoofConfig = {
   ridgeHeight: 280,
   tileColor: '#8b3a2a',
   gutter: true,
+  gutterColor: '#8E8A88',
   tileWidth: 32,
   tileHeight: 24,
   tileJoint: 0.8,
@@ -61,6 +62,10 @@ export function normalizeRoof(raw?: Partial<RoofConfig> | null): RoofConfig {
     ridgeHeight: clamp(base.ridgeHeight, 80, 600),
     tileColor: typeof base.tileColor === 'string' && base.tileColor ? base.tileColor : DEFAULT_ROOF.tileColor,
     gutter: base.gutter !== false,
+    gutterColor:
+      typeof base.gutterColor === 'string' && base.gutterColor
+        ? base.gutterColor
+        : DEFAULT_ROOF.gutterColor,
     tileWidth: snap8(clamp(base.tileWidth, 8, 96)),
     tileHeight: snap8(clamp(base.tileHeight, 8, 96)),
     tileJoint: clamp(base.tileJoint, 0, 4),
@@ -852,6 +857,7 @@ export interface RoofBuildResult {
   roof: THREE.BufferGeometry
   gutter: THREE.BufferGeometry | null
   tileColor: string
+  gutterColor: string
 }
 
 /**
@@ -972,6 +978,7 @@ export function buildMansardRoof(state: FacadeState, raw?: Partial<RoofConfig> |
   const gutterIndices: number[] = []
 
   let tileColor = DEFAULT_ROOF.tileColor
+  let gutterColor = DEFAULT_ROOF.gutterColor ?? '#8E8A88'
   let anyBuilt = false
 
   for (const building of visibleBuildings) {
@@ -992,6 +999,7 @@ export function buildMansardRoof(state: FacadeState, raw?: Partial<RoofConfig> |
     ) {
       anyBuilt = true
       tileColor = roof.tileColor
+      gutterColor = roof.gutterColor ?? gutterColor
     }
   }
 
@@ -1023,5 +1031,6 @@ export function buildMansardRoof(state: FacadeState, raw?: Partial<RoofConfig> |
     roof: geo,
     gutter,
     tileColor,
+    gutterColor,
   }
 }

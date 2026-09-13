@@ -26,6 +26,7 @@ Mansarddach auf dem **primären Nesting-Outer** der obersten Etage (`planFacesWi
 | `ridgeHeight` | 280 cm | Höhe Traufe → First |
 | `tileColor` | `#8b3a2a` | Ziegelfarbe |
 | `gutter` | `true` | Dachrinne (nur belegte Kanten) |
+| `gutterColor` | `#8E8A88` | Rinnenfarbe (Titanzink; wie Fallrohr) |
 | `tileWidth` / `tileHeight` | 32 / 24 cm | Sichtmaß (8-cm-Raster) |
 | `tileJoint` | 0,8 cm | Fuge |
 | `tilePattern` | `runningBond` | wie Paneel-Muster (`strip`, `runningBond`, …) |
@@ -53,7 +54,7 @@ Darauf optional Trapez-Frustum (`tileTaperDepth` / `tileTaper`). First: flache K
 
 ### Rinne
 
-Geschlossenes U-/Kastenprofil (Boden + Außen + Innenlippe), Sweep entlang belegter Traufkanten mit **Gehrung** an Ecken (`miterOutward`). An Übergängen zu bündigen Seiten: **Endkappen**. Offene L-Segmente entfallen.
+Geschlossenes U-/Kastenprofil (Boden + Außen + Innenlippe), Sweep entlang belegter Traufkanten mit **Gehrung** an Ecken (`miterOutward`). An Übergängen zu bündigen Seiten: **Endkappen**. Offene L-Segmente entfallen. Farbe: `roof.gutterColor` (UI unter Dach → Rinne). Anschluss an Fallrohre: siehe [downpipes.md](downpipes.md).
 
 ## Datenfluss
 

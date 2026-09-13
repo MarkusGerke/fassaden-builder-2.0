@@ -89,6 +89,10 @@ export function createBuilding(partial?: Partial<Building>): Building {
     })) ?? [],
     roof: cloneRoof(partial?.roof),
     facadeDecor: partial?.facadeDecor,
+    downpipes: partial?.downpipes?.map((dp) => ({
+      ...dp,
+      nicheOpeningIds: dp.nicheOpeningIds ? { ...dp.nicheOpeningIds } : undefined,
+    })),
     wallHeight: partial?.wallHeight ?? WALL_HEIGHT,
     wallDepth: partial?.wallDepth ?? WALL_DEPTH,
     windowDepthOffset:
@@ -492,12 +496,45 @@ function cloneBuildingWithNewIds(source: Building): Building {
     },
   }))
 
+  const downpipes = (source.downpipes ?? []).map((dp) => {
+    const nicheOpeningIds: Record<string, string> | undefined = dp.nicheOpeningIds
+      ? Object.fromEntries(
+          Object.entries(dp.nicheOpeningIds).map(([wallId, openingId]) => [
+            wallIdMap.get(wallId) ?? wallId,
+            openingId,
+          ]),
+        )
+      : undefined
+    // Opening-IDs auf den neuen Wänden neu zuordnen, soweit möglich
+    let remappedNiche = nicheOpeningIds
+    if (remappedNiche) {
+      const next: Record<string, string> = {}
+      for (const [wallId, oldOpeningId] of Object.entries(remappedNiche)) {
+        const wall = remappedWalls.find((w) => w.id === wallId)
+        const srcWallId = [...wallIdMap.entries()].find(([, id]) => id === wallId)?.[0]
+        const srcWall = source.walls.find((w) => w.id === srcWallId)
+        const srcIdx = srcWall?.openings.findIndex((o) => o.id === oldOpeningId) ?? -1
+        const newOpeningId =
+          srcIdx >= 0 && wall ? wall.openings[srcIdx]?.id : undefined
+        if (newOpeningId) next[wallId] = newOpeningId
+      }
+      remappedNiche = Object.keys(next).length > 0 ? next : undefined
+    }
+    return {
+      ...dp,
+      id: createId(),
+      anchorWallId: wallIdMap.get(dp.anchorWallId) ?? dp.anchorWallId,
+      nicheOpeningIds: remappedNiche,
+    }
+  })
+
   return syncWallBuildingIds({
     ...cloneBuilding(source),
     id: newBuildingId,
     floors,
     walls: remappedWalls,
     roof: source.roof ? { ...source.roof } : undefined,
+    downpipes: downpipes.length > 0 ? downpipes : undefined,
   })
 }
 

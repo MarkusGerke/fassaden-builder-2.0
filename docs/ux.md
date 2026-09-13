@@ -619,7 +619,7 @@ Tabs in `#opening-library`: **Wände** | **Fenster** | **Fensterform** | **Türe
 | Fenster | Fenster-Presets (`WALL_OPENING_PRESETS`: u. a. 48×96, 48×192, 96×128/192/264, 144×192, 192×192, 396×196, Keller 48×64) + Vorlagen + „Neue Vorlage“ | auf Wand droppen / bei Wandauswahl klicken; **v2.0.241:** orangener Platzhalter beim Ziehen (`setLibraryPlacementGhost`) |
 | Türen | Tür-Presets (96/144/288/480×320) + Vorlagen + „Neue Vorlage“ | wie Fenster (Platzhalter bei y = 0) |
 | Schrift | `LABEL_FONTS` | **v2.0.267:** bei Schrift-Fokus Klick = Schriftart tauschen; sonst neue Instanz; Drag&Drop mit Platzhalter |
-| Nischen | Cutout-Presets (eckig/rund, Regenrohr, Durchbruch) plus **Konche** (Kalotte, Presets 96×128 / 64×96) | auf Wand droppen / bei Wandauswahl klicken; kein Glas, kein Blendrahmen; Konche: Rundbogen-Loch + Halbzylinder/Viertelkugel |
+| Nischen | **Fallrohr DN 80** (Gebäude-Fixture über alle Etagen) plus Cutout-Presets (eckig/rund, Durchbruch) und **Konche** (Kalotte, Presets 96×128 / 64×96) | Fallrohr/Cutouts auf Wand droppen; Fallrohr: siehe [downpipes.md](downpipes.md); Cutouts ohne Glas; Konche: Rundbogen-Loch + Halbzylinder/Viertelkugel |
 | Paneele | Muster-Karten | auf Wand droppen (`application/x-panel-preset`) |
 | Profile | Rahmen, Gesims, Sockel, Fensterbank | Drag (`application/x-library-asset`) auf Fenster/Tür bzw. Wand; Klick nutzt die Auswahl |
 | Verdachung | Form, Verdachungsprofil, Konsolen | auf Fenster/Tür droppen |

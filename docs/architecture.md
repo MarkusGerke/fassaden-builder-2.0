@@ -41,6 +41,7 @@ Feature-Docs und Index: [README.md](README.md). Historie: [changelog.md](changel
 | Profile / Custom | [profiles.md](profiles.md) |
 | Erker / Balkon / Loggia | [bay-windows.md](bay-windows.md) |
 | Dach | [roof.md](roof.md) |
+| Fallrohre / Regenrinne | [downpipes.md](downpipes.md) |
 | Schriftarten | [fonts.md](fonts.md) |
 | Rollladen / Motion | [roller-shutter.md](roller-shutter.md), [opening-motion.md](opening-motion.md) |
 

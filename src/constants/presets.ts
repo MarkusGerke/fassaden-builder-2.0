@@ -244,16 +244,7 @@ export const WALL_OPENING_PRESETS: WallOpeningPreset[] = [
     y: WINDOW_SILL_Y,
     fill: { mode: 'niche', nicheDepthCm: 32 },
   },
-  {
-    id: 'cutout-downpipe-16x192',
-    label: 'Regenrohr 16×192',
-    type: 'cutout',
-    width: 16,
-    height: 192,
-    y: 0,
-    cutoutShape: 'round',
-    fill: { mode: 'niche', nicheDepthCm: 8 },
-  },
+  // Fallrohr: Bibliothek nutzt DOWNPIPE_LIBRARY_PRESET_ID (kein Opening) — siehe studio/downpipe.ts
   {
     id: 'cutout-through-16',
     label: 'Durchbruch 16×16',

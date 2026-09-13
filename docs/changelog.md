@@ -2,6 +2,22 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Fallrohr + Regenrinne (2026-09-13) — v2.0.403
+
+**Feature:** Mehrgeschossiges Fallrohr als `Building.downpipes[]` (Default DN 80, Aufsatz, Fuß Schräge). Optionale Nische synchronisiert Cutouts über `findVerticalAlignedWalls`. Dachrinne: `gutterColor` + Ablaufstutzen.
+
+Dateien: `downpipe.ts`, `FacadeController.ts`, `main.ts`, `index.html`, `roof.ts`, `hydrate.ts`, `types/facade.ts`. Docs: [downpipes.md](downpipes.md), [roof.md](roof.md).
+
+### Konche: weißer Fleck hinten unten (2026-09-13) — v2.0.402
+
+**Symptom:** In der großen Konche ein helles weißes Oval/Streifen an der hinteren Unterkante der Kalotte.
+
+**Runtime:** Reveal-Box z −904…−856; `sillInner` (weiß, 16×4 cm) bei z≈−848 — Innenbank an der Wandinnenkante ragte in die Nische. `sillOuter` lag vor der Mundöffnung (−920…−904) und war nicht der Fleck.
+
+**Fix:** `rebuildInnerSills` überspringt `type: 'conch'`; Hydrate setzt `sillInner.enabled = false`; Sidebar blendet Innenbank bei Konche aus. Außenbank unverändert.
+
+Dateien: `FacadeController.ts`, `hydrate.ts`, `main.ts`. Docs: [opening-features.md](opening-features.md).
+
 ### Konchen schwarz + UI-Leisten (2026-09-12) — v2.0.401
 
 **Symptom:** Konchen in Fassade/3D pechschwarz ohne sichtbare Rundung oder Schattenwurf. Rechte Einstellungsleiste nach Einklappen nicht wieder aufklappbar. Ebenen-Griff lag über „2D“. In Ansicht Fassade blieben Export / Farbe·Zeichnung / Vorschau·Render sichtbar.

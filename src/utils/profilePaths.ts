@@ -38,6 +38,7 @@ import { wallDecorFallbackColor } from '../constants/colorPalettes'
 import { wallCornice, wallHasCornice } from './cornice'
 import { wallHasTrimBands, wallTrimBands } from './trimBands'
 import { defaultOpeningTrimForProfile, normalizeOpeningSillOuter, outerSillUsesProfile, resolveOuterSillLayout } from './openings'
+import { downpipeOpeningsSkippingDecorBreak } from '../studio/downpipe'
 import { isWindowTrimProfile } from '../profiles/windowTrim'
 import { trimSectionScales, profileSectionNativeExtents } from './profileSectionExtents'
 import { basementWindowEnabled } from '../studio/basementWindow'
@@ -730,11 +731,37 @@ function subtractCorniceGaps(
   return out
 }
 
+function corniceOpeningXGaps(
+  wall: Wall,
+  sampleYLocal: number,
+  skipOpeningIds: Set<string>,
+  customProfiles?: FacadeState['customProfiles'],
+): Array<{ x0: number; x1: number }> {
+  const holes: Array<{ x0: number; x1: number }> = []
+  for (const opening of wall.openings) {
+    if (opening.hidden) continue
+    if (skipOpeningIds.has(opening.id)) continue
+    const clearance = openingPanelClearance(opening)
+    const inflate = clearance + openingFrameProfileOutwardCm(wall, opening, customProfiles)
+    const y0 = opening.y - inflate
+    const y1 = opening.y + opening.height + inflate
+    if (sampleYLocal < y0 - 0.5 || sampleYLocal > y1 + 0.5) continue
+    for (const range of openingMaskXRangesAtY(opening, sampleYLocal, inflate)) {
+      holes.push({
+        x0: Math.max(0, range.x0),
+        x1: Math.min(wall.width, range.x1),
+      })
+    }
+  }
+  return unionXRanges(holes.filter((hole) => hole.x1 - hole.x0 > 0.5))
+}
+
 function buildCornicePaths(state: FacadeState): ProfilePath[] {
   const paths: ProfilePath[] = []
   const allWalls = getAllWalls(state)
   const visibleIds = new Set(getVisibleWalls(state).map((wall) => wall.id))
   const { wraps, gapsByWallId } = buildBayCorniceWraps(state, visibleIds)
+  const skipDecorIds = downpipeOpeningsSkippingDecorBreak(state)
 
   for (const wall of allWalls) {
     if (!visibleIds.has(wall.id)) continue
@@ -760,9 +787,23 @@ function buildCornicePaths(state: FacadeState): ProfilePath[] {
       !wallHasPanels(wall) ||
       (cornice.edge === 'top' && topBare !== null)
 
-    // Erker-Umschluss: Gesims der unteren Wand über die Mundöffnung unterbrechen.
-    const gaps = cornice.edge === 'top' ? gapsByWallId.get(wall.id) : undefined
-    const segments = subtractCorniceGaps(x0, x1, gaps ?? [], {
+    // Erker-Umschluss + Fallrohr-/Öffnungs-Durchbrüche (bündig geschlossen).
+    const sampleYLocal = cornice.edge === 'bottom' ? 0 : wall.height
+    const openingGapsWall = corniceOpeningXGaps(
+      wall,
+      sampleYLocal,
+      skipDecorIds,
+      state.customProfiles,
+    )
+    const openingGaps = studio
+      ? openingGapsWall.map((g) => ({
+          x0: g.x0 - wall.width / 2,
+          x1: g.x1 - wall.width / 2,
+        }))
+      : openingGapsWall
+    const bayGaps = cornice.edge === 'top' ? gapsByWallId.get(wall.id) ?? [] : []
+    const gaps = unionXRanges([...bayGaps, ...openingGaps])
+    const segments = subtractCorniceGaps(x0, x1, gaps, {
       capStart: start.cap,
       capEnd: end.cap,
       miterStart: start.miter,

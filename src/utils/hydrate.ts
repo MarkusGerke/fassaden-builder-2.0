@@ -13,6 +13,8 @@ import type {
 } from '../types/facade'
 import { cloneWall } from '../types/facade'
 import { normalizeFacadeDecor } from '../studio/facadeDecor'
+import { hydrateDownpipes } from '../studio/downpipe'
+import { normalizeRoof } from '../studio/roof'
 import {
   DEFAULT_CEILING_COLOR,
   DEFAULT_GLASS_COLOR,
@@ -214,6 +216,10 @@ export function hydrateOpening(
       voussoirs: false,
       jambs: false,
     })
+    // Innenbank gehört nicht in die Kalotte (v2.0.402) — Außenbank unverändert.
+    if (next.sillInner) {
+      next.sillInner = { ...next.sillInner, enabled: false }
+    }
     next.hidden = Boolean(next.hidden)
     next.needsReview =
       typeof next.needsReview === 'string' && next.needsReview.trim()
@@ -421,7 +427,7 @@ export function hydrateFacadeState(state: FacadeState): FacadeState {
     buildings: state.buildings.map((building) => {
       const walls = building.walls.map(hydrateWall)
       const withIndex = ensureBuildingStoreyIndices({ ...building, walls })
-      return {
+      const withRoof = {
         ...withIndex,
         bareWalls: building.bareWalls ?? false,
         facadeDecor: normalizeFacadeDecor(building.facadeDecor),
@@ -430,7 +436,9 @@ export function hydrateFacadeState(state: FacadeState): FacadeState {
           ceilingColor: plan.ceilingColor ?? DEFAULT_CEILING_COLOR,
         })),
         groups: (building.groups ?? []).map((g) => ({ ...g })),
+        roof: building.roof ? normalizeRoof(building.roof) : building.roof,
       }
+      return hydrateDownpipes(withRoof)
     }),
     sceneLights: lightState.sceneLights,
     sceneLightGroups: lightState.sceneLightGroups,
