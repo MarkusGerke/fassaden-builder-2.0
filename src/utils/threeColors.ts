@@ -23,6 +23,16 @@ let glassEnvMap: THREE.Texture | null = null
  * tagshelle CubeCamera-Reflexion als Mittelgrau behalten.
  */
 let exteriorEnvFillFactor = 1
+/** 0…1: sichtbare Fassade wenig Sonne — Glas/Rahmen-Env zusätzlich dämpfen (v2.0.415). */
+let facadeWallUnlitForEnv = 0
+
+export function setFacadeWallUnlitForEnv(unlit: number): void {
+  facadeWallUnlitForEnv = THREE.MathUtils.clamp(unlit, 0, 1)
+}
+
+export function getFacadeWallUnlitForEnv(): number {
+  return facadeWallUnlitForEnv
+}
 
 /**
  * Glas-EnvMap-Basis (v2.0.366: 2,6 → 1,0; v2.0.368: Klarglas 1,25 — weniger „blass“ als 2,6,
@@ -57,7 +67,85 @@ export function setExteriorEnvFillFactor(factor: number): void {
 }
 
 function scaledEnvIntensity(base: number): number {
+  // v2.0.428: keine zusätzliche wallUnlit-Env-Dämpfung (415) — heller Look.
   return base * exteriorEnvFillFactor
+}
+
+const glassWallUnlitUniform = { value: 0 }
+
+export function setFacadeGlassWallUnlit(unlit: number): void {
+  glassWallUnlitUniform.value = THREE.MathUtils.clamp(unlit, 0, 1)
+}
+
+function applyPhysicalGlassWallUnlit(material: THREE.MeshPhysicalMaterial): void {
+  const w = facadeWallUnlitForEnv
+  if (typeof material.userData.baseGlassTransmission !== 'number') {
+    material.userData.baseGlassTransmission = material.transmission
+    material.userData.baseGlassClearcoat = material.clearcoat
+    material.userData.baseGlassSpecular = material.specularIntensity
+    material.userData.baseGlassColorHex = material.color.getHex()
+    material.userData.baseGlassOpacity = material.opacity
+  }
+  const baseT = material.userData.baseGlassTransmission as number
+  const baseC = material.userData.baseGlassClearcoat as number
+  const baseS = material.userData.baseGlassSpecular as number
+  const baseHex = material.userData.baseGlassColorHex as number
+  const baseOp = material.userData.baseGlassOpacity as number
+  if (w <= 0.001) {
+    material.transmission = baseT
+    material.clearcoat = baseC
+    material.specularIntensity = baseS
+    material.color.setHex(baseHex)
+    material.opacity = baseOp
+    return
+  }
+  // See-through (opacity < 1, transmission 0): Innen hell durchscheinen — Opacity hoch, Farbe dunkel.
+  material.transmission = baseT * THREE.MathUtils.lerp(1, 0.02, w)
+  material.clearcoat = baseC * THREE.MathUtils.lerp(1, 0, w)
+  material.specularIntensity = baseS * THREE.MathUtils.lerp(1, 0.02, w)
+  const shade = THREE.MathUtils.lerp(1, 0.02, w)
+  material.color.setRGB(
+    ((baseHex >> 16) & 255) / 255 * shade,
+    ((baseHex >> 8) & 255) / 255 * shade,
+    (baseHex & 255) / 255 * shade,
+  )
+  if (material.transparent || baseOp < 0.98) {
+    // Wenig Rest-Durchsicht — sonst bleibt Innenraum hell sichtbar (Screenshot 239°).
+    material.opacity = THREE.MathUtils.lerp(baseOp, 0.96, w)
+  }
+}
+
+/** Glas: kein facadeShade — Dimmung über Uniform + Transmission (v2.0.417). */
+export function bindFacadeGlassWallShade(material: THREE.MeshPhysicalMaterial): void {
+  if (material.userData.facadeGlassWallShade) return
+  if (!isGlassLike(material)) return
+  material.userData.facadeGlassWallShade = true
+  const prevKey = material.customProgramCacheKey?.bind(material)
+  material.customProgramCacheKey = () =>
+    `${prevKey ? prevKey() : ''}|glass-wall-unlit-v1`
+  const prevCompile = material.onBeforeCompile
+  material.onBeforeCompile = (shader, renderer) => {
+    prevCompile?.(shader, renderer)
+    if (!shader.fragmentShader.includes('#include <lights_fragment_end>')) return
+    shader.uniforms.uGlassWallUnlit = glassWallUnlitUniform
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <common>',
+      `#include <common>
+uniform float uGlassWallUnlit;`,
+    )
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <lights_fragment_end>',
+      `#include <lights_fragment_end>
+        {
+          float gW = mix(1.0, 0.015, uGlassWallUnlit);
+          reflectedLight.directDiffuse *= gW;
+          reflectedLight.directSpecular *= gW;
+          reflectedLight.indirectDiffuse *= gW;
+          reflectedLight.indirectSpecular *= gW;
+        }`,
+    )
+  }
+  material.needsUpdate = true
 }
 
 function rememberBaseEnvIntensity(material: THREE.MeshStandardMaterial, base: number): number {
@@ -100,12 +188,20 @@ export function syncEnvMapFillIntensities(root: THREE.Object3D): void {
       const staleGlassBase = isGlassLike(material) && typeof stored === 'number' && stored > GLASS_ENV_BASE_CLEAR + 1e-6
       if (typeof stored === 'number' && Number.isFinite(stored) && !staleGlassBase) {
         material.envMapIntensity = scaledEnvIntensity(stored)
+        if (isGlassLike(material) && material instanceof THREE.MeshPhysicalMaterial) {
+          bindFacadeGlassWallShade(material)
+          applyPhysicalGlassWallUnlit(material)
+        }
         continue
       }
       if (isGlassLike(material)) {
         const base = glassEnvBaseFor(material)
         material.userData.baseEnvMapIntensity = base
         material.envMapIntensity = scaledEnvIntensity(base)
+        if (material instanceof THREE.MeshPhysicalMaterial) {
+          bindFacadeGlassWallShade(material)
+          applyPhysicalGlassWallUnlit(material)
+        }
       } else if (material.userData.forceExteriorEnv === true) {
         const base = material.metalness > 0.08 ? 0.75 : 0.58
         material.userData.baseEnvMapIntensity = base
@@ -323,6 +419,7 @@ export function createGlassMaterial(source: string | OpeningGlassConfig): THREE.
   const config = resolveGlassConfig(source)
   const material = new THREE.MeshPhysicalMaterial()
   applyGlassLook(material, config)
+  bindFacadeGlassWallShade(material)
   return material
 }
 

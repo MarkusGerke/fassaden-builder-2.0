@@ -23,13 +23,21 @@ import {
   saveStyleTemplates,
   type StyleTemplate,
 } from './utils/styleTemplates'
-import { ALL_EDGES, DEFAULT_WINDOW_DEPTH_OFFSET, GROUND_MARGIN, WALL_DEPTH, WALL_END_PIECE_PRESETS, WALL_LENGTH_PRESETS, WALL_WITH_OPENING_PRESETS, WALL_OPENING_PRESETS, WALL_HEIGHT, WINDOW_SILL_Y, endPieceHandFromPresetId, type EndPieceHand, type WallOpeningPreset, type WallWithOpeningPreset} from './constants/presets'
+import {
+  FACADE_COLOR_CATEGORIES,
+  FACADE_COLOR_LIBRARY,
+  type FacadeColorCategoryId,
+  type FacadeColorLibraryEntry,
+} from './constants/facadeColorLibrary'
+import { ALL_EDGES, DEFAULT_WINDOW_DEPTH_OFFSET, GROUND_MARGIN, INTERIOR_WALL_DEPTH_PRESETS, WALL_DEPTH, WALL_END_PIECE_PRESETS, WALL_LENGTH_PRESETS, WALL_WITH_OPENING_PRESETS, WALL_OPENING_PRESETS, WALL_HEIGHT, WINDOW_SILL_Y, endPieceHandFromPresetId, type EndPieceHand, type WallOpeningPreset, type WallWithOpeningPreset} from './constants/presets'
 import {
   setGlassSkyReflectionColor,
   setGlassGroundReflectionColor,
   bindMaterialsToGlassEnv,
   clearGlassEnvironmentBindings,
   setExteriorEnvFillFactor,
+  setFacadeGlassWallUnlit,
+  setFacadeWallUnlitForEnv,
   syncEnvMapFillIntensities,
 } from './utils/threeColors'
 import {
@@ -56,6 +64,7 @@ import {
   wallDecorFallbackColor,
   TRANSPARENT_GLASS,
   defaultOpeningFrameColor,
+  isTransparentGlass,
   type ColorPalette,
 } from './constants/colorPalettes'
 import { applyWallModule, BLENDER_WALL_MODULES } from './blender/wallModules'
@@ -72,6 +81,7 @@ import {
   emptyNeighbors,
 } from './types/facade'
 import type {
+  AwningConfig,
   Building,
   DownpipeFixture,
   EditorState,
@@ -165,6 +175,7 @@ import {
   openingIsConch,
   openingLacksWindowChrome,
   openingActsAsWindow,
+  openingSupportsFrameProfiles,
 } from './utils/openingGeometry'
 import {
   ARCH_FORM_IDS,
@@ -322,6 +333,7 @@ import {
   getActiveBuilding,
   getAllWalls,
   insertBuildingClone,
+  isWallVisibleInState,
   mapAllWalls,
   offsetBuildingByGrid,
   planGridBoundsForBuilding,
@@ -360,6 +372,7 @@ import {
   applyYawAroundYToBox,
   buildingWorldBox,
   DEFAULT_SUN_SETTINGS,
+  DEFAULT_SUN_WIND_INTENSITY,
   fitDirectionalShadowCamera,
   formatTimeOfDay,
   normalizeSunSettings,
@@ -399,7 +412,7 @@ import {
   type SceneLightAnimChannels,
 } from './utils/sceneLightAnim'
 import { dateInputValue, parseDateInput, parseTimeInput, timeInputValue, todayMonthDay } from './utils/solar'
-import { createStudioWall, isStudioWall, stretchStudioFacade, studioWallTransform, studioWallsCollideIdentical, updateStudioPanel, wallAlongDelta, duplicateStudioWallAtGrid, rotateStudioWallAroundCenter, wallEndIsFree, buildEndPieceReturnWall, buildStandaloneEndPieceWalls, buildStudioWallAt, endPieceArmsCollide, endPieceGhostSegments, endPieceSideForHand, END_PIECE_DEFAULT_ANGLE_DEG, findAdjacentWall, findCollinearDockWall, isWallPlanLinked, linkStudioWalls, mergeCollinearDockedWalls, selectionLockedToUnselected, unlinkStudioWallsFromUnselected, unselectedLinkedNeighbors,   unselectedTouchingWalls,
+import { createStudioWall, isStudioWall, stretchStudioFacade, studioWallTransform, studioWallsCollideIdentical, updateStudioPanel, wallAlongDelta, duplicateStudioWallAtGrid, rotateStudioWallAroundCenter, wallEndIsFree, wallEndTouchesForeignSpine, buildEndPieceReturnWall, buildStandaloneEndPieceWalls, buildStudioWallAt, createInteriorWallFromPlanSegment, createInteriorWallFromHostNormal, isInteriorWall, endPieceArmsCollide, endPieceGhostSegments, endPieceSideForHand, END_PIECE_DEFAULT_ANGLE_DEG, findAdjacentWall, findCollinearDockWall, isWallPlanLinked, linkStudioWalls, mergeCollinearDockedWalls, selectionLockedToUnselected, unlinkStudioWallsFromUnselected, unselectedLinkedNeighbors,   unselectedTouchingWalls,
   expandPlanLinkedWallIds,
   expandWallMoveIds,
   adjustDockOrientation,
@@ -425,6 +438,8 @@ import { createStudioWall, isStudioWall, stretchStudioFacade, studioWallTransfor
   frontMoveStepCm,
   updateTwoHorizontalCladdingBands,
   studioPanelFaceLocalZ,
+  studioWallInnerLocalZ,
+  studioWallOuterLocalZ,
 } from './studio/walls'
 import {
   canMergeWallSegments,
@@ -526,7 +541,13 @@ import {
   normalizeOpeningGuard,
   normalizeOpeningInteriorShade,
 } from './windows/openingExtras'
-import { facadeOutward, facadeSunIsGrazing, wallsForYaw, wallElevationAlong, type ElevationFilter } from './studio/elevation'
+import {
+  facadeOutward,
+  facadeSunIsGrazing,
+  wallsForYaw,
+  wallElevationAlong,
+  type ElevationFilter,
+} from './studio/elevation'
 import { computePresentCameraFrame } from './studio/presentCamera'
 import { normalizeYawDeg, snapYawTo1, snapYawTo45, solarAzimuthToWallYaw, viewedFacadeYaw, wallCompassLabel, wallDockAxisFromFacadeYaw, yawFromCompassSvgPoint } from './studio/compass'
 import { panelCourseCount, visiblePanelRowRange, layoutPanelTiles } from './studio/panelLayout'
@@ -572,11 +593,13 @@ import {
   createDownpipeFixture,
   DEFAULT_DOWNPIPE_COLOR,
   DEFAULT_DOWNPIPE_DIAMETER_CM,
+  DEFAULT_DOWNPIPE_SURFACE_GAP_CM,
   DEFAULT_DOWNPIPE_NICHE_DEPTH_CM,
   DEFAULT_DOWNPIPE_NICHE_WIDTH_CM,
   deleteDownpipeFromFacade,
   DOWNPIPE_LIBRARY_PRESET_ID,
   isDownpipeLibraryPresetId,
+  findDownpipeByOpeningId,
   patchDownpipeInFacade,
 } from './studio/downpipe'
 import { buildingCentroid, canRotateBuildingGeometry, canRotateStudioBuilding, rotateBuildingByDeg, rotateStudioBuilding } from './studio/rotateBuilding'
@@ -635,7 +658,11 @@ import {
   wheelZoomFactorFromDelta,
   zoomPanOffsetsAtCursor,
 } from './utils/viewZoom'
-import { facadeShadeParamsFromSun, setFacadeShadeParams } from './utils/facadeShade'
+import {
+  facadeShadeParamsFromSun,
+  setFacadeShadeParams,
+  setFacadeWallUnlitUniform,
+} from './utils/facadeShade'
 import { resolveLightingMood } from './utils/lightingMood'
 import {
   applyGroundMoodShader,
@@ -728,6 +755,33 @@ import {
 } from './utils/daySchedule'
 import { bindDayScheduleEditor } from './ui/dayScheduleEditor'
 import {
+  initAwningUi,
+  syncAwningControls,
+  syncStudioAwningControls,
+  tickAwningPlayback,
+  isAwningPlaybackActive,
+  placeLibraryAwning,
+  clearLibraryAwning,
+  playAwning,
+} from './ui/awningUi'
+import { tickWindFabrics } from './scene/windRuntime'
+import { openingSupportsAwning } from './studio/awning'
+import {
+  applyAwningToOpenings,
+  applyAwningToWall,
+  cloneAwningConfig,
+  createGroupAwningForOpenings,
+  dissolveGroupAwning,
+  ensureOpeningAwning,
+  findWallAwning,
+  findWallAwningCoveringOpening,
+  removeWallAwning,
+  splitGroupAwningToOpenings,
+  updateOpeningAwning,
+  updateWallAwning,
+  type AwningClipboard,
+} from './utils/awnings'
+import {
   BEAM_ANGLE_MAX_DEG,
   BEAM_ANGLE_MIN_DEG,
   SCENE_LIGHT_BEAM_MODE_LABELS,
@@ -756,7 +810,7 @@ import {
 } from './lighting/lodSettings'
 import { closeContextMenu, showContextMenu, type MenuItem } from './ui/contextMenu'
 import { installFieldInfo } from './ui/fieldInfo'
-import { syncScrollableSettingsPanel } from './ui/scrollableSettingsSections'
+import { scrollToSettingsSection, syncScrollableSettingsPanel } from './ui/scrollableSettingsSections'
 import { initReleaseNotesUi } from './ui/releaseNotes'
 import { initCreditsUi } from './ui/creditsDialog'
 import {
@@ -1701,6 +1755,7 @@ const UI_MODE_STORAGE_KEY = 'fassaden-builder-ui-mode'
 type UiMode = 'simple' | 'complex'
 type LibraryTab =
   | 'walls'
+  | 'farbe'
   | 'bay'
   | 'balcony'
   | 'loggia'
@@ -1713,6 +1768,7 @@ type LibraryTab =
   | 'trimBands'
   | 'plinth'
   | 'label'
+  | 'awnings'
   | 'profiles'
   | 'openingForm'
   | 'pediment'
@@ -1732,46 +1788,54 @@ function allowedLibraryTabs(): Set<LibraryTab> {
     const isNiche =
       Boolean(opening && (opening.type === 'cutout' || opening.type === 'conch' || openingLacksWindowChrome(opening)))
 
-    if (part === 'stairs') return new Set<LibraryTab>(['stairs'])
-    if (part === 'rollerShutter') return new Set<LibraryTab>()
-    if (part === 'sillInner' || part === 'sillOuter') return new Set<LibraryTab>(['profiles'])
-    if (part === 'pediment' || part === 'consoles') return new Set<LibraryTab>(['pediment'])
-    if (part === 'trim') return new Set<LibraryTab>(['profiles'])
+    if (part === 'stairs') return new Set<LibraryTab>(['stairs', 'farbe'])
+    if (part === 'rollerShutter') return new Set<LibraryTab>(['farbe'])
+    if (part === 'awning') return new Set<LibraryTab>(['awnings', 'farbe'])
+    if (part === 'sillInner' || part === 'sillOuter') return new Set<LibraryTab>(['profiles', 'farbe'])
+    if (part === 'pediment' || part === 'consoles') return new Set<LibraryTab>(['pediment', 'farbe'])
+    if (part === 'trim') return new Set<LibraryTab>(['profiles', 'farbe'])
     if (part === 'frame' || part === 'grille') {
-      if (isDoor) return new Set<LibraryTab>(['doors', 'profiles', 'openingForm'])
-      if (isNiche) return new Set<LibraryTab>(['niches'])
-      return new Set<LibraryTab>(['windows', 'profiles', 'openingForm'])
+      if (isDoor) return new Set<LibraryTab>(['doors', 'profiles', 'openingForm', 'farbe'])
+      if (isNiche) return new Set<LibraryTab>(['niches', 'profiles', 'farbe'])
+      return new Set<LibraryTab>(['windows', 'profiles', 'openingForm', 'farbe'])
     }
     // Öffnung ganz
-    if (isDoor) return new Set<LibraryTab>(['doors', 'profiles', 'openingForm', 'pediment', 'stairs'])
-    if (isNiche) return new Set<LibraryTab>(['niches'])
-    return new Set<LibraryTab>(['windows', 'profiles', 'openingForm', 'pediment'])
+    if (isDoor) return new Set<LibraryTab>(['doors', 'profiles', 'openingForm', 'pediment', 'stairs', 'awnings', 'farbe'])
+    if (isNiche) return new Set<LibraryTab>(['niches', 'profiles', 'awnings', 'farbe'])
+    return new Set<LibraryTab>(['windows', 'profiles', 'openingForm', 'pediment', 'awnings', 'farbe'])
   }
 
   if (editor.selectedWallIds.length > 0) {
     const part = editor.selectedWallPart ?? 'group'
-    if (part === 'cornice') return new Set<LibraryTab>(['cornice'])
-    if (part === 'plinth') return new Set<LibraryTab>(['plinth'])
-    if (part === 'trimBand') return new Set<LibraryTab>(['trimBands'])
-    if (part === 'label') return new Set<LibraryTab>(['label'])
+    if (part === 'cornice') return new Set<LibraryTab>(['cornice', 'farbe'])
+    if (part === 'plinth') return new Set<LibraryTab>(['plinth', 'farbe'])
+    if (part === 'trimBand') return new Set<LibraryTab>(['trimBands', 'farbe'])
+    if (part === 'label') return new Set<LibraryTab>(['label', 'farbe'])
+    if (part === 'awning') return new Set<LibraryTab>(['awnings', 'farbe'])
     // Fassade (cladding) = Wand ganz: dieselben Kataloge (Highlight bleibt auf Paneel).
     // Wände/Licht nur ohne Auswahl — bei Wand auf der Bühne redundant.
     return new Set<LibraryTab>([
       'bay',
       'balcony',
       'panels',
+      'farbe',
       'cornice',
       'trimBands',
       'plinth',
       'label',
+      'awnings',
       'windows',
       'doors',
       'niches',
     ])
   }
 
+  if (editor.selectedRoofBuildingId || editor.selectedRoofPart) {
+    return new Set<LibraryTab>(['farbe'])
+  }
+
   // Keine Auswahl / Dach/Decke: Platzieren — Fenster/Türen neben Wänden sichtbar (v2.0.231).
-  return new Set<LibraryTab>(['windows', 'doors', 'walls', 'bay', 'balcony', 'lights'])
+  return new Set<LibraryTab>(['windows', 'doors', 'walls', 'farbe', 'bay', 'balcony', 'lights', 'awnings'])
 }
 
 function loadUiMode(): UiMode {
@@ -1788,8 +1852,49 @@ let uiMode: UiMode = loadUiMode()
 let libraryTab: LibraryTab = 'windows'
 /** Bibliotheks-Wand, die nach Klick bei Wandauswahl links/rechts/oben gesetzt wird. */
 let armedLibraryWallPresetId: string | null = null
-/** Hover-Segment im Modus „Wandsegment herauslösen“ (Wände-Tab, Breite gewählt, nichts markiert). */
-let wallSplitHover: { wallId: string; startCm: number; endCm: number } | null = null
+/** Innenwand: gewählte Stärke (cm); Segment an Innenseite markieren → neue Wand, Host ungeteilt. */
+let armedInteriorWallDepthCm: number | null = null
+/** Standard-Segmentbreite wenn nur Innenwand-Stärke gewählt (wie Wand 96). */
+const INTERIOR_WALL_DEFAULT_LENGTH_CM = 96
+/** Hover-Segment: Außenwand-Split oder Innenwand-Platzierung. */
+let wallSplitHover: { wallId: string; startCm: number; endCm: number; mode?: 'split' | 'interior' } | null =
+  null
+/** Aktuell gefilterte Farbkategorie in der Bibliothek (Dropdown). */
+let libraryColorCategory: FacadeColorCategoryId | null = null
+
+function defaultFacadeColorCategory(): FacadeColorCategoryId {
+  if (editor.selectedOpenings.length > 0) {
+    const part = editor.selectedOpeningPart ?? 'group'
+    if (part === 'awning') return 'markise'
+    if (part === 'rollerShutter') return 'laeden'
+    if (part === 'sillInner' || part === 'sillOuter' || part === 'pediment' || part === 'consoles' || part === 'trim') {
+      return 'stuck'
+    }
+    if (part === 'stairs') return 'naturstein'
+    return 'fenster_tuer'
+  }
+  if (editor.selectedWallPart === 'awning') return 'markise'
+  if (
+    editor.selectedWallPart === 'cornice' ||
+    editor.selectedWallPart === 'plinth' ||
+    editor.selectedWallPart === 'trimBand' ||
+    editor.selectedWallPart === 'label'
+  ) {
+    return 'stuck'
+  }
+  if (editor.selectedWallPart === 'cladding') return 'backstein'
+  if (editor.selectedRoofBuildingId || editor.selectedRoofPart) return 'dach'
+  if (editor.selectedWallIds.length > 0) {
+    const wall = getWall(state, editor.selectedWallIds[0]!)
+    if (wall?.role === 'interior') return 'anstrich_steinfarben'
+    return 'naturstein'
+  }
+  return 'naturstein'
+}
+
+function syncLibraryColorCategoryForSelection() {
+  libraryColorCategory = defaultFacadeColorCategory()
+}
 
 function syncUiModeChrome() {
   document.documentElement.dataset.uiMode = uiMode
@@ -1845,31 +1950,33 @@ function syncLibraryTabVisibility() {
     const preferred =
       (allowed.has('lights') && allowed.size === 1
         ? 'lights'
-        : allowed.has('stairs')
-          ? 'stairs'
-          : allowed.has('windows')
-            ? 'windows'
-            : allowed.has('doors')
-              ? 'doors'
-              : allowed.has('niches')
-                ? 'niches'
-                : allowed.has('panels')
-                  ? 'panels'
-                  : allowed.has('cornice')
-                    ? 'cornice'
-                    : allowed.has('plinth')
-                      ? 'plinth'
-                      : allowed.has('trimBands')
-                        ? 'trimBands'
-                        : allowed.has('label')
-                          ? 'label'
-                          : allowed.has('profiles')
-                            ? 'profiles'
-                            : allowed.has('pediment')
-                              ? 'pediment'
-                              : allowed.has('walls')
-                                ? 'walls'
-                                : undefined) ?? [...allowed][0]
+        : allowed.has('farbe')
+          ? 'farbe'
+          : allowed.has('stairs')
+            ? 'stairs'
+            : allowed.has('windows')
+              ? 'windows'
+              : allowed.has('doors')
+                ? 'doors'
+                : allowed.has('niches')
+                  ? 'niches'
+                  : allowed.has('panels')
+                    ? 'panels'
+                    : allowed.has('cornice')
+                      ? 'cornice'
+                      : allowed.has('plinth')
+                        ? 'plinth'
+                        : allowed.has('trimBands')
+                          ? 'trimBands'
+                          : allowed.has('label')
+                            ? 'label'
+                            : allowed.has('profiles')
+                              ? 'profiles'
+                              : allowed.has('pediment')
+                                ? 'pediment'
+                                : allowed.has('walls')
+                                  ? 'walls'
+                                  : undefined) ?? [...allowed][0]
     const fallbackBtn =
       (preferred
         ? buttons.find((btn) => btn.dataset.libraryTab === preferred && !btn.hidden)
@@ -1898,7 +2005,13 @@ function syncLibraryTabs() {
 
 function setLibraryTab(tab: LibraryTab) {
   if (tab !== 'walls') {
+    // #region agent log
+    if (armedInteriorWallDepthCm != null || armedLibraryWallPresetId) {
+      fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-A',location:'main.ts:setLibraryTab',message:'clearing wall arming on tab leave',data:{fromTab:libraryTab,toTab:tab,armedInteriorWallDepthCm,armedLibraryWallPresetId},timestamp:Date.now()})}).catch(()=>{});
+    }
+    // #endregion
     armedLibraryWallPresetId = null
+    armedInteriorWallDepthCm = null
     if (wallSplitHover) clearWallSplitHover()
   }
   libraryTab = tab
@@ -3364,6 +3477,7 @@ function wallsStackedAbove(wall: Wall): Wall[] {
 
 function armLibraryWallPreset(presetId: string) {
   armedLibraryWallPresetId = presetId
+  // Innenwand-Stärke behalten: Länge-Karte setzt nur die Segmentbreite.
   updateWallLibraryGizmos()
   syncLibraryAppliedOutline()
   const hasWall = Boolean(selectedStudioWallForLibrary())
@@ -3372,9 +3486,13 @@ function armLibraryWallPreset(presetId: string) {
       'Entwurf: Wand anklicken = auswählen (Farben/Mauerwerk); nochmal klicken = Segment tauschen; Greifer verlängert'
     return
   }
+  const interiorHint =
+    armedInteriorWallDepthCm != null
+      ? ` — Innenwand ${armedInteriorWallDepthCm} cm nach Extrude`
+      : ''
   planStatus.textContent = hasWall
-    ? 'Bibliotheks-Wand gewählt — +/− an der markierten Wand setzen oder entfernen'
-    : 'Breite gewählt — über eine Wand fahren und klicken: Segment herauslösen (alle Etagen); oder per Ziehen platzieren'
+    ? `Bibliotheks-Wand gewählt — +/− an der markierten Wand setzen oder entfernen${interiorHint}`
+    : `Breite gewählt — über eine Wand fahren und klicken: Segment herauslösen (alle Etagen); oder per Ziehen platzieren${interiorHint}`
 }
 
 function onWallLibraryCardClick(presetId: string) {
@@ -3388,9 +3506,22 @@ function onWallLibraryCardClick(presetId: string) {
 
 function disarmLibraryWallPreset() {
   armedLibraryWallPresetId = null
+  armedInteriorWallDepthCm = null
   clearWallSplitHover()
   updateWallLibraryGizmos()
   syncLibraryAppliedOutline()
+}
+
+function armInteriorWallDepth(depthCm: number) {
+  armedInteriorWallDepthCm = depthCm
+  clearWallSplitHover()
+  updateWallLibraryGizmos()
+  syncLibraryAppliedOutline()
+  const len = armedInteriorSegmentCm() ?? INTERIOR_WALL_DEFAULT_LENGTH_CM
+  // #region agent log
+  fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-E',location:'main.ts:armInteriorWallDepth',message:'interior wall armed',data:{depthCm,libraryTab,segmentCm:len,placeActive:interiorWallPlaceModeActive(),selectedWalls:editor.selectedWallIds.length,view:currentView},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
+  planStatus.textContent = `Innenwand ${depthCm} cm — nur von innen auf die Wandfläche klicken (90° in den Raum, Länge ${len} cm); dann Länge ± / Shift-Winkel (oder Grundriss zeichnen)`
 }
 
 function resolveWallLocalXForSegmentSwap(event: { clientX: number; clientY: number }): {
@@ -3474,24 +3605,48 @@ function trySwapDraftWallSegmentAtClick(event: PointerEvent): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Wandsegment herauslösen: Tab „Wände“ + Breite gewählt + nichts markiert →
-// Hover zeigt orange Segment auf bestehender Wand (alle Etagen), Klick teilt.
-// ---------------------------------------------------------------------------
+ // Wandsegment herauslösen (Außen) bzw. Innenwand an Innenseite platzieren.
+ // ---------------------------------------------------------------------------
 
-/** Gewählte Segmentbreite (nur reine Längen-Presets / Wand+Öffnung, kein Endstück). */
+/** Segmentbreite für Außenwand-Split (nur Längen-Presets, nicht Innenwand). */
 function armedWallSplitSegmentCm(): number | null {
-  if (!armedLibraryWallPresetId || libraryTab !== 'walls') return null
+  if (libraryTab !== 'walls') return null
+  if (armedInteriorWallDepthCm != null) return null
+  if (!armedLibraryWallPresetId) return null
   if (endPieceHandFromPresetId(armedLibraryWallPresetId)) return null
   const len = wallPresetLengthCm(armedLibraryWallPresetId)
   return len != null && len > 0 ? len : null
 }
 
-function wallSplitModeActive(): boolean {
-  if (!(isPerspectiveSceneView() || currentView === 'front')) return false
-  if (armedWallSplitSegmentCm() == null) return false
+/** Segmentbreite für Innenwand-Platzierung (Default 96 oder Längen-Karte). */
+function armedInteriorSegmentCm(): number | null {
+  if (libraryTab !== 'walls') return null
+  if (armedInteriorWallDepthCm == null) return null
+  if (armedLibraryWallPresetId) {
+    if (endPieceHandFromPresetId(armedLibraryWallPresetId)) return INTERIOR_WALL_DEFAULT_LENGTH_CM
+    const len = wallPresetLengthCm(armedLibraryWallPresetId)
+    if (len != null && len > 0) return len
+  }
+  return INTERIOR_WALL_DEFAULT_LENGTH_CM
+}
+
+function wallEditGestureClear(): boolean {
   if (editor.selectedWallIds.length > 0 || editor.selectedOpenings.length > 0) return false
   if (editor.selectedSceneLightId || (editor.selectedSceneLightIds?.length ?? 0) > 0) return false
   return canEditActiveBuildingNow()
+}
+
+function wallSplitModeActive(): boolean {
+  if (!(isPerspectiveSceneView() || currentView === 'front')) return false
+  if (armedWallSplitSegmentCm() == null) return false
+  return wallEditGestureClear()
+}
+
+function interiorWallPlaceModeActive(): boolean {
+  // Nur 3D-Perspektive — Platzierung ausschließlich von der Rauminnenseite.
+  if (!isPerspectiveSceneView() || currentView === 'front') return false
+  if (armedInteriorSegmentCm() == null) return false
+  return wallEditGestureClear()
 }
 
 function clearWallSplitHover() {
@@ -3502,7 +3657,7 @@ function clearWallSplitHover() {
   if (isPerspectiveSceneView()) render3dFrame()
 }
 
-/** Orange Segment-Marker auf jeder Etage des Stapels (wandlokal, volle Höhe). */
+/** Orange Segment-Marker für Außenwand-Split (alle Etagen). */
 function drawWallSplitGhost(stack: Wall[], range: { startCm: number; endCm: number }) {
   clearWallDockSceneGhost()
   const fillMat = new THREE.MeshBasicMaterial({
@@ -3524,16 +3679,16 @@ function drawWallSplitGhost(stack: Wall[], range: { startCm: number; endCm: numb
     group.position.set(transform.position.x, transform.position.y, transform.position.z)
     group.rotation.y = transform.rotationY
     group.renderOrder = 20
-    const depth = wall.depth ?? WALL_DEPTH
+    const hostDepth = wall.depth ?? WALL_DEPTH
     const centerX = -wall.width / 2 + (start + end) / 2
-    const fill = new THREE.Mesh(new THREE.BoxGeometry(len, wall.height + 2, depth + 6), fillMat)
-    fill.position.set(centerX, 0, depth / 2)
+    const fill = new THREE.Mesh(new THREE.BoxGeometry(len, wall.height + 2, hostDepth + 6), fillMat)
+    fill.position.set(centerX, 0, hostDepth / 2)
     fill.renderOrder = 20
     group.add(fill)
     for (const cutX of [start, end]) {
       if (cutX <= 0.5 || cutX >= wall.width - 0.5) continue
-      const cut = new THREE.Mesh(new THREE.BoxGeometry(4, wall.height + 4, depth + 8), cutMat)
-      cut.position.set(-wall.width / 2 + cutX, 0, depth / 2)
+      const cut = new THREE.Mesh(new THREE.BoxGeometry(4, wall.height + 4, hostDepth + 8), cutMat)
+      cut.position.set(-wall.width / 2 + cutX, 0, hostDepth / 2)
       cut.renderOrder = 21
       group.add(cut)
     }
@@ -3541,6 +3696,107 @@ function drawWallSplitGhost(stack: Wall[], range: { startCm: number; endCm: numb
   }
   markViewportDirty()
   if (isPerspectiveSceneView()) render3dFrame()
+}
+
+/** Cyan: 90°-Stummel von der Host-Innenseite in den Raum. */
+function drawInteriorWallPlaceGhost(
+  host: Wall,
+  localXCm: number,
+  lengthCm: number,
+  depthCm: number,
+) {
+  clearWallDockSceneGhost()
+  const preview = createInteriorWallFromHostNormal({
+    host,
+    localXCm,
+    lengthCm,
+    depthCm,
+  })
+  if (!preview) return
+  const fillMat = new THREE.MeshBasicMaterial({
+    color: 0x44aaee,
+    transparent: true,
+    opacity: 0.45,
+    depthTest: false,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  })
+  const transform = studioWallTransform(preview)
+  const group = new THREE.Group()
+  group.position.set(transform.position.x, transform.position.y, transform.position.z)
+  group.rotation.y = transform.rotationY
+  group.renderOrder = 20
+  const fill = new THREE.Mesh(
+    new THREE.BoxGeometry(preview.width, preview.height + 2, preview.depth + 2),
+    fillMat,
+  )
+  fill.position.set(0, 0, preview.depth / 2)
+  fill.renderOrder = 20
+  group.add(fill)
+  wallDockGhostGroup.add(group)
+  markViewportDirty()
+  if (isPerspectiveSceneView()) render3dFrame()
+}
+
+/**
+ * Nur Innenseite einer Wand: Kamera muss im Raum stehen, Treffer näher an Innen-
+ * als an Außenkante. Liefert localX entlang der Host-Achse.
+ */
+function pickInteriorHostFaceAtClient(
+  clientX: number,
+  clientY: number,
+): { wall: Wall; localX: number; localY: number; localZ: number; fromFace: 'inner' | 'outer' } | null {
+  if (!isPerspectiveSceneView() || currentView === 'front') return null
+  const rect = canvas.getBoundingClientRect()
+  const ndc = new THREE.Vector2(
+    ((clientX - rect.left) / rect.width) * 2 - 1,
+    -((clientY - rect.top) / rect.height) * 2 + 1,
+  )
+  const ray = new THREE.Raycaster()
+  const cam = getActiveCamera()
+  ray.setFromCamera(ndc, cam)
+  const hits = ray.intersectObjects([facade.wallGroup, facade.claddingGroup], true)
+  for (const hit of hits) {
+    let current: THREE.Object3D | null = hit.object
+    while (current) {
+      const wallId = current.userData.wallId as string | undefined
+      if (wallId && current.userData.kind === 'wall') {
+        const wall = getWall(state, wallId)
+        if (!wall || !isStudioWall(wall) || wall.endPieceParentId) return null
+        if (!canEditWallNow(wall.id)) return null
+        const originX = wall.originX ?? wall.x
+        const originZ = wall.originZ ?? 0
+        const yawRad = ((wall.yawDeg ?? 0) * Math.PI) / 180
+        const dx = hit.point.x - originX
+        const dz = hit.point.z - originZ
+        const localX = dx * Math.cos(yawRad) - dz * Math.sin(yawRad)
+        const localZ = dx * Math.sin(yawRad) + dz * Math.cos(yawRad)
+        const localY = hit.point.y - wall.y
+        const inner = studioWallInnerLocalZ(wall)
+        const outer = studioWallOuterLocalZ(wall)
+        const distInner = Math.abs(localZ - inner)
+        const distOuter = Math.abs(localZ - outer)
+        const fromFace: 'inner' | 'outer' = distInner <= distOuter ? 'inner' : 'outer'
+        const out = facadeOutward(wall.yawDeg ?? 0, wall.panelFlip ?? true)
+        const camDx = cam.position.x - hit.point.x
+        const camDz = cam.position.z - hit.point.z
+        const camOutside = camDx * out.x + camDz * out.z > 0
+        const hostIsInterior = isInteriorWall(wall)
+        // Außenwand: nur Innenseite + Kamera im Raum.
+        // Innenwand als Host: beide Seiten ok (Logs: camOutside+outer → reject verhinderte Platzierung).
+        const accept = hostIsInterior
+          ? true
+          : !camOutside && distInner <= distOuter + 2
+        // #region agent log
+        fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-G',location:'main.ts:pickInteriorHostFaceAtClient',message:'interior face pick',data:{wallId,hostIsInterior,fromFace,localX,localZ,inner,outer,distInner,distOuter,camOutside,accept},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+        if (!accept) return null
+        return { wall, localX, localY, localZ, fromFace }
+      }
+      current = current.parent
+    }
+  }
+  return null
 }
 
 function resolveWallSplitTarget(event: { clientX: number; clientY: number }): {
@@ -3560,6 +3816,35 @@ function resolveWallSplitTarget(event: { clientX: number; clientY: number }): {
 }
 
 function updateWallSplitHover(event: { clientX: number; clientY: number }) {
+  if (interiorWallPlaceModeActive()) {
+    const hit = pickInteriorHostFaceAtClient(event.clientX, event.clientY)
+    if (!hit || armedInteriorWallDepthCm == null) {
+      clearWallSplitHover()
+      return
+    }
+    const lengthCm = armedInteriorSegmentCm() ?? INTERIOR_WALL_DEFAULT_LENGTH_CM
+    const depthCm = armedInteriorWallDepthCm
+    const half = depthCm / 2
+    const localX = Math.max(half, Math.min(hit.wall.width - half, hit.localX))
+    if (
+      wallSplitHover &&
+      wallSplitHover.mode === 'interior' &&
+      wallSplitHover.wallId === hit.wall.id &&
+      Math.abs(wallSplitHover.startCm - localX) < 0.5
+    ) {
+      return
+    }
+    wallSplitHover = {
+      wallId: hit.wall.id,
+      startCm: localX,
+      endCm: localX,
+      mode: 'interior',
+    }
+    drawInteriorWallPlaceGhost(hit.wall, localX, lengthCm, depthCm)
+    planStatus.textContent = `Klick: Innenwand 90° in den Raum (${Math.round(lengthCm)}×${Math.round(depthCm)} cm)`
+    return
+  }
+
   const target = resolveWallSplitTarget(event)
   if (!target) {
     clearWallSplitHover()
@@ -3569,12 +3854,13 @@ function updateWallSplitHover(event: { clientX: number; clientY: number }) {
   if (
     wallSplitHover &&
     wallSplitHover.wallId === wall.id &&
+    wallSplitHover.mode !== 'interior' &&
     Math.abs(wallSplitHover.startCm - range.startCm) < 0.5 &&
     Math.abs(wallSplitHover.endCm - range.endCm) < 0.5
   ) {
     return
   }
-  wallSplitHover = { wallId: wall.id, startCm: range.startCm, endCm: range.endCm }
+  wallSplitHover = { wallId: wall.id, startCm: range.startCm, endCm: range.endCm, mode: 'split' }
   const building = findBuildingForWall(state, wall.id) ?? activeBuilding()
   const stack = wallSplitStack(wall, building.walls, building.wallHeight)
   drawWallSplitGhost(stack, range)
@@ -3604,14 +3890,104 @@ function mergeSelectedWallSegments() {
   planStatus.textContent = 'Segmente zu einer Wand verschmolzen'
 }
 
+/** Innenwand: 90°-Stummel an Host-Innenseite, Host unverändert. */
+function tryInteriorWallPlaceAtEvent(event: { clientX: number; clientY: number }): boolean {
+  if (!interiorWallPlaceModeActive() || armedInteriorWallDepthCm == null) return false
+  let hit = pickInteriorHostFaceAtClient(event.clientX, event.clientY)
+  let usedHoverFallback = false
+  // Hover-Ghost als Fallback: Klick trifft oft Decke/Boden statt Wand (pickFromEvent),
+  // obwohl der cyan-Ghost gerade sichtbar ist.
+  if (!hit && wallSplitHover?.mode === 'interior') {
+    const hoverWall = getWall(state, wallSplitHover.wallId)
+    if (hoverWall && isStudioWall(hoverWall)) {
+      hit = {
+        wall: hoverWall,
+        localX: wallSplitHover.startCm,
+        localY: hoverWall.height / 2,
+        localZ: studioWallInnerLocalZ(hoverWall),
+        fromFace: 'inner',
+      }
+      usedHoverFallback = true
+    }
+  }
+  // #region agent log
+  fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-K',location:'main.ts:tryInteriorWallPlaceAtEvent',message:'interior place attempt',data:{hasHit:Boolean(hit),usedHoverFallback,hostId:hit?.wall.id,localX:hit?.localX,depthCm:armedInteriorWallDepthCm,hoverMode:wallSplitHover?.mode},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
+  if (!hit) {
+    planStatus.textContent = 'Innenwand nur von innen auf die Wandfläche setzen'
+    return true
+  }
+  const lengthCm = armedInteriorSegmentCm() ?? INTERIOR_WALL_DEFAULT_LENGTH_CM
+  const depthCm = armedInteriorWallDepthCm
+  const half = depthCm / 2
+  const localX = Math.max(half, Math.min(hit.wall.width - half, hit.localX))
+  const wall = createInteriorWallFromHostNormal({
+    host: hit.wall,
+    localXCm: localX,
+    lengthCm,
+    depthCm,
+    fromFace: hit.fromFace,
+  })
+  clearWallSplitHover()
+  if (!wall) {
+    // #region agent log
+    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-M',location:'main.ts:tryInteriorWallPlaceAtEvent',message:'create returned null',data:{localX,lengthCm,depthCm,hostWidth:hit.wall.width},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    planStatus.textContent = 'Innenwand konnte hier nicht erzeugt werden'
+    return true
+  }
+  const building = findBuildingForWall(state, hit.wall.id) ?? activeBuilding()
+  if (studioWallsCollideIdentical(building.walls, wall)) {
+    // #region agent log
+    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-L',location:'main.ts:tryInteriorWallPlaceAtEvent',message:'collide with existing',data:{hostId:hit.wall.id,newYaw:wall.yawDeg,newWidth:wall.width},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    planStatus.textContent = 'Innenwand überlappt bestehende Wand'
+    return true
+  }
+  const hostId = hit.wall.id
+  const hostBefore = building.walls.find((w) => w.id === hostId)
+  const hostYaw = hit.wall.yawDeg ?? 0
+  commitState(
+    finalizeStudioGeometry(
+      updateBuilding(state, building.id, (b) => ({
+        ...b,
+        walls: [...b.walls, wall],
+      })),
+    ),
+    {
+      ...createDefaultEditorState(),
+      selectedWallIds: [wall.id],
+    },
+  )
+  // Armierung aus: sonst fängt der Platzier-Modus jeden weiteren Klick ab (keine Auswahl/Greifer).
+  armedInteriorWallDepthCm = null
+  clearWallSplitHover()
+  updateWallLibraryGizmos()
+  syncLibraryAppliedOutline()
+  rebuildFloorPlanOverlay()
+  const hostAfter = getWall(state, hostId)
+  const placed = getWall(state, wall.id)
+  // #region agent log
+  fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',runId:'post-fix',hypothesisId:'H-N',location:'main.ts:tryInteriorWallPlaceAtEvent',message:'interior place success + disarmed',data:{usedHoverFallback,hostId,hostIsInterior:isInteriorWall(hit.wall),fromFace:hit.fromFace,newId:wall.id,hostYaw,newYaw:placed?.yawDeg,yawDelta:((placed?.yawDeg ?? 0) - hostYaw + 360) % 360,hostWidthBefore:hostBefore?.width,hostWidthAfter:hostAfter?.width,newWidth:placed?.width,armedAfter:armedInteriorWallDepthCm,startTouchesHost:placed?wallEndTouchesForeignSpine(placed,'start',activeBuilding().walls):false},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
+  planStatus.textContent = `Innenwand ${Math.round(placed?.width ?? wall.width)} cm (${depthCm} cm stark) — Länge ± / Shift-Winkel; weitere: Bibliothek erneut wählen`
+  return true
+}
+
 /** Klick im Segment-Modus: Wand (alle Etagen) teilen und Mittelstück auswählen. */
 function tryWallSplitAtEvent(event: { clientX: number; clientY: number }): boolean {
   if (!wallSplitModeActive()) return false
   const target = resolveWallSplitTarget(event)
+  // #region agent log
+  fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-D',location:'main.ts:tryWallSplitAtEvent',message:'split attempt',data:{hasTarget:Boolean(target),wallId:target?.wall.id,range:target?.range,armedInteriorWallDepthCm},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   if (!target) return false
   const result = splitWallStackRange(state, target.wall.id, target.range)
   clearWallSplitHover()
   if (!result) {
+    // #region agent log
+    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-D',location:'main.ts:tryWallSplitAtEvent',message:'splitWallStackRange failed',data:{wallId:target.wall.id,range:target.range,wallWidth:target.wall.width},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     planStatus.textContent =
       target.range.startCm <= 0.5 && target.wall.width - target.range.endCm <= 0.5
         ? `Wand ist bereits ${Math.round(target.wall.width)} cm — nichts zu teilen`
@@ -4017,6 +4393,7 @@ function updateWallResizeGizmos() {
   }
   const showSideGrips =
     walls.length === 1 && !wall.bayWindow && !wall.bayParentId && !wall.bayRole
+  const interior = isInteriorWall(wall)
   const frontLocked =
     editScope === 'facade' ||
     frontGripLockedForSelection(
@@ -4026,6 +4403,11 @@ function updateWallResizeGizmos() {
   for (const grip of ['left', 'right', 'top', 'front'] as const) {
     const el = host.querySelector<HTMLElement>(`.wall-resize-grip[data-grip="${grip}"]`)
     if (!el) continue
+    // Innenwand: kein Höhen-Greifer (Höhe = Host/verknüpft); Front-Pfeil zum Verschieben bleibt.
+    if (interior && grip === 'top') {
+      el.hidden = true
+      continue
+    }
     if (grip === 'front' && editScope === 'facade') {
       el.hidden = true
       continue
@@ -4197,8 +4579,12 @@ function applyWallResizePreview(
     const linkedCorner = linkedCornerNeighbor(wall, wallEnd, buildingNow.walls)
     const yaw = snapBranchYawDeg(wall.yawDeg ?? 0, wallEnd, dx, dz)
 
-    // Verknüpfte Ecke (90° oder 135°): niemals neue Wand — nur Achsen-Shift oder Winkel umschalten.
-    if (linkedCorner) {
+    // Verknüpfte Ecke: Außenwände nur strecken/Winkel; Innenwände dürfen dritte Wand (T) abzweigen.
+    const interiorTFromCorner = isInteriorWall(wall) && yaw !== null
+    // #region agent log
+    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-T',location:'main.ts:applyWallResizePreview',message:'shift branch corner check',data:{wallId:wall.id,role:wall.role,linkedCorner:Boolean(linkedCorner),yaw,interiorTFromCorner,willBranch:!(linkedCorner && !interiorTFromCorner) || yaw!==null && (!linkedCorner || interiorTFromCorner)},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    if (linkedCorner && !interiorTFromCorner) {
       if (yaw === null) {
         const raw = alongWidthDeltaFromMove(wall.yawDeg ?? 0, wallEnd, dx, dz)
         const delta = clampWallResizeDelta(drag.grip, raw, drag.baseWidth, drag.baseStoreyHeight, wall.yawDeg ?? 0)
@@ -4879,6 +5265,12 @@ function isLibraryCardApplied(card: HTMLElement): boolean {
     return card.dataset.libraryNone === '1' || card.dataset.panelPattern === 'none'
   }
   if (card.dataset.libraryNone === '1') {
+    if (libraryTab === 'awnings') {
+      const opening = selectedWindowOpening()?.opening
+      if (opening && openingSupportsAwning(opening)) return !opening.awning?.enabled
+      const wall = selectedWalls()[0]
+      return !wall?.awnings?.some((item) => item.enabled)
+    }
     if (libraryTab === 'bay' || libraryTab === 'balcony' || libraryTab === 'loggia') {
       return !selectedWalls().some((wall) => bayMetaForWall(getAllWalls(state), wall))
     }
@@ -4921,6 +5313,17 @@ function isLibraryCardApplied(card: HTMLElement): boolean {
   const bayPresetId = card.dataset.bayPresetId
   if (bayPresetId) {
     return selectedWalls().some((wall) => matchingBayLibraryPresetId(wall) === bayPresetId)
+  }
+  const awningKind = card.dataset.awningKind
+  if (awningKind && libraryTab === 'awnings') {
+    const opening = selectedWindowOpening()?.opening
+    if (opening?.awning?.enabled) return opening.awning.kind === awningKind
+    const wall = selectedWalls()[0]
+    const list = wall?.awnings?.filter((item) => item.enabled) ?? []
+    const current =
+      (editor.selectedAwningId ? list.find((item) => item.id === editor.selectedAwningId) : undefined) ??
+      list[0]
+    return current?.kind === awningKind
   }
   return false
 }
@@ -5155,6 +5558,7 @@ function selectWallFromViewport(
     wallPart?: NonNullable<EditorState['selectedWallPart']>
     trimBandId?: string
     labelId?: string
+    awningId?: string
   } = {},
 ) {
   const additive = Boolean(opts.additive)
@@ -5168,7 +5572,14 @@ function selectWallFromViewport(
     selectWallsInRange(lastWallRangeAnchorId, wallId)
     return
   }
-  selectWall(wallId, additive, opts.wallPart ?? 'group', opts.trimBandId, opts.labelId)
+  selectWall(
+    wallId,
+    additive,
+    opts.wallPart ?? 'group',
+    opts.trimBandId,
+    opts.labelId,
+    opts.awningId,
+  )
 }
 
 function selectLayerTreeEntry(
@@ -6725,12 +7136,17 @@ const roofHint = document.querySelector<HTMLParagraphElement>('#roof-hint')!
 const toolbarDownpipe = document.querySelector<HTMLDivElement>('#toolbar-downpipe')!
 const downpipeX = document.querySelector<HTMLInputElement>('#downpipe-x')!
 const downpipeDiameter = document.querySelector<HTMLInputElement>('#downpipe-diameter')!
+const downpipeSurfaceGap = document.querySelector<HTMLInputElement>('#downpipe-surface-gap')!
+const downpipeSurfaceGapRow = document.querySelector<HTMLDivElement>('#downpipe-surface-gap-row')!
 const downpipeColorSwatches = document.querySelector<HTMLDivElement>('#downpipe-color-swatches')!
 const downpipeMountSurface = document.querySelector<HTMLButtonElement>('#downpipe-mount-surface')!
 const downpipeMountNiche = document.querySelector<HTMLButtonElement>('#downpipe-mount-niche')!
 const downpipeNicheOptions = document.querySelector<HTMLDivElement>('#downpipe-niche-options')!
 const downpipeNicheWidth = document.querySelector<HTMLInputElement>('#downpipe-niche-width')!
+const downpipeNicheWidthLabel = document.querySelector<HTMLSpanElement>('#downpipe-niche-width-label')!
 const downpipeNicheDepth = document.querySelector<HTMLInputElement>('#downpipe-niche-depth')!
+const downpipeNicheDepthRow = document.querySelector<HTMLDivElement>('#downpipe-niche-depth-row')!
+const downpipeBreakDecor = document.querySelector<HTMLInputElement>('#downpipe-break-decor')!
 const downpipeFootShoe = document.querySelector<HTMLButtonElement>('#downpipe-foot-shoe')!
 const downpipeFootGround = document.querySelector<HTMLButtonElement>('#downpipe-foot-ground')!
 const downpipeDelete = document.querySelector<HTMLButtonElement>('#downpipe-delete')!
@@ -7974,8 +8390,51 @@ function resetFloorPlanDrawing() {
 
 function commitFloorPlanStroke() {
   if (!floorPlanDrawStart) return
-  let plan = currentFloorPlan()
   const end = floorPlanDrawPreview ?? floorPlanDrawStart
+
+  if (armedInteriorWallDepthCm != null) {
+    if (end.gx === floorPlanDrawStart.gx && end.gz === floorPlanDrawStart.gz) {
+      floorPlanDrawPreview = null
+      floorPlanIsDrawing = false
+      rebuildFloorPlanOverlay()
+      return
+    }
+    if (!isValidPlanLine(floorPlanDrawStart.gx, floorPlanDrawStart.gz, end.gx, end.gz)) {
+      planStatus.textContent = 'Linie zu kurz oder ungültig'
+      return
+    }
+    const wall = createInteriorWallFromPlanSegment({
+      fromGx: floorPlanDrawStart.gx,
+      fromGz: floorPlanDrawStart.gz,
+      toGx: end.gx,
+      toGz: end.gz,
+      depthCm: armedInteriorWallDepthCm,
+      y: currentFloor * activeWallHeight(),
+      height: activeWallHeight(),
+    })
+    if (!wall) {
+      planStatus.textContent = 'Innenwand konnte nicht erzeugt werden'
+      return
+    }
+    if (studioWallsCollideIdentical(activeBuilding().walls, wall)) {
+      planStatus.textContent = 'Innenwand überlappt bestehende Wand'
+      return
+    }
+    commitState(
+      updateActiveBuilding(state, {
+        walls: [...activeBuilding().walls, wall],
+      }),
+      { ...editor, selectedWallIds: [wall.id], selectedOpenings: [], selectedEdges: [] },
+    )
+    planStatus.textContent = `Innenwand ${armedInteriorWallDepthCm} cm gesetzt — weitere Linie oder Esc`
+    floorPlanDrawStart = { gx: end.gx, gz: end.gz }
+    floorPlanDrawPreview = null
+    floorPlanIsDrawing = false
+    rebuildFloorPlanOverlay()
+    return
+  }
+
+  let plan = currentFloorPlan()
   const closing = wouldCloseFloorPlan(plan, floorPlanDrawStart, end, floorPlanLoopStart)
   if (end.gx === floorPlanDrawStart.gx && end.gz === floorPlanDrawStart.gz) {
     plan = addPlanNode(plan, end.gx, end.gz)
@@ -9299,9 +9758,13 @@ function wallIdsForLibrary(hit?: { wallId?: string }): string[] {
 
 function applyLibraryAsset(asset: LibraryAsset, hit?: { wallId?: string; openingId?: string }) {
   if (asset.kind === 'frame-profile') {
-    const refs = openingRefsForLibrary(hit)
+    const refs = openingRefsForLibrary(hit).filter((ref) => {
+      const wall = getWall(state, ref.wallId)
+      const opening = wall?.openings.find((item) => item.id === ref.openingId)
+      return Boolean(opening && openingSupportsFrameProfiles(opening))
+    })
     if (refs.length === 0) {
-      planStatus.textContent = 'Profil auf ein Fenster oder eine Tür ziehen'
+      planStatus.textContent = 'Profil auf Fenster, Tür oder Einbuchtung ziehen'
       return
     }
     commitState(
@@ -9705,6 +10168,42 @@ function initOpeningLibrary() {
 
   if (libraryTab === 'walls') {
     appendLibraryIdleNoneCard(host, 'Keines')
+    const interiorHeading = document.createElement('p')
+    interiorHeading.className = 'library-section-label'
+    interiorHeading.textContent = 'Innenwände (Segment + Extrude)'
+    host.appendChild(interiorHeading)
+    for (const preset of INTERIOR_WALL_DEPTH_PRESETS) {
+      const card = document.createElement('button')
+      card.type = 'button'
+      card.className = 'opening-library-card'
+      card.dataset.interiorWallDepth = String(preset.depthCm)
+      card.title = `${preset.label} — Segment markieren und extrudieren (oder Grundriss zeichnen)`
+      const thumb = document.createElement('div')
+      thumb.className = 'opening-library-thumb opening-library-thumb-wall'
+      thumb.style.background = 'linear-gradient(90deg, #c8c0b8 0%, #c8c0b8 35%, #eee 35%, #eee 65%, #c8c0b8 65%)'
+      const label = document.createElement('span')
+      label.textContent = preset.label
+      card.append(thumb, label)
+      card.classList.toggle('is-applied', armedInteriorWallDepthCm === preset.depthCm)
+      card.addEventListener('click', () => {
+        if (armedInteriorWallDepthCm === preset.depthCm) {
+          armedInteriorWallDepthCm = null
+          clearWallSplitHover()
+          updateWallLibraryGizmos()
+          syncLibraryAppliedOutline()
+          planStatus.textContent = 'Innenwand-Modus beendet'
+          initOpeningLibrary()
+          return
+        }
+        armInteriorWallDepth(preset.depthCm)
+        initOpeningLibrary()
+      })
+      host.appendChild(card)
+    }
+    const lengthHeading = document.createElement('p')
+    lengthHeading.className = 'library-section-label'
+    lengthHeading.textContent = 'Außenwände (Länge)'
+    host.appendChild(lengthHeading)
     for (const preset of WALL_LENGTH_PRESETS) {
       const card = document.createElement('button')
       card.type = 'button'
@@ -9875,6 +10374,51 @@ function initOpeningLibrary() {
       host.appendChild(card)
     }
     syncLibraryAppliedOutline()
+    return
+  }
+
+  if (libraryTab === 'farbe') {
+    if (!libraryColorCategory) libraryColorCategory = defaultFacadeColorCategory()
+    const filterRow = document.createElement('div')
+    filterRow.className = 'library-color-filter'
+    const filterLabel = document.createElement('span')
+    filterLabel.className = 'toolbar-label'
+    filterLabel.textContent = 'Kategorie'
+    const filterSelect = document.createElement('select')
+    filterSelect.className = 'library-color-category-select'
+    filterSelect.title = 'Farbkategorie'
+    for (const kat of FACADE_COLOR_CATEGORIES) {
+      const opt = document.createElement('option')
+      opt.value = kat.id
+      opt.textContent = kat.name
+      if (kat.id === libraryColorCategory) opt.selected = true
+      filterSelect.appendChild(opt)
+    }
+    filterSelect.addEventListener('change', () => {
+      libraryColorCategory = filterSelect.value as FacadeColorCategoryId
+      initOpeningLibrary()
+    })
+    filterRow.append(filterLabel, filterSelect)
+    host.appendChild(filterRow)
+
+    const activeKat =
+      FACADE_COLOR_CATEGORIES.find((k) => k.id === libraryColorCategory) ?? FACADE_COLOR_CATEGORIES[0]!
+    const colors = FACADE_COLOR_LIBRARY.filter((c) => c.kategorie === activeKat.id)
+    for (const entry of colors) {
+      const card = document.createElement('button')
+      card.type = 'button'
+      card.className = 'opening-library-card'
+      card.title = `${entry.farbname} (${entry.hex})`
+      card.dataset.facadeColorId = entry.id
+      const thumb = document.createElement('div')
+      thumb.className = 'opening-library-thumb opening-library-thumb-color'
+      thumb.style.background = entry.hex
+      const label = document.createElement('span')
+      label.textContent = entry.farbname
+      card.append(thumb, label)
+      card.addEventListener('click', () => applyFacadeLibraryColor(entry))
+      host.appendChild(card)
+    }
     return
   }
 
@@ -10257,6 +10801,52 @@ function initOpeningLibrary() {
         card.classList.remove('is-dragging')
         viewport.classList.remove('library-drop-target')
         clearLibraryPlacementPreview()
+      })
+      host.appendChild(card)
+    }
+    syncLibraryAppliedOutline()
+    return
+  }
+
+  if (libraryTab === 'awnings') {
+    const none = document.createElement('button')
+    none.type = 'button'
+    none.className = 'opening-library-card'
+    none.dataset.libraryNone = '1'
+    none.title = 'Keine Markise'
+    const noneThumb = document.createElement('div')
+    noneThumb.className = 'opening-library-thumb tpl-card-thumb-empty'
+    noneThumb.textContent = '—'
+    const noneLabel = document.createElement('span')
+    noneLabel.textContent = 'Keine'
+    none.append(noneThumb, noneLabel)
+    none.addEventListener('click', () => {
+      clearLibraryAwning()
+      initOpeningLibrary()
+    })
+    host.appendChild(none)
+
+    const kinds: Array<{ id: 'foldingArm' | 'dropArm' | 'markisolette'; label: string; title: string }> = [
+      { id: 'foldingArm', label: 'Gelenkarm', title: 'Gelenkarm-Markise' },
+      { id: 'dropArm', label: 'Fallarm', title: 'Fallarm-Markise' },
+      { id: 'markisolette', label: 'Markisolette', title: 'Markisolette' },
+    ]
+    for (const kind of kinds) {
+      const card = document.createElement('button')
+      card.type = 'button'
+      card.className = 'opening-library-card'
+      card.dataset.awningKind = kind.id
+      card.title = kind.title
+      const thumb = document.createElement('div')
+      thumb.className = 'opening-library-thumb'
+      thumb.textContent =
+        kind.id === 'foldingArm' ? '⟷' : kind.id === 'markisolette' ? '⊓' : '∠'
+      const label = document.createElement('span')
+      label.textContent = kind.label
+      card.append(thumb, label)
+      card.addEventListener('click', () => {
+        placeLibraryAwning(kind.id)
+        initOpeningLibrary()
       })
       host.appendChild(card)
     }
@@ -10835,6 +11425,13 @@ function normalizeEditor(nextState: FacadeState, nextEditor: EditorState): Edito
       selectedLabelId = nextEditor.selectedLabelId
     }
   }
+  let selectedAwningId: string | undefined
+  if (selectedWallPart === 'awning' && nextEditor.selectedAwningId && selectedWallIds[0]) {
+    const wall = getWall(nextState, selectedWallIds[0])
+    if (wall?.awnings?.some((item) => item.id === nextEditor.selectedAwningId)) {
+      selectedAwningId = nextEditor.selectedAwningId
+    }
+  }
 
   return {
     selectedWallIds,
@@ -10845,6 +11442,7 @@ function normalizeEditor(nextState: FacadeState, nextEditor: EditorState): Edito
     selectedWallPart,
     selectedTrimBandId,
     selectedLabelId,
+    selectedAwningId,
     selectedRoofBuildingId: nextEditor.selectedRoofBuildingId,
     selectedRoofPart: nextEditor.selectedRoofBuildingId
       ? nextEditor.selectedRoofPart ?? 'group'
@@ -11281,6 +11879,11 @@ function syncSunUi() {
   animDayCycleInput.checked = sunSettings.dayCycleEnabled !== false
   animDayCycleMinutesInput.value = String(clampDayCycleRealMinutes(sunSettings.dayCycleRealMinutes))
   animAutoLightsInput.checked = sunSettings.autoSceneLightsWithSun !== false
+  const windInput = document.querySelector<HTMLInputElement>('#scene-wind-intensity')
+  const windValue = document.querySelector<HTMLOutputElement>('#scene-wind-value')
+  const wind = sunSettings.windIntensity ?? DEFAULT_SUN_WIND_INTENSITY
+  if (windInput) windInput.value = String(wind)
+  if (windValue) windValue.textContent = wind.toFixed(2)
   syncSunAnimUi()
 }
 
@@ -11459,6 +12062,44 @@ function flushSunScrubShadowBake(force = false): void {
   flushSunShadowMap({ reflections: false })
 }
 
+/**
+ * Markisen-Ausfahrt live:
+ * - Alle Caster, Map temporär max. 4096², Bake ~20×/s — Hausschatten bleiben, Markise folgt.
+ * Verworfen: 1024² (Haus pixelig); Caster-Silencing; Directional-/Spot-Extra (Umbra-Fill).
+ */
+const AWNING_LIVE_SHADOW_MAP_SIZE = 4096
+const AWNING_LIVE_SHADOW_BAKE_MIN_MS = 48
+let awningLiveShadowActive = false
+let awningLiveShadowBakeLastMs = 0
+let awningLiveSavedMapSize = 0
+
+function flushAwningLiveShadowBake(): void {
+  if (!awningLiveShadowActive) {
+    awningLiveShadowActive = true
+    awningLiveSavedMapSize = dirLight.shadow.mapSize.x
+    const liveSize = Math.min(
+      awningLiveSavedMapSize || AWNING_LIVE_SHADOW_MAP_SIZE,
+      AWNING_LIVE_SHADOW_MAP_SIZE,
+    )
+    ensureDirectionalShadowMapSize(dirLight, liveSize)
+  }
+  const now = performance.now()
+  if (now - awningLiveShadowBakeLastMs < AWNING_LIVE_SHADOW_BAKE_MIN_MS) return
+  awningLiveShadowBakeLastMs = now
+  dirLight.shadow.needsUpdate = true
+  renderer.shadowMap.needsUpdate = true
+  markViewportDirty()
+}
+
+function settleAwningLiveShadow(): void {
+  if (!awningLiveShadowActive) return
+  awningLiveShadowActive = false
+  const restore = awningLiveSavedMapSize > 0 ? awningLiveSavedMapSize : AWNING_LIVE_SHADOW_MAP_SIZE
+  awningLiveSavedMapSize = 0
+  ensureDirectionalShadowMapSize(dirLight, restore)
+  flushSunShadowMap({ reflections: false, force: true })
+}
+
 function flushSunShadowMap(opts?: {
   reflections?: boolean
   sceneLights?: boolean
@@ -11564,6 +12205,7 @@ function scheduleSunShadowMapUpdate() {
 }
 
 function dismissAppLoading() {
+  document.body.classList.add('app-ready')
   const el = document.querySelector('#app-loading')
   if (!el) return
   el.classList.add('is-done')
@@ -11962,8 +12604,6 @@ function applySunLighting(opts?: {
   /** Shadow-Bake trotz Orbit-Lite-Hold (nach Verschieben/Rebuild). */
   forceShadowBake?: boolean
 }) {
-  const facadeShade = facadeShadeParamsFromSun(sunSettings)
-  setFacadeShadeParams(facadeShade)
   syncCladdingReceiveShadows()
   const preCelestial = resolveCelestialState(sunSettings)
   const live = opts?.live === true
@@ -12015,6 +12655,12 @@ function applySunLighting(opts?: {
     lightTarget: target,
     lightDistance: Math.max(900, distance),
   })
+  // v2.0.428: wallUnlit-Dimmung (413–418) aus — heller/kontrastreicher Look; Markisen-Schatten unberührt.
+  const facadeShade = facadeShadeParamsFromSun(sunSettings)
+  setFacadeShadeParams(facadeShade)
+  setFacadeWallUnlitUniform(0)
+  setFacadeWallUnlitForEnv(0)
+  setFacadeGlassWallUnlit(0)
   if (dirLight.castShadow && !hadKeyShadow) {
     dirLight.shadow.needsUpdate = true
     renderer.shadowMap.needsUpdate = true
@@ -12028,6 +12674,9 @@ function applySunLighting(opts?: {
   // Paneel/Glas-EnvMap: Farbe + Stärke folgen Tag/Nacht (sonst bleibt Mittelgrau-IBL).
   const envFill = exteriorEnvFillFromCelestial(preCelestial)
   setExteriorEnvFillFactor(envFill)
+  if (facadeReady) {
+    syncEnvMapFillIntensities(scene)
+  }
   const reflectSky = `#${palette.zenith.clone().lerp(palette.horizon, 0.35).getHexString()}`
   const reflectGround = `#${palette.ground.getHexString()}`
   const reflectionKey = `${preCelestial.activeLight}:${Math.round(preCelestial.twilightFactor * 8)}:${Math.round(preCelestial.moonIllumination * 4)}:${reflectSky}`
@@ -12037,10 +12686,6 @@ function applySunLighting(opts?: {
     setGlassGroundReflectionColor(reflectGround)
     markSceneReflectionsDirty()
   }
-  if (facadeReady) {
-    syncEnvMapFillIntensities(scene)
-  }
-
   const bounceDist = Math.max(900, distance)
   const bd = mood.bounceDirection
   bounceDirLight.intensity = mood.bounceIntensity
@@ -12052,7 +12697,7 @@ function applySunLighting(opts?: {
   )
   bounceDirLight.target.position.copy(target)
   bounceDirLight.target.updateMatrixWorld()
-  bounceDirLight.visible = mood.bounceIntensity > 0.02
+  bounceDirLight.visible = bounceDirLight.intensity > 0.02
 
   if (studio) {
     studioSphereMat.color.set(sceneColors.background)
@@ -12100,6 +12745,7 @@ function applySunLighting(opts?: {
     dirLight.shadow.bias = SHADOW_BIAS
   }
   // Schatten-Dunkelheit → Three.js shadow.intensity (0 = unsichtbar, 1 = volle Umbra).
+  // v2.0.428: wieder 0,55…1 (Prä-410) — hellerer Look; Markisen-Live-Bake unverändert.
   dirLight.shadow.intensity = THREE.MathUtils.clamp(
     0.55 + 0.45 * THREE.MathUtils.clamp(sunSettings.shadowDensity, 0, 1),
     0.55,
@@ -12121,6 +12767,11 @@ function applySunLighting(opts?: {
   // Live-Scrub: kein Punktlicht-Sync (teuer bei vielen Lichtern) — Softness folgt beim Commit.
   if (!live) syncSceneLightRuntime()
   const forceBake = opts?.forceShadowBake === true
+  if (awningLiveShadowActive) {
+    // Shadow-Updates nur über flushAwningLiveShadowBake (Voll-Bake gedrosselt).
+    markViewportDirty()
+    return
+  }
   if (opts?.updateShadowMap === true) {
     flushSunShadowMap({ sceneLights: true, force: forceBake })
   } else if (live) {
@@ -12798,33 +13449,40 @@ function finishRenderUi() {
   requestAnimationFrame(positionToolbar)
 }
 
-/** Bei neuer Öffnungsauswahl Bibliothek auf Fenster/Tür/Nische schalten (Highlight sichtbar). */
-let lastLibraryOpeningSelectionKey = ''
+/** Bei neuer Auswahl Bibliothek auf Farben schalten (v2.0.434). */
+let lastLibrarySelectionKey = ''
 function syncLibraryTabForOpeningSelection() {
-  if (editor.selectedOpenings.length === 0) {
-    lastLibraryOpeningSelectionKey = ''
+  const part = editor.selectedOpeningPart ?? editor.selectedWallPart ?? 'group'
+  const openingKey = editor.selectedOpenings
+    .map((ref) => `${ref.wallId}:${ref.openingId}`)
+    .sort()
+    .join('|')
+  const wallKey = [...editor.selectedWallIds].sort().join('|')
+  const roofKey = editor.selectedRoofBuildingId
+    ? `${editor.selectedRoofBuildingId}:${editor.selectedRoofPart ?? ''}`
+    : ''
+  const key = `${openingKey}|${wallKey}|${roofKey}|${part}`
+  if (key === lastLibrarySelectionKey) return
+  lastLibrarySelectionKey = key
+
+  if (!openingKey && !wallKey && !roofKey) return
+
+  syncLibraryColorCategoryForSelection()
+  const allowed = allowedLibraryTabs()
+  // Bewaffnete Wand-/Innenwand-Aktion nicht durch Auto-Farben abbrechen.
+  if (armedInteriorWallDepthCm != null || armedLibraryWallPresetId) {
+    // #region agent log
+    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-A',location:'main.ts:syncLibraryTabForOpeningSelection',message:'skip farbe auto-switch while wall armed',data:{prevTab:libraryTab,armedInteriorWallDepthCm,armedLibraryWallPresetId,wallKey,openingKey,part},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     return
   }
-  const part = editor.selectedOpeningPart ?? 'group'
-  const key =
-    editor.selectedOpenings
-      .map((ref) => `${ref.wallId}:${ref.openingId}`)
-      .sort()
-      .join('|') + `:${part}`
-  if (key === lastLibraryOpeningSelectionKey) return
-  lastLibraryOpeningSelectionKey = key
-  if (part !== 'group' && part !== 'frame' && part !== 'grille') return
-
-  const opening = selectedWindowOpening()?.opening
-  if (!opening) return
-  const want: LibraryTab =
-    opening.type === 'door'
-      ? 'doors'
-      : opening.type === 'cutout' || opening.type === 'conch' || openingLacksWindowChrome(opening)
-        ? 'niches'
-        : 'windows'
-  if (libraryTab !== want && allowedLibraryTabs().has(want)) {
-    setLibraryTab(want)
+  if (allowed.has('farbe') && libraryTab !== 'farbe') {
+    // #region agent log
+    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-A',location:'main.ts:syncLibraryTabForOpeningSelection',message:'auto-switch to farbe',data:{prevTab:libraryTab,armedInteriorWallDepthCm,armedLibraryWallPresetId,wallKey,openingKey,part},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    setLibraryTab('farbe')
+  } else if (libraryTab === 'farbe') {
+    initOpeningLibrary()
   }
 }
 
@@ -12891,6 +13549,7 @@ function renderUi(opts?: { skipLayerList?: boolean }) {
     syncOpeningPositionControls()
     syncDoorStairsControls()
     syncRollerShutterControls()
+    syncAwningControls()
     applyOpeningPartVisibility()
     applyWallPartVisibility()
     syncOpeningColorsHub()
@@ -12902,6 +13561,8 @@ function renderUi(opts?: { skipLayerList?: boolean }) {
     windowSillSection.hidden = true
     doorStairsSection.hidden = true
     openingRollerShutterSection.hidden = true
+    const awningSection = document.querySelector<HTMLElement>('#opening-awning-section')
+    if (awningSection) awningSection.hidden = true
     const pedimentSection = document.querySelector<HTMLElement>('#opening-pediment-section')
     const consolesSection = document.querySelector<HTMLElement>('#opening-consoles-section')
     const taperedFieldSection = document.querySelector<HTMLElement>('#opening-tapered-field-section')
@@ -12911,6 +13572,7 @@ function renderUi(opts?: { skipLayerList?: boolean }) {
     const motionSection = document.querySelector<HTMLElement>('#opening-motion-section')
     if (motionSection) motionSection.hidden = true
     applyWallPartVisibility()
+    syncStudioAwningControls()
   }
 
   if (hasSceneLight) {
@@ -13572,6 +14234,15 @@ function wallContextItems(
       },
     })
   }
+  if (awningClipboard) {
+    items.push({
+      label: 'Markise einfügen',
+      action: () => {
+        ensureWallSelected(wallId)
+        pasteAwningClipboardToWall(wallId, { at: pasteAt })
+      },
+    })
+  }
   if (replace.length > 0) {
     items.push({ label: 'Ersetzen durch', children: replace })
   }
@@ -13803,6 +14474,50 @@ function openingContextItems(wallId: string, openingId: string): MenuItem[] {
       copyStylesFromOpening(wallId, openingId)
     },
   })
+  if (opening && openingSupportsAwning(opening) && ensureOpeningAwning(opening).enabled) {
+    items.push({
+      label: 'Markise kopieren',
+      action: () => {
+        ensureOpeningSelected(wallId, openingId)
+        copyAwningToClipboard(ensureOpeningAwning(opening), 'opening')
+      },
+    })
+  }
+  const selectedOnSameWall = editor.selectedOpenings.filter((r) => r.wallId === wallId)
+  if (selectedOnSameWall.length >= 2) {
+    items.push({
+      label: 'Eine Markise über Auswahl',
+      action: () => {
+        const { state: next, awningId } = createGroupAwningForOpenings(
+          state,
+          wallId,
+          selectedOnSameWall.map((r) => r.openingId),
+        )
+        if (!awningId) return
+        commitState(next)
+        selectWall(wallId, false, 'awning', undefined, undefined, awningId)
+        planStatus.textContent = 'Markise über Auswahl'
+      },
+    })
+  }
+  if (awningClipboard && opening && openingSupportsAwning(opening)) {
+    items.push({
+      label: 'Markise einfügen',
+      action: () => {
+        ensureOpeningSelected(wallId, openingId)
+        pasteAwningClipboardToOpening(wallId, openingId, 'paste')
+      },
+    })
+    if (ensureOpeningAwning(opening).enabled) {
+      items.push({
+        label: 'Markise ersetzen',
+        action: () => {
+          ensureOpeningSelected(wallId, openingId)
+          pasteAwningClipboardToOpening(wallId, openingId, 'replace')
+        },
+      })
+    }
+  }
   items.push(...elementPasteMenuItems({ wallId }))
   if (styleClipboard) {
     items.push({
@@ -14210,8 +14925,11 @@ function showElementContextMenu(
   hit: {
     wallId?: string
     openingId?: string
+    openingPart?: OpeningPart
     wallPart?: NonNullable<EditorState['selectedWallPart']>
     bandId?: string
+    labelId?: string
+    awningId?: string
     ceiling?: { buildingId: string; floorIndex: number }
     sceneLightId?: string
   },
@@ -14224,6 +14942,14 @@ function showElementContextMenu(
   if (hit.ceiling) {
     selectCeiling(hit.ceiling.buildingId, hit.ceiling.floorIndex)
     showContextMenu(clientX, clientY, ceilingContextItems(hit.ceiling.buildingId, hit.ceiling.floorIndex))
+    return
+  }
+  if (hit.wallId && hit.openingId && hit.openingPart === 'awning') {
+    const inSel = editor.selectedOpenings.some(
+      (ref) => ref.wallId === hit.wallId && ref.openingId === hit.openingId,
+    )
+    if (!inSel) selectOpening(hit.wallId, hit.openingId, false, 'awning')
+    showContextMenu(clientX, clientY, awningContextItems(hit.wallId, { openingId: hit.openingId }))
     return
   }
   if (hit.wallId && hit.openingId) {
@@ -14242,6 +14968,17 @@ function showElementContextMenu(
       showContextMenu(clientX, clientY, openingContextItems(anchor.wallId, anchor.openingId))
       return
     }
+  }
+  if (hit.wallId && hit.wallPart === 'awning') {
+    selectWall(hit.wallId, false, 'awning', undefined, undefined, hit.awningId)
+    showContextMenu(
+      clientX,
+      clientY,
+      awningContextItems(hit.wallId, {
+        awningId: hit.awningId ?? editor.selectedAwningId ?? undefined,
+      }),
+    )
+    return
   }
   if (hit.wallId && hit.wallPart === 'trimBand' && hit.bandId) {
     selectWall(hit.wallId, false, 'trimBand', hit.bandId)
@@ -14331,6 +15068,219 @@ function labelContextItems(wallId: string, labelId?: string): MenuItem[] {
 }
 
 let labelClipboard: WallLabelConfig | null = null
+let awningClipboard: AwningClipboard | null = null
+
+function copyAwningToClipboard(config: AwningConfig, source: 'opening' | 'wall') {
+  awningClipboard = {
+    config: cloneAwningConfig({ ...config, enabled: true }),
+    source,
+  }
+  planStatus.textContent = 'Markise kopiert'
+}
+
+function pasteAwningClipboardToOpening(
+  wallId: string,
+  openingId: string,
+  mode: 'paste' | 'replace',
+) {
+  if (!awningClipboard) return
+  const next = applyAwningToOpenings(
+    state,
+    [{ wallId, openingId }],
+    awningClipboard.config,
+    mode,
+  )
+  commitState(next)
+  selectOpening(wallId, openingId, false, 'awning')
+  planStatus.textContent = mode === 'replace' ? 'Markise ersetzt' : 'Markise eingefügt'
+}
+
+function pasteAwningClipboardToWall(
+  wallId: string,
+  opts?: { awningId?: string | null; at?: { localX: number; localY: number } },
+) {
+  if (!awningClipboard) return
+  const { state: next, awningId } = applyAwningToWall(
+    state,
+    wallId,
+    awningClipboard.config,
+    opts,
+  )
+  commitState(next)
+  selectWall(wallId, false, 'awning', undefined, undefined, awningId)
+  planStatus.textContent = opts?.awningId ? 'Markise ersetzt' : 'Markise eingefügt'
+}
+
+function awningContextItems(
+  wallId: string,
+  opts: { openingId?: string; awningId?: string },
+): MenuItem[] {
+  const wall = getWall(state, wallId)
+  const opening = opts.openingId
+    ? wall?.openings.find((item) => item.id === opts.openingId)
+    : undefined
+  const wallAwning = wall
+    ? findWallAwning(wall, opts.awningId) ??
+      (opts.openingId ? findWallAwningCoveringOpening(wall, opts.openingId) : undefined)
+    : undefined
+  const openingAwning =
+    opening && ensureOpeningAwning(opening).enabled ? ensureOpeningAwning(opening) : undefined
+  const config = openingAwning ?? wallAwning
+  const isGroup = Boolean(wallAwning?.openingIds?.length)
+  const items: MenuItem[] = []
+
+  if (config) {
+    const hidden = !config.enabled
+    items.push({
+      label: visibilityMenuLabel(hidden),
+      action: () => {
+        if (openingAwning && opts.openingId) {
+          ensureOpeningSelected(wallId, opts.openingId)
+          commitState(updateOpeningAwning(state, [{ wallId, openingId: opts.openingId }], { enabled: hidden }))
+          return
+        }
+        if (wallAwning) {
+          selectWall(wallId, false, 'awning', undefined, undefined, wallAwning.id)
+          commitState(updateWallAwning(state, [wallId], { enabled: hidden }, wallAwning.id))
+        }
+      },
+    })
+    items.push({
+      label: 'Markise kopieren',
+      action: () => {
+        if (opts.openingId && openingAwning) {
+          ensureOpeningSelected(wallId, opts.openingId)
+          selectOpening(wallId, opts.openingId, false, 'awning')
+          copyAwningToClipboard(config, 'opening')
+        } else if (wallAwning) {
+          selectWall(wallId, false, 'awning', undefined, undefined, wallAwning.id)
+          copyAwningToClipboard(config, 'wall')
+        }
+      },
+    })
+  }
+
+  if (awningClipboard) {
+    if (opts.openingId && opening && openingSupportsAwning(opening)) {
+      items.push({
+        label: 'Markise einfügen',
+        action: () => pasteAwningClipboardToOpening(wallId, opts.openingId!, 'paste'),
+      })
+      if (openingAwning || wallAwning) {
+        items.push({
+          label: 'Markise ersetzen',
+          action: () => {
+            if (wallAwning && !openingAwning) {
+              pasteAwningClipboardToWall(wallId, { awningId: wallAwning.id })
+              return
+            }
+            pasteAwningClipboardToOpening(wallId, opts.openingId!, 'replace')
+          },
+        })
+      }
+    } else if (!opts.openingId) {
+      items.push({
+        label: 'Markise einfügen',
+        action: () => pasteAwningClipboardToWall(wallId),
+      })
+      if (opts.awningId && wallAwning) {
+        items.push({
+          label: 'Markise ersetzen',
+          action: () => pasteAwningClipboardToWall(wallId, { awningId: opts.awningId }),
+        })
+      }
+    }
+  }
+
+  const selectedOnSameWall = editor.selectedOpenings.filter((r) => r.wallId === wallId)
+  if (selectedOnSameWall.length >= 2) {
+    items.push({
+      label: 'Eine Markise über Auswahl',
+      action: () => {
+        const { state: next, awningId } = createGroupAwningForOpenings(
+          state,
+          wallId,
+          selectedOnSameWall.map((r) => r.openingId),
+        )
+        if (!awningId) return
+        commitState(next)
+        selectWall(wallId, false, 'awning', undefined, undefined, awningId)
+        planStatus.textContent = 'Markise über Auswahl'
+      },
+    })
+  }
+
+  if (isGroup && wallAwning) {
+    items.push({
+      label: 'Verknüpfung lösen',
+      action: () => {
+        commitState(dissolveGroupAwning(state, wallId, wallAwning.id))
+        planStatus.textContent = 'Markisen-Verknüpfung gelöst'
+      },
+    })
+    items.push({
+      label: 'In Einzel-Markisen aufteilen',
+      action: () => {
+        commitState(splitGroupAwningToOpenings(state, wallId, wallAwning.id))
+        planStatus.textContent = 'Markise aufgeteilt'
+      },
+    })
+  }
+
+  if (opts.openingId && openingAwning) {
+    items.push({
+      label: 'Zuweisen für',
+      children: [
+        {
+          label: 'Typ',
+          action: () => {
+            ensureOpeningSelected(wallId, opts.openingId!)
+            selectOpening(wallId, opts.openingId!, false, 'awning')
+            commitAssignSelectionToScope('type')
+          },
+        },
+        {
+          label: 'Etage',
+          action: () => {
+            ensureOpeningSelected(wallId, opts.openingId!)
+            selectOpening(wallId, opts.openingId!, false, 'awning')
+            commitAssignSelectionToScope('floor')
+          },
+        },
+        {
+          label: 'Fassade',
+          action: () => {
+            ensureOpeningSelected(wallId, opts.openingId!)
+            selectOpening(wallId, opts.openingId!, false, 'awning')
+            commitAssignSelectionToScope('facade')
+          },
+        },
+      ],
+    })
+  }
+
+  if (config) {
+    items.push({
+      label: 'Löschen',
+      danger: true,
+      action: () => {
+        if (openingAwning && opts.openingId) {
+          commitState(
+            updateOpeningAwning(state, [{ wallId, openingId: opts.openingId }], { enabled: false }),
+          )
+          planStatus.textContent = 'Markise entfernt'
+          return
+        }
+        if (wallAwning) {
+          commitState(removeWallAwning(state, wallId, wallAwning.id))
+          planStatus.textContent = 'Markise entfernt'
+        }
+      },
+    })
+  }
+
+  return items
+}
 
 function copyWallLabelToClipboard(wallId: string, labelId?: string) {
   const wall = getWall(state, wallId)
@@ -14492,12 +15442,45 @@ function renameBuilding(buildingId: string) {
   commitState(updateBuilding(state, buildingId, { name: next.trim() }))
 }
 
-function toggleFloorHidden(floorIndex: number) {
+function toggleFloorHidden(floorIdx: number) {
   const floors = [...getFloors()]
-  while (floors.length <= floorIndex) floors.push(createEmptyFloorPlan())
-  const plan = floors[floorIndex]
-  floors[floorIndex] = { ...plan, hidden: !plan.hidden }
-  commitState(updateActiveBuilding(state, { floors }))
+  while (floors.length <= floorIdx) floors.push(createEmptyFloorPlan())
+  const plan = floors[floorIdx]
+  const nextHidden = !plan.hidden
+  floors[floorIdx] = { ...plan, hidden: nextHidden }
+  const building = activeBuilding()
+  const buildingId = building.id
+  const height = building.wallHeight
+  let nextEditor = editor
+  if (nextHidden) {
+    // Auswahl auf ausgeblendeter Etage lösen — sonst „hängende“ Markierung.
+    const keepWallIds = editor.selectedWallIds.filter((id) => {
+      const wall = getWall(state, id)
+      if (!wall) return false
+      return floorIndex(wall, height) !== floorIdx
+    })
+    const keepOpenings = editor.selectedOpenings.filter((ref) => {
+      const wall = getWall(state, ref.wallId)
+      if (!wall) return false
+      return floorIndex(wall, height) !== floorIdx
+    })
+    const keepCeiling =
+      editor.selectedCeiling?.buildingId === buildingId &&
+      editor.selectedCeiling.floorIndex === floorIdx
+        ? undefined
+        : editor.selectedCeiling
+    nextEditor = {
+      ...editor,
+      selectedWallIds: keepWallIds,
+      selectedOpenings: keepOpenings,
+      selectedCeiling: keepCeiling,
+      selectedEdges: keepOpenings.length === 1 ? editor.selectedEdges : [],
+    }
+  }
+  commitState(updateActiveBuilding(state, { floors }), nextEditor)
+  facade.setState(state, { rebuildBuildingIds: [buildingId] })
+  facade.rebuildIndoorFloor()
+  markViewportDirty()
 }
 
 function toggleFloorCeiling(floorIndex: number, show: boolean) {
@@ -15609,9 +16592,16 @@ function syncDownpipeUI() {
   const { downpipe: dp } = hit
   downpipeX.value = String(dp.localX)
   downpipeDiameter.value = String(dp.diameterCm)
+  downpipeSurfaceGap.value = String(dp.surfaceGapCm ?? DEFAULT_DOWNPIPE_SURFACE_GAP_CM)
+  downpipeSurfaceGapRow.hidden = dp.mount !== 'surface'
   downpipeNicheWidth.value = String(dp.nicheWidthCm ?? DEFAULT_DOWNPIPE_NICHE_WIDTH_CM)
   downpipeNicheDepth.value = String(dp.nicheDepthCm ?? DEFAULT_DOWNPIPE_NICHE_DEPTH_CM)
-  downpipeNicheOptions.hidden = dp.mount !== 'niche'
+  downpipeBreakDecor.checked = dp.breakDecor !== false
+  const showWidth = dp.mount === 'niche' || dp.breakDecor !== false
+  downpipeNicheOptions.hidden = !showWidth
+  downpipeNicheDepthRow.hidden = dp.mount !== 'niche'
+  downpipeNicheWidthLabel.textContent =
+    dp.mount === 'niche' ? 'Nischenbreite (cm)' : 'Durchbruchbreite (cm)'
   downpipeMountSurface.classList.toggle('active', dp.mount === 'surface')
   downpipeMountNiche.classList.toggle('active', dp.mount === 'niche')
   downpipeMountSurface.setAttribute('aria-pressed', String(dp.mount === 'surface'))
@@ -15652,8 +16642,27 @@ function wireDownpipeToolbar() {
       diameterCm: Math.max(4, Math.min(24, Number(downpipeDiameter.value) || DEFAULT_DOWNPIPE_DIAMETER_CM)),
     })
   })
+  const stepSurfaceGap = (dir: 1 | -1) => {
+    const hit = selectedDownpipeFixture()
+    if (!hit) return
+    const gap = (hit.downpipe.surfaceGapCm ?? DEFAULT_DOWNPIPE_SURFACE_GAP_CM) + dir
+    commitDownpipePatch({ surfaceGapCm: Math.max(0, Math.min(48, gap)) })
+  }
+  document.querySelector('#downpipe-surface-gap-minus')?.addEventListener('click', () => stepSurfaceGap(-1))
+  document.querySelector('#downpipe-surface-gap-plus')?.addEventListener('click', () => stepSurfaceGap(1))
+  downpipeSurfaceGap.addEventListener('change', () => {
+    commitDownpipePatch({
+      surfaceGapCm: Math.max(
+        0,
+        Math.min(48, Number(downpipeSurfaceGap.value) || DEFAULT_DOWNPIPE_SURFACE_GAP_CM),
+      ),
+    })
+  })
   downpipeMountSurface.addEventListener('click', () => commitDownpipePatch({ mount: 'surface' }))
   downpipeMountNiche.addEventListener('click', () => commitDownpipePatch({ mount: 'niche' }))
+  downpipeBreakDecor.addEventListener('change', () => {
+    commitDownpipePatch({ breakDecor: downpipeBreakDecor.checked })
+  })
   downpipeFootShoe.addEventListener('click', () => commitDownpipePatch({ foot: 'shoe' }))
   downpipeFootGround.addEventListener('click', () => commitDownpipePatch({ foot: 'ground' }))
   const stepNicheW = (dir: 1 | -1) => {
@@ -16193,14 +17202,15 @@ function renderColorControl(
   input.title = isTransparent ? 'Transparent — Farbe wählen zum Einfärben' : hex
   hexInput.title = 'HEX-Farbe (#RRGGBB)'
   input.disabled = false
-  const disableFields = isTransparent
-  hexInput.disabled = disableFields
-  rgbR.disabled = disableFields
-  rgbG.disabled = disableFields
-  rgbB.disabled = disableFields
-  hueRange.disabled = disableFields
-  svMap.style.pointerEvents = disableFields ? 'none' : 'auto'
-  svMap.style.opacity = disableFields ? '0.45' : '1'
+  // Bei Transparent Felder nutzbar lassen — sonst kein Weg zurück zur Farbe
+  // (nativer Color-Picker ist blockiert; v2.0.431).
+  hexInput.disabled = false
+  rgbR.disabled = false
+  rgbG.disabled = false
+  rgbB.disabled = false
+  hueRange.disabled = false
+  svMap.style.pointerEvents = 'auto'
+  svMap.style.opacity = '1'
   input.style.opacity = isTransparent ? '0.55' : '1'
 
   if (options?.allowTransparent) {
@@ -16330,8 +17340,8 @@ function renderColorSwatches(
     select?: HTMLSelectElement
   },
 ) {
-  void palette
   renderColorControl(container, active, onPick, onPreview, {
+    // Transparent bei Glas entfernt (v2.0.432); andere Paletten ohne Transparent.
     allowTransparent: false,
     finish,
   })
@@ -16516,11 +17526,13 @@ function commitFrameColor(color: string) {
 }
 
 function commitGlassColor(color: string) {
+  // Transparent nicht mehr anbieten — Altwerte → Standard-Glasfarbe.
+  const nextColor = isTransparentGlass(color) ? DEFAULT_GLASS_COLOR : color
   if (editor.selectedOpenings.length > 0) {
-    commitState(updateOpeningGlassColors(state, scopedOpeningRefs(), color))
+    commitState(updateOpeningGlassColors(state, scopedOpeningRefs(), nextColor))
     return
   }
-  commitState(updateWindowGlassColorsForWalls(state, scopedWallIds(), color))
+  commitState(updateWindowGlassColorsForWalls(state, scopedWallIds(), nextColor))
 }
 
 function previewFrameColor(color: string): FacadeState {
@@ -16588,8 +17600,12 @@ function previewRevealInteriorColor(color: string): FacadeState {
 }
 
 function syncRevealColorSwatches(visible: boolean) {
+  const sel = selectedWindowOpening()
+  const nicheLike =
+    Boolean(sel) &&
+    (openingIsConch(sel!.opening) || normalizeOpeningFill(sel!.opening.fill).mode === 'niche')
   revealExteriorColorSection.hidden = !visible
-  revealInteriorColorSection.hidden = !visible
+  revealInteriorColorSection.hidden = !visible || nicheLike
   if (!visible) return
   renderColorSwatches(
     revealExteriorColorSwatches,
@@ -16598,13 +17614,15 @@ function syncRevealColorSwatches(visible: boolean) {
     commitRevealExteriorColor,
     previewSelectionColor(previewRevealExteriorColor),
   )
-  renderColorSwatches(
-    revealInteriorColorSwatches,
-    'wall',
-    activeRevealInteriorColor(),
-    commitRevealInteriorColor,
-    previewSelectionColor(previewRevealInteriorColor),
-  )
+  if (!nicheLike) {
+    renderColorSwatches(
+      revealInteriorColorSwatches,
+      'wall',
+      activeRevealInteriorColor(),
+      commitRevealInteriorColor,
+      previewSelectionColor(previewRevealInteriorColor),
+    )
+  }
 }
 
 function syncOpeningColorSwatches(
@@ -17822,7 +18840,7 @@ function refreshAllProfileCards() {
 
 function fillAllProfileSelects() {
   refreshAllProfileCards()
-  if (libraryTab === 'profiles' || libraryTab === 'pediment' || libraryTab === 'openingForm' || libraryTab === 'cornice' || libraryTab === 'plinth' || libraryTab === 'label' || libraryTab === 'panels') initOpeningLibrary()
+  if (libraryTab === 'profiles' || libraryTab === 'pediment' || libraryTab === 'openingForm' || libraryTab === 'cornice' || libraryTab === 'plinth' || libraryTab === 'label' || libraryTab === 'panels' || libraryTab === 'awnings') initOpeningLibrary()
 }
 
 function selectedWindowOpening() {
@@ -18535,6 +19553,15 @@ function syncSelectionToolbarTabs() {
   if (wall && selectionIsStudioWall()) {
     syncStudioPanelColorControls(wall)
   }
+
+  // Bei neuer Auswahl zu Farben scrollen (v2.0.434).
+  if (selectionToolbarTab === 'colors') {
+    const colorsSection = tabSections.find((s) => s.dataset.settingsSection === 'colors')
+    const panel = colorsSection?.closest('.selection-toolbar-panels') as HTMLElement | null
+    if (colorsSection && panel) {
+      requestAnimationFrame(() => scrollToSettingsSection(panel, colorsSection, 'auto'))
+    }
+  }
 }
 
 function syncSettingsSectionStickyHeads(sections: HTMLElement[]) {
@@ -18617,7 +19644,8 @@ function applyOpeningPartVisibility() {
   const isBasement = Boolean(sel && isBasementWindowOpening(sel.opening))
   const focusPart = part !== 'group'
   const showFrame = !hideFrameChrome && (part === 'group' || part === 'frame' || part === 'grille')
-  const showTrim = !isBasement && !lacksChrome && (part === 'group' || part === 'trim')
+  const supportsFrameProfiles = Boolean(sel && openingSupportsFrameProfiles(sel.opening))
+  const showTrim = supportsFrameProfiles && (part === 'group' || part === 'trim')
   let showSillInner = !isBasement && (part === 'group' || part === 'sillInner')
   let showSillOuter = !isBasement && (part === 'group' || part === 'sillOuter')
   let showPediment = !isBasement && (part === 'group' || part === 'pediment')
@@ -18672,10 +19700,9 @@ function applyOpeningPartVisibility() {
   } else {
     const styleAcc = document.querySelector<HTMLElement>('#window-style-accordion')
     if (styleAcc && !windowStyleSection.hidden) styleAcc.hidden = false
-    if (isBasement) {
-      frameColorSection.hidden = false
-      glassColorSection.hidden = false
-    }
+    // Auch normale Fenster (nicht nur Keller) — sonst bleibt Glas nach Teil-Fokus hidden (v2.0.430).
+    frameColorSection.hidden = false
+    glassColorSection.hidden = false
   }
 
   const profileAssign = document.querySelector<HTMLElement>('#profile-assign-section')
@@ -18725,6 +19752,16 @@ function applyOpeningPartVisibility() {
   // Rollladen nur bei Ganz-Öffnung oder explizitem Rollladen-Fokus (Objekt-Matrix v2.0.154).
   openingRollerShutterSection.hidden =
     !supportsShutter || Boolean(lacksChrome) || (focusPart && part !== 'rollerShutter')
+
+  const awningSection = document.querySelector<HTMLElement>('#opening-awning-section')
+  const supportsAwning = Boolean(sel && openingSupportsAwning(sel.opening))
+  if (awningSection) {
+    awningSection.hidden =
+      !supportsAwning || (focusPart && part !== 'awning' && part !== 'group')
+    if (focusPart && part === 'awning') {
+      awningSection.hidden = !supportsAwning
+    }
+  }
 
   const measuresSection = document.querySelector<HTMLElement>('#opening-measures-section')
   if (measuresSection) measuresSection.hidden = focusPart
@@ -18829,6 +19866,21 @@ function applyOpeningPartVisibility() {
     windowSillSection.hidden = true
     doorStairsSection.hidden = true
     openingRollerShutterSection.hidden = !supportsShutter
+    const awningSec = document.querySelector<HTMLElement>('#opening-awning-section')
+    if (awningSec) awningSec.hidden = true
+  }
+  if (focusPart && part === 'awning') {
+    if (colorsSection) colorsSection.hidden = true
+    if (motionSection) motionSection.hidden = true
+    if (styleSection) styleSection.hidden = true
+    if (profileAssign) profileAssign.hidden = true
+    if (pedimentSection) pedimentSection.hidden = true
+    if (consolesSection) consolesSection.hidden = true
+    windowSillSection.hidden = true
+    doorStairsSection.hidden = true
+    openingRollerShutterSection.hidden = true
+    const awningSec = document.querySelector<HTMLElement>('#opening-awning-section')
+    if (awningSec) awningSec.hidden = !supportsAwning
   }
   if (focusPart && (part === 'sillInner' || part === 'sillOuter')) {
     if (colorsSection) colorsSection.hidden = true
@@ -18908,6 +19960,7 @@ function applyWallPartVisibility() {
     else if (part === 'trimBand') section.hidden = id !== 'trimBands'
     else if (part === 'plinth') section.hidden = id !== 'plinth'
     else if (part === 'label') section.hidden = id !== 'label'
+    else if (part === 'awning') section.hidden = id !== 'awning'
     else if (part === 'cladding') section.hidden = false
     else section.hidden = false
   }
@@ -18917,7 +19970,7 @@ function applyWallPartVisibility() {
   if (dims) dims.hidden = focusPart && part !== 'cladding'
   const colors = toolbar.querySelector<HTMLElement>('[data-settings-section="colors"]')
   if (colors) {
-    colors.hidden = focusPart && part !== 'label' && part !== 'cladding'
+    colors.hidden = focusPart && part !== 'label' && part !== 'cladding' && part !== 'awning'
   }
 
   // Schrift-Reiter nur wenn Labels vorhanden oder Schrift-Teil fokussiert.
@@ -18928,6 +19981,12 @@ function applyWallPartVisibility() {
       labelSection.hidden = true
     }
   }
+  const awningSection = toolbar.querySelector<HTMLElement>('[data-settings-section="awning"]')
+  if (awningSection && !focusPart) {
+    // Sektion bleibt sichtbar (Hinzufügen); Optionen steuert syncStudioAwningControls.
+    awningSection.hidden = false
+  }
+  syncStudioAwningControls()
   syncSelectionToolbarTabs()
 }
 
@@ -19612,6 +20671,8 @@ function wallPartToSettingsTab(
       return 'panels'
     case 'label':
       return 'label'
+    case 'awning':
+      return 'awning'
     default:
       return null
   }
@@ -19633,6 +20694,8 @@ function openingPartToSettingsTab(part: OpeningPart): string | null {
       return 'stairs'
     case 'rollerShutter':
       return 'roller-shutter'
+    case 'awning':
+      return 'awning'
     // Rahmen/Glas: Ganz-Öffnung — Tab nicht auf Farben erzwingen (erster bzw. Sticky).
     case 'frame':
     case 'group':
@@ -19644,10 +20707,10 @@ function openingPartToSettingsTab(part: OpeningPart): string | null {
   }
 }
 
-/** Bei jeder Auswahl: rechter Bereich startet auf „Übersicht“. */
+/** Bei jeder Auswahl: rechter Bereich startet auf „Farben“. */
 function queueSelectionToolbarTab(_preferredTab: string | null) {
   if (selectionToolbarTabLocked) return
-  pendingSelectionToolbarTab = 'all'
+  pendingSelectionToolbarTab = 'colors'
 }
 
 function selectWall(
@@ -19656,6 +20719,7 @@ function selectWall(
   wallPart: NonNullable<EditorState['selectedWallPart']> = 'group',
   trimBandId?: string,
   labelId?: string,
+  awningId?: string,
 ) {
   if (id === null) {
     if (additive) return
@@ -19672,6 +20736,7 @@ function selectWall(
       selectedWallPart: undefined,
       selectedTrimBandId: undefined,
       selectedLabelId: undefined,
+      selectedAwningId: undefined,
       selectedOpeningPart: undefined,
     })
     // Nach Abwahl: „Gültig für“ immer zurück auf Auswahl.
@@ -19689,6 +20754,10 @@ function selectWall(
         (item) => item.id && (item.enabled || (item.text ?? '').trim()),
       )?.id
     }
+  }
+  let resolvedAwningId = awningId
+  if (wallPart === 'awning' && wall && !resolvedAwningId) {
+    resolvedAwningId = wall.awnings?.[0]?.id
   }
   const expandBayOrGroup =
     !additive &&
@@ -19710,6 +20779,7 @@ function selectWall(
         selectedWallPart: wallPart === 'group' ? 'group' : wallPart,
         selectedTrimBandId: undefined,
         selectedLabelId: undefined,
+        selectedAwningId: undefined,
         selectedOpeningPart: undefined,
       })
       if (isGalleryModeActive() && currentView === '3d') {
@@ -19738,6 +20808,7 @@ function selectWall(
         selectedWallPart: 'group',
         selectedTrimBandId: undefined,
         selectedLabelId: undefined,
+        selectedAwningId: undefined,
         selectedOpeningPart: undefined,
       })
       return
@@ -19764,6 +20835,8 @@ function selectWall(
       selectedTrimBandId:
         selectedWallIds.length === 1 && wallPart === 'trimBand' ? trimBandId : undefined,
       selectedLabelId: undefined,
+      selectedAwningId:
+        selectedWallIds.length === 1 && wallPart === 'awning' ? resolvedAwningId : undefined,
       selectedOpeningPart: undefined,
     })
     if (isGalleryModeActive() && currentView === '3d' && selectedWallIds.length > 0) {
@@ -19792,6 +20865,7 @@ function selectWall(
     selectedWallPart: wallPart,
     selectedTrimBandId: wallPart === 'trimBand' ? trimBandId : undefined,
     selectedLabelId: wallPart === 'label' ? resolvedLabelId : undefined,
+    selectedAwningId: wallPart === 'awning' ? resolvedAwningId : undefined,
     selectedOpeningPart: undefined,
   })
   if (isGalleryModeActive() && currentView === '3d') {
@@ -19854,7 +20928,6 @@ function selectOpening(
 }
 
 await loadInitialState()
-dismissAppLoading()
 await new Promise<void>((resolve) => window.setTimeout(resolve, 0))
 // Fassaden-Builder 2.0: Fokus auf 2D-Front + Render-Modus; 3D wieder per Button wählbar
 presentationMode = 'render'
@@ -20023,6 +21096,7 @@ function syncSelectionHighlightSuppressed() {
   const suppress =
     Boolean(openingMotionPlayback) ||
     Boolean(rollerShutterPlayback) ||
+    isAwningPlaybackActive() ||
     isColorPickerSessionActive()
   facade.setSelectionHighlightSuppressed(suppress)
   svgView.setSelectionHighlightSuppressed(suppress)
@@ -20336,6 +21410,49 @@ const rollerShutterScheduleEditor = bindDayScheduleEditor(rollerShutterScheduleE
   setSchedule: (schedule: DaySchedule) => {
     commitRollerShutterPatch({ schedule })
   },
+})
+
+initAwningUi({
+  getState: () => state,
+  commitState,
+  previewState,
+  markViewportDirty,
+  scopedOpeningRefs,
+  selectedOpening: () => {
+    const sel = selectedWindowOpening()
+    return sel ? { wall: sel.wall, opening: sel.opening, wallId: sel.ref.wallId } : null
+  },
+  selectedWallIds: () => editor.selectedWallIds,
+  getWall,
+  selectedAwningId: () => editor.selectedAwningId,
+  setSelectedAwningId: (id) => {
+    const wallId =
+      editor.selectedWallIds[0] ?? editor.selectedOpenings[0]?.wallId ?? null
+    if (id && wallId) {
+      selectWall(wallId, false, 'awning', undefined, undefined, id)
+      return
+    }
+    editor = {
+      ...editor,
+      selectedAwningId: id,
+      selectedWallPart: id ? 'awning' : editor.selectedWallPart,
+    }
+  },
+  applyAwningExtension: (wallId, extension, opts) => {
+    const ok = facade.applyAwningExtension(wallId, extension, opts)
+    // Live: gedrosselter Voll-Bake (alle Caster, max. 4096²) — Markise folgt, Hausschatten bleiben.
+    if (ok) flushAwningLiveShadowBake()
+    return ok
+  },
+  settleAwningLiveShadow,
+  ensureHighDetailForWall: (wallId) => facade.ensureHighDetailForWall(wallId),
+  stopOtherPlayback: () => {
+    stopRollerShutterPlayback(false)
+    stopOpeningMotionPlayback(false)
+  },
+  syncSelectionHighlightSuppressed,
+  renderColorSwatches,
+  previewSelectionColor,
 })
 
 function setFacadeMeshesVisible(visible: boolean) {
@@ -22206,6 +23323,16 @@ let drag3dStartOpeningY = 0
 /** Client-Start für Öffnungs-Drag — Schwelle 6 px, damit Doppelklick nicht als Zug gilt. */
 let drag3dOpeningStartClientX = 0
 let drag3dOpeningStartClientY = 0
+/** 3D/Front: Fallrohr entlang der Wand-X verschieben. */
+let drag3dDownpipe: {
+  buildingId: string
+  downpipeId: string
+  wallId: string
+  startLocalX: number
+} | null = null
+let downpipeDragBase: FacadeState | null = null
+let drag3dDownpipeStartClientX = 0
+let drag3dDownpipeStartClientY = 0
 let drag3dWallPlane: THREE.Plane | null = null
 let drag3dWallCenterX = 0
 let drag3dWallCenterZ = 0
@@ -22300,9 +23427,7 @@ function pickNearestFacadeHit(ray: THREE.Ray): {
 } | null {
   let best: { wall: Wall; t: number; localX: number; localY: number } | null = null
   for (const wall of getAllWalls(state)) {
-    if (!isStudioWall(wall) || wall.hidden) continue
-    const building = findBuildingForWall(state, wall.id)
-    if (building?.hidden) continue
+    if (!isStudioWall(wall) || !isWallVisibleInState(state, wall)) continue
     const originX = wall.originX ?? wall.x
     const originZ = wall.originZ ?? 0
     const n = facadeOutward(wall.yawDeg ?? 0, wall.panelFlip ?? true)
@@ -22332,10 +23457,25 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
   wallPart?: NonNullable<EditorState['selectedWallPart']>
   bandId?: string
   labelId?: string
+  awningId?: string
   ceiling?: { buildingId: string; floorIndex: number }
   sceneLightId?: string
   downpipe?: { buildingId: string; downpipeId: string }
 } | null {
+  const remapDownpipeOpening = <
+    T extends {
+      openingId?: string
+      downpipe?: { buildingId: string; downpipeId: string }
+    },
+  >(
+    hit: T | null,
+  ): T | { downpipe: { buildingId: string; downpipeId: string } } | null => {
+    if (!hit?.openingId) return hit
+    const linked = findDownpipeByOpeningId(state, hit.openingId)
+    if (!linked) return hit
+    return { downpipe: linked }
+  }
+
   const rect = canvas.getBoundingClientRect()
   pointerNdc.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
   pointerNdc.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
@@ -22405,6 +23545,7 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
     wallPart?: NonNullable<EditorState['selectedWallPart']>
     bandId?: string
     labelId?: string
+    awningId?: string
   } | null => {
     let current: THREE.Object3D | null = object
     while (current) {
@@ -22415,11 +23556,20 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
       const wallPart = current.userData.wallPart as EditorState['selectedWallPart'] | undefined
       const bandId = current.userData.bandId as string | undefined
       const labelId = current.userData.labelId as string | undefined
+      const awningId = current.userData.awningId as string | undefined
+      if (wallId) {
+        const wall = getWall(state, wallId)
+        // Ausgeblendete Etage: keine Wand-/Öffnungs-/Bank-/Sturz-Auswahl.
+        if (!wall || !isWallVisibleInState(state, wall)) {
+          current = current.parent
+          continue
+        }
+      }
       if (wallId && kind === 'opening' && openingId) {
         return { wallId, openingId, openingPart: openingPart ?? 'group' }
       }
       if (wallId && kind === 'wall' && wallPart && wallPart !== 'group') {
-        return { wallId, wallPart, bandId, labelId }
+        return { wallId, wallPart, bandId, labelId, awningId }
       }
       if (wallId && kind === 'wall') {
         return { wallId, wallPart: 'group' as const }
@@ -22464,9 +23614,10 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
     if (op === 'sillOuter' || op === 'sillInner') return 1
     if (op === 'pediment' || op === 'consoles') return 2
     if (op === 'rollerShutter') return 3
+    if (op === 'awning') return 2
     if (op === 'grille') return 3
     if (op === 'trim') return 4
-    if (wp === 'cornice' || wp === 'plinth' || wp === 'trimBand' || wp === 'label') return 1
+    if (wp === 'cornice' || wp === 'plinth' || wp === 'trimBand' || wp === 'label' || wp === 'awning') return 1
     if (op && op !== 'group' && op !== 'frame') return 5
     return 100
   }
@@ -22495,7 +23646,7 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
     const near = nearestGeneric?.distance ?? Infinity
     // Teilobjekt nehmen, wenn es das Nächste ist oder nur knapp hinter Fläche liegt.
     if (bestPart.distance <= near + PART_PICK_SLACK) {
-      return bestPart.resolved
+      return remapDownpipeOpening(bestPart.resolved)
     }
   }
 
@@ -22503,7 +23654,7 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
     const resolved = resolveHit(hit.object)
     if (!resolved) continue
     if (isBehindFrontFacade(hit.distance, resolved.wallId)) continue
-    if (resolved.openingId) return resolved
+    if (resolved.openingId) return remapDownpipeOpening(resolved)
     if (resolved.wallId && !resolved.openingId) {
       // Explizite Wand-Teile nicht durch Öffnungsloch „stehlen“.
       if (resolved.wallPart && resolved.wallPart !== 'group' && resolved.wallPart !== 'cladding') {
@@ -22520,7 +23671,11 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
       const localY = hit.point.y - wall.y
       const opening = wall.openings.find((item) => openingContainsPoint(item, localX, localY))
       if (opening) {
-        return { wallId: wall.id, openingId: opening.id, openingPart: 'group' }
+        return remapDownpipeOpening({
+          wallId: wall.id,
+          openingId: opening.id,
+          openingPart: 'group' as const,
+        })
       }
       return resolved
     }
@@ -22530,7 +23685,11 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
       (item) => !item.hidden && openingContainsPoint(item, front.localX, front.localY),
     )
     if (opening) {
-      return { wallId: front.wall.id, openingId: opening.id, openingPart: 'group' }
+      return remapDownpipeOpening({
+        wallId: front.wall.id,
+        openingId: opening.id,
+        openingPart: 'group' as const,
+      })
     }
     return { wallId: front.wall.id, wallPart: 'group' }
   }
@@ -22539,7 +23698,7 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
 
 function isSelectablePickHit(hit: ReturnType<typeof pickFromEvent>): boolean {
   if (!hit) return false
-  return Boolean(hit.wallId || hit.openingId || hit.ceiling || hit.sceneLightId)
+  return Boolean(hit.wallId || hit.openingId || hit.ceiling || hit.sceneLightId || hit.downpipe)
 }
 
 function offsetStudioWallsByGrid(
@@ -22754,7 +23913,8 @@ canvas.addEventListener('pointerdown', (event) => {
       event.shiftKey &&
       !hasViewportSelection() &&
       !leafEditMode &&
-      !wallSplitModeActive()
+      !wallSplitModeActive() &&
+      !interiorWallPlaceModeActive()
     ) {
       event.preventDefault()
       beginMarqueeSelect(event)
@@ -22789,7 +23949,8 @@ canvas.addEventListener('pointerdown', (event) => {
       event.shiftKey &&
       !hasViewportSelection() &&
       !leafEditMode &&
-      !wallSplitModeActive()
+      !wallSplitModeActive() &&
+      !interiorWallPlaceModeActive()
     ) {
       event.preventDefault()
       beginMarqueeSelect(event)
@@ -22834,6 +23995,7 @@ canvas.addEventListener('pointerdown', (event) => {
     event.shiftKey &&
     !hasViewportSelection() &&
     !wallSplitModeActive() &&
+    !interiorWallPlaceModeActive() &&
     !(event.metaKey || event.ctrlKey || modKeyHeld)
   ) {
     event.preventDefault()
@@ -22846,7 +24008,19 @@ canvas.addEventListener('pointerdown', (event) => {
 
   if (currentView === '3d') controls.enabled = false
 
-  const hit = pickFromEvent(event)
+  let hit = pickFromEvent(event)
+  // Innenwände sind schmal und verlieren in pickFromEvent oft gegen Decke/Boden.
+  // Mesh-Pick (nur Wand/Paneel) hat Vorrang, damit Markieren/Greifer funktionieren.
+  const interiorMeshPick = pickWallAtClient(event.clientX, event.clientY)
+  if (interiorMeshPick) {
+    const meshWall = getWall(state, interiorMeshPick.wallId)
+    if (meshWall && isInteriorWall(meshWall)) {
+      // #region agent log
+      fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-N',location:'main.ts:pointerdown',message:'prefer interior mesh pick over ceiling/other',data:{interiorId:meshWall.id,prevKind:hit?.ceiling?'ceiling':hit?.wallId?'wall':hit?'other':'null',prevWallId:hit?.wallId},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      hit = { wallId: meshWall.id, wallPart: 'group' }
+    }
+  }
   if (hit?.sceneLightId) {
     const light = sceneLightById(state, hit.sceneLightId)
     selectSceneLight(hit.sceneLightId, additive || event.shiftKey)
@@ -22868,15 +24042,64 @@ canvas.addEventListener('pointerdown', (event) => {
     if (currentView === '3d') controls.enabled = true
     return
   }
+  // Innenwand-Modus VOR Decke/Öffnung — aber bestehende Innenwand → Auswahl, nicht neu platzieren.
+  if (interiorWallPlaceModeActive()) {
+    const pickId = hit?.wallId
+    const pickWall = pickId ? getWall(state, pickId) : undefined
+    if (pickWall && isInteriorWall(pickWall)) {
+      // #region agent log
+      fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-N',location:'main.ts:pointerdown',message:'place mode: select existing interior instead of place',data:{wallId:pickWall.id},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      // fall through to normal wall selection below
+    } else {
+      // #region agent log
+      fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-K',location:'main.ts:pointerdown',message:'interior place before ceiling',data:{pickKind:hit?.ceiling?'ceiling':hit?.openingId?'opening':hit?.wallId?'wall':hit?'other':'null',wallId:hit?.wallId,hover:wallSplitHover},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      if (tryInteriorWallPlaceAtEvent(event)) {
+        if (currentView === '3d') controls.enabled = true
+        return
+      }
+    }
+  }
   if (hit?.ceiling) {
     selectCeiling(hit.ceiling.buildingId, hit.ceiling.floorIndex)
     return
   }
+  if (hit?.downpipe) {
+    const building = state.buildings.find((b) => b.id === hit.downpipe!.buildingId)
+    const dp = building?.downpipes?.find((d) => d.id === hit.downpipe!.downpipeId)
+    const wall = dp ? getWall(state, dp.anchorWallId) : null
+    selectDownpipe(hit.downpipe.buildingId, hit.downpipe.downpipeId)
+    if (wall && dp && isStudioWall(wall) && canEditActiveBuildingNow()) {
+      drag3dDownpipe = {
+        buildingId: hit.downpipe.buildingId,
+        downpipeId: hit.downpipe.downpipeId,
+        wallId: wall.id,
+        startLocalX: dp.localX,
+      }
+      downpipeDragBase = null
+      setup3dDragForWall(wall, { x: dp.localX, y: wall.height / 2, width: 1 })
+      drag3dStartLocalHit = pick3dLocal(event) ?? { x: dp.localX, y: wall.height / 2 }
+      drag3dDownpipeStartClientX = event.clientX
+      drag3dDownpipeStartClientY = event.clientY
+      drag3dMoved = false
+      canvas.setPointerCapture(event.pointerId)
+    }
+    return
+  }
   // Segment-Modus (Wände-Tab, Breite gewählt, nichts markiert): Klick teilt statt zu wählen.
   if (hit?.wallId && wallSplitModeActive() && tryWallSplitAtEvent(event)) {
+    // #region agent log
+    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-C',location:'main.ts:pointerdown',message:'split path taken',data:{wallId:hit.wallId,armedInteriorWallDepthCm},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     if (currentView === '3d') controls.enabled = true
     return
   }
+  // #region agent log
+  if (armedInteriorWallDepthCm != null && hit?.wallId) {
+    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-B',location:'main.ts:pointerdown',message:'interior armed but place path skipped',data:{wallId:hit.wallId,placeActive:interiorWallPlaceModeActive(),splitActive:wallSplitModeActive(),libraryTab,segmentCm:armedInteriorSegmentCm(),selectedWalls:editor.selectedWallIds.length,selectedOpenings:editor.selectedOpenings.length,view:currentView,canEdit:canEditActiveBuildingNow()},timestamp:Date.now()})}).catch(()=>{});
+  }
+  // #endregion
   if (hit?.openingId && hit.wallId) {
     const wall = getWall(state, hit.wallId)
     const opening = wall?.openings.find(o => o.id === hit.openingId)
@@ -22938,6 +24161,7 @@ canvas.addEventListener('pointerdown', (event) => {
         wallPart: hit.wallPart ?? 'group',
         trimBandId: hit.bandId,
         labelId: hit.labelId,
+        awningId: hit.awningId,
       })
       pointerDownDidSelect = true
       if (hit.wallPart === 'label' && wallHasLabel(wall)) {
@@ -22962,7 +24186,8 @@ canvas.addEventListener('pointerdown', (event) => {
         hit.wallPart === 'trimBand' ||
         hit.wallPart === 'cornice' ||
         hit.wallPart === 'plinth' ||
-        hit.wallPart === 'label'
+        hit.wallPart === 'label' ||
+        hit.wallPart === 'awning'
       ) {
         pointerDown = { x: event.clientX, y: event.clientY, additive, rangeSelect }
         return
@@ -23130,9 +24355,13 @@ canvas.addEventListener('pointermove', (event) => {
   if (currentView === '3d' && moveNav3d(event)) return
   if (currentView === 'top' && moveNav3d(event)) return
 
-  // Segment-Modus: Hover-Marker (nur ohne gedrückte Taste / laufenden Drag).
-  if (wallSplitHover || wallSplitModeActive()) {
-    if (event.buttons === 0 && wallSplitModeActive() && !activeWallDragPresetId) {
+  // Segment-/Innenwand-Modus: Hover-Marker (nur ohne gedrückte Taste / laufenden Drag).
+  if (wallSplitHover || wallSplitModeActive() || interiorWallPlaceModeActive()) {
+    if (
+      event.buttons === 0 &&
+      !activeWallDragPresetId &&
+      (wallSplitModeActive() || interiorWallPlaceModeActive())
+    ) {
       updateWallSplitHover(event)
       return
     }
@@ -23362,6 +24591,33 @@ canvas.addEventListener('pointermove', (event) => {
         }
       }
     }
+    return
+  }
+
+  if (isSceneEditView() && drag3dDownpipe) {
+    const dist2 =
+      (event.clientX - drag3dDownpipeStartClientX) ** 2 +
+      (event.clientY - drag3dDownpipeStartClientY) ** 2
+    if (!drag3dMoved && dist2 < 36) return
+    drag3dMoved = true
+    const wall = getWall(state, drag3dDownpipe.wallId)
+    if (!wall) return
+    const local = pick3dLocal(event)
+    if (local === null) return
+    const dx = local.x - drag3dStartLocalHit.x
+    if (!downpipeDragBase) downpipeDragBase = cloneFacadeState(state)
+    const nextX = Math.max(
+      0,
+      Math.min(wall.width, snapToGrid(drag3dDownpipe.startLocalX + dx, STUDIO_MASONRY)),
+    )
+    const next = patchDownpipeInFacade(
+      downpipeDragBase,
+      drag3dDownpipe.buildingId,
+      drag3dDownpipe.downpipeId,
+      { localX: nextX },
+    )
+    previewState(next)
+    syncDownpipeUI()
     return
   }
 
@@ -23597,6 +24853,19 @@ canvas.addEventListener('pointerup', (event) => {
     drag3dTrimBand = null
     drag3dTrimBandMoved = false
     trimDragBase = null
+    drag3dWallPlane = null
+    if (currentView === '3d') controls.enabled = true
+    if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId)
+    return
+  }
+
+  if (isSceneEditView() && drag3dDownpipe) {
+    if (drag3dMoved && downpipeDragBase) {
+      commitDragFromBase(downpipeDragBase, editor, 'Fallrohr verschoben')
+    }
+    drag3dDownpipe = null
+    downpipeDragBase = null
+    drag3dMoved = false
     drag3dWallPlane = null
     if (currentView === '3d') controls.enabled = true
     if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId)
@@ -24607,20 +25876,33 @@ function tickActorDaySchedules(prevTime: number | null, nextTime: number): void 
   const closeRefs: OpeningRef[] = []
   const raiseRefs: OpeningRef[] = []
   const lowerRefs: OpeningRef[] = []
+  const extendRefs: OpeningRef[] = []
+  const retractRefs: OpeningRef[] = []
 
   for (const wall of getAllWalls(state)) {
     for (const opening of wall.openings) {
-      if (opening.type !== 'window' && opening.type !== 'door') continue
+      if (opening.type !== 'window' && opening.type !== 'door' && opening.type !== 'cutout' && opening.type !== 'conch') {
+        continue
+      }
       const ref: OpeningRef = { wallId: wall.id, openingId: opening.id }
-      const motionCross = scheduleCrossings(opening.schedule, prevTime, nextTime)
-      if (motionCross.turnedOn) openRefs.push(ref)
-      if (motionCross.turnedOff) closeRefs.push(ref)
+      if (opening.type === 'window' || opening.type === 'door') {
+        const motionCross = scheduleCrossings(opening.schedule, prevTime, nextTime)
+        if (motionCross.turnedOn) openRefs.push(ref)
+        if (motionCross.turnedOff) closeRefs.push(ref)
 
-      if (!openingSupportsRollerShutter(opening) || !opening.rollerShutter?.enabled) continue
-      const shutter = normalizeOpeningRollerShutter(opening.rollerShutter)
-      const shutterCross = scheduleCrossings(shutter.schedule, prevTime, nextTime)
-      if (shutterCross.turnedOn) raiseRefs.push(ref)
-      if (shutterCross.turnedOff) lowerRefs.push(ref)
+        if (openingSupportsRollerShutter(opening) && opening.rollerShutter?.enabled) {
+          const shutter = normalizeOpeningRollerShutter(opening.rollerShutter)
+          const shutterCross = scheduleCrossings(shutter.schedule, prevTime, nextTime)
+          if (shutterCross.turnedOn) raiseRefs.push(ref)
+          if (shutterCross.turnedOff) lowerRefs.push(ref)
+        }
+      }
+      if (openingSupportsAwning(opening) && ensureOpeningAwning(opening).enabled) {
+        const awning = ensureOpeningAwning(opening)
+        const awningCross = scheduleCrossings(awning.schedule, prevTime, nextTime)
+        if (awningCross.turnedOn) extendRefs.push(ref)
+        if (awningCross.turnedOff) retractRefs.push(ref)
+      }
     }
   }
 
@@ -24629,6 +25911,18 @@ function tickActorDaySchedules(prevTime: number | null, nextTime: number): void 
 
   if (raiseRefs.length > 0) playRollerShutterOnRefs(raiseRefs, 'raise')
   else if (lowerRefs.length > 0) playRollerShutterOnRefs(lowerRefs, 'lower')
+
+  if (extendRefs.length > 0) {
+    const prev = editor.selectedOpenings
+    editor = { ...editor, selectedOpenings: extendRefs }
+    playAwning('extend', 'opening')
+    editor = { ...editor, selectedOpenings: prev }
+  } else if (retractRefs.length > 0) {
+    const prev = editor.selectedOpenings
+    editor = { ...editor, selectedOpenings: retractRefs }
+    playAwning('retract', 'opening')
+    editor = { ...editor, selectedOpenings: prev }
+  }
 }
 
 function noteScheduleTimeOfDay(nextTime: number, triggerActors = true): void {
@@ -25079,6 +26373,21 @@ animAutoLightsInput.addEventListener('change', () => {
   sunSettings = { ...sunSettings, autoSceneLightsWithSun: animAutoLightsInput.checked }
   sceneLightsManualHold = null
   if (animAutoLightsInput.checked) syncAutoSceneLightsWithSun(true)
+  persistApp()
+})
+
+const sceneWindIntensity = document.querySelector<HTMLInputElement>('#scene-wind-intensity')
+const sceneWindValue = document.querySelector<HTMLOutputElement>('#scene-wind-value')
+sceneWindIntensity?.addEventListener('input', () => {
+  const v = Math.max(0, Math.min(1, Number(sceneWindIntensity.value) || 0))
+  sunSettings = { ...sunSettings, windIntensity: v }
+  if (sceneWindValue) sceneWindValue.textContent = v.toFixed(2)
+  markViewportDirty()
+})
+sceneWindIntensity?.addEventListener('change', () => {
+  const v = Math.max(0, Math.min(1, Number(sceneWindIntensity.value) || 0))
+  sunSettings = { ...sunSettings, windIntensity: v }
+  if (sceneWindValue) sceneWindValue.textContent = v.toFixed(2)
   persistApp()
 })
 
@@ -26132,6 +27441,25 @@ window.addEventListener('keydown', (event) => {
 
   if (handle3dCameraArrowKeys(event)) return
 
+  // Pfeiltasten: Fallrohr horizontal in 8-cm-Schritten
+  if (!mod && !event.shiftKey && isSceneEditView() && editor.selectedDownpipe) {
+    const MOVE = heldNudgeStepCm()
+    let dx = 0
+    if (event.key === 'ArrowLeft') dx = -MOVE
+    else if (event.key === 'ArrowRight') dx = MOVE
+    else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      return
+    } else return
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    const hit = selectedDownpipeFixture()
+    if (!hit) return
+    commitDownpipePatch({ localX: hit.downpipe.localX + dx })
+    return
+  }
+
   // Pfeiltasten: Öffnungen in 8-cm-Schritten (Numpad 1–9 = Vielfaches; ohne ⌘/Ctrl/⇧)
   if (!mod && !event.shiftKey && isSceneEditView() && editor.selectedOpenings.length > 0) {
     const MOVE = heldNudgeStepCm()
@@ -26311,7 +27639,18 @@ canvas.addEventListener('contextmenu', (event) => {
   event.preventDefault()
   if (event.metaKey || event.ctrlKey) return
   if (!isSceneEditView()) return
-  const hit = pickFromEvent(event)
+  let hit = pickFromEvent(event)
+  // Innenwände verlieren sonst oft gegen Decke — Löschen/Ausblenden unerreichbar.
+  const interiorMeshPick = pickWallAtClient(event.clientX, event.clientY)
+  if (interiorMeshPick) {
+    const meshWall = getWall(state, interiorMeshPick.wallId)
+    if (meshWall && isInteriorWall(meshWall)) {
+      // #region agent log
+      fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-CTX',location:'main.ts:contextmenu',message:'prefer interior mesh over pickFromEvent',data:{interiorId:meshWall.id,prevKind:hit?.ceiling?'ceiling':hit?.wallId?'wall':hit?'other':'null',prevWallId:hit?.wallId},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      hit = { wallId: meshWall.id, wallPart: 'group' }
+    }
+  }
   if (hit) {
     showElementContextMenu(event.clientX, event.clientY, hit)
     return
@@ -26363,6 +27702,7 @@ function animate() {
   if (!paused) {
     if (openingMotionPlayback) tickOpeningMotionPlayback(nowMs)
     if (rollerShutterPlayback) tickRollerShutterPlayback(nowMs)
+    if (isAwningPlaybackActive()) tickAwningPlayback(nowMs)
   }
 
   const pathMoved = tickSunPathAnimation(nowMs, dayDt)
@@ -26381,6 +27721,13 @@ function animate() {
   }
   const sceneLightLive = fadingLights || sceneLightAnim
   if (sceneLightLive) viewportDirty = true
+
+  const windMoved =
+    !paused &&
+    tickWindFabrics(animClock / 1000, sunSettings.windIntensity ?? DEFAULT_SUN_WIND_INTENSITY, {
+      paused,
+    })
+  if (windMoved) viewportDirty = true
 
   const leafMoved =
     !paused &&
@@ -26403,6 +27750,8 @@ function animate() {
     sunPathAnimating ||
     (!paused && Boolean(openingMotionPlayback)) ||
     (!paused && Boolean(rollerShutterPlayback)) ||
+    (!paused && isAwningPlaybackActive()) ||
+    windMoved ||
     sceneLightLive ||
     leafMoved
 
@@ -26746,6 +28095,187 @@ studioWallHeightInput.addEventListener('change', () => {
   studioWallHeightInput.value = String(nextHeight)
   commitState(finalizeWallLayout(resizeStoreyHeight(state, fi, delta)))
 })
+
+function applyFacadeLibraryColor(entry: FacadeColorLibraryEntry) {
+  const hex = entry.hex
+  const kat = entry.kategorie
+  const name = entry.farbname
+
+  if (editor.selectedOpenings.length > 0) {
+    const refs = scopedOpeningRefs()
+    const part = editor.selectedOpeningPart ?? 'group'
+
+    if (part === 'awning' || kat === 'markise') {
+      const useFrame = part === 'awning' && (kat === 'metall' || kat === 'holz')
+      const patch = useFrame ? { frameColor: hex } : { fabricColor: hex }
+      let patched = updateOpeningAwning(state, refs, patch)
+      for (const ref of refs) {
+        const wall = getWall(patched, ref.wallId)
+        if (!wall) continue
+        const group = findWallAwningCoveringOpening(wall, ref.openingId)
+        if (group) {
+          patched = updateWallAwning(patched, [ref.wallId], patch, group.id)
+        }
+      }
+      commitState(patched)
+      planStatus.textContent = useFrame ? `${name} → Markisen-Gestell` : `${name} → Markisen-Stoff`
+      return
+    }
+
+    if (part === 'rollerShutter' || kat === 'laeden') {
+      commitState(updateOpeningRollerShutter(state, refs, { color: hex }))
+      planStatus.textContent = `${name} → Rollladen / Laden`
+      return
+    }
+    if (part === 'sillInner') {
+      commitState(updateOpeningSills(state, refs, { inner: { color: hex } }))
+      planStatus.textContent = `${name} → Innenbank`
+      return
+    }
+    if (part === 'sillOuter') {
+      commitState(updateOpeningSills(state, refs, { outer: { color: hex } }))
+      planStatus.textContent = `${name} → Fensterbrett`
+      return
+    }
+    if (part === 'pediment' || part === 'consoles') {
+      commitState(updateOpeningPediment(state, refs, { color: hex }))
+      planStatus.textContent = `${name} → Verdachung`
+      return
+    }
+    if (part === 'stairs') {
+      commitState(updateOpeningStairs(state, refs, { color: hex }))
+      planStatus.textContent = `${name} → Treppe`
+      return
+    }
+    if (part === 'trim') {
+      commitState(updateOpeningTrim(state, refs, { color: hex }))
+      planStatus.textContent = `${name} → Profil`
+      return
+    }
+    if (kat === 'stuck') {
+      commitState(updateOpeningPediment(state, refs, { color: hex }))
+      planStatus.textContent = `${name} → Verdachung`
+      return
+    }
+    commitState(updateOpeningFrameColors(state, refs, hex))
+    planStatus.textContent = `${name} → Rahmen`
+    return
+  }
+
+  if (editor.selectedWallPart === 'awning' && editor.selectedWallIds.length > 0) {
+    const wallId = editor.selectedWallIds[0]!
+    const patch =
+      kat === 'metall' || kat === 'holz' ? { frameColor: hex } : { fabricColor: hex }
+    commitState(updateWallAwning(state, [wallId], patch, editor.selectedAwningId))
+    planStatus.textContent =
+      kat === 'metall' || kat === 'holz' ? `${name} → Markisen-Gestell` : `${name} → Markisen-Stoff`
+    return
+  }
+
+  if (editor.selectedRoofBuildingId || editor.selectedRoofPart) {
+    commitRoofPatch({ tileColor: hex })
+    planStatus.textContent = `${name} → Dach`
+    return
+  }
+
+  if (editor.selectedWallIds.length > 0) {
+    const ids = scopedWallIds()
+    const part = editor.selectedWallPart ?? 'group'
+    if (part === 'cornice') {
+      commitCornicePatch({ color: hex })
+      planStatus.textContent = `${name} → Gesims`
+      return
+    }
+    if (part === 'plinth') {
+      commitStudioPanelPatch({ plinthColor: hex, plinthProfileColor: hex })
+      planStatus.textContent = `${name} → Sockel`
+      return
+    }
+    if (part === 'label') {
+      commitLabelPatch({ color: hex })
+      planStatus.textContent = `${name} → Schrift`
+      return
+    }
+    if (part === 'trimBand') {
+      commitState(updateWallColors(state, ids, hex, 'profileColor'))
+      planStatus.textContent = `${name} → Zierband`
+      return
+    }
+    if (kat === 'fuge') {
+      commitStudioPanelPatch({ jointColor: hex })
+      planStatus.textContent = `${name} → Fuge`
+      return
+    }
+    if (kat === 'stuck' || kat === 'metall') {
+      commitState(updateWallColors(state, ids, hex, 'profileColor'))
+      planStatus.textContent = `${name} → Profil`
+      return
+    }
+    if (kat === 'dach') {
+      const buildingId = findBuildingForWall(state, ids[0]!)?.id
+      if (buildingId) {
+        commitState(
+          updateBuilding(state, buildingId, (b) => ({
+            ...b,
+            roof: { ...normalizeRoof(b.roof), tileColor: hex },
+          })),
+        )
+        planStatus.textContent = `${name} → Dach`
+        return
+      }
+    }
+    if (kat === 'anstrich_steinfarben') {
+      const wall = getWall(state, ids[0]!)
+      if (wall?.role === 'interior') {
+        commitState(updateWallColors(state, ids, hex, 'interiorColor'))
+        planStatus.textContent = `${name} → Innenwand`
+        return
+      }
+      commitState(updateWallColors(state, ids, hex, 'wallColor'))
+      planStatus.textContent = `${name} → Wandfarbe`
+      return
+    }
+    if (kat === 'fenster_tuer' || kat === 'holz') {
+      const refs: OpeningRef[] = []
+      for (const wallId of ids) {
+        const wall = getWall(state, wallId)
+        for (const opening of wall?.openings ?? []) {
+          refs.push({ wallId, openingId: opening.id })
+        }
+      }
+      if (refs.length > 0) {
+        commitState(updateOpeningFrameColors(state, refs, hex))
+        planStatus.textContent = `${name} → Rahmen`
+        return
+      }
+    }
+    if (kat === 'markise') {
+      let patched = state
+      for (const wallId of ids) {
+        const wall = getWall(patched, wallId)
+        for (const awning of wall?.awnings ?? []) {
+          patched = updateWallAwning(patched, [wallId], { fabricColor: hex }, awning.id)
+        }
+        for (const opening of wall?.openings ?? []) {
+          if (opening.awning?.enabled) {
+            patched = updateOpeningAwning(patched, [{ wallId, openingId: opening.id }], {
+              fabricColor: hex,
+            })
+          }
+        }
+      }
+      commitState(patched)
+      planStatus.textContent = `${name} → Markisen-Stoff`
+      return
+    }
+    // Stein / Backstein / Default → Bekleidung
+    commitState(updateWallColors(state, ids, hex, 'claddingColor'))
+    planStatus.textContent = `${name} → Stein/Fassade`
+    return
+  }
+
+  planStatus.textContent = 'Bitte Wand, Fenster oder Dach auswählen'
+}
 
 function commitStudioPanelPatch(patch: Parameters<typeof updateStudioPanel>[2]) {
   if (!canEditActiveBuildingNow()) return

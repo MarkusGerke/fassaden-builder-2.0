@@ -21,6 +21,7 @@ import {
   getActiveBuilding,
   getAllWalls,
   getVisibleWalls,
+  isWallVisibleInState,
   wallWithoutOpenings,
 } from './utils/buildings'
 import {
@@ -28,7 +29,7 @@ import {
   type FacadeDecorKind,
 } from './studio/facadeDecor'
 import { resolveProfile } from './profiles/registry'
-import { applyPlinthOpeningFragmentDiscard, buildProfilePaths, clipProfileSectionAboveCm, createPlinthProfileSweepGeometry, createProfileSweepGeometry, createSimpleProfileBarGeometry, disposePlinthOpeningDiscard, scaleProfileSectionAxes, transformProfileSection, transformProfileSectionAnchored } from './utils/profilePaths'
+import { applyPlinthOpeningFragmentDiscard, buildProfilePaths, clipProfileSectionAboveCm, createPlinthProfileSweepGeometry, createProfileSweepGeometry, createSimpleProfileBarGeometry, disposePlinthOpeningDiscard, scaleProfileSectionAxes, transformProfileSection, transformProfileSectionAnchored, openingFrameProfileOutwardCm } from './utils/profilePaths'
 import { clampFacadeState, edgeIsJoined, storeyStructuralDepthCm } from './utils/walls'
 import {
   labelWorldDeltaFromStates,
@@ -111,6 +112,29 @@ import {
   DEFAULT_ROLLER_COLOR,
   ROLLER_SHUTTER_INWARD_CM,
 } from './studio/rollerShutter'
+import {
+  AWNING_ARM_SECTION_CM,
+  AWNING_CASSETTE_DEPTH_CM,
+  AWNING_CASSETTE_HEIGHT_CM,
+  AWNING_FRONT_BAR_SECTION_CM,
+  applyAwningFabricPositions,
+  awningArmCount,
+  awningArmSegmentSpecs,
+  awningFabricFinish,
+  awningFrameFinish,
+  awningNeedsWallBrackets,
+  computeAwningPose,
+  createAwningFabricGeometry,
+  normalizeAwningConfig,
+  openingSupportsAwning,
+  type AwningPose,
+} from './studio/awning'
+import { wallAwnings, openingCoveredByWallAwning, layoutAwningForOpenings } from './utils/awnings'
+import {
+  clearWindFabrics,
+  registerWindFabric,
+  unregisterWindFabric,
+} from './scene/windRuntime'
 import { normalizeOpeningPediment } from './studio/pediment'
 import {
   createPedimentConsoleGeometries,
@@ -120,7 +144,7 @@ import {
 import { planFacesWithHoles } from './studio/floorPlan'
 import { notchSlabRingAtOpenings } from './studio/slabNotches'
 import { floorIndex, storeyFloorSurfaceY, storeyTopY } from './utils/layers'
-import { isStudioWall, leafOpenSignForWall, outerSillBoardPose, studioFacadeOutwardLocalZ, studioFacadeSelectionLocalZ, studioProfileAnchorLocalZ, studioWallTransform, studioWindowOriginZ, wallEndPoint, wallHasPanels, wallStartPoint, windowDepthForwardSign } from './studio/walls'
+import { isStudioWall, leafOpenSignForWall, outerSillBoardPose, studioFacadeOutwardLocalZ, studioFacadeSelectionLocalZ, studioPanelFaceLocalZ, studioProfileAnchorLocalZ, studioWallTransform, studioWindowOriginZ, wallEndPoint, wallHasPanels, wallStartPoint, windowDepthForwardSign } from './studio/walls'
 import { buildMansardRoof } from './studio/roof'
 import {
   buildDownpipeGeometry,
@@ -243,6 +267,7 @@ export class FacadeController {
   private readonly galleryCullWallPos = new THREE.Vector3()
   private readonly stairMeshes: THREE.Mesh[] = []
   private readonly rollerShutterGroups: THREE.Group[] = []
+  private readonly awningGroups: THREE.Group[] = []
   private readonly revealMeshes: THREE.Mesh[] = []
   /** Unsichtbare Öffnungs-Tunnel nur für Shadow-Map (pro Wand). */
   private readonly openingShadowTunnelMeshes = new Map<string, THREE.Mesh>()
@@ -432,6 +457,9 @@ export class FacadeController {
 
   /** Paneel-Config für Raster/Clip — Sockel-Decor aus → plinthEnabled false. */
   private panelForCladdingGeometry(wall: Wall): StudioPanelConfig {
+    if (wall.role === 'interior') {
+      return { ...(wall.panel ?? DEFAULT_STUDIO_PANEL), enabled: false, pattern: 'none' }
+    }
     const panel = wall.panel ?? DEFAULT_STUDIO_PANEL
     if (!this.wallPlinthDecorHidden(wall)) return panel
     return { ...panel, plinthEnabled: false }
@@ -813,6 +841,9 @@ export class FacadeController {
     for (const group of this.rollerShutterGroups) {
       applyOpeningTree(group)
     }
+    for (const group of this.awningGroups) {
+      applyOpeningTree(group)
+    }
 
     this.syncLabelShadowReceivers()
     if (!enable) this.applyIndoorShadowCasting()
@@ -949,7 +980,10 @@ export class FacadeController {
         this.finishExteriorMaterial(mat)
         // Matt-Weiß etwas heller / weniger rau als reine Wand.
         if (mat.roughness > 0.55) mat.roughness = 0.55
-        mat.envMapIntensity = Math.max(mat.envMapIntensity, 0.7)
+        const envBase = mat.userData.baseEnvMapIntensity
+        if (typeof envBase !== 'number') {
+          mat.userData.baseEnvMapIntensity = Math.max(mat.envMapIntensity, 0.7)
+        }
       }
     })
   }
@@ -1149,6 +1183,7 @@ export class FacadeController {
     for (const mesh of this.pedimentMeshes) hideObject(mesh)
     for (const mesh of this.revealMeshes) hideObject(mesh)
     for (const obj of this.rollerShutterGroups) hideObject(obj)
+    for (const obj of this.awningGroups) hideObject(obj)
     for (const mesh of this.stairMeshes) hideObject(mesh)
     for (const obj of this.casingInstances) hideObject(obj)
     for (const mesh of [...this.claddingLodLowMeshes, ...this.claddingLodHighMeshes]) hideObject(mesh)
@@ -1174,6 +1209,7 @@ export class FacadeController {
     for (const mesh of this.pedimentMeshes) visit(mesh)
     for (const mesh of this.revealMeshes) visit(mesh)
     for (const obj of this.rollerShutterGroups) visit(obj)
+    for (const obj of this.awningGroups) visit(obj)
     for (const mesh of this.stairMeshes) visit(mesh)
     for (const obj of this.casingInstances) visit(obj)
     for (const mesh of [...this.claddingLodLowMeshes, ...this.claddingLodHighMeshes]) visit(mesh)
@@ -1492,6 +1528,7 @@ export class FacadeController {
     for (const obj of this.claddingLodHighMeshes) visit(obj)
     for (const obj of this.stairMeshes) visit(obj)
     for (const obj of this.rollerShutterGroups) visit(obj)
+    for (const obj of this.awningGroups) visit(obj)
     for (const obj of this.revealMeshes) visit(obj)
   }
 
@@ -2223,12 +2260,19 @@ export class FacadeController {
       this.roofGroup.add(roofMesh)
 
       if (built.gutter) {
+        const gutterColor = built.gutterColor ?? '#8E8A88'
+        const zincDefault = gutterColor.replace(/\s/g, '').toLowerCase() === '#8e8a88'
+        // Titanzink-Default: metallisch. Andere Farben (z. B. Weiß) als Lack —
+        // sonst wirkt Weiß bei metalness 0.55 ohne EnvMap grau (v2.0.408).
         const gutterMat = new THREE.MeshStandardMaterial({
-          color: new THREE.Color(built.gutterColor ?? '#8E8A88'),
-          roughness: 0.45,
-          metalness: 0.55,
+          color: new THREE.Color(gutterColor),
+          roughness: zincDefault ? 0.45 : 0.72,
+          metalness: zincDefault ? 0.55 : 0.06,
           side: THREE.DoubleSide,
         })
+        if (!zincDefault && !this.isPerfPresentation()) {
+          this.finishExteriorMaterial(gutterMat)
+        }
         const gutterMesh = new THREE.Mesh(built.gutter, gutterMat)
         gutterMesh.castShadow = true
         gutterMesh.receiveShadow = true
@@ -2266,12 +2310,17 @@ export class FacadeController {
       for (const dp of building.downpipes ?? []) {
         const geo = buildDownpipeGeometry(building, dp)
         if (!geo) continue
+        const pipeColor = dp.color || DEFAULT_DOWNPIPE_COLOR
+        const zincDefault = pipeColor.replace(/\s/g, '').toLowerCase() === '#8e8a88'
         const mat = new THREE.MeshStandardMaterial({
-          color: new THREE.Color(dp.color || DEFAULT_DOWNPIPE_COLOR),
-          roughness: DOWNPIPE_ROUGHNESS,
-          metalness: DOWNPIPE_METALNESS,
+          color: new THREE.Color(pipeColor),
+          roughness: zincDefault ? DOWNPIPE_ROUGHNESS : 0.72,
+          metalness: zincDefault ? DOWNPIPE_METALNESS : 0.06,
           side: THREE.DoubleSide,
         })
+        if (!zincDefault && !this.isPerfPresentation()) {
+          this.finishExteriorMaterial(mat)
+        }
         const mesh = new THREE.Mesh(geo, mat)
         mesh.castShadow = true
         mesh.receiveShadow = true
@@ -2759,6 +2808,27 @@ export class FacadeController {
     return found
   }
 
+  /**
+   * Setzt Markisen-Ausfahrt ohne Mesh-Rebuild (`extension` 0 = eingerollt, 1 = voll).
+   * `awningId` für Wand-Markisen; bei Öffnung reicht openingId.
+   */
+  applyAwningExtension(
+    wallId: string,
+    extension: number,
+    opts?: { openingId?: string; awningId?: string },
+  ): boolean {
+    let found = false
+    for (const group of this.awningGroups) {
+      if (group.userData.wallId !== wallId) continue
+      if (opts?.openingId && group.userData.openingId !== opts.openingId) continue
+      if (opts?.awningId && group.userData.awningId !== opts.awningId) continue
+      if (!opts?.openingId && !opts?.awningId && group.userData.openingId) continue
+      this.layoutAwningGroup(group, extension)
+      found = true
+    }
+    return found
+  }
+
   private layoutRollerShutterGroup(group: THREE.Group, drop: number) {
     const openingHeight = Number(group.userData.openingHeight) || 1
     const openingWidth = Number(group.userData.openingWidth) || 1
@@ -2811,6 +2881,139 @@ export class FacadeController {
           occluder.visible = true
         }
       }
+    }
+  }
+
+  private layoutAwningGroup(group: THREE.Group, extension: number) {
+    const kind =
+      group.userData.kind === 'dropArm'
+        ? 'dropArm'
+        : group.userData.kind === 'markisolette'
+          ? 'markisolette'
+          : 'foldingArm'
+    const widthCm = Number(group.userData.widthCm) || 192
+    const projectionCm = Number(group.userData.projectionCm) || 144
+    const pose = computeAwningPose({
+      kind,
+      widthCm,
+      projectionCm,
+      extension,
+      frontOverhangCm:
+        typeof group.userData.frontOverhangCm === 'number' ? group.userData.frontOverhangCm : 16,
+      slopeDeg: typeof group.userData.slopeDeg === 'number' ? group.userData.slopeDeg : 15,
+      armInsetCm: typeof group.userData.armInsetCm === 'number' ? group.userData.armInsetCm : 16,
+      armClearanceCm:
+        typeof group.userData.armClearanceCm === 'number' ? group.userData.armClearanceCm : 8,
+      armMountYCm: typeof group.userData.armMountYCm === 'number' ? group.userData.armMountYCm : 144,
+      verticalDropCm:
+        typeof group.userData.verticalDropCm === 'number' ? group.userData.verticalDropCm : 120,
+      openingWidthCm:
+        typeof group.userData.openingWidthCm === 'number' ? group.userData.openingWidthCm : undefined,
+      profileOutwardCm:
+        typeof group.userData.profileOutwardCm === 'number' ? group.userData.profileOutwardCm : 0,
+    })
+    group.userData.extension = extension
+    this.applyAwningPoseToGroup(group, pose, kind)
+
+    const fabricId = group.userData.windFabricId as string | undefined
+    const fabric = group.children.find((c) => c.userData.role === 'fabric') as THREE.Mesh | undefined
+    if (fabricId && fabric) {
+      registerWindFabric(fabricId, fabric, {
+        phase: group.userData.windPhase as number | undefined,
+        amplitudeScale: 1,
+      })
+    }
+  }
+
+  private applyAwningPoseToGroup(
+    group: THREE.Group,
+    pose: AwningPose,
+    kind: 'foldingArm' | 'dropArm' | 'markisolette',
+  ) {
+    const ext = Number(group.userData.extension) || 0
+    const showArms = kind === 'foldingArm' ? ext > 0.03 : true
+
+    const cassette = group.children.find((c) => c.userData.role === 'cassette') as
+      | THREE.Mesh
+      | undefined
+    if (cassette) {
+      cassette.position.copy(pose.cassetteCenter)
+      cassette.renderOrder = 0
+    }
+    const roll = group.children.find((c) => c.userData.role === 'roll') as THREE.Mesh | undefined
+    if (roll) {
+      roll.position.set(0, -AWNING_CASSETTE_HEIGHT_CM * 0.1, pose.rollRadius)
+      roll.scale.set(Math.max(0.1, pose.cassetteSize.x * 0.92), 1, 1)
+      roll.renderOrder = 0
+    }
+    const frontBar = group.children.find((c) => c.userData.role === 'frontBar') as
+      | THREE.Mesh
+      | undefined
+    if (frontBar) {
+      frontBar.position.copy(pose.frontBarCenter)
+      frontBar.scale.set(Math.max(0.1, pose.frontBarLength), 1, 1)
+      frontBar.visible = showArms || ext > 0.02
+      frontBar.renderOrder = 1
+    }
+
+    const armMeshes = group.children.filter((c) => c.userData.role === 'arm') as THREE.Mesh[]
+    const specs = awningArmSegmentSpecs(pose, kind)
+    for (let i = 0; i < armMeshes.length; i += 1) {
+      const mesh = armMeshes[i]!
+      const spec = specs[i]
+      if (!spec) {
+        mesh.visible = false
+        continue
+      }
+      mesh.visible = showArms
+      mesh.position.copy(spec.center)
+      mesh.quaternion.copy(spec.quaternion)
+      mesh.scale.set(1, Math.max(0.1, spec.length), 1)
+      mesh.renderOrder = 1
+    }
+
+    const brackets = group.children.filter((c) => c.userData.role === 'bracket') as THREE.Mesh[]
+    const needBrackets = awningNeedsWallBrackets(kind)
+    for (const br of brackets) {
+      const side = br.userData.side === 'right' ? 'right' : 'left'
+      const mount = side === 'right' ? pose.rightMount : pose.leftMount
+      br.visible = needBrackets
+      br.position.copy(mount)
+      br.position.z -= 1.2
+      br.renderOrder = 1
+    }
+
+    const hinges = group.children.filter((c) => c.userData.role === 'hinge') as THREE.Mesh[]
+    for (const hinge of hinges) {
+      const side = hinge.userData.side === 'right' ? 'right' : 'left'
+      const joint = hinge.userData.joint as string
+      const mount = side === 'right' ? pose.rightMount : pose.leftMount
+      const elbow = side === 'right' ? pose.rightElbow : pose.leftElbow
+      const front = side === 'right' ? pose.rightFront : pose.leftFront
+      const target = joint === 'elbow' ? elbow : joint === 'front' ? front : mount
+      // Gelenkarm: Ellbogen + Vorderkante. Fallarm/Markisolette: starrer Arm → Drehpunkt + Vorderkante, kein Ellbogen.
+      hinge.visible = showArms && (kind === 'foldingArm' ? joint !== 'mount' : joint !== 'elbow')
+      hinge.position.copy(target)
+      hinge.renderOrder = 2
+    }
+
+    const rails = group.children.filter((c) => c.userData.role === 'guideRail') as THREE.Mesh[]
+    const guideH = Math.max(4, Math.abs(pose.guideBottomY ?? 0))
+    for (const rail of rails) {
+      const isRight = rail.userData.side === 'right'
+      // Schiene führt Gleiter und Ausfallprofil → auf Arm-X, bis zum Drehpunkt (Schienenende).
+      const railX = isRight ? pose.rightMount.x : pose.leftMount.x
+      rail.visible = kind === 'markisolette'
+      rail.position.set(railX, -guideH * 0.5, AWNING_CASSETTE_DEPTH_CM * 0.12)
+      rail.scale.set(1, Math.max(0.1, guideH), 1)
+      rail.renderOrder = 0
+    }
+
+    const fabric = group.children.find((c) => c.userData.role === 'fabric') as THREE.Mesh | undefined
+    if (fabric?.geometry) {
+      applyAwningFabricPositions(fabric.geometry, pose)
+      fabric.visible = ext > 0.02
+      fabric.renderOrder = 8
     }
   }
 
@@ -3337,17 +3540,18 @@ export class FacadeController {
   }
 
   private removeBuildingRenderables(buildingId: string) {
-    const currentWallIds = new Set(
-      getVisibleWalls(this.state)
+    // Alle Wände des Gebäudes (auch ausgeblendete Etagen) — sonst bleiben
+    // Laibung/Bank/Verdachung ohne userData.buildingId stehen (v2.0.434).
+    const buildingWallIds = new Set(
+      getAllWalls(this.state)
         .filter((w) => w.buildingId === buildingId)
         .map((w) => w.id),
     )
-    // Alle Wand-IDs im Projekt — gelöschte Wände sind Orphans und müssen mit weg.
     const allWallIds = new Set(getAllWalls(this.state).map((w) => w.id))
 
     const wallMeshShouldRemove = (wallId: string, meshBuildingId?: string) =>
       meshBuildingId === buildingId ||
-      currentWallIds.has(wallId) ||
+      buildingWallIds.has(wallId) ||
       !allWallIds.has(wallId)
 
     for (const [id, mesh] of [...this.meshes.entries()]) {
@@ -3594,6 +3798,7 @@ export class FacadeController {
 
   private rebuildRollerShuttersForBuilding(buildingId: string) {
     this.rebuildRollerShutters(buildingId)
+    this.rebuildAwnings(buildingId)
   }
 
   private rebuildRoofForBuilding(buildingId: string) {
@@ -3754,6 +3959,7 @@ export class FacadeController {
     }
     this.rebuildStairs()
     this.rebuildRollerShutters()
+    this.rebuildAwnings()
     // Stil vor Selektion: sonst überschreibt applyRenderStyle die orange Auswahl
     this.finalizeGeometryRebuild()
     this.applyRenderStyle()
@@ -3767,6 +3973,22 @@ export class FacadeController {
         mesh.geometry.dispose()
       }
       this.revealMeshes.length = 0
+    } else {
+      for (let i = this.revealMeshes.length - 1; i >= 0; i -= 1) {
+        const mesh = this.revealMeshes[i]!
+        const wallId = mesh.userData.wallId as string | undefined
+        const wall = wallId ? findWall(this.state, wallId) : undefined
+        const meshBuildingId = mesh.userData.buildingId as string | undefined
+        const drop =
+          meshBuildingId === buildingId ||
+          wall?.buildingId === buildingId ||
+          (wallId != null && !wall) ||
+          (wall != null && !isWallVisibleInState(this.state, wall))
+        if (!drop) continue
+        this.profileGroup.remove(mesh)
+        mesh.geometry.dispose()
+        this.revealMeshes.splice(i, 1)
+      }
     }
 
     for (const wall of getVisibleWalls(this.state)) {
@@ -3784,10 +4006,15 @@ export class FacadeController {
           treatAsBareWall,
         })
         if (!geometry) continue
+        const sealedNiche =
+          opening.type === 'conch' || openingFillMode(opening) === 'niche'
         const exteriorColor =
           opening.revealExteriorColor ?? wall.wallColor ?? DEFAULT_WALL_COLOR
-        const interiorColor =
-          opening.revealInteriorColor ?? wall.interiorColor ?? DEFAULT_INTERIOR_COLOR
+        // Nische/Konche/Fallrohr: gesamtes Inneres in Wandfarbe + Außen-Oberfläche
+        // (nicht Innenwand-Weiß / Innen-Env — sonst wirkt die Nische trotz gleicher Hex anders).
+        const interiorColor = sealedNiche
+          ? exteriorColor
+          : opening.revealInteriorColor ?? wall.interiorColor ?? DEFAULT_INTERIOR_COLOR
         const exteriorMaterial = createTintedMaterial(this.material, exteriorColor, wall.wallFinish)
         const interiorMaterial = createTintedMaterial(
           this.material,
@@ -3796,7 +4023,11 @@ export class FacadeController {
         )
         exteriorMaterial.shadowSide = THREE.FrontSide
         interiorMaterial.shadowSide = THREE.FrontSide
-        interiorMaterial.userData.skipFacadeShade = true
+        // Offene Laibung innen: Innen-Shade, kein Fassaden-Gegenlicht (sonst exteriorSurface).
+        // Nische/Konche: beide Außen-Finish + Gegenlicht (v2.0.414 — sonst bleiben sie weiß).
+        if (!sealedNiche) {
+          interiorMaterial.userData.skipFacadeShade = true
+        }
         // Paneel-Wrap: Außenlaibung = Mörtelbett hinter den Return-Steinen (Gruppe 0),
         // Innen (1), Sohlbank-Putz (2) — feste Gruppen-Indizes aus der Geometrie.
         const wrapReveal = Boolean(geometry.userData.panelWrappedReveal)
@@ -3817,20 +4048,15 @@ export class FacadeController {
             : exteriorMaterial
         const mesh = new THREE.Mesh(geometry, materials)
         mesh.castShadow = true
-        mesh.userData.sealedNiche =
-          opening.type === 'conch' || openingFillMode(opening) === 'niche'
-        // Nische/Konche: von außen sichtbar beidseitig; kein Fassaden-Gegenlicht-Shader
-        // (sonst wirken Seiten/Rückwand schwarz und empfangen kein Licht).
+        mesh.userData.sealedNiche = sealedNiche
+        // Nische/Konche: von außen sichtbar beidseitig; Gegenlicht wie Fassade (v2.0.414).
         if (mesh.userData.sealedNiche) {
           exteriorMaterial.side = THREE.DoubleSide
           interiorMaterial.side = THREE.DoubleSide
           exteriorMaterial.shadowSide = THREE.DoubleSide
           interiorMaterial.shadowSide = THREE.DoubleSide
-          exteriorMaterial.userData.skipFacadeShade = true
-          interiorMaterial.userData.skipFacadeShade = true
-          // Wie Innenwand: EnvMap-Fill + Punktlicht sichtbar („spiegeln“).
-          this.finishInteriorMaterial(exteriorMaterial)
-          this.finishInteriorMaterial(interiorMaterial)
+          this.finishExteriorMaterial(exteriorMaterial)
+          this.finishExteriorMaterial(interiorMaterial)
           // Lichtdichte über Shadow-Tunnel; sichtbare Nische wirft nicht selbst
           // (vermeidet Selbstabschattung der Rückwand).
           mesh.castShadow = false
@@ -3867,6 +4093,7 @@ export class FacadeController {
         if (wrapReveal || geometry.groups.length >= 2) ensureShadowDepthMaterial(interiorMaterial)
         mesh.userData.originalMaterial = materials
         mesh.userData.wallId = wall.id
+        mesh.userData.buildingId = wall.buildingId
         // Zeichnung: Kanten wie Wandkörper bei Paneelen weglassen — Extrados besitzen
         // Steine/Sockel; sonst 64–128 Laibungs-Segmente als Reißverschluss.
         mesh.userData.skipLineEdges = true
@@ -4141,6 +4368,21 @@ export class FacadeController {
         this.casingGroup.remove(instance)
       }
       this.casingInstances.length = 0
+    } else {
+      for (let i = this.casingInstances.length - 1; i >= 0; i -= 1) {
+        const obj = this.casingInstances[i]!
+        const wallId = obj.userData.wallId as string | undefined
+        const wall = wallId ? findWall(this.state, wallId) : undefined
+        const meshBuildingId = obj.userData.buildingId as string | undefined
+        const drop =
+          meshBuildingId === buildingId ||
+          wall?.buildingId === buildingId ||
+          (wallId != null && !wall) ||
+          (wall != null && !isWallVisibleInState(this.state, wall))
+        if (!drop) continue
+        this.casingGroup.remove(obj)
+        this.casingInstances.splice(i, 1)
+      }
     }
     if (this.casingTemplates.size === 0) return
 
@@ -4625,6 +4867,22 @@ export class FacadeController {
         mesh.geometry.dispose()
       }
       this.stairMeshes.length = 0
+    } else {
+      for (let i = this.stairMeshes.length - 1; i >= 0; i -= 1) {
+        const mesh = this.stairMeshes[i]!
+        const wallId = mesh.userData.wallId as string | undefined
+        const wall = wallId ? findWall(this.state, wallId) : undefined
+        const meshBuildingId = mesh.userData.buildingId as string | undefined
+        const drop =
+          meshBuildingId === buildingId ||
+          wall?.buildingId === buildingId ||
+          (wallId != null && !wall) ||
+          (wall != null && !isWallVisibleInState(this.state, wall))
+        if (!drop) continue
+        this.claddingGroup.remove(mesh)
+        mesh.geometry.dispose()
+        this.stairMeshes.splice(i, 1)
+      }
     }
 
     for (const wall of getVisibleWalls(this.state)) {
@@ -4783,6 +5041,291 @@ export class FacadeController {
         this.rollerShutterGroups.push(group)
       }
     }
+  }
+
+  private disposeAwningGroup(group: THREE.Group) {
+    const fabricId = group.userData.windFabricId as string | undefined
+    if (fabricId) unregisterWindFabric(fabricId)
+    this.claddingGroup.remove(group)
+    const fabricGeo = group.userData.fabricGeometry as THREE.BufferGeometry | undefined
+    const frameMat = group.userData.frameMaterial as THREE.Material | undefined
+    const fabricMat = group.userData.fabricMaterial as THREE.Material | undefined
+    group.traverse((node) => {
+      if (!(node instanceof THREE.Mesh)) return
+      if (node.geometry && node.geometry !== fabricGeo) node.geometry.dispose()
+    })
+    if (fabricGeo) fabricGeo.dispose()
+    if (frameMat) frameMat.dispose()
+    if (fabricMat) fabricMat.dispose()
+  }
+
+  private rebuildAwnings(buildingId?: string) {
+    if (!buildingId) {
+      for (const group of this.awningGroups) this.disposeAwningGroup(group)
+      this.awningGroups.length = 0
+      clearWindFabrics()
+    } else {
+      for (let i = this.awningGroups.length - 1; i >= 0; i -= 1) {
+        const group = this.awningGroups[i]!
+        if (group.userData.buildingId !== buildingId) continue
+        this.disposeAwningGroup(group)
+        this.awningGroups.splice(i, 1)
+      }
+    }
+
+    for (const wall of getVisibleWalls(this.state)) {
+      if (buildingId && wall.buildingId !== buildingId) continue
+      if (this.wallIsBare(wall)) continue
+
+      for (const opening of wall.openings) {
+        if (opening.hidden) continue
+        if (!openingSupportsAwning(opening)) continue
+        if (openingCoveredByWallAwning(wall, opening.id)) continue
+        const awning = normalizeAwningConfig(opening.awning)
+        if (!awning.enabled) continue
+        this.mountAwningGroup(wall, awning, {
+          openingId: opening.id,
+          mountX: opening.x + opening.width / 2 + (awning.mountX ?? 0),
+          mountY: opening.y + opening.height + (awning.mountY ?? 0),
+          widthCm: awning.widthCm,
+        })
+      }
+
+      for (const awning of wallAwnings(wall)) {
+        if (!awning.enabled) continue
+        if (awning.openingIds?.length) {
+          const members = awning.openingIds
+            .map((id) => wall.openings.find((o) => o.id === id))
+            .filter((o): o is Opening => o != null && !o.hidden)
+          if (members.length === 0) continue
+          const layout = layoutAwningForOpenings(members, awning.overhangCm)
+          // mountY an der Gruppe: relativ zum Span-Sturz (wie Öffnungs-Markise).
+          this.mountAwningGroup(wall, awning, {
+            mountX: layout.mountX + layout.widthCm / 2,
+            mountY: layout.mountY + (awning.mountY ?? 0),
+            widthCm: layout.widthCm,
+          })
+          continue
+        }
+        const widthCm = awning.widthCm
+        const mountX = (awning.mountX ?? 0) + widthCm / 2
+        const mountY = awning.mountY ?? wall.height * 0.72
+        this.mountAwningGroup(wall, awning, { mountX, mountY, widthCm })
+      }
+    }
+  }
+
+  private mountAwningGroup(
+    wall: Wall,
+    awning: ReturnType<typeof normalizeAwningConfig>,
+    place: { openingId?: string; mountX: number; mountY: number; widthCm: number },
+  ) {
+    const kind = awning.kind
+    const widthCm = place.widthCm
+    const projectionCm = awning.projectionCm
+    const opening = place.openingId
+      ? wall.openings.find((item) => item.id === place.openingId)
+      : undefined
+    const profileOutwardCm = opening
+      ? openingFrameProfileOutwardCm(wall, opening, this.state.customProfiles)
+      : 0
+    const pose = computeAwningPose({
+      kind,
+      widthCm,
+      projectionCm,
+      extension: awning.extension,
+      frontOverhangCm: awning.frontOverhangCm ?? 16,
+      slopeDeg: awning.slopeDeg ?? 15,
+      armInsetCm: awning.armInsetCm ?? 16,
+      armClearanceCm: awning.armClearanceCm ?? 8,
+      armMountYCm: awning.armMountYCm ?? 144,
+      verticalDropCm: awning.verticalDropCm ?? 120,
+      openingWidthCm: opening?.width,
+      profileOutwardCm,
+    })
+
+    const frameMat = createTintedMaterial(
+      this.profileMaterial,
+      awning.frameColor ?? '#4b5563',
+      awningFrameFinish(awning),
+    )
+    this.finishExteriorMaterial(frameMat)
+    if ('polygonOffset' in frameMat) {
+      frameMat.polygonOffset = true
+      frameMat.polygonOffsetFactor = 2
+      frameMat.polygonOffsetUnits = 2
+    }
+    const fabricMat = createTintedMaterial(
+      this.material,
+      awning.fabricColor ?? '#9ca3af',
+      awningFabricFinish(awning),
+    )
+    fabricMat.side = THREE.DoubleSide
+    fabricMat.depthWrite = true
+    fabricMat.depthTest = true
+    if ('polygonOffset' in fabricMat) {
+      fabricMat.polygonOffset = true
+      fabricMat.polygonOffsetFactor = -6
+      fabricMat.polygonOffsetUnits = -6
+    }
+    this.finishExteriorMaterial(fabricMat)
+
+    const group = new THREE.Group()
+    group.userData.wallId = wall.id
+    group.userData.buildingId = wall.buildingId
+    group.userData.openingId = place.openingId
+    group.userData.awningId = awning.id
+    group.userData.kind = kind
+    group.userData.widthCm = widthCm
+    group.userData.projectionCm = projectionCm
+    group.userData.frontOverhangCm = awning.frontOverhangCm ?? 16
+    group.userData.slopeDeg = awning.slopeDeg ?? 15
+    group.userData.armInsetCm = awning.armInsetCm ?? 16
+    group.userData.armClearanceCm = awning.armClearanceCm ?? 8
+    group.userData.armMountYCm = awning.armMountYCm ?? 144
+    group.userData.verticalDropCm = awning.verticalDropCm ?? 120
+    group.userData.openingWidthCm = opening?.width
+    group.userData.profileOutwardCm = profileOutwardCm
+    group.userData.extension = awning.extension
+    group.userData.frameMaterial = frameMat
+    group.userData.fabricMaterial = fabricMat
+    group.userData.windPhase = Math.random()
+    group.userData.windFabricId = `awning:${wall.id}:${awning.id}`
+
+    const pick =
+      place.openingId != null
+        ? {
+            kind: 'opening' as const,
+            wallId: wall.id,
+            openingId: place.openingId,
+            openingPart: 'awning' as const,
+          }
+        : {
+            kind: 'wall' as const,
+            wallId: wall.id,
+            wallPart: 'awning' as const,
+            awningId: awning.id,
+          }
+
+    const cassetteGeo = new THREE.BoxGeometry(
+      pose.cassetteSize.x,
+      pose.cassetteSize.y,
+      pose.cassetteSize.z,
+    )
+    const cassette = new THREE.Mesh(cassetteGeo, frameMat)
+    cassette.castShadow = true
+    cassette.receiveShadow = true
+    cassette.userData.role = 'cassette'
+    cassette.userData.originalMaterial = frameMat
+    tagPickable(cassette, pick)
+    group.add(cassette)
+
+    const rollGeo = new THREE.CylinderGeometry(pose.rollRadius, pose.rollRadius, 1, 16)
+    rollGeo.rotateZ(Math.PI / 2)
+    const roll = new THREE.Mesh(rollGeo, frameMat)
+    roll.castShadow = true
+    roll.receiveShadow = true
+    roll.userData.role = 'roll'
+    roll.userData.originalMaterial = frameMat
+    tagPickable(roll, pick)
+    group.add(roll)
+
+    const armCount = awningArmCount(kind)
+    for (let i = 0; i < armCount; i += 1) {
+      const armGeo = new THREE.BoxGeometry(AWNING_ARM_SECTION_CM, 1, AWNING_ARM_SECTION_CM)
+      const arm = new THREE.Mesh(armGeo, frameMat)
+      arm.castShadow = true
+      arm.receiveShadow = true
+      arm.userData.role = 'arm'
+      arm.userData.originalMaterial = frameMat
+      tagPickable(arm, pick)
+      group.add(arm)
+    }
+
+    const frontGeo = new THREE.BoxGeometry(1, AWNING_FRONT_BAR_SECTION_CM, AWNING_FRONT_BAR_SECTION_CM)
+    const frontBar = new THREE.Mesh(frontGeo, frameMat)
+    frontBar.castShadow = true
+    frontBar.receiveShadow = true
+    frontBar.userData.role = 'frontBar'
+    frontBar.userData.originalMaterial = frameMat
+    tagPickable(frontBar, pick)
+    group.add(frontBar)
+
+    if (awningNeedsWallBrackets(kind)) {
+      for (const side of ['left', 'right'] as const) {
+        const brGeo = new THREE.BoxGeometry(6.5, 8, 2.4)
+        const bracket = new THREE.Mesh(brGeo, frameMat)
+        bracket.castShadow = true
+        bracket.receiveShadow = true
+        bracket.userData.role = 'bracket'
+        bracket.userData.side = side
+        bracket.userData.originalMaterial = frameMat
+        tagPickable(bracket, pick)
+        group.add(bracket)
+      }
+      for (const side of ['left', 'right'] as const) {
+        for (const joint of ['mount', 'elbow', 'front'] as const) {
+          const hingeGeo = new THREE.CylinderGeometry(1.7, 1.7, AWNING_ARM_SECTION_CM + 1.4, 12)
+          hingeGeo.rotateZ(Math.PI / 2)
+          const hinge = new THREE.Mesh(hingeGeo, frameMat)
+          hinge.castShadow = true
+          hinge.receiveShadow = true
+          hinge.userData.role = 'hinge'
+          hinge.userData.side = side
+          hinge.userData.joint = joint
+          hinge.userData.originalMaterial = frameMat
+          tagPickable(hinge, pick)
+          group.add(hinge)
+        }
+      }
+    }
+
+    for (const side of ['left', 'right'] as const) {
+      const railGeo = new THREE.BoxGeometry(1.6, 1, 2.2)
+      const rail = new THREE.Mesh(railGeo, frameMat)
+      rail.castShadow = true
+      rail.receiveShadow = true
+      rail.userData.role = 'guideRail'
+      rail.userData.side = side
+      rail.userData.originalMaterial = frameMat
+      rail.visible = false
+      tagPickable(rail, pick)
+      group.add(rail)
+    }
+
+    const fabricGeo = createAwningFabricGeometry(pose)
+    group.userData.fabricGeometry = fabricGeo
+    const fabric = new THREE.Mesh(fabricGeo, fabricMat)
+    fabric.castShadow = true
+    fabric.receiveShadow = true
+    fabric.frustumCulled = false
+    fabric.renderOrder = 8
+    fabric.userData.role = 'fabric'
+    fabric.userData.originalMaterial = fabricMat
+    tagPickable(fabric, pick)
+    group.add(fabric)
+
+    const localX = place.mountX - wall.width / 2
+    const localY = place.mountY - wall.height / 2
+    // Außenseite: bei panelFlip (Default) ist Vorwärts −Z; Pose baut in +Z.
+    const outward = isStudioWall(wall) ? windowDepthForwardSign(wall) : 1
+    const faceZ = isStudioWall(wall) ? studioPanelFaceLocalZ(wall) : wall.depth
+    const localZ = faceZ + outward * (AWNING_CASSETTE_DEPTH_CM * 0.15)
+
+    if (isStudioWall(wall)) {
+      const world = localToWorld(wall, localX, localY, localZ)
+      group.position.set(world.x, world.y, world.z)
+      group.rotation.y = studioWallTransform(wall).rotationY
+    } else {
+      group.position.set(wall.x + place.mountX, wall.y + place.mountY, localZ)
+    }
+    // Pose-Z (+Ausfahrt) auf Wand-Außenrichtung abbilden (sonst fährt die Markise nach innen).
+    group.scale.set(1, 1, outward)
+    group.userData.outwardSign = outward
+
+    this.layoutAwningGroup(group, awning.extension)
+    this.claddingGroup.add(group)
+    this.awningGroups.push(group)
   }
 
   private rebuildProfiles(buildingId?: string) {
@@ -4944,6 +5487,22 @@ export class FacadeController {
         mesh.geometry.dispose()
       }
       this.innerSillMeshes.length = 0
+    } else {
+      for (let i = this.innerSillMeshes.length - 1; i >= 0; i -= 1) {
+        const mesh = this.innerSillMeshes[i]!
+        const wallId = mesh.userData.wallId as string | undefined
+        const wall = wallId ? findWall(this.state, wallId) : undefined
+        const meshBuildingId = mesh.userData.buildingId as string | undefined
+        const drop =
+          meshBuildingId === buildingId ||
+          wall?.buildingId === buildingId ||
+          (wallId != null && !wall) ||
+          (wall != null && !isWallVisibleInState(this.state, wall))
+        if (!drop) continue
+        this.profileGroup.remove(mesh)
+        mesh.geometry.dispose()
+        this.innerSillMeshes.splice(i, 1)
+      }
     }
 
     for (const wall of getVisibleWalls(this.state)) {
@@ -5002,6 +5561,7 @@ export class FacadeController {
           openingPart: 'sillInner',
         })
         mesh.userData.wallId = wall.id
+        mesh.userData.buildingId = wall.buildingId
         this.profileGroup.add(mesh)
         this.innerSillMeshes.push(mesh)
       }
@@ -5015,6 +5575,22 @@ export class FacadeController {
         mesh.geometry.dispose()
       }
       this.outerSillMeshes.length = 0
+    } else {
+      for (let i = this.outerSillMeshes.length - 1; i >= 0; i -= 1) {
+        const mesh = this.outerSillMeshes[i]!
+        const wallId = mesh.userData.wallId as string | undefined
+        const wall = wallId ? findWall(this.state, wallId) : undefined
+        const meshBuildingId = mesh.userData.buildingId as string | undefined
+        const drop =
+          meshBuildingId === buildingId ||
+          wall?.buildingId === buildingId ||
+          (wallId != null && !wall) ||
+          (wall != null && !isWallVisibleInState(this.state, wall))
+        if (!drop) continue
+        this.profileGroup.remove(mesh)
+        mesh.geometry.dispose()
+        this.outerSillMeshes.splice(i, 1)
+      }
     }
 
     for (const wall of getVisibleWalls(this.state)) {
@@ -5095,6 +5671,22 @@ export class FacadeController {
         mesh.geometry.dispose()
       }
       this.pedimentMeshes.length = 0
+    } else {
+      for (let i = this.pedimentMeshes.length - 1; i >= 0; i -= 1) {
+        const mesh = this.pedimentMeshes[i]!
+        const wallId = mesh.userData.wallId as string | undefined
+        const wall = wallId ? findWall(this.state, wallId) : undefined
+        const meshBuildingId = mesh.userData.buildingId as string | undefined
+        const drop =
+          meshBuildingId === buildingId ||
+          wall?.buildingId === buildingId ||
+          (wallId != null && !wall) ||
+          (wall != null && !isWallVisibleInState(this.state, wall))
+        if (!drop) continue
+        this.profileGroup.remove(mesh)
+        mesh.geometry.dispose()
+        this.pedimentMeshes.splice(i, 1)
+      }
     }
 
     for (const wall of getVisibleWalls(this.state)) {
@@ -5132,6 +5724,7 @@ export class FacadeController {
             openingPart: 'pediment',
           })
           mesh.userData.wallId = wall.id
+          mesh.userData.buildingId = wall.buildingId
           if (isStudioWall(wall)) {
             mesh.position.set(transform.position.x, transform.position.y, transform.position.z)
             mesh.rotation.y = transform.rotationY
@@ -5156,6 +5749,7 @@ export class FacadeController {
             openingPart: 'pediment',
           })
           mesh.userData.wallId = wall.id
+          mesh.userData.buildingId = wall.buildingId
           if (isStudioWall(wall)) {
             mesh.position.set(transform.position.x, transform.position.y, transform.position.z)
             mesh.rotation.y = transform.rotationY
@@ -5180,6 +5774,7 @@ export class FacadeController {
             openingPart: 'pediment',
           })
           mesh.userData.wallId = wall.id
+          mesh.userData.buildingId = wall.buildingId
           if (isStudioWall(wall)) {
             mesh.position.set(transform.position.x, transform.position.y, transform.position.z)
             mesh.rotation.y = transform.rotationY
@@ -5342,6 +5937,43 @@ export class FacadeController {
           (ref) => ref.wallId === wallId && ref.openingId === openingId,
         )
       mesh.material = selected ? this.selectedUnlitMaterial : base
+    }
+
+    for (const group of this.awningGroups) {
+      group.traverse((obj) => {
+        const mesh = obj as THREE.Mesh
+        if (!mesh.isMesh) return
+        if (isLine) {
+          mesh.material = this.whiteMaterial
+          return
+        }
+        const wallId = mesh.userData.wallId as string | undefined
+        const openingId = mesh.userData.openingId as string | undefined
+        const awningId = mesh.userData.awningId as string | undefined
+        const openingMeshPart = mesh.userData.openingPart as string | undefined
+        const wallMeshPart = mesh.userData.wallPart as string | undefined
+        const base =
+          (mesh.userData.originalMaterial as THREE.Material | undefined) ?? mesh.material
+        let selected = false
+        if (!this.suppressSelectionHighlight) {
+          if (openingId && openingMeshPart === 'awning') {
+            selected =
+              openingPart === 'awning' &&
+              this.editor.selectedOpenings.some(
+                (ref) => ref.wallId === wallId && ref.openingId === openingId,
+              )
+          } else if (
+            wallMeshPart === 'awning' &&
+            this.editor.selectedOpenings.length === 0 &&
+            this.editor.selectedWallIds.includes(wallId ?? '')
+          ) {
+            selected =
+              wallPart === 'awning' &&
+              (!this.editor.selectedAwningId || this.editor.selectedAwningId === awningId)
+          }
+        }
+        mesh.material = selected ? this.selectedUnlitMaterial : base
+      })
     }
 
     while (this.selectionGroup.children.length > 0) {
@@ -5670,6 +6302,7 @@ function tagPickable(
     wallPart?: string
     bandId?: string
     labelId?: string
+    awningId?: string
   },
 ) {
   object.traverse((child) => {
@@ -5680,5 +6313,6 @@ function tagPickable(
     if (data.wallPart) child.userData.wallPart = data.wallPart
     if (data.bandId) child.userData.bandId = data.bandId
     if (data.labelId) child.userData.labelId = data.labelId
+    if (data.awningId) child.userData.awningId = data.awningId
   })
 }

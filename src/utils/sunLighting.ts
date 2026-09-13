@@ -33,10 +33,16 @@ export interface SunSettings {
   /** 0…1: Hemisphere-Bodenfarbe dunkler (Schatten-Tiefe). */
   shadowDensity: number
   /**
-   * 0…1: Schattenseite der Fassade und Innenraum dunkler (v2.0.364).
-   * 0 = kein zusätzliches Dim, 1 = fast schwarz. Wirkt nicht auf Boden-Schlagschatten.
+   * 0…1: Schattenseite Fassade & Innen (v2.0.364 / v2.0.419).
+   * 0 = maximal hell (stärker als Rohkurve), 1 = fast schwarz.
+   * Intern −2…1: untere ⅔ des Sliders = zusätzlicher Helligkeits-Spielraum.
    */
   shadeDepth: number
+  /**
+   * true = `shadeDepth` schon im erweiterten UI-Raum (v2.0.419).
+   * Fehlt → Alt-Wert 0…1 (nur Abdunkelung) wird auf (d+2)/3 gemappt.
+   */
+  shadeDepthExpanded?: boolean
   /** Monat 1–12 (Berlin-Sonnenverlauf). */
   month: number
   /** Tag im Monat 1–31. */
@@ -76,6 +82,11 @@ export interface SunSettings {
   animationsPaused?: boolean
   /** Bibliotheks-Lichter bei Sonnenuntergang an, bei Sonnenaufgang aus. */
   autoSceneLightsWithSun?: boolean
+  /**
+   * Bühnen-Wind 0…1 (windstill → stürmisch). Bewegt registrierte Stoffe
+   * (Markisen; später Vorhänge etc.). Default 0,15.
+   */
+  windIntensity?: number
 }
 
 /** Alte Saves: ein gemeinsames Von/Bis plus exklusiver Modus. */
@@ -165,8 +176,28 @@ export const SUN_SHADOW_CONTRAST_MIN = 0.5
 /** Slider-Maximum — höher = deutlich dunklere Schatten (v2.0.256: 10, zuvor 5). */
 export const SUN_SHADOW_CONTRAST_MAX = 10
 export const DEFAULT_SUN_SHADOW_DENSITY = 0.7
+/** Bühnen-Wind: leichter Zug als Default. */
+export const DEFAULT_SUN_WIND_INTENSITY = 0.15
 /** Slider `#sun-shade-depth`: Schattenseite Fassade + Innenraum (v2.0.364). */
-export const DEFAULT_SUN_SHADE_DEPTH = 0.75
+/** Default ≈ altes 0,75 nach Erweiterung (v2.0.419: (0,75+2)/3). */
+export const DEFAULT_SUN_SHADE_DEPTH = (0.75 + 2) / 3
+/** UI→Wirk-Tiefe: 0 → −2 (hell), ⅔ → 0 (Rohkurve), 1 → 1 (schwarz). */
+export const SHADE_DEPTH_LEGACY_MIN = -2
+export const SHADE_DEPTH_LEGACY_MAX = 1
+
+/** UI-Schatten-Tiefe 0…1 → Legacy −2…1 (v2.0.419). */
+export function shadeDepthUiToLegacy(ui: number): number {
+  const d = Number.isFinite(ui) ? THREE.MathUtils.clamp(ui, 0, 1) : DEFAULT_SUN_SHADE_DEPTH
+  return THREE.MathUtils.mapLinear(d, 0, 1, SHADE_DEPTH_LEGACY_MIN, SHADE_DEPTH_LEGACY_MAX)
+}
+
+/** Alt-Speicher 0…1 (nur Abdunkelung) → erweiterte UI-Tiefe. */
+export function shadeDepthLegacyPositiveToUi(legacyPositive: number): number {
+  const L = Number.isFinite(legacyPositive)
+    ? THREE.MathUtils.clamp(legacyPositive, 0, 1)
+    : 0.75
+  return THREE.MathUtils.mapLinear(L, SHADE_DEPTH_LEGACY_MIN, SHADE_DEPTH_LEGACY_MAX, 0, 1)
+}
 
 const today = todayMonthDay()
 /** Sonnenhöhe für Standard-Tageszeit (Berlin, heutiges Datum). */
@@ -204,6 +235,7 @@ export const DEFAULT_SUN_SETTINGS: SunSettings = {
   shadowContrast: DEFAULT_SUN_SHADOW_CONTRAST,
   shadowDensity: DEFAULT_SUN_SHADOW_DENSITY,
   shadeDepth: DEFAULT_SUN_SHADE_DEPTH,
+  shadeDepthExpanded: true,
   month: today.month,
   day: today.day,
   animUseTime: false,
@@ -219,6 +251,7 @@ export const DEFAULT_SUN_SETTINGS: SunSettings = {
   dayCycleRealMinutes: 60,
   animationsPaused: false,
   autoSceneLightsWithSun: true,
+  windIntensity: DEFAULT_SUN_WIND_INTENSITY,
 }
 
 /** Mindestabstand Licht→Ziel (cm). Wird bei großen Baukörpern angehoben, damit nichts hinter der Shadow-Camera liegt. */
@@ -580,8 +613,11 @@ export function normalizeSunSettings(
         : base.shadowDensity,
     shadeDepth:
       typeof value.shadeDepth === 'number'
-        ? THREE.MathUtils.clamp(value.shadeDepth, 0, 1)
+        ? value.shadeDepthExpanded === true
+          ? THREE.MathUtils.clamp(value.shadeDepth, 0, 1)
+          : shadeDepthLegacyPositiveToUi(value.shadeDepth)
         : base.shadeDepth,
+    shadeDepthExpanded: true,
     month,
     day,
     ...migrateLegacyAnim(value, base),
@@ -606,6 +642,10 @@ export function normalizeSunSettings(
       typeof value.autoSceneLightsWithSun === 'boolean'
         ? value.autoSceneLightsWithSun
         : base.autoSceneLightsWithSun,
+    windIntensity:
+      typeof value.windIntensity === 'number' && Number.isFinite(value.windIntensity)
+        ? THREE.MathUtils.clamp(value.windIntensity, 0, 1)
+        : (base.windIntensity ?? DEFAULT_SUN_WIND_INTENSITY),
   }
   // Alt-Saves ohne elevationRad: Höhe aus Datum/Uhrzeit, Overrides (Intensität etc.) behalten.
   if (typeof value.elevationRad !== 'number') {

@@ -1,6 +1,6 @@
 # Öffnungs-Features: Bogen, Nischen, Bänke, Verdachung, Treppe, Keller
 
-Dekor und Öffnungsarten an `Opening`. **Fenster-/Türteilung (Gründerzeit):** [windows-doors.md](windows-doors.md). Flügel-Kurven: [opening-motion.md](opening-motion.md). Rollläden: [roller-shutter.md](roller-shutter.md). Clip/Geometrie: [panel-geometry.md](panel-geometry.md). UI-Navigation: [ux.md](ux.md).
+Dekor und Öffnungsarten an `Opening`. **Fenster-/Türteilung (Gründerzeit):** [windows-doors.md](windows-doors.md). Flügel-Kurven: [opening-motion.md](opening-motion.md). Rollläden: [roller-shutter.md](roller-shutter.md). Markisen: [awnings.md](awnings.md). Clip/Geometrie: [panel-geometry.md](panel-geometry.md). UI-Navigation: [ux.md](ux.md).
 
 ## Typen
 
@@ -11,6 +11,10 @@ Dekor und Öffnungsarten an `Opening`. **Fenster-/Türteilung (Gründerzeit):** 
 | `conch` | Konche: Halbzylinder + Viertelkugel-Kalotte; Maske immer Rundbogen |
 
 Typ-Select `#opening-type-select`: Fenster / Tür / **Keines (leer)** / Konche. Bibliothek Fenster: Karte **Keines (leer)** (`opening-empty-96`). Tab **Nischen** für Nischen/Durchbrüche/Konchen.
+
+**Rahmenprofile (v2.0.405 / v2.0.406 / v2.0.412):** Cutouts (Einbuchtungen/Durchbrüche) und Konchen wie Fenster/Türen — Bibliothek **Profile**, Toolbar `#profile-assign-section`. Runde Cutouts: Profil folgt Stadion-Kontur. Fallrohr-Nischen (`Building.downpipes[].nicheOpeningIds`) ohne Rahmenprofil. **v2.0.412:** Toast/Zuweisen **Etage/Fassade** übernimmt Profilfarbe/-zuweisung auch auf Cutout/Konche (nicht nur Fenster/Tür). Bänke/Verdachung bleiben nur Fenster/Tür/Konche (`openingSupportsOpeningDecor`).
+
+**Nischenfarbe (v2.0.406 / v2.0.407):** Seiten und Rückwand einer Nische (inkl. Fallrohr-Nische, Konche) in **Wandfarbe** / `revealExteriorColor` mit **Außen-Oberfläche** (`finishExteriorMaterial`) — nicht Innenwand-Weiß und nicht Innen-Env/Shade. Laibung-innen-Picker ausgeblendet bei Nische.
 
 ## Maße, Einbettung, Freiraum, Bogen
 

@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.403'
+export const APP_VERSION = '2.0.440'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,348 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.440',
+    date: '2026-09-13',
+    title: 'Innenwände: Rechtsklick, T auf Innen, Andocken an Außen',
+    changes: [
+      'Rechtsklick auf Innenwände: Löschen/Ausblenden (Mesh vor Decke)',
+      'Innenwand auch auf andere Innenwände setzbar (beide Seiten)',
+      'Shift an verknüpfter Ecke: T-/Kreuz-Abzweig von Innenwänden',
+      'Andocken an Außenwand-Innenseite (nicht Außen-Planlinie); Lücken bis 48 cm schließen',
+    ],
+  },
+  {
+    version: '2.0.439',
+    date: '2026-09-13',
+    title: 'Innenwand: Front-Pfeil, T-Stoß, Andocken',
+    changes: [
+      'Front-Verschiebe-Pfeil wieder sichtbar (Höhe-Greifer bleibt aus)',
+      'Shift-Abzweig: T-Stoß an Außenwand ohne Host-Split; T/Kreuz an Innenwänden mit Split; Abzweige bleiben Innenwände',
+    ],
+  },
+  {
+    version: '2.0.438',
+    date: '2026-09-13',
+    title: 'Innenwände wieder markierbar',
+    changes: [
+      'Nach dem Setzen entwaffnet der Modus — Innenwände wieder wählbar, skalierbar und löschbar',
+      'Mesh-Pick für Innenwände hat Vorrang vor Decke/Boden',
+    ],
+  },
+  {
+    version: '2.0.437',
+    date: '2026-09-13',
+    title: 'Innenwand nur von innen, 90° in den Raum',
+    changes: [
+      'Innenwand nur von der Rauminnenseite platzierbar (nicht von außen)',
+      'Stummel 90° in den Raum; Länge ± und Shift 90°/45°; kein Höhen-/Front-Greifer; kein Sockel',
+    ],
+  },
+  {
+    version: '2.0.436',
+    date: '2026-09-13',
+    title: 'Innenwand ohne Außenwand-Split',
+    changes: [
+      'Innenwand 24/36/48: neue Wand an der Innenseite (Host ungeteilt); Front-Greifer nach innen; Türen/Andocken möglich',
+      'Außenwand-Segment herauslösen bleibt nur bei Längen-Karten (48…576)',
+    ],
+  },
+  {
+    version: '2.0.435',
+    date: '2026-09-13',
+    title: 'Markisen-Seitenüberstand in 4-cm-Schritten',
+    changes: [
+      'Seitenüberstand der Markise: Eingabe und Snap in 4 cm-Schritten (0…64)',
+    ],
+  },
+  {
+    version: '2.0.434',
+    date: '2026-09-13',
+    title: 'Etage-Reste, Innenwand-Extrude, Farben-Reiter',
+    changes: [
+      'Etage aus: Fenstersturz, Bänke, Verdachung und Laibung werden mitentfernt (buildingId + Partial-Clear)',
+      'Innenwand 24/36/48: Segment markieren und Front-Greifer extrudieren (wie Außenwand); Grundriss zeichnen bleibt',
+      'Bibliothek-Reiter „Farben“ (nicht Farbe); bei Objektauswahl aktiv; Kategorie-Dropdown mit Vorauswahl; Markise/Teilobjekte abgedeckt',
+      'Rechte Einstellungen starten auf Farben statt Übersicht',
+    ],
+  },
+  {
+    version: '2.0.433',
+    date: '2026-09-13',
+    title: 'Etage aus, Innenwände, Farbbibliothek',
+    changes: [
+      'Etage ausblenden: Bank, Sturz, Laibung und Auswahl mit weg; Decke/Boden weiter anwählbar',
+      'Bibliothek Wände: Innenwand 24/36/48 cm — im Grundriss zeichnen ohne Paneele/Außenoptik',
+      'Neuer Bibliothek-Reiter Farbe (Naturstein, Backstein, …) — Klick wendet auf die Auswahl an',
+    ],
+  },
+  {
+    version: '2.0.432',
+    date: '2026-09-13',
+    title: 'Glas ohne Transparent, Gruppen-Markise voll, Markisen-Kontextmenü',
+    changes: [
+      'Glasfarbe: Option „Transparent“ entfernt; Altwerte werden zu Standard-Glasfarbe',
+      'Gruppen-Markise: alle Maße/Farben/Typ/Animation/Uhrzeiten wie Öffnungs-Markise (auch bei Öffnungsauswahl)',
+      'Rechtsklick auf Markise: Ein-/Ausblenden, Kopieren/Einfügen, Gruppe lösen/teilen, Zuweisen, Löschen',
+    ],
+  },
+  {
+    version: '2.0.431',
+    date: '2026-09-13',
+    title: 'Glasfarbe wählbar + Gruppen-Markisen-Maße',
+    changes: [
+      'Glasfarbe: Transparent-Option wieder da; Farbfeld bei Transparent nicht mehr ausgegraut/gesperrt',
+      'Gruppen-Markise: Abstand Öffnung, Konsole, Senkrecht und Seitenüberstand wie an der Öffnungs-Markise',
+    ],
+  },
+  {
+    version: '2.0.430',
+    date: '2026-09-13',
+    title: 'Glasfarbe, Markisenbreite, Gruppen-Markise',
+    changes: [
+      'Glasfarbe in der Öffnungs-Toolbar wieder zuverlässig sichtbar (nach Teil-Fokus)',
+      'Öffnungs-Markise: Breite immer Öffnung + Seitenüberstand — auch bei Scope-Toast und Fensterbreiten-Änderung',
+      'Mehrere Öffnungen markieren → „Eine Markise über Auswahl“ (eine Markise über den Span)',
+    ],
+  },
+  {
+    version: '2.0.429',
+    date: '2026-09-13',
+    title: 'Markise kopieren + Scope nur Deltas',
+    changes: [
+      'Rechtsklick auf Markise: kopieren / einfügen / ersetzen (eigene Zwischenablage); Öffnungsmenü: Markise kopieren',
+      'Scope-Toast (Typ/Etage/Fassade) übernimmt nur geänderte Felder — z. B. Kastenfenster ohne Flügelteilung der Nachbarn zu überschreiben',
+      'Rechtsklick „Zuweisen für“ bleibt Vollstil',
+    ],
+  },
+  {
+    version: '2.0.428',
+    date: '2026-09-13',
+    title: 'Hellerer Sonnen-Look',
+    changes: [
+      'Schatten-Dunkelheit und Bounce/Env wieder wie vor v2.0.410 — hellerer, kontrastreicherer Gesamteindruck',
+      'Gegenlicht-Kanten/Glas nicht mehr zusätzlich grau gedimmt (413–418 zurück)',
+      'Markisen-Ausfahrt und Live-Schatten unverändert',
+    ],
+  },
+  {
+    version: '2.0.427',
+    date: '2026-09-13',
+    title: 'Markisen-Schatten folgt der Ausfahrt',
+    changes: [
+      'Während Ein-/Ausfahren folgt der Markisenschatten der Pose (Shadow-Map mit allen Castern, temporär max. 4096², ~20×/s)',
+      'Hausschatten bleiben sichtbar; nach der Animation volle Map-Qualität',
+    ],
+  },
+  {
+    version: '2.0.426',
+    date: '2026-09-13',
+    title: 'Markise: Fallarm starr, Gelenkarm-IK, Markisolette',
+    changes: [
+      'Fallarm: ein starrer Arm ohne Gelenk, fällt auf Kreisbogen um die Wandkonsole („Konsole unter Kasten“)',
+      'Gelenkarm: Glieder fester Länge, Ellbogen klappt je nach Ausfahrt zur Mitte ein',
+      'Markisolette nach realer Mechanik: senkrecht in Führungsschienen, Arm schwenkt um das Schienenende (Blockadeelement)',
+      'Typwechsel setzt typgerechte Maße; ungenutzte Felder ausgeblendet',
+    ],
+  },
+  {
+    version: '2.0.425',
+    date: '2026-09-13',
+    title: 'Markise: Keine, Scharnier, Halterung',
+    changes: [
+      'Bibliothek Markisen startet mit „Keine“',
+      'Fallarme mit fester Länge und Scharnier am Ausfallprofil (Länge bleibt beim Ein-/Ausfahren)',
+      'Wandhalterung an der Fassade, Abstand zur Öffnung/zum Profil min. 8 cm',
+      'Stoff und Volant liegen über dem Gestänge, ohne Durchscheinen',
+    ],
+  },
+  {
+    version: '2.0.424',
+    date: '2026-09-13',
+    title: 'Markise: Volant, Neigung, Markisolette',
+    changes: [
+      'Stoff über dem Gestänge ohne Durchscheinen; Gelenkarme klappen nach innen',
+      'Stoff standardmäßig grau; Gelenkarm-Breite = Öffnung + 2×16 cm Seitenüberstand',
+      'Neigung einstellbar; Fallarm-Befestigung positionierbar; Volant senkrecht',
+      'Neuer Typ Markisolette (senkrecht + ausgestellt)',
+    ],
+  },
+  {
+    version: '2.0.423',
+    date: '2026-09-13',
+    title: 'Markise Pose und vorderer Überhang',
+    changes: [
+      'Fallarm fährt nach vorne unten (nicht mehr nach oben)',
+      'Gelenkarm-Gestänge liegt unter dem Stoff',
+      'Vorderer Stoff-Überhang (Volant) einstellbar 0…48 cm, Default 16',
+    ],
+  },
+  {
+    version: '2.0.422',
+    date: '2026-09-13',
+    title: 'Markise fährt nach außen',
+    changes: [
+      'Markisen fahren vor die Fassade aus (nicht mehr nach innen)',
+    ],
+  },
+  {
+    version: '2.0.421',
+    date: '2026-09-13',
+    title: 'Markisen und Bühnen-Wind',
+    changes: [
+      'Gelenkarm- und Fallarm-Markisen an Fenstern/Türen/Öffnungen und frei an der Wand',
+      'Ausfahrt 0…100 % mit Gestänge unter dem Stoff und Ein-/Ausfahr-Animation',
+      'Bühnen-Wind einstellbar (windstill bis stürmisch) für Markisenstoffe',
+    ],
+  },
+  {
+    version: '2.0.420',
+    date: '2026-09-13',
+    title: 'Ladeanimation bis Bootstrap',
+    changes: [
+      'Haus-vom-Nikolaus-Ladebildschirm bleibt bis Szene/Licht bereit sind (nicht mehr sofort nach State-Load)',
+      'UI erst sichtbar, wenn der Ladebildschirm geschlossen wird',
+    ],
+  },
+  {
+    version: '2.0.419',
+    date: '2026-09-13',
+    title: 'Schatten-Tiefe: mehr Helligkeit nach links',
+    changes: [
+      'Slider „Schatten-Tiefe“: unteres Drittel bis zwei Drittel = zusätzlicher Helligkeits-Spielraum (≈3×); rechts weiterhin nahezu schwarz',
+      'Gespeicherte Werte werden einmalig gemappt (altes 0,75 ≈ neues 0,92)',
+    ],
+  },
+  {
+    version: '2.0.418',
+    date: '2026-09-13',
+    title: 'Glas-Dimmung über Sonnen-Settings',
+    changes: [
+      'Fassaden-Unlit aus Sonnen-Azimut/Höhe (nicht dirLight-Richtung — die war fälschlich 0,0,−1)',
+      'See-through-Glas: Farbe dunkel + weniger Durchsicht, wenn die Blickfassade im Schatten liegt',
+    ],
+  },
+  {
+    version: '2.0.417',
+    date: '2026-09-13',
+    title: 'Glas und Rahmenkanten bei Fassadenschatten',
+    changes: [
+      'Glas: Transmission/Clearcoat und Licht-Shader folgen der sichtbaren Fassade (nicht nur Env)',
+      'Rahmen/Fenster: globales uFacadeWallUnlit — Dim auch wenn lokale Achsen nicht zur Wand passen',
+    ],
+  },
+  {
+    version: '2.0.416',
+    date: '2026-09-13',
+    title: 'Glas-Env folgt der Kamera-Fassade',
+    changes: [
+      'Glas- und Rahmen-Env-Dimmung nutzt die zur Kamera sichtbare Wand — nicht mehr eine sonnenbeschienene Seitenwand bei Streiflicht',
+    ],
+  },
+  {
+    version: '2.0.415',
+    date: '2026-09-13',
+    title: 'Glas und Rahmenkanten im Fassadenschatten',
+    changes: [
+      'Env-Specular auf Rahmen und Glas folgt der sichtbaren Fassade (keine weißen Spiegelkanten mehr bei Streiflicht)',
+      'Innen-Laibung und Nischen dunkeln mit, wenn die Blick-Fassade wenig Sonne bekommt',
+    ],
+  },
+  {
+    version: '2.0.414',
+    date: '2026-09-13',
+    title: 'Rahmen, Flügel und Nischen folgen dem Fassadenschatten',
+    changes: [
+      'Fensterrahmen, geöffnete Flügel/Türen und Nischen/Konchen dunkeln mit der Fassade ab — bleiben nicht mehr hell, wenn die Front im Schatten liegt',
+    ],
+  },
+  {
+    version: '2.0.413',
+    date: '2026-09-13',
+    title: 'Seiten/Oben/Unten folgen dem Fassadenschatten',
+    changes: [
+      'Bei Gegenlicht und Streiflicht werden Seiten-, Ober- und Unterseiten der Paneele/Profile mit abgedunkelt — bleiben nicht mehr weiß, während die Front dunkel ist',
+    ],
+  },
+  {
+    version: '2.0.412',
+    date: '2026-09-13',
+    title: 'Profilfarbe Etage auch für Nischen',
+    changes: [
+      'Übernehmen/Zuweisen auf Etage oder Fassade übernimmt Profilfarbe und Rahmenprofile auch auf Einbuchtungen und Konchen (nicht nur Fenster/Türen)',
+    ],
+  },
+  {
+    version: '2.0.411',
+    date: '2026-09-13',
+    title: 'Werfschatten auf der Wand kontrastreicher',
+    changes: [
+      'Schatten-Dunkelheit dämpft Bounce- und Env-Fill in der Umbra (Density 0,7 → Bounce ~halbiert, Env ~−27 %) — Wandschatten weniger blass',
+      'shadow.intensity Mapping 0,95…1 (Default ~0,985)',
+    ],
+  },
+  {
+    version: '2.0.410',
+    date: '2026-09-13',
+    title: 'Dunklere Werfschatten auf der Fassade',
+    changes: [
+      'Schatten-Dunkelheit steuert shadow.intensity jetzt 0,90…1 (Default ~0,97 statt ~0,87) — Gesims-/Fensterbank-Schatten auf der Wand weniger blass',
+    ],
+  },
+  {
+    version: '2.0.409',
+    date: '2026-09-13',
+    title: 'Fallrohr-Wandabstand',
+    changes: [
+      'Aufsatz: Abstand zur Wand (cm) in den Fallrohr-Maßen einstellbar (Default 8 cm, 0…48)',
+    ],
+  },
+  {
+    version: '2.0.408',
+    date: '2026-09-13',
+    title: 'Fallrohr-Aufsatz und Rinnenfarbe',
+    changes: [
+      'Aufsatz: Rohr 8 cm vor der äußersten Paneelfläche; Schellen-Laschen bis zum Wandkörper',
+      'Dachrinne/Fallrohr in Nicht-Zink-Farben (z. B. Weiß) als Lack statt grau-metallisch',
+    ],
+  },
+  {
+    version: '2.0.407',
+    date: '2026-09-13',
+    title: 'Nischen-Innenraum wie Außenwand',
+    changes: [
+      'Nischen/Konchen/Fallrohr-Nischen nutzen Wandfarbe und Außen-Oberfläche (nicht Innenwand-Finish)',
+    ],
+  },
+  {
+    version: '2.0.406',
+    date: '2026-09-13',
+    title: 'Nischen: Profile folgen Form, Innen Wandfarbe',
+    changes: [
+      'Rahmenprofile an runden Nischen/Durchbrüchen folgen der Stadion-Kontur; Rest-Bogen an Cutouts entfernt (keine Lücken)',
+      'Nischeninnenraum inkl. Fallrohr-Nische in Wandfarbe statt Innenwand-Weiß',
+    ],
+  },
+  {
+    version: '2.0.405',
+    date: '2026-09-13',
+    title: 'Profile an Einbuchtungen',
+    changes: [
+      'Nischen und Durchbrüche (Cutouts) können Rahmenprofile wie Fenster und Türen erhalten',
+      'Bibliothek-Tab Profile bei Einbuchtungsauswahl; Fallrohr-Nischen bleiben ohne Rahmenprofil',
+    ],
+  },
+  {
+    version: '2.0.404',
+    date: '2026-09-13',
+    title: 'Fallrohr: Schmuck-Durchbruch, Schellen, Verschieben',
+    changes: [
+      'Fassadenschmuck optional an Rohr/Nische durchbrochen (bündig geschlossen), Aufsatz und Nische',
+      'Nische eckig (nicht abgerundet); Rohrschellen am Rohr; Drag und Pfeiltasten zum Verschieben',
+      'Gesims wird am Fallrohr wirklich unterbrochen (flush-Cutouts + Kanten-Sample korrigiert)',
+    ],
+  },
   {
     version: '2.0.403',
     date: '2026-09-13',

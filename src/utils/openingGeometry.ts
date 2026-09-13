@@ -1,6 +1,7 @@
 import type {
   Opening,
   OpeningArch,
+  OpeningEdge,
   OpeningFill,
   OpeningPanelClearance,
   OpeningPanelWrappedReveal,
@@ -367,11 +368,27 @@ export function openingActsAsWindow(opening: Pick<Opening, 'type'>): boolean {
   return opening.type === 'window' || opening.type === 'conch'
 }
 
-/** Fensterbank, Profile, Verdachung — Fenster, Tür, Konche. */
+/** Fensterbank, Verdachung — Fenster, Tür, Konche (nicht Cutout/Keller). */
 export function openingSupportsOpeningDecor(opening: Pick<Opening, 'type' | 'basementWindow'>): boolean {
   if (opening.type === 'cutout') return false
   if (opening.type === 'window' && opening.basementWindow?.enabled) return false
   return opening.type === 'window' || opening.type === 'door' || opening.type === 'conch'
+}
+
+/**
+ * Rahmenprofile an den Öffnungskanten — Fenster, Tür, Konche und Einbuchtung (Cutout).
+ * Kellerfenster und Fallrohr-Nischen (extern gefiltert) ausgenommen.
+ */
+export function openingSupportsFrameProfiles(
+  opening: Pick<Opening, 'type' | 'basementWindow'>,
+): boolean {
+  if (opening.type === 'window' && opening.basementWindow?.enabled) return false
+  return (
+    opening.type === 'window' ||
+    opening.type === 'door' ||
+    opening.type === 'conch' ||
+    opening.type === 'cutout'
+  )
 }
 
 export function openingHasWindowChrome(opening: Pick<Opening, 'type'>): boolean {
@@ -737,6 +754,90 @@ export function stadiumPolyline(
     const t = -Math.PI / 2 - Math.PI * (i / n)
     pts.push({ x: leftCx + Math.cos(t) * geom.r, y: geom.cy + Math.sin(t) * geom.r })
   }
+  return pts
+}
+
+/**
+ * Stadion-/Kreis-Kontur je Öffnungskante (Wand-XY), Richtung wie Rechteck-Kanten:
+ * top/bottom links→rechts, left/right unten→oben. Null wenn Kante degeneriert (Kreis).
+ */
+export function openingStadiumEdgePolyline(
+  opening: Opening,
+  edge: OpeningEdge,
+  segments = ARCH_CURVE_SEGMENTS,
+): { x: number; y: number }[] | null {
+  const geom = openingStadiumGeom(opening)
+  if (!geom) return null
+  const n = Math.max(8, Math.ceil(segments / 2))
+  const minLen = 0.5
+  if (geom.vertical) {
+    const topCy = geom.y1 - geom.r
+    const botCy = geom.y0 + geom.r
+    const xL = geom.cx - geom.r
+    const xR = geom.cx + geom.r
+    if (edge === 'top') {
+      const pts: { x: number; y: number }[] = []
+      for (let i = 0; i <= n; i += 1) {
+        const t = Math.PI * (1 - i / n)
+        pts.push({ x: geom.cx + Math.cos(t) * geom.r, y: topCy + Math.sin(t) * geom.r })
+      }
+      return pts
+    }
+    if (edge === 'bottom') {
+      const pts: { x: number; y: number }[] = []
+      for (let i = 0; i <= n; i += 1) {
+        const t = -Math.PI * (1 - i / n)
+        pts.push({ x: geom.cx + Math.cos(t) * geom.r, y: botCy + Math.sin(t) * geom.r })
+      }
+      return pts
+    }
+    if (edge === 'left') {
+      if (Math.abs(topCy - botCy) < minLen) return null
+      return [
+        { x: xL, y: botCy },
+        { x: xL, y: topCy },
+      ]
+    }
+    if (Math.abs(topCy - botCy) < minLen) return null
+    return [
+      { x: xR, y: botCy },
+      { x: xR, y: topCy },
+    ]
+  }
+
+  const leftCx = geom.x0 + geom.r
+  const rightCx = geom.x1 - geom.r
+  const yB = geom.cy - geom.r
+  const yT = geom.cy + geom.r
+  if (edge === 'top') {
+    if (Math.abs(rightCx - leftCx) < minLen) return null
+    return [
+      { x: leftCx, y: yT },
+      { x: rightCx, y: yT },
+    ]
+  }
+  if (edge === 'bottom') {
+    if (Math.abs(rightCx - leftCx) < minLen) return null
+    return [
+      { x: leftCx, y: yB },
+      { x: rightCx, y: yB },
+    ]
+  }
+  if (edge === 'left') {
+    const pts: { x: number; y: number }[] = []
+    for (let i = 0; i <= n; i += 1) {
+      const t = -Math.PI / 2 - Math.PI * (i / n)
+      pts.push({ x: leftCx + Math.cos(t) * geom.r, y: geom.cy + Math.sin(t) * geom.r })
+    }
+    // i=0 unten → i=n oben
+    return pts
+  }
+  const pts: { x: number; y: number }[] = []
+  for (let i = 0; i <= n; i += 1) {
+    const t = -Math.PI / 2 + Math.PI * (i / n)
+    pts.push({ x: rightCx + Math.cos(t) * geom.r, y: geom.cy + Math.sin(t) * geom.r })
+  }
+  // i=0 unten (−π/2) → i=n oben (+π/2)
   return pts
 }
 
@@ -1234,6 +1335,19 @@ export function openingMaskXRangesAtY(
   inflate = 0,
 ): Array<{ x0: number; x1: number }> {
   if (opening.hidden || !openingCutsWall(opening)) return []
+  return polylineXRangesAtY(openingMaskPolyline(opening, inflate), y)
+}
+
+/**
+ * Wie `openingMaskXRangesAtY`, aber auch für flush-Cutouts (Fallrohr-Schmuck-Durchbruch):
+ * die Maske unterbricht Gesims/Zierband, schneidet die Schale aber nicht.
+ */
+export function openingDecorMaskXRangesAtY(
+  opening: Opening,
+  y: number,
+  inflate = 0,
+): Array<{ x0: number; x1: number }> {
+  if (opening.hidden) return []
   return polylineXRangesAtY(openingMaskPolyline(opening, inflate), y)
 }
 

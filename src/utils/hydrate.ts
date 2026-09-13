@@ -20,6 +20,7 @@ import {
   DEFAULT_GLASS_COLOR,
   DEFAULT_INTERIOR_COLOR,
   defaultOpeningFrameColor,
+  isTransparentGlass,
 } from '../constants/colorPalettes'
 import { normalizeSurfaceFinish } from './surfaceFinish'
 import {
@@ -44,6 +45,11 @@ import { defaultOpeningStairs, syncStairsToDoorWidth } from '../studio/stairs'
 import { normalizeSceneLightState } from '../scene/sceneLights'
 import { normalizeGroundLeafState } from '../scene/groundLeaves'
 import { defaultOpeningRollerShutter, normalizeOpeningRollerShutter } from '../studio/rollerShutter'
+import {
+  defaultAwningConfig,
+  defaultOpeningAwningWidth,
+  normalizeAwningConfig,
+} from '../studio/awning'
 import { gruenderzeitConfigForOpening } from '../windows/gruenderzeit'
 import {
   normalizeOpeningDoor,
@@ -191,7 +197,15 @@ export function hydrateOpening(
     next.revealFrame = normalizeRevealFrame(next.revealFrame)
     next.panelClearance = normalizePanelClearance(next.panelClearance)
     next.panelWrappedReveal = normalizePanelWrappedReveal(next.panelWrappedReveal)
-    next.arch = normalizeOpeningArch(next.arch)
+    // Cutout-Maske = rect/Stadion; Rest-Bogen würde Profilrahmen löchern (v2.0.406).
+    next.arch = undefined
+    next.awning = normalizeAwningConfig(
+      next.awning ??
+        defaultAwningConfig({
+          enabled: false,
+          widthCm: defaultOpeningAwningWidth(next),
+        }),
+    )
     next.hidden = Boolean(next.hidden)
     next.needsReview =
       typeof next.needsReview === 'string' && next.needsReview.trim()
@@ -220,6 +234,13 @@ export function hydrateOpening(
     if (next.sillInner) {
       next.sillInner = { ...next.sillInner, enabled: false }
     }
+    next.awning = normalizeAwningConfig(
+      next.awning ??
+        defaultAwningConfig({
+          enabled: false,
+          widthCm: defaultOpeningAwningWidth(next),
+        }),
+    )
     next.hidden = Boolean(next.hidden)
     next.needsReview =
       typeof next.needsReview === 'string' && next.needsReview.trim()
@@ -242,6 +263,7 @@ export function hydrateOpening(
   )
   next.frameFinish = normalizeSurfaceFinish(next.frameFinish)
   next.glassColor = next.glassColor ?? DEFAULT_GLASS_COLOR
+  if (isTransparentGlass(next.glassColor)) next.glassColor = DEFAULT_GLASS_COLOR
   const glass = openingGlassConfig(next)
   next.glassMode = next.glassMode === 'physical' ? 'physical' : 'tint'
   next.glassIor = next.glassIor ?? glass.ior
@@ -263,6 +285,13 @@ export function hydrateOpening(
     )
     next.rollerShutter = normalizeOpeningRollerShutter(
       next.rollerShutter ?? defaultOpeningRollerShutter(),
+    )
+    next.awning = normalizeAwningConfig(
+      next.awning ??
+        defaultAwningConfig({
+          enabled: false,
+          widthCm: defaultOpeningAwningWidth(next),
+        }),
     )
     next.guard = normalizeOpeningGuard(next.guard)
     next.interiorShade = normalizeOpeningInteriorShade(next.interiorShade)
@@ -301,6 +330,15 @@ export function hydrateWall(wall: Wall): Wall {
   let panel = cloned.panel
   if (isStudioKind(cloned)) {
     panel = normalizeStudioPanel(cloned.panel ?? DEFAULT_STUDIO_PANEL)
+    if (cloned.role === 'interior') {
+      panel = normalizeStudioPanel({
+        ...panel,
+        enabled: false,
+        pattern: 'none',
+        plinthEnabled: false,
+        plinthHeight: 0,
+      })
+    }
   }
 
   // UX v2.0.153: Zwei-Bänder-Verkleidung tot — persistierte Zonen verwerfen.
@@ -383,7 +421,10 @@ export function hydrateWall(wall: Wall): Wall {
   return {
     ...cloned,
     kind: cloned.kind,
-    planLinked: cloned.planLinked !== false,
+    role: cloned.role === 'interior' ? 'interior' : 'exterior',
+    // Innenwände: planLinked nur wenn explizit true (Extrude/Andocken); sonst false (kein Außenring).
+    planLinked:
+      cloned.role === 'interior' ? cloned.planLinked === true : cloned.planLinked !== false,
     panelFlip: cloned.panelFlip ?? true,
     originX: cloned.originX ?? cloned.x,
     originZ: cloned.originZ ?? 0,
@@ -398,6 +439,19 @@ export function hydrateWall(wall: Wall): Wall {
     trimBands: cloned.trimBands?.map((band) => normalizeWallTrimBand(band)),
     labels,
     label,
+    awnings: Array.isArray(cloned.awnings)
+      ? cloned.awnings.map((item) => {
+          const normalized = normalizeAwningConfig(item)
+          if (!normalized.openingIds?.length) return normalized
+          const valid = normalized.openingIds.filter((id) =>
+            openings.some((o) => o.id === id),
+          )
+          return normalizeAwningConfig({
+            ...normalized,
+            openingIds: valid.length > 0 ? valid : undefined,
+          })
+        })
+      : [],
     storeyIndex,
     openings,
     profiles: cloned.profiles.map((p) => ({ ...p })),

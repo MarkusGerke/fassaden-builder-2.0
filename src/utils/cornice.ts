@@ -88,6 +88,7 @@ export function wallCornice(wall: Wall): WallCorniceConfig {
 }
 
 export function wallHasCornice(wall: Wall, edge?: CorniceEdge): boolean {
+  if (wall.role === 'interior') return false
   const cornice = wallCornice(wall)
   if (!cornice.enabled) return false
   if (edge && cornice.edge !== edge) return false

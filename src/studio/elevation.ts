@@ -1,3 +1,4 @@
+import * as THREE from 'three'
 import type { Wall } from '../types/facade'
 import { wallStartPoint } from './walls'
 
@@ -121,6 +122,92 @@ export function elevationBounds(
     return { minX: 0, minY: 0, maxX: 0, maxY: 0, width: 0, height: 0 }
   }
   return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY }
+}
+
+/** 0…1: Wandfront bekommt wenig Sonne (Streiflicht/Gegenlicht). */
+export function facadeWallUnlitFromSun(
+  wall: Wall,
+  siteYawDeg: number,
+  sunDirectionWorld: THREE.Vector3,
+): number {
+  const yawRad = THREE.MathUtils.degToRad((wall.yawDeg ?? 0) + siteYawDeg)
+  const localOut = wall.panelFlip === false ? 1 : -1
+  const fx = localOut * Math.sin(yawRad)
+  const fz = localOut * Math.cos(yawRad)
+  const len = Math.hypot(fx, fz) || 1
+  const sunOnWall = (fx / len) * sunDirectionWorld.x + (fz / len) * sunDirectionWorld.z
+  return 1 - THREE.MathUtils.smoothstep(sunOnWall, -0.02, 0.2)
+}
+
+/** Blick-Fassade(n) nach `viewYawDeg` — max. Unlit für Glas/Env. */
+export function primaryFacadeWallUnlit(
+  walls: Wall[],
+  viewYawDeg: number,
+  siteYawDeg: number,
+  sunDirectionWorld: THREE.Vector3,
+): number {
+  if (walls.length === 0) return 0
+  const facing = wallsForYaw(walls, viewYawDeg)
+  const sample = facing.length > 0 ? facing : walls
+  let maxUnlit = 0
+  for (const wall of sample) {
+    maxUnlit = Math.max(maxUnlit, facadeWallUnlitFromSun(wall, siteYawDeg, sunDirectionWorld))
+  }
+  return maxUnlit
+}
+
+function facadeOutwardWorldXZ(
+  wall: Wall,
+  siteYawDeg: number,
+): { x: number; z: number; len: number } {
+  const yawRad = THREE.MathUtils.degToRad((wall.yawDeg ?? 0) + siteYawDeg)
+  const localOut = wall.panelFlip === false ? 1 : -1
+  const x = localOut * Math.sin(yawRad)
+  const z = localOut * Math.cos(yawRad)
+  const len = Math.hypot(x, z) || 1
+  return { x, z, len }
+}
+
+/**
+ * Fassade, die zur Kamera zeigt — für Glas/Env-Dim (v2.0.416).
+ * `primaryFacadeWallUnlit` nach Yaw-Treffer wählte oft eine sonnenbeschienene Seitenwand (Runtime: unlit 0 bei dunkler Blickfassade).
+ */
+export function facadeWallUnlitForCameraView(
+  walls: Wall[],
+  siteYawDeg: number,
+  sunDirectionWorld: THREE.Vector3,
+  cameraPosition: THREE.Vector3,
+  lookTarget: THREE.Vector3,
+): number {
+  if (walls.length === 0) return 0
+  const toCamera = new THREE.Vector3().subVectors(cameraPosition, lookTarget)
+  toCamera.y = 0
+  if (toCamera.lengthSq() < 1) {
+    let maxUnlit = 0
+    for (const wall of walls) {
+      maxUnlit = Math.max(maxUnlit, facadeWallUnlitFromSun(wall, siteYawDeg, sunDirectionWorld))
+    }
+    return maxUnlit
+  }
+  toCamera.normalize()
+  let bestWall: Wall | null = null
+  let bestAlign = -Infinity
+  for (const wall of walls) {
+    const out = facadeOutwardWorldXZ(wall, siteYawDeg)
+    const align = (out.x / out.len) * toCamera.x + (out.z / out.len) * toCamera.z
+    if (align > bestAlign) {
+      bestAlign = align
+      bestWall = wall
+    }
+  }
+  if (!bestWall || bestAlign < 0.12) {
+    let maxUnlit = 0
+    for (const wall of walls) {
+      maxUnlit = Math.max(maxUnlit, facadeWallUnlitFromSun(wall, siteYawDeg, sunDirectionWorld))
+    }
+    return maxUnlit
+  }
+  return facadeWallUnlitFromSun(bestWall, siteYawDeg, sunDirectionWorld)
 }
 
 /** Außennormale der Paneelseite (panelFlip: −lokales Z). */

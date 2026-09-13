@@ -2,6 +2,262 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Innenwände Rechtsklick, Host-Innenwände, Andocken Innenseite (2026-09-13) — v2.0.440
+
+**Nutzer:** (1) Rechtsklick löschen/ausblenden, (2) Platzierung auf Innenwänden, (3) T/Kreuz von Ecken, (4) Andocken an Außenwände.
+
+**Ursachen / Fix:**
+1. Kontextmenü: `pickFromEvent` traf Decke vor Innenwand-Mesh → Mesh-Pick wie bei Linksklick.
+2. `pickInteriorHostFaceAtClient` lehnte Innen-Hosts ab (`camOutside`/`distOuter`) → beide Seiten + `fromFace` an `createInteriorWallFromHostNormal`.
+3. Shift an `linkedCorner` blockierte Abzweig → Ausnahme für Innenwände.
+4. T-/Seal an Außen-**Planlinie** (Lücke ≈ Wandstärke) → `dockSegmentsForInteriorMeet` (Innenseite) + `sealInteriorEndsToForeignFaces`.
+
+Docs: [ux.md](ux.md), [floor-plan.md](floor-plan.md).
+
+### Innenwand Front-Pfeil und T-Stoß (2026-09-13) — v2.0.439
+
+**Nutzer:** Verschiebe-Pfeil fehlte; kein Andocken; nur Ecken, keine T-/Kreuz-Wände.
+
+**Fix:** Front-Greifer für Innenwände wieder an (nur Höhe aus). `snapBranchClose`: T gegen Außenwand = `meet` ohne Split; T gegen Innenwand = Split + Meet. `attachAngledWallFromEnd`: Abzweig von Innenwand bleibt `role: interior`. Docs: [ux.md](ux.md).
+
+### Innenwände wieder markierbar (2026-09-13) — v2.0.438
+
+**Symptom:** Nach Platzieren keine Auswahl/Skalierung/Löschen von Innenwänden. **Logs:** `armedInteriorWallDepthCm` blieb 24, `pickKind: ceiling` — Platzier-Pfad schluckte Klicks. **Fix:** nach Setzen entwaffnen; Mesh-Pick Innenwand vor Decke; Klick auf bestehende Innenwand = Auswahl. Docs: [changelog](changelog.md) v2.0.437.
+
+### Innenwand nur von innen, 90° (2026-09-13) — v2.0.437
+
+**Nutzer:** Platzierung nur von außen möglich; parallel zur Fassade statt 90°; Sockel; Höhen-Greifer unerwünscht.
+
+**Fix:** `pickInteriorHostFaceAtClient` — Kamera im Raum + Treffer näher an Innenkante. `createInteriorWallFromHostNormal` — Stummel 90° in den Raum (`inwardYawDeg`), `planLinked`, Höhe = Host, `plinthEnabled: false`. Greifer: nur links/rechts (kein top/front). Shift-Winkel wie Außenwand.
+
+**Klick ohne Platzierung:** Cyan-Ghost sichtbar, Klick setzte nichts — `pointerdown` behandelte `hit.ceiling` vor dem Innenwand-Pfad (von innen oft Decke/Boden). Fix: Innenwand-Platzierung vor Decke; Fallback auf Hover-Anker.
+
+**Keine Auswahl nach Platzieren:** Armierung blieb aktiv → jeder Klick wurde erneut als Platzierung geschluckt. Fix: nach erfolgreichem Setzen entwaffnen; Mesh-Pick für Innenwände hat Vorrang vor Decke; Klick auf bestehende Innenwand im Platzier-Modus = Auswahl.
+
+Dateien: `walls.ts`, `main.ts`, `hydrate.ts`, Test. Docs: [ux.md](ux.md).
+
+### Innenwand ohne Außenwand-Split (2026-09-13) — v2.0.436
+
+**Symptom:** Innenwand 24/36/48 teilte die Außenwand (Fenster/Paneele zerlegt). **Ursache:** v2.0.434 nutzte denselben Split-Pfad wie Längen-Karten. **Fix:** neue Innenwand an der Innenseite; Host ungeteilt. In v2.0.437 weiter präzisiert (90°, nur innen). Docs: [ux.md](ux.md), [floor-plan.md](floor-plan.md).
+
+### Markisen-Seitenüberstand 4 cm (2026-09-13) — v2.0.435
+
+**Seitenüberstand** (`overhangCm`): UI-`step` und Snap `AWNING_OVERHANG_STEP_CM = 4` (statt 8). Breite/Mount aus Span + Überstand folgen dem 4‑cm‑Raster. Docs: [awnings.md](awnings.md).
+
+### Etage-Reste, Innenwand-Extrude, Farben-Reiter (2026-09-13) — v2.0.434
+
+**Etage aus:** Partial-Rebuild entfernt Bank/Sturz/Verdachung/Laibung/Casing auch ohne `userData.buildingId` (alle Wände des Gebäudes + Clear in `rebuildReveals`/`rebuild*Sills`/`rebuildPediments`/`rebuildCasings`). Meshes bekommen `buildingId`.
+
+**Innenwände (ersetzt in v2.0.436):** damals Segment-Split + `role: 'interior'` — führte zu Außenwand-Zerlegung; siehe v2.0.436.
+
+**Farben:** Reiter heißt **Farben**; bei Objektauswahl Bibliothek und rechter Tab starten auf Farben. Kategorie-Dropdown mit Vorauswahl (Fenster→Rahmen, Markise→Markise, …). Apply deckt Markise/Rollladen/Bänke/Verdachung/Gesims/Sockel/… ab. Kurznamen: Anstrich, Backstein, Rahmen, Stuck, Metall, Holz, Markise.
+
+**Dateien:** `FacadeController.ts`, `main.ts`, `walls.ts`, `facadeColorLibrary.ts`, `index.html`, `style.css`. Docs: [ux.md](ux.md), [floor-plan.md](floor-plan.md).
+
+### Etage aus, Innenwände, Farbbibliothek (2026-09-13) — v2.0.433
+
+**Etage ausblenden:** Force-Rebuild + Indoor; Picking ignoriert ausgeblendete Etagen (keine Bank/Sturz/Laibung/Wand-Auswahl); Decke/Boden bleiben wählbar. Auswahl auf der Etage wird gelöst.
+
+**Innenwände:** `Wall.role: 'interior'`; Bibliothek **Innenwand 24/36/48** → Grundriss zeichnen; keine Paneele/Gesims, `planLinked: false` (kein Außenring).
+
+**Farbe:** Bibliothek-Reiter mit Palette aus Naturstein/Backstein/…; Klick wendet je Kategorie auf Auswahl an (Stein→Bekleidung, Fuge, Rahmen, Markise, Dach, …).
+
+**Dateien:** `buildings.ts`, `main.ts`, `walls.ts`, `hydrate.ts`, `FacadeController.ts`, `facadeColorLibrary.ts`, `index.html`, `presets.ts`. Docs: [ux.md](ux.md), [floor-plan.md](floor-plan.md).
+
+### Glas ohne Transparent, Gruppen-Markise voll, Markisen-Kontextmenü (2026-09-13) — v2.0.432
+
+**Glas:** Swatch/Button **Transparent** entfernt (`GLASS_COLORS` ohne `transparent`). Alt-`glassColor: transparent` → `DEFAULT_GLASS_COLOR` (#575757) beim Hydrate und beim Commit.
+
+**Gruppen-Markise:** Volles Einstellungsset wie Öffnungs-Markise (Ausladung, Neigung, Volant, Seitenüberstand, Abstand Öffnung, Senkrecht, Höhe über Sturz, Stoff/Gestänge/Oberfläche, Typ, Animation inkl. Zyklus, Uhrzeiten). Bei Auswahl einer Mitglieds-Öffnung bleiben die Felder sichtbar und patchen die Wand-Gruppe. `mountY` der Gruppe ist relativ zum Span-Sturz (Legacy-Absolutwerte werden umgerechnet).
+
+**Kontextmenü Markise:** Ein-/Ausblenden, Kopieren/Einfügen/Ersetzen, Eine Markise über Auswahl, Verknüpfung lösen / Aufteilen, Zuweisen für (Öffnungs-Markise), Löschen — analog Fenster, ohne unsinnige Fenster-Aktionen.
+
+**Dateien:** `colorPalettes.ts`, `hydrate.ts`, `main.ts`, `awningUi.ts`, `awnings.ts`, `FacadeController.ts`, `index.html`. Docs: [ux.md](ux.md), [awnings.md](awnings.md).
+
+### Glasfarbe wählbar + Gruppen-Markisen-Maße (2026-09-13) — v2.0.431
+
+**Glasfarbe:** `allowTransparent` für Palette `glass` war fälschlich aus (v2.0.389) — bei `transparent` wirkten Swatch/Overlay ausgegraut und gesperrt. Fix: Transparent wieder an; Farbfeld bleibt bedienbar, um aus Transparent heraus eine Farbe zu wählen.
+
+**Gruppen-Markise:** Studio-UI zeigt öffnungsbezogene Maße (**Abstand Öffnung**, Konsole, Senkrecht, Seitenüberstand) wie die Öffnungs-Markise; freie Wand-Markise behält **Arm von Kante**.
+
+**Dateien:** `main.ts`, `awningUi.ts`, `index.html`. Docs: [ux.md](ux.md), [awnings.md](awnings.md).
+
+### Glasfarbe, Markisenbreite, Gruppen-Markise (2026-09-13) — v2.0.430
+
+**Glasfarbe:** `applyOpeningPartVisibility` blendete Rahmen/Glas nach Teil-Fokus bei normalen Fenstern nicht wieder ein (nur Keller). Fix: im `showFrame`-Zweig immer einblenden.
+
+**Markisenbreite:** Öffnungs-Markisen immer `Öffnung + 2×Seitenüberstand` — bei Größenänderung (`updateOpening`/`moveOpening`), Scope-Toast (`awning`-Delta ohne Donor-`widthCm`) und UI ohne festes Breitenfeld. Gruppen: Span der Öffnungen + Überstand.
+
+**Gruppen-Markise:** `AwningConfig.openingIds` an `wall.awnings`; Mehrfachauswahl → „Eine Markise über Auswahl“; Lösen / In Einzel-Markisen aufteilen.
+
+**Dateien:** `main.ts`, `awnings.ts`, `openings.ts`, `scopePropagate.ts`, `FacadeController.ts`, `awningUi.ts`, `index.html`. Docs: [awnings.md](awnings.md), [ux.md](ux.md).
+
+### Markise kopieren + Scope nur Deltas (2026-09-13) — v2.0.429
+
+**Markise:** Eigene Zwischenablage; Rechtsklick auf Markisen-Mesh und Öffnungs-/Wandmenü für kopieren / einfügen / ersetzen. Fenster-Geometrie-Kopie inkl. Markise unverändert.
+
+**Scope-Toast:** Nested Opening-Configs nicht mehr ganz ersetzen (`OPENING_REPLACE_WHOLE` entfernt) — `deepApplyChanged` übernimmt nur geänderte Keys (z. B. `boxWindow`). Peer ohne Nested-Objekt bekommt After komplett. Wand-`WALL_REPLACE_WHOLE` und Rechtsklick **Zuweisen für** unverändert.
+
+**Dateien:** `awnings.ts`, `main.ts`, `scopePropagate.ts`, Tests. Docs: [awnings.md](awnings.md), [ux.md](ux.md), [views-and-state.md](views-and-state.md).
+
+### Hellerer Sonnen-Look (2026-09-13) — v2.0.428
+
+**Nutzer:** Ab ~v2.0.420/426 wirkte die Szene grauer/matter. **Ursache:** v2.0.410/411 (`shadow.intensity` 0,95…1 + Bounce/Env-Density-Dämpfung) und v2.0.413–418 (edgeShade/wallUnlit auf Kanten/Glas/Env). **Fix:** Intensity wieder `0,55+0,45×density`; Bounce/Env voll; Fassaden-Shader wieder `dimMask` (Prä-413); wallUnlit-Env/Glas-Dimmung aus. **Markisen-Live-Schatten (v2.0.427) unverändert.**
+
+**Dateien:** `main.ts`, `facadeShade.ts`, `threeColors.ts`. Docs: [shadows.md](shadows.md).
+
+### Markisen-Schatten folgt Ausfahrt (2026-09-13) — v2.0.427
+
+**Symptom:** Markisenschatten blieb während Ein-/Ausfahren auf der Startpose (`autoUpdate = false`). **Versuche (verworfen):** Scrub-Bake 8192 (ruckelig); Live-Map 1024 (Haus pixelig); nur Markisen casten (Hausschatten weg); Extra-Directional-/Spot-Licht (Umbra-Fill). **Fix:** während Live Voll-Bake aller Caster bei max. 4096² ~alle 48 ms; Settle stellt Map-Größe wieder her.
+
+**Dateien:** `main.ts`, `awningUi.ts`. Docs: [awnings.md](awnings.md), [shadows.md](shadows.md).
+
+### Markisen + Bühnen-Wind (2026-09-13) — v2.0.421
+
+**Feature:** Gelenkarm- und Fallarm-Markisen an Öffnungen und frei an der Wand; Ausfahrt 0…100 % mit Gestänge unter dem Stoff und Animation. Globaler Wind-Slider (windstill→stürmisch) bewegt Markisenstoffe zufällig.
+
+**Dateien:** `awning.ts`, `awnings.ts`, `awningUi.ts`, `windRuntime.ts`, `FacadeController.ts`, `sunLighting.ts`, `main.ts`, `index.html`. Docs: [awnings.md](awnings.md), [wind.md](wind.md).
+
+### Markise Ausfahrrichtung (2026-09-13) — v2.0.422
+
+**Symptom:** Markise fuhr nach innen statt vor die Fassade. **Ursache:** Pose in +Z, Außenwand (`panelFlip`) hat Außennormale −Z. **Fix:** `group.scale.z = windowDepthForwardSign(wall)` bei Montage.
+
+**Dateien:** `FacadeController.ts`. Docs: [awnings.md](awnings.md).
+
+### Markise Pose + vorderer Überhang (2026-09-13) — v2.0.423
+
+**Symptom:** Fallarm zeigte nach oben; Gelenkarm-Gestänge lag über dem Stoff; kein Stoff vor dem Frontrohr. **Fix:** Fallarm-Winkel von der Lotrechten nach unten/außen; Stoff-Leitkurve über den Armen; `frontOverhangCm` 0…48 cm (Default 16, 8er-Raster) als Volant.
+
+**Dateien:** `awning.ts`, `FacadeController.ts`, `awningUi.ts`, `index.html`, `facade.ts`. Docs: [awnings.md](awnings.md).
+
+### Markise: Volant, Neigung, Markisolette (2026-09-13) — v2.0.424
+
+**Nutzer:** Stoff durchscheinend / Gestänge darüber; Gelenkarme nach unten statt innen; Volant fehlt; Defaults und Typen unvollständig. **Fix:** Depth/RenderOrder + Stoff über Gestänge; Gelenkarme klappen in X nach innen; Volant senkrecht (−Y); Stoff grau; Seitenüberstand Default 16; Neigung `slopeDeg`; Fallarm-Armposition; Typ **Markisolette**.
+
+**Dateien:** `awning.ts`, `FacadeController.ts`, `awningUi.ts`, `index.html`, `facade.ts`, `awnings.ts`, `main.ts`. Docs: [awnings.md](awnings.md).
+
+### Markise: Fallarm starr, Gelenkarm-IK, Markisolette-Mechanik (2026-09-13) — v2.0.426
+
+**Nutzer:** Fallarm hatte ein Gelenk (soll ein Segment sein); Gelenkarm-Ellbogen klappte nicht überzeugend ein; Markisolette-Mechanik falsch. **Fix:** Fallarm = ein starrer Arm auf Kreisbogen um die Wandkonsole (Länge = Konsole → Kasten, Feld „Konsole unter Kasten“, Default 144; „Ausladung“ ausgeblendet). Gelenkarm = Zwei-Glied-IK mit fester Gliedlänge, Ellbogen in der Tuchebene zur Mitte; gekreuzte Arme versetzt. Markisolette nach Referenzgeometrie (Gleiter in Führungsschiene, Blockadeelement = Drehpunkt am Schienenende, starrer Arm bis 90°+Neigung, Tuch senkrecht bis Austritt, dann gerade zum Profil). Stoffpfad generisch (`sampleFabricRows`, Normalen-Lift). Typwechsel setzt typgerechte Maße (`awningKindDefaults`). Schienen auf Arm-X, Ellbogen-Scharnier nur beim Gelenkarm.
+
+**Dateien:** `awning.ts`, `awning.test.ts`, `FacadeController.ts`, `awningUi.ts`, `index.html`. Docs: [awnings.md](awnings.md).
+
+### Markise: Keine, Scharnier, Halterung (2026-09-13) — v2.0.425
+
+**Nutzer:** Bibliothek ohne „Keine“; Fallarm-Länge änderte sich mit der Ausfahrt statt zu knicken; keine Fassadenhalterung; Stoff schien durchs Gestell. **Fix:** Bibliothek-Karte **Keine** zuerst; zwei-gliedrige IK mit fester Armlänge; Wandhalter + Scharniere; Abstand min. 8 cm zu Öffnung/Profil; Stoff/Volant geometrisch über dem Gestänge.
+
+**Dateien:** `awning.ts`, `FacadeController.ts`, `awningUi.ts`, `index.html`, `main.ts`, `profilePaths.ts`. Docs: [awnings.md](awnings.md).
+
+### Ladeanimation bis Bootstrap (2026-09-13) — v2.0.420
+
+**Symptom:** Ladeanimation (Haus vom Nikolaus) fehlte / UI erschien zu früh. **Ursache:** `dismissAppLoading()` direkt nach `loadInitialState()` (v2.0.396) und HTML-Failsafe nach 1,2 s. **Fix:** Overlay bleibt bis `bootstrapSceneLighting()` (+ 2 Frames) in `finally`; `#app` per `body.app-ready` erst dann sichtbar; Failsafe nur noch 20 s.
+
+**Dateien:** `index.html`, `main.ts`. Docs: [views-and-state.md](views-and-state.md), [ux.md](ux.md).
+
+### Schatten-Tiefe: mehr Helligkeit (2026-09-13) — v2.0.419
+
+**Nutzer:** Am linken Slider-Ende fehlt Spielraum zum Aufhellen; Max rechts (nahezu schwarz) ist ok. **Fix:** UI 0…1 mappt auf Wirk −2…1 — untere ~⅔ = Aufhellung Richtung volles Streulicht (≈3× Spielraum), ab ⅔ wie früher Rohkurve→schwarz. Alt-Saves ohne `shadeDepthExpanded`: `(d+2)/3`. Default ≈ **0,92** (entspricht altem 0,75).
+
+**Dateien:** `facadeShade.ts`, `sunLighting.ts`, `index.html`. Docs: [shadows.md](shadows.md).
+
+### Glas-Dimmung über Sonnen-Settings (2026-09-13) — v2.0.418
+
+**Symptom (Screenshot 239°/40,5°):** Fassade schwarz, Glas/Laibung hellgrau. **Runtime:** `dirLight.getWorldDirection` → `(0,0,−1)` → `facadeWallUnlit` kippte auf 0; Glas-Env blieb **0,73**, Farbe `#575757`, Opacity 0,5 (Innen durchscheinend). **Fix:** `sunFromTargetDirection(sunSettings)`; Present = `max(yawUnlit, cameraUnlit)`; See-through-Glas Farbe×0,02 + Opacity 0,96; Latch nur wenn `yawUnlit` hoch bleibt.
+
+**Verifikation (Browser):** az 239 → Glas `#141414`, env **0,037**, opacity **0,96**; az 0 → Glas wieder `#575757` / env 0,73.
+
+**Dateien:** `main.ts`, `threeColors.ts`. Docs: [shadows.md](shadows.md).
+
+### Glas und Rahmenkanten bei Fassadenschatten (2026-09-13) — v2.0.417
+
+**Symptom (nach v2.0.416):** Env korrekt (`facadeWallUnlit: 1`, `envWallScale: 0,05`); Glasflächen und helle Kanten bleiben weiß. **Ursache:** Glas ohne `facadeShade` (Transmission/Clearcoat); Fenster-Meshes in lokalem Raum → Shader-`wallUnlit` griff nicht; Rahmen-Env-Minimum 0,7. **Fix:** `uFacadeWallUnlit` global; `bindFacadeGlassWallShade` + Transmission-Dim; Rahmen-Env nur als Basis. Cache `facade-backlit-v18`, `glass-wall-unlit-v1`.
+
+**Dateien:** `facadeShade.ts`, `threeColors.ts`, `FacadeController.ts`, `main.ts`. Docs: [shadows.md](shadows.md).
+
+### Glas-Env folgt der Kamera-Fassade (2026-09-13) — v2.0.416
+
+**Symptom (nach v2.0.415):** Rahmen/Glas/Laibung weiter hell. **Runtime:** `facadeWallUnlit: 0`, `envWallScale: 1` bei `sunOnFront: 0` — `primaryFacadeWallUnlit` nach Yaw wählte eine andere, sonnenbeschienene Wand; Env blieb voll. **Fix:** `facadeWallUnlitForCameraView` (Kamera → sichtbare Fassade); `syncEnvMapFillIntensities` nach `setExteriorEnvFillFactor`.
+
+**Dateien:** `elevation.ts`, `main.ts`. Docs: [shadows.md](shadows.md).
+
+### Glas und Rahmenkanten im Fassadenschatten (2026-09-13) — v2.0.415
+
+**Symptom (nach v2.0.414):** Paneele ok; Glas, Rahmenkanten, Laibung innen und Nischen weiter hell/weiß. **Runtime:** Shader-Dim aktiv (`frameDimKeep` ~0,06), aber `radiance` (Env-Specular) blieb für Nicht-Label **ungedimmt** — weiße Rahmen/Glas reflektierten volle CubeCamera. **Fix:** `radiance *= facadeIndirect`; `facadeWallUnlit` dämpft Glas-/Rahmen-Env (`scaledEnvIntensity`) und Innen-Laibung (`applyFacadeWallUnlit`). Cache `facade-backlit-v17`.
+
+**Dateien:** `facadeShade.ts`, `threeColors.ts`, `elevation.ts`, `main.ts`. Docs: [shadows.md](shadows.md).
+
+### Rahmen, Flügel und Nischen folgen dem Fassadenschatten (2026-09-13) — v2.0.414
+
+**Symptom (nach v2.0.413):** Paneele ok; Fensterrahmen, innere Kanten, geöffnete Flügel/Türen und Nischen bleiben hell. **Ursache:** (1) Normalen-Modus (`uNormalBacklit`) nutzte nur Flächen-N·L — sonnenzugewandte Rahmenkanten blieben hell trotz dunkler Wand. (2) Nische/Konche `skipFacadeShade` (Schutz vor pechschwarzen Seiten). **Fix:** `wallUnlit` dimmt auch im Normalen-Modus; Nischen ohne Skip, Außen-Finish + Gegenlicht. Cache `facade-backlit-v16`.
+
+**Dateien:** `facadeShade.ts`, `FacadeController.ts`. Docs: [shadows.md](shadows.md).
+
+### Seiten/Oben/Unten folgen dem Fassadenschatten (2026-09-13) — v2.0.413
+
+**Symptom:** Nach Sonnenwinkel-Änderung wird die Front dunkel; alles Seitliche sowie Oben/Unten bleibt weiß. **Runtime:** `receiveShadow` an (Gesims/Paneele); `backlit=0` bei `sunOnFront≈0` (Streiflicht) — Front dunkel nur per Lambert, Kanten behalten Direct (Elevation/±X). Alte `dimMask = 1 − sideOrTop·0,82` (v2.0.370/371) griff nur bei starkem Gegenlicht und ließ Kanten ~82 % hell. **Fix:** `edgeShade = sideOrTop × frontUnlit` — Nicht-Frontflächen dimmen, sobald die Wandfront wenig Sonne hat; Cache `facade-backlit-v15`.
+
+**Dateien:** `facadeShade.ts`. Docs: [shadows.md](shadows.md).
+
+### Profilfarbe Etage auch für Nischen (2026-09-13) — v2.0.412
+
+**Symptom:** Profilfarbe am Fenster ändern und Toast/Zuweisen **Etage** → Fenster ok, Nischen/Konchen unverändert. **Runtime:** `canTakePeer: false` für `peerType: conch` (Gate nur Fenster/Tür). **Fix:** `openingTakesFrameProfile` = `openingSupportsFrameProfiles` (Fenster/Tür/Cutout/Konche).
+
+**Dateien:** `scopePropagate.ts`. Docs: [ux.md](ux.md), [opening-features.md](opening-features.md), [views-and-state.md](views-and-state.md).
+
+### Werfschatten auf der Wand kontrastreicher (2026-09-13) — v2.0.411
+
+**Symptom:** Nach v2.0.410 (`shadow.intensity` ~0,97) blieben Wand-Werfschatten blass. **Runtime post-fix:** Rest-Key nur noch **0,04**, aber Bounce **0,21** (castShadow aus) und Wand-Env **0,58** (Boden Env 0) füllten die Umbra. **Fix:** Density skaliert Bounce (`lerp(1, 0,48)`) und Env-Fill (`lerp(1, 0,62)`); intensity-Mapping **0,95…1**.
+
+**Dateien:** `main.ts`. Docs: [shadows.md](shadows.md).
+
+### Dunklere Werfschatten auf der Fassade (2026-09-13) — v2.0.410
+
+**Symptom:** Schlagschatten von Gesims/Fensterbank auf der Wand wirkten blass. **Runtime:** `claddingReceive` an, `castShadow` an; `shadow.intensity` **0,865** (Density 0,7 → Formel 0,55+0,45×d) ließ ~14 % Key (~0,20) in der Umbra, zusätzlich Bounce ~0,21 und EnvMap ~0,58. **Verworfen:** Empfang aus / Key-Latch / flache Map. **Fix:** Density→`dirLight.shadow.intensity` **0,90…1** (Default ~0,97). PCSS/Contrast/Density-Defaults unverändert.
+
+**Dateien:** `main.ts`. Docs: [shadows.md](shadows.md).
+
+### Fallrohr-Wandabstand (2026-09-13) — v2.0.409
+
+**Feature:** Aufsatz-Fallrohr: einstellbarer Abstand Rohraußenkante → äußerste Paneelfläche (`surfaceGapCm`, Default 8, 0…48). UI unter Maße → **Wandabstand (cm)**; bei Nische ausgeblendet. Schellen folgen dem Spalt.
+
+**Dateien:** `facade.ts`, `downpipe.ts`, `main.ts`, `index.html`. Docs: [downpipes.md](downpipes.md), [ux.md](ux.md).
+
+### Fallrohr-Aufsatz und Rinnenfarbe (2026-09-13) — v2.0.408
+
+**Fix:** Aufsatz-Fallrohr sitzt 8 cm vor der äußersten Paneelfläche (`studioFacadeOutwardDepth`); Schellen-Laschen reichen über Spalt + Paneelvorstand bis in den Wandkörper. Dachrinne/Fallrohr in Nicht-Zink-Farben (z. B. Weiß) mit niedriger Metalness statt Titanzink-Grau.
+
+**Dateien:** `downpipe.ts`, `FacadeController.ts`. Docs: [downpipes.md](downpipes.md).
+
+### Nischen-Innenraum wie Außenwand (2026-09-13) — v2.0.407
+
+**Fix:** Versiegelte Nischen (Cutout/Konche/Fallrohr) nutzen `finishExteriorMaterial` und erzwingen Wandfarbe für beide Materialgruppen — Hex allein reichte nicht, Innen-Finish wirkte wie Innenputz.
+
+**Symptom / Versuch:** v2.0.406 setzte nur die Hex-Farbe auf Wandweiß; Runtime-Logs zeigten `finishPath: interiorBoth` → optisch noch Innenwand. Fix: Außen-Finish + `skipFacadeShade`.
+
+**Dateien:** `FacadeController.ts`. Docs: [opening-features.md](opening-features.md), [ux.md](ux.md).
+
+### Nischen: Profile folgen Form, Innen Wandfarbe (2026-09-13) — v2.0.406
+
+**Fix:** Rahmenprofile an runden Cutouts folgen der Stadion-Kontur (`openingStadiumEdgePolyline`); Rest-`arch` an Cutouts entfernt (Profilrahmen ohne Lücken). Nischen-/Konchen-/Fallrohr-Inneres in Wandfarbe statt Innenwand-Weiß.
+
+**Symptom / Versuche:** Rechteck-Rahmen auf Stadion-Loch → Ecken im Leeren bzw. fehlende Kurve; Cutouts mit Legacy-`arch.enabled` kürzten Seiten bis Kämpfer → Lücken oben. Innenfarbe war `interiorColor` (50/50-Split) auch bei versiegelter Nische.
+
+**Dateien:** `openingGeometry.ts`, `profilePaths.ts`, `hydrate.ts`, `FacadeController.ts`, `main.ts`. Docs: [profiles.md](profiles.md), [opening-features.md](opening-features.md), [downpipes.md](downpipes.md).
+
+### Profile an Einbuchtungen (2026-09-13) — v2.0.405
+
+**Feature:** Cutout-Nischen und Durchbrüche können Rahmenprofile wie Fenster und Türen bekommen (Bibliothek-Tab Profile, Toolbar Profil). Fallrohr-gekoppelte Cutouts bleiben ohne Rahmenprofil.
+
+**Dateien:** `openingGeometry.ts` (`openingSupportsFrameProfiles`), `profilePaths.ts`, `openings.ts`, `downpipe.ts`, `main.ts`, `FacadeSvgView.ts`, `index.html`. Docs: [profiles.md](profiles.md), [opening-features.md](opening-features.md).
+
+### Fallrohr: Schmuck, Schellen, Drag (2026-09-13) — v2.0.404
+
+**Feature/Fix:** Optionaler Schmuck-Durchbruch (`breakDecor`) für Aufsatz (flush) und Nische; Nische eckig (`rect`); Rohrschellen; Drag + Pfeiltasten. Gesims/Zierband/Sockel mit geschlossenen Stirnkappen.
+
+**Gesims-Fix:** `openingMaskXRangesAtY` ignoriert flush und liefert an `y=height` oft []; Decor-Maske + explizite Fallrohr-X-Gaps + Sample innen.
+
+Dateien: `downpipe.ts`, `profilePaths.ts`, `openingGeometry.ts`, `main.ts`, `index.html`, `types/facade.ts`. Docs: [downpipes.md](downpipes.md).
+
 ### Fallrohr + Regenrinne (2026-09-13) — v2.0.403
 
 **Feature:** Mehrgeschossiges Fallrohr als `Building.downpipes[]` (Default DN 80, Aufsatz, Fuß Schräge). Optionale Nische synchronisiert Cutouts über `findVerticalAlignedWalls`. Dachrinne: `gutterColor` + Ablaufstutzen.

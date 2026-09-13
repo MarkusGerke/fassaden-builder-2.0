@@ -46,6 +46,8 @@
       #ui { position: relative; padding: 1.2rem 1.4rem; border-right: 1px solid #ddd; }
       #viewport { position: relative; background: #555; min-width: 0; }
       [hidden] { display: none !important; }
+      /* UI erst nach Bootstrap sichtbar — Overlay deckt ab, App darunter unsichtbar. */
+      body:not(.app-ready) #app { visibility: hidden; }
       #app-loading {
         position: fixed; inset: 0; z-index: 9999;
         display: flex; align-items: center; justify-content: center;
@@ -97,14 +99,16 @@
       </div>
     </div>
     <script>
+      /* Failsafe: nur wenn main.ts nicht startet / hängt — normalerweise dismissAppLoading(). */
       (function () {
         window.setTimeout(function () {
           var el = document.getElementById('app-loading')
           if (!el || el.classList.contains('is-done')) return
+          document.body.classList.add('app-ready')
           el.classList.add('is-done')
           el.setAttribute('aria-busy', 'false')
           window.setTimeout(function () { el.remove() }, 400)
-        }, 1200)
+        }, 20000)
       })()
     </script>
     <div id="app">
@@ -360,6 +364,7 @@
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="doors" id="library-tab-doors" data-library-when="wall">Türen</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="panels" id="library-tab-panels" data-library-when="wall">Fassade</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="walls" id="library-tab-walls" data-library-when="always">Wände</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="farbe" id="library-tab-farbe" data-library-when="always">Farben</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="bay" id="library-tab-bay" data-library-when="always">Erker</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="balcony" id="library-tab-balcony" data-library-when="always">Balkone &amp; Loggia</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="loggia" id="library-tab-loggia" data-library-when="always" hidden>Loggia</button>
@@ -367,6 +372,7 @@
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="trimBands" id="library-tab-trim-bands" data-library-when="wall">Zierbänder</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="plinth" id="library-tab-plinth" data-library-when="wall">Sockel</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="label" id="library-tab-label" data-library-when="wall">Schrift</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="awnings" id="library-tab-awnings" data-library-when="wall">Markisen</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="openingForm" id="library-tab-opening-form" data-library-when="opening">Fensterform</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="niches" id="library-tab-niches" data-library-when="wall">Nischen</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="stairs" id="library-tab-stairs" data-library-when="stairs" hidden>Treppen</button>
@@ -743,6 +749,14 @@
                   <button id="downpipe-diameter-plus" class="preset-btn" type="button">+</button>
                 </div>
               </div>
+              <div id="downpipe-surface-gap-row" class="toolbar-group toolbar-inline-value ui-field-inline">
+                <span class="toolbar-label">Wandabstand (cm)</span>
+                <div class="preset-group">
+                  <button id="downpipe-surface-gap-minus" class="preset-btn" type="button">−</button>
+                  <input id="downpipe-surface-gap" type="number" min="0" max="48" step="1" value="8" aria-label="Fallrohr Wandabstand" />
+                  <button id="downpipe-surface-gap-plus" class="preset-btn" type="button">+</button>
+                </div>
+              </div>
             </div>
             <div class="settings-section ui-stack" data-settings-section="colors" data-settings-label="Farbe" data-settings-order="20">
               <div class="toolbar-group">
@@ -758,16 +772,20 @@
                   <button id="downpipe-mount-niche" class="preset-btn" type="button" aria-pressed="false">Nische</button>
                 </div>
               </div>
+              <label class="toolbar-check">
+                <input id="downpipe-break-decor" type="checkbox" checked />
+                Fassadenschmuck durchbrechen
+              </label>
               <div id="downpipe-niche-options" class="ui-stack" hidden>
                 <div class="toolbar-group toolbar-inline-value ui-field-inline">
-                  <span class="toolbar-label">Nischenbreite (cm)</span>
+                  <span class="toolbar-label" id="downpipe-niche-width-label">Nischenbreite (cm)</span>
                   <div class="preset-group">
                     <button id="downpipe-niche-width-minus" class="preset-btn" type="button">−</button>
                     <input id="downpipe-niche-width" type="number" min="8" max="48" step="8" value="16" />
                     <button id="downpipe-niche-width-plus" class="preset-btn" type="button">+</button>
                   </div>
                 </div>
-                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                <div id="downpipe-niche-depth-row" class="toolbar-group toolbar-inline-value ui-field-inline">
                   <span class="toolbar-label">Nischentiefe (cm)</span>
                   <div class="preset-group">
                     <button id="downpipe-niche-depth-minus" class="preset-btn" type="button">−</button>
@@ -1249,6 +1267,122 @@
                 <div class="toolbar-group">
                   <span class="toolbar-label">Versatz (cm, + außen / − innen)</span>
                   <input id="studio-label-offset-forward" type="number" step="0.5" min="-80" max="80" value="0" aria-label="Schrift-Versatz senkrecht zur Fassade" />
+                </div>
+              </div>
+</div>
+
+<div class="settings-section ui-stack" data-settings-section="awning" data-settings-label="Markise" data-settings-order="55">
+              <div class="toolbar-group">
+                <button id="studio-awning-add" class="preset-btn" type="button">Markise hinzufügen</button>
+                <button id="studio-awning-remove" class="preset-btn toolbar-danger" type="button" hidden>Markise löschen</button>
+              </div>
+              <div id="studio-awning-group-actions" class="toolbar-group" hidden>
+                <button id="studio-awning-dissolve" class="preset-btn" type="button">Verknüpfung lösen</button>
+                <button id="studio-awning-split" class="preset-btn" type="button">In Einzel-Markisen aufteilen</button>
+              </div>
+              <p id="studio-awning-group-hint" class="toolbar-hint" hidden>Markise über verknüpfte Öffnungen — Breite = Span + Seitenüberstand</p>
+              <div id="studio-awning-options" hidden>
+                <p class="settings-subheading settings-subheading-nested">Maße</p>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Ausfahrt (%)</span>
+                  <span id="studio-awning-extension-label" class="toolbar-hint compact-hint" style="margin:0">65</span>
+                </div>
+                <input id="studio-awning-extension" type="range" min="0" max="100" step="1" value="65" aria-label="Wand-Markisen-Ausfahrt" />
+                <div class="toolbar-group toolbar-inline-value ui-field-inline" id="studio-awning-width-row">
+                  <span class="toolbar-label">Breite (cm)</span>
+                  <input id="studio-awning-width" type="number" min="48" max="960" step="8" value="192" />
+                </div>
+                <div id="studio-awning-projection-row" class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Ausladung (cm)</span>
+                  <input id="studio-awning-projection" type="number" min="48" max="480" step="8" value="144" />
+                </div>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Neigung (°)</span>
+                  <input id="studio-awning-slope" type="number" min="0" max="45" step="1" value="15" />
+                </div>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Volant (cm)</span>
+                  <input id="studio-awning-front-overhang" type="number" min="0" max="48" step="8" value="16" />
+                </div>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline" id="studio-awning-overhang-row" hidden>
+                  <span class="toolbar-label">Seitenüberstand (cm)</span>
+                  <input id="studio-awning-overhang" type="number" min="0" max="64" step="4" value="16" />
+                </div>
+                <div id="studio-awning-drop-fields" class="ui-stack" hidden>
+                  <div class="toolbar-group toolbar-inline-value ui-field-inline" id="studio-awning-arm-inset-row">
+                    <span class="toolbar-label">Arm von Kante (cm)</span>
+                    <input id="studio-awning-arm-inset" type="number" min="0" max="160" step="8" value="16" />
+                  </div>
+                  <div class="toolbar-group toolbar-inline-value ui-field-inline" id="studio-awning-arm-clearance-row" hidden>
+                    <span class="toolbar-label">Abstand Öffnung (cm)</span>
+                    <input id="studio-awning-arm-clearance" type="number" min="8" max="160" step="8" value="8" />
+                  </div>
+                  <div id="studio-awning-arm-mount-y-row" class="toolbar-group toolbar-inline-value ui-field-inline">
+                    <span class="toolbar-label">Konsole unter Kasten (cm)</span>
+                    <input id="studio-awning-arm-mount-y" type="number" min="16" max="320" step="8" value="144" />
+                  </div>
+                </div>
+                <div id="studio-awning-markisolette-fields" class="ui-stack" hidden>
+                  <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                    <span class="toolbar-label">Senkrecht (cm)</span>
+                    <input id="studio-awning-vertical-drop" type="number" min="24" max="320" step="8" value="120" />
+                  </div>
+                </div>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline" id="studio-awning-mount-y-row" hidden>
+                  <span class="toolbar-label">Höhe über Sturz (cm)</span>
+                  <input id="studio-awning-mount-y" type="number" min="-64" max="96" step="8" value="0" />
+                </div>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline" id="studio-awning-x-row">
+                  <span class="toolbar-label">Position X (cm)</span>
+                  <input id="studio-awning-x" type="number" min="0" step="8" value="0" />
+                </div>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline" id="studio-awning-y-row">
+                  <span class="toolbar-label">Höhe Y (cm)</span>
+                  <input id="studio-awning-y" type="number" min="0" step="8" value="192" />
+                </div>
+                <p class="settings-subheading settings-subheading-nested">Farbe</p>
+                <span class="toolbar-label">Stoff</span>
+                <div id="studio-awning-fabric-color-swatches" class="color-swatches"></div>
+                <span class="toolbar-label">Gestänge</span>
+                <div id="studio-awning-frame-color-swatches" class="color-swatches"></div>
+                <span class="toolbar-label">Oberfläche</span>
+                <select id="studio-awning-finish" aria-label="Reflexion Markise">
+                  <option value="matte">Stumpf</option>
+                  <option value="glossy">Glänzend</option>
+                  <option value="metal">Metallisch</option>
+                </select>
+                <p class="settings-subheading settings-subheading-nested">Typ</p>
+                <div id="studio-awning-kind-group" class="preset-group">
+                  <button class="preset-btn active" type="button" data-studio-awning-kind="foldingArm">Gelenkarm</button>
+                  <button class="preset-btn" type="button" data-studio-awning-kind="dropArm">Fallarm</button>
+                  <button class="preset-btn" type="button" data-studio-awning-kind="markisolette">Markisolette</button>
+                </div>
+                <p class="settings-subheading settings-subheading-nested">Animation</p>
+                <div class="action-row action-row-stack">
+                  <button type="button" class="preset-btn" id="studio-awning-play-extend">Ausfahren</button>
+                  <button type="button" class="preset-btn" id="studio-awning-play-retract">Einfahren</button>
+                  <button type="button" class="preset-btn" id="studio-awning-play-cycle">Aus → Pause → Ein</button>
+                </div>
+                <button type="button" class="preset-btn" id="studio-awning-stop" hidden>Stopp</button>
+                <p class="settings-subheading settings-subheading-nested">Uhrzeiten</p>
+                <div id="studio-awning-schedule" class="toolbar-group day-schedule-editor">
+                  <p class="toolbar-hint compact-hint">Ein = ausfahren, Aus = einfahren.</p>
+                  <div class="day-schedule-on">
+                    <span class="toolbar-label">Ausfahren</span>
+                    <div class="day-schedule-list-mount"></div>
+                    <div class="toolbar-row day-schedule-add-row">
+                      <input type="text" data-schedule-add="on" placeholder="HH:MM" aria-label="Ausfahr-Zeit hinzufügen" />
+                      <button type="button" class="preset-btn" data-schedule-add="on">+</button>
+                    </div>
+                  </div>
+                  <div class="day-schedule-off">
+                    <span class="toolbar-label">Einfahren</span>
+                    <div class="day-schedule-list-mount"></div>
+                    <div class="toolbar-row day-schedule-add-row">
+                      <input type="text" data-schedule-add="off" placeholder="HH:MM" aria-label="Einfahr-Zeit hinzufügen" />
+                      <button type="button" class="preset-btn" data-schedule-add="off">+</button>
+                    </div>
+                  </div>
                 </div>
               </div>
 </div>
@@ -1967,8 +2101,109 @@
               </div>
             </div>
 
+            <div id="opening-awning-section" class="settings-section toolbar-group ui-stack" data-settings-section="awning" data-settings-label="Markise" data-settings-order="52">
+              <label class="toolbar-check">
+                <input id="awning-enabled" type="checkbox" />
+                Markise anzeigen
+              </label>
+              <p id="awning-group-covered-hint" class="toolbar-hint" hidden>Gruppen-Markise — Einstellungen unten gelten für alle verknüpften Öffnungen.</p>
+              <button id="awning-group-from-selection" class="preset-btn" type="button" hidden>Eine Markise über Auswahl</button>
+              <div id="awning-options" hidden>
+                <p class="settings-subheading settings-subheading-nested">Maße</p>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Ausfahrt (%)</span>
+                  <span id="awning-extension-label" class="toolbar-hint compact-hint" style="margin:0">65</span>
+                </div>
+                <input id="awning-extension" type="range" min="0" max="100" step="1" value="65" aria-label="Markisen-Ausfahrt" />
+                <div class="toolbar-group toolbar-inline-value ui-field-inline" id="awning-width-row" hidden>
+                  <span class="toolbar-label">Breite (cm)</span>
+                  <input id="awning-width" type="number" min="48" max="960" step="8" value="192" />
+                </div>
+                <div id="awning-projection-row" class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Ausladung (cm)</span>
+                  <input id="awning-projection" type="number" min="48" max="480" step="8" value="144" />
+                </div>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Neigung (°)</span>
+                  <input id="awning-slope" type="number" min="0" max="45" step="1" value="15" />
+                </div>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Volant (cm)</span>
+                  <input id="awning-front-overhang" type="number" min="0" max="48" step="8" value="16" />
+                </div>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline" id="awning-overhang-row">
+                  <span class="toolbar-label">Seitenüberstand (cm)</span>
+                  <input id="awning-overhang" type="number" min="0" max="64" step="4" value="16" />
+                </div>
+                <div id="awning-drop-fields" class="ui-stack" hidden>
+                  <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                    <span class="toolbar-label">Abstand Öffnung (cm)</span>
+                    <input id="awning-arm-clearance" type="number" min="8" max="160" step="8" value="8" />
+                  </div>
+                  <div id="awning-arm-mount-y-row" class="toolbar-group toolbar-inline-value ui-field-inline">
+                    <span class="toolbar-label">Konsole unter Kasten (cm)</span>
+                    <input id="awning-arm-mount-y" type="number" min="16" max="320" step="8" value="144" />
+                  </div>
+                </div>
+                <div id="awning-markisolette-fields" class="ui-stack" hidden>
+                  <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                    <span class="toolbar-label">Senkrecht (cm)</span>
+                    <input id="awning-vertical-drop" type="number" min="24" max="320" step="8" value="120" />
+                  </div>
+                </div>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Höhe über Sturz (cm)</span>
+                  <input id="awning-mount-y" type="number" min="-64" max="96" step="8" value="0" />
+                </div>
+                <p class="settings-subheading settings-subheading-nested">Farbe</p>
+                <span class="toolbar-label">Stoff</span>
+                <div id="awning-fabric-color-swatches" class="color-swatches"></div>
+                <span class="toolbar-label">Gestänge</span>
+                <div id="awning-frame-color-swatches" class="color-swatches"></div>
+                <span class="toolbar-label">Oberfläche</span>
+                <select id="awning-finish" aria-label="Reflexion Markise">
+                  <option value="matte">Stumpf</option>
+                  <option value="glossy">Glänzend</option>
+                  <option value="metal">Metallisch</option>
+                </select>
+                <p class="settings-subheading settings-subheading-nested">Typ</p>
+                <div id="awning-kind-group" class="preset-group">
+                  <button class="preset-btn active" type="button" data-awning-kind="foldingArm">Gelenkarm</button>
+                  <button class="preset-btn" type="button" data-awning-kind="dropArm">Fallarm</button>
+                  <button class="preset-btn" type="button" data-awning-kind="markisolette">Markisolette</button>
+                </div>
+                <p class="settings-subheading settings-subheading-nested">Animation</p>
+                <div class="action-row action-row-stack">
+                  <button type="button" class="preset-btn" id="awning-play-extend">Ausfahren</button>
+                  <button type="button" class="preset-btn" id="awning-play-retract">Einfahren</button>
+                  <button type="button" class="preset-btn" id="awning-play-cycle">Aus → Pause → Ein</button>
+                </div>
+                <button type="button" class="preset-btn" id="awning-stop" hidden>Stopp</button>
+                <p class="settings-subheading settings-subheading-nested">Uhrzeiten</p>
+                <div id="awning-schedule" class="toolbar-group day-schedule-editor">
+                  <p class="toolbar-hint compact-hint">Ein = ausfahren, Aus = einfahren.</p>
+                  <div class="day-schedule-on">
+                    <span class="toolbar-label">Ausfahren</span>
+                    <div class="day-schedule-list-mount"></div>
+                    <div class="toolbar-row day-schedule-add-row">
+                      <input type="text" data-schedule-add="on" placeholder="HH:MM" aria-label="Ausfahr-Zeit hinzufügen" />
+                      <button type="button" class="preset-btn" data-schedule-add="on">+</button>
+                    </div>
+                  </div>
+                  <div class="day-schedule-off">
+                    <span class="toolbar-label">Einfahren</span>
+                    <div class="day-schedule-list-mount"></div>
+                    <div class="toolbar-row day-schedule-add-row">
+                      <input type="text" data-schedule-add="off" placeholder="HH:MM" aria-label="Einfahr-Zeit hinzufügen" />
+                      <button type="button" class="preset-btn" data-schedule-add="off">+</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div id="profile-assign-section" class="toolbar-group settings-section ui-stack" data-settings-section="profile" data-settings-label="Profil" data-settings-order="30">
-              <p class="toolbar-hint compact-hint">Profil in der Bibliothek (Tab Profile) wählen oder auf Fenster/Tür ziehen.</p>
+              <p class="toolbar-hint compact-hint">Profil in der Bibliothek (Tab Profile) wählen oder auf Fenster, Tür oder Einbuchtung ziehen.</p>
               <div id="profile-select-cards" class="tpl-card-row profile-picker-row sidebar-library-picker" role="listbox" aria-label="Rahmenprofil"></div>
               <div id="profile-trim-section" class="toolbar-group ui-stack" hidden>
                 <p class="settings-subheading settings-subheading-nested">Farbe</p>
@@ -2449,10 +2684,10 @@
 
                 <label class="slider-label">
                   <span>Schatten-Tiefe (Fassade &amp; Innen)</span>
-                  <output id="sun-shade-depth-value">0.75</output>
+                  <output id="sun-shade-depth-value">0.92</output>
                 </label>
-                <input id="sun-shade-depth" type="range" min="0" max="1" step="0.01" value="0.75" />
-                <p class="toolbar-hint compact-hint">Schattenseite der Fassade und Innenraum dunkler (rechts) oder heller (links). Boden-Schlagschatten bleibt.</p>
+                <input id="sun-shade-depth" type="range" min="0" max="1" step="0.01" value="0.917" />
+                <p class="toolbar-hint compact-hint">Schattenseite der Fassade und Innenraum — links deutlich heller (erweiterter Spielraum), rechts nahezu schwarz. Boden-Schlagschatten bleibt.</p>
 
                 <div id="sun-shadow-density-block" hidden>
                 <label class="slider-label">
@@ -2566,6 +2801,15 @@
                     Lichter mit Sonne
                   </label>
                   <p class="toolbar-hint compact-hint">Bei Sonnenuntergang an, bei Sonnenaufgang aus.</p>
+                </div>
+                <div class="toolbar-group">
+                  <span class="toolbar-label">Wind</span>
+                  <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                    <span class="toolbar-label">Intensität</span>
+                    <output id="scene-wind-value">0.15</output>
+                  </div>
+                  <input id="scene-wind-intensity" type="range" min="0" max="1" step="0.01" value="0.15" aria-label="Windintensität" />
+                  <p class="toolbar-hint compact-hint">windstill · leicht · windig · stürmisch — bewegt Markisenstoffe (später auch andere Stoffe).</p>
                 </div>
 
                 <p class="settings-subheading settings-subheading-nested">Abspielen</p>

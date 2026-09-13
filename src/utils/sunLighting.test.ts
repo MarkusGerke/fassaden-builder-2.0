@@ -209,6 +209,22 @@ describe('normalizeSunSettings', () => {
     })
     expect(kept.shadowSoftness).toBe(8)
   })
+
+  it('migriert Alt-Schatten-Tiefe 0…1 in erweiterten UI-Raum (v2.0.419)', () => {
+    const { shadeDepthExpanded: _drop, ...legacyBase } = DEFAULT_SUN_SETTINGS
+    const migrated = normalizeSunSettings({
+      ...legacyBase,
+      shadeDepth: 0.75,
+    })
+    expect(migrated.shadeDepth).toBeCloseTo((0.75 + 2) / 3, 5)
+    expect(migrated.shadeDepthExpanded).toBe(true)
+    const kept = normalizeSunSettings({
+      ...DEFAULT_SUN_SETTINGS,
+      shadeDepth: 0.5,
+      shadeDepthExpanded: true,
+    })
+    expect(kept.shadeDepth).toBe(0.5)
+  })
 })
 
 describe('formatTimeOfDay', () => {

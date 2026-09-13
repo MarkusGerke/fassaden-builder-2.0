@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { describe, expect, it } from 'vitest'
 import {
   applyFacadeShadeShader,
+  applyFacadeWallUnlit,
   applyInteriorShadeShader,
   applyShadeDepth,
   facadeOutwardLocalZ,
@@ -45,8 +46,10 @@ describe('facadeShade', () => {
     expect(shader.fragmentShader).not.toContain('normalMatrix *')
     expect(shader.fragmentShader).toContain('vFacadeView')
     expect(shader.fragmentShader).toContain('#include <lights_fragment_begin>')
+    expect(shader.fragmentShader).toContain('dimMask')
     expect(shader.fragmentShader).toContain('sideOrTop * 0.82')
     expect(shader.fragmentShader).toContain('horizExtra')
+    expect(shader.fragmentShader).not.toContain('edgeShade')
     expect(shader.vertexShader).not.toContain('vDirectionalShadowCoord[ 0 ].z -=')
   })
 
@@ -62,7 +65,19 @@ describe('facadeShade', () => {
     expect(indirectAt).toBeGreaterThan(beginAt)
     expect(indirectAt).toBeLessThan(endAt)
     expect(frag).toContain('iblIrradiance *= facadeIndirect')
+    expect(frag).toContain('radiance *= facadeIndirect')
     expect(frag).not.toContain('reflectedLight.indirectDiffuse *= mix')
+  })
+
+  it('applyFacadeWallUnlit dämpft Innen-Streulicht (v2.0.415)', () => {
+    const raw = facadeShadeParamsFromSun({
+      ...DEFAULT_SUN_SETTINGS,
+      shadeDepth: 2 / 3,
+      shadeDepthExpanded: true,
+    })
+    const dimmed = applyFacadeWallUnlit(raw, 1)
+    expect(dimmed.interiorHemiDim).toBeLessThan(raw.interiorHemiDim * 0.25)
+    expect(applyFacadeWallUnlit(raw, 0)).toEqual(raw)
   })
 
   it('Normalen-Modus für Rahmen: Uniform 1, Shader nutzt geometryNormal (v2.0.365)', () => {
@@ -81,9 +96,24 @@ describe('facadeShade', () => {
     expect(shader2.uniforms.uNormalBacklit.value).toBe(0)
   })
 
-  it('Schatten-Tiefe: 0 unverändert, 1 fast schwarz, Default dunkler als roh', () => {
-    const raw = facadeShadeParamsFromSun({ ...DEFAULT_SUN_SETTINGS, shadeDepth: 0 })
-    expect(applyShadeDepth(raw, 0)).toEqual(raw)
+  it('Schatten-Tiefe: ⅔ = Rohkurve, 0 heller, 1 fast schwarz (v2.0.419)', () => {
+    const raw = facadeShadeParamsFromSun({
+      ...DEFAULT_SUN_SETTINGS,
+      shadeDepth: 2 / 3,
+      shadeDepthExpanded: true,
+    })
+    // Bei UI ⅔ (Legacy 0) keine Abdunkelung über Rohkurve hinaus — applyShadeDepth Identity.
+    const atRaw = applyShadeDepth(
+      facadeShadeParamsFromSun({ ...DEFAULT_SUN_SETTINGS, shadeDepth: 2 / 3, shadeDepthExpanded: true }),
+      2 / 3,
+    )
+    expect(atRaw.hemiDim).toBeCloseTo(raw.hemiDim, 5)
+    const bright = applyShadeDepth(
+      { ...raw, directDim: 0.2, hemiDim: 0.5, interiorDirectDim: 0.5, interiorHemiDim: 0.4, interiorIndirectGain: 0.5, labelDirectDim: 0.1, labelHemiDim: 0.2 },
+      0,
+    )
+    expect(bright.hemiDim).toBeGreaterThan(0.5)
+    expect(bright.hemiDim).toBeCloseTo(1, 5)
     const deep = applyShadeDepth(raw, 1)
     expect(deep.hemiDim).toBeLessThan(raw.hemiDim * 0.1)
     expect(deep.interiorDirectDim).toBeCloseTo(raw.interiorDirectDim * 0.7, 6)
@@ -91,7 +121,7 @@ describe('facadeShade', () => {
     const def = facadeShadeParamsFromSun(DEFAULT_SUN_SETTINGS)
     expect(def.hemiDim).toBeLessThan(raw.hemiDim)
     expect(def.interiorDirectDim).toBeLessThan(raw.interiorDirectDim)
-    expect(def.hemiDim).toBeGreaterThan(0.2)
+    expect(def.hemiDim).toBeGreaterThan(0.15)
   })
 
   it('Schrift-Shader dimmt die Front und setzt Shadow-Z-Bias', () => {
@@ -103,8 +133,9 @@ describe('facadeShade', () => {
     expect(shader.uniforms.uLabelShade.value).toBe(1)
     expect(shader.fragmentShader).toContain('uLabelDirectDim')
     expect(shader.fragmentShader).toContain('uLabelHemiDim')
-    expect(shader.fragmentShader).toContain('sideOrTop * 0.82')
+    expect(shader.fragmentShader).toContain('dimMask')
     expect(shader.fragmentShader).toContain('horizExtra')
+    expect(shader.fragmentShader).toContain('sideOrTop * 0.82')
     expect(shader.vertexShader).toContain(
       `vDirectionalShadowCoord[ 0 ].z -= ${LABEL_SHADOW_COORD_Z_BIAS.toFixed(4)}`,
     )
@@ -121,7 +152,8 @@ describe('facadeShade', () => {
       ...DEFAULT_SUN_SETTINGS,
       shadowContrast: 1.4,
       ambient: 0.53,
-      shadeDepth: 0,
+      shadeDepth: 2 / 3,
+      shadeDepthExpanded: true,
     })
     expect(params.labelHemiDim).toBeLessThan(params.hemiDim)
     expect(params.labelDirectDim).toBeLessThan(params.directDim)
@@ -129,8 +161,12 @@ describe('facadeShade', () => {
     expect(params.labelHemiDim).toBeLessThanOrEqual(0.55)
   })
 
-  it('Gegenlicht behält starkes Himmels-Fill (Rohkurve, Schatten-Tiefe 0)', () => {
-    const params = facadeShadeParamsFromSun({ ...DEFAULT_SUN_SETTINGS, shadeDepth: 0 })
+  it('Gegenlicht behält starkes Himmels-Fill (Rohkurve, Schatten-Tiefe ⅔)', () => {
+    const params = facadeShadeParamsFromSun({
+      ...DEFAULT_SUN_SETTINGS,
+      shadeDepth: 2 / 3,
+      shadeDepthExpanded: true,
+    })
     // Direktlicht stark gedimmt, Ambient weitgehend erhalten (v2.0.312).
     expect(params.directDim).toBeLessThan(0.25)
     expect(params.hemiDim).toBeGreaterThanOrEqual(0.55)
@@ -148,7 +184,11 @@ describe('facadeShade', () => {
   })
 
   it('tagsüber Innen-Fill: Weiß lesbar, Sonne durch Öffnung sichtbar (v2.0.367)', () => {
-    const day = facadeShadeParamsFromSun({ ...DEFAULT_SUN_SETTINGS, shadeDepth: 0 })
+    const day = facadeShadeParamsFromSun({
+      ...DEFAULT_SUN_SETTINGS,
+      shadeDepth: 2 / 3,
+      shadeDepthExpanded: true,
+    })
     // Produkt hemi×gain ≈ 0,18…0,35 — Weiß bleibt hellgrau, nicht pechschwarz.
     expect(day.interiorHemiDim * day.interiorIndirectGain).toBeGreaterThanOrEqual(0.14)
     expect(day.interiorHemiDim * day.interiorIndirectGain).toBeLessThanOrEqual(0.4)

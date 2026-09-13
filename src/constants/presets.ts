@@ -9,6 +9,15 @@ export const WALL_DEPTH = 48
 /** Wandstärke Obergeschosse (≈ 1 Stein), 8-cm-Raster. */
 export const UPPER_STOREY_WALL_DEPTH = 24
 
+/** Innenwand-Stärken in der Bibliothek (Zeichnen im Grundriss). */
+export const INTERIOR_WALL_DEPTH_PRESETS = [
+  { id: 'interior-24', label: 'Innenwand 24', depthCm: 24 },
+  { id: 'interior-36', label: 'Innenwand 36', depthCm: 36 },
+  { id: 'interior-48', label: 'Innenwand 48', depthCm: 48 },
+] as const
+
+export type InteriorWallDepthPreset = (typeof INTERIOR_WALL_DEPTH_PRESETS)[number]
+
 /** Bibliotheks-Presets: Wandlänge in cm (Vielfache des 48-cm-Grundrissrasters). */
 export interface WallLengthPreset {
   id: string

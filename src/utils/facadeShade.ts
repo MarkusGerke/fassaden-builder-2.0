@@ -6,10 +6,10 @@ import { SKIP_POINT_LIGHTS_MARKER } from '../lighting/skipPointLights'
  * Gegenlicht: die große Fassadenfront wird dunkel (N·L), Seiten und Oberseiten
  * bleiben ohne Nachhilfe hell (Sonne + Hemisphere). Shader dämpft Direct+Hemi
  * auf Nicht-Frontflächen, wenn die Fassadennormale von der Sonne wegzeigt.
- * **v2.0.312:** Hemi nur noch leicht dämpfen — Schlagschatten behalten volles Ambient;
- * zu starkes Hemi-Dim machte Erker-Schenkel/Nordfassaden pechschwarz dagegen.
- * Schrift nutzt denselben Shader, dimmt aber die ganze Glyphe (inkl. Front)
- * und stärkere Faktoren — Labels empfangen oft nur grob Shadow-Map.
+ * **v2.0.428:** edgeShade/wallUnlit (413–418) zurückgenommen — heller Look.
+ * **v2.0.312:** Hemi nur noch leicht dämpfen — Schlagschatten behalten Ambient;
+ * zu starkes Hemi-Dim machte Erker-Schenkel pechschwarz dagegen.
+ * Schrift: ganze Glyphe + stärkere Faktoren.
  *
  * Stärke folgt global den Sonnen-Einstellungen (Ambient, Kontrast, Dunkelheit).
  */
@@ -52,6 +52,14 @@ const shadeUniforms = {
   uInteriorIndirectGain: { value: 0.16 },
   uLabelDirectDim: { value: 0.06 },
   uLabelHemiDim: { value: 0.18 },
+  /** CPU: sichtbare Fassade wenig Sonne — erzwingt Dim (Fenster in lokalem Raum, v2.0.417). */
+  uFacadeWallUnlit: { value: 0 },
+}
+
+export function setFacadeWallUnlitUniform(unlit: number): void {
+  shadeUniforms.uFacadeWallUnlit.value = Number.isFinite(unlit)
+    ? THREE.MathUtils.clamp(unlit, 0, 1)
+    : 0
 }
 
 export function setFacadeShadeParams(params: FacadeShadeParams): void {
@@ -109,11 +117,44 @@ export function facadeShadeParamsFromSun(settings: SunSettings): FacadeShadePara
 }
 
 /**
- * Slider „Schatten-Tiefe“ (v2.0.364): skaliert Fassaden-Schattenseite und Innenraum.
- * 0 → unverändert, 1 → nahezu schwarz. Boden-Schlagschatten (shadow.intensity) bleibt unberührt.
+ * Fassadenfront wenig Sonne: Glas-Env und Innen-Laibung mitdimmen (v2.0.415).
+ * `wallUnlit` 0…1 wie Shader `wallUnlit` / `frontUnlit`.
+ */
+export function applyFacadeWallUnlit(params: FacadeShadeParams, wallUnlit: number): FacadeShadeParams {
+  const w = Number.isFinite(wallUnlit) ? THREE.MathUtils.clamp(wallUnlit, 0, 1) : 0
+  if (w <= 0.001) return params
+  const interiorScale = 1 - 0.82 * w
+  return {
+    ...params,
+    interiorDirectDim: params.interiorDirectDim * interiorScale,
+    interiorHemiDim: params.interiorHemiDim * interiorScale,
+    interiorIndirectGain: params.interiorIndirectGain * interiorScale,
+  }
+}
+
+/**
+ * Slider „Schatten-Tiefe“ (v2.0.364 / v2.0.419): skaliert Fassaden-Schattenseite und Innenraum.
+ * UI 0…1 → Wirk −2…1: 0 = deutlich heller als Rohkurve (≈3× Spielraum), ⅔ = Rohkurve,
+ * 1 = nahezu schwarz. Boden-Schlagschatten (shadow.intensity) bleibt unberührt.
  */
 export function applyShadeDepth(params: FacadeShadeParams, depth: number): FacadeShadeParams {
-  const d = Number.isFinite(depth) ? THREE.MathUtils.clamp(depth, 0, 1) : 0
+  const ui = Number.isFinite(depth) ? THREE.MathUtils.clamp(depth, 0, 1) : 0
+  const legacy = THREE.MathUtils.mapLinear(ui, 0, 1, -2, 1)
+  if (legacy <= 0) {
+    // Hell-Zone: Richtung volles Streulicht (kein Gegenlicht-Dim).
+    const boost = THREE.MathUtils.clamp(-legacy / 2, 0, 1)
+    if (boost <= 0.001) return params
+    return {
+      directDim: THREE.MathUtils.lerp(params.directDim, 1, boost),
+      hemiDim: THREE.MathUtils.lerp(params.hemiDim, 1, boost),
+      interiorDirectDim: THREE.MathUtils.lerp(params.interiorDirectDim, 1, boost),
+      interiorHemiDim: THREE.MathUtils.lerp(params.interiorHemiDim, 1, boost),
+      interiorIndirectGain: THREE.MathUtils.lerp(params.interiorIndirectGain, 1, boost),
+      labelDirectDim: THREE.MathUtils.lerp(params.labelDirectDim, 1, boost),
+      labelHemiDim: THREE.MathUtils.lerp(params.labelHemiDim, 1, boost),
+    }
+  }
+  const d = legacy
   if (d <= 0.001) return params
   const hemiScale = 1 - 0.92 * d
   const directScale = 1 - 0.8 * d
@@ -206,7 +247,7 @@ const FACADE_SHADE_DIRECT_PATCH = `
           #endif
           float backlit = 1.0 - smoothstep(-0.28, -0.04, sunOnFront);
           // Front (sideOrTop≈0): volles Gegenlicht-Dim. Flache horizontale Facetten: stärker dimmen
-          // (v2.0.370: 0,45 reichte nicht — v2.0.371: ~82 % + Extra-Indirect unten).
+          // (v2.0.370/371). v2.0.428: kein Kanten-wallUnlit mehr.
           float dimMask = max(mix(1.0 - sideOrTop * 0.82, 1.0, uLabelShade), uNormalBacklit);
           facadeDim = clamp(backlit * dimMask, 0.0, 1.0);
           float directAmt = mix(uDirectDim, uLabelDirectDim, uLabelShade);
@@ -265,7 +306,7 @@ export function applyFacadeShadeShader(
   material.userData.facadeShadeApplied = true
   const prevKey = material.customProgramCacheKey?.bind(material)
   material.customProgramCacheKey = () =>
-    `${prevKey ? prevKey() : ''}|facade-backlit-v14${isLabel ? '|label' : ''}`
+    `${prevKey ? prevKey() : ''}|facade-backlit-v19${isLabel ? '|label' : ''}`
   const prevCompile = material.onBeforeCompile
   material.onBeforeCompile = (shader, renderer) => {
     prevCompile?.(shader, renderer)
@@ -292,6 +333,7 @@ export function applyFacadeShadeShader(
     shader.uniforms.uInteriorHemiDim = shadeUniforms.uInteriorHemiDim
     shader.uniforms.uLabelDirectDim = shadeUniforms.uLabelDirectDim
     shader.uniforms.uLabelHemiDim = shadeUniforms.uLabelHemiDim
+    shader.uniforms.uFacadeWallUnlit = shadeUniforms.uFacadeWallUnlit
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',
@@ -329,7 +371,8 @@ uniform float uInteriorHemiDim;
 uniform float uLabelShade;
 uniform float uNormalBacklit;
 uniform float uLabelDirectDim;
-uniform float uLabelHemiDim;`,
+uniform float uLabelHemiDim;
+uniform float uFacadeWallUnlit;`,
       )
       .replace(
         '#include <lights_fragment_begin>',

@@ -17,6 +17,8 @@ interface FloorPlan {
   hidden?: boolean
 }
 
+/** v2.0.440: Andocken an Außen-Innenseite (`dockSegmentsForInteriorMeet` / `sealInteriorEndsToForeignFaces`); Platzierung auch auf Innenwänden (`fromFace`). v2.0.436: Innenwand an Innenseite (`createInteriorWallFromHostNormal`), Host ungeteilt; Extrude nach innen; Grundriss zeichnen bleibt. v2.0.433/434: `Wall.role: 'interior'`, Bibliothek 24/36/48. */
+
 interface PlanNode {
   id: string
   gx: number   // Gitter-X (Integer, cm = gx × PLAN_GRID)
@@ -274,3 +276,13 @@ Im `navigate`-Modus können Öffnungen per Drag entlang der Wand verschoben werd
 **Ursache:** `FacadeController`-Konstruktor baute nur `rebuild()` (Wände). Erster `applyState` ohne Geometrie-Diff → `setState({ rebuildBuildingIds: [] })` ohne `rebuildIndoorFloor`/`rebuildRoof`.
 
 **Lösung:** Beim Start Indoor + Dach + FarHulls mitbauen; leeres `rebuildBuildingIds` holt Indoor nach, wenn die Gruppe leer ist (`FacadeController.ts`).
+
+### Etage aus: Bank/Sturz bleiben stehen (v2.0.433 → v2.0.434)
+
+**Symptom:** Etage ausgeblendet, aber Fensterbrett, Sturz, Verdachung oder Laibung der Etage bleiben sichtbar.
+
+**Hypothesen / Versuche (verworfen):**
+- Nur `getVisibleWalls` in `removeBuildingRenderables` — Meshes ohne `userData.buildingId` an noch existierenden (aber ausgeblendeten) Wänden wurden nicht getroffen bzw. Partial-Rebuild von Reveals/Sills/Pediments löschte bei `buildingId` nicht vorher.
+- Nur Picking-Filter — Geometrie blieb in der Szene.
+
+**Lösung (v2.0.434):** `removeBuildingRenderables` über **alle** Wände des Gebäudes; `buildingId` an Reveal/Bank/Verdachung; Partial-Clear in `rebuildReveals` / `rebuild*Sills` / `rebuildPediments` / `rebuildCasings` / `rebuildStairs` auch für unsichtbare Wände.

@@ -5108,6 +5108,47 @@ html[data-ui-mode='simple'] [data-ui-level='advanced'] {
   padding: 0;
 }
 
+.library-section-label {
+  grid-column: 1 / -1;
+  margin: 8px 0 0;
+  font-size: 11px;
+  font-weight: 650;
+  color: #666;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.opening-library-thumb-color {
+  width: 100%;
+  height: 56px;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.library-color-filter {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+  min-width: 10rem;
+  max-width: 14rem;
+  padding: 0 0.35rem;
+}
+
+.library-color-filter .toolbar-label {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.library-color-category-select {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.35rem;
+}
+
 .opening-library-thumb-wall svg {
   width: 100%;
   height: 100%;
