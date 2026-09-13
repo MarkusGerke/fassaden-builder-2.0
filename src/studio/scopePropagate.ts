@@ -5,19 +5,20 @@ import {
   filterOpeningRefsByBasementParity,
 } from './editScope'
 import type {
+  AwningConfig,
   EditorState,
   FacadeState,
   Opening,
+  OpeningArch,
   OpeningRef,
   ProfileAssignment,
   Wall,
 } from '../types/facade'
 import { cloneFacadeState, cloneWall } from '../types/facade'
 import { findBuildingForWall, getAllWalls } from '../utils/buildings'
-import { openingSupportsFrameProfiles } from '../utils/openingGeometry'
+import { normalizeOpeningArch, openingSupportsFrameProfiles } from '../utils/openingGeometry'
 import { getWall } from '../utils/walls'
 import { defaultOpeningAwningWidth, normalizeAwningConfig } from './awning'
-import type { AwningConfig } from '../types/facade'
 
 /** Ob zwei Zustände dieselbe Wand-/Öffnungs-Topologie haben (nur Property-Edit). */
 export function isPropertyOnlyFacadeEdit(before: FacadeState, after: FacadeState): boolean {
@@ -231,6 +232,31 @@ function applyOpeningPropertyDelta(peer: Opening, before: Opening, after: Openin
         id: peer.awning?.id ?? merged.id,
         openingIds: undefined,
       })
+      continue
+    }
+    if (key === 'arch') {
+      const merged = deepApplyChanged(
+        peerRec.arch,
+        beforeRec.arch,
+        afterRec.arch,
+      ) as OpeningArch | undefined
+      if (!merged || typeof merged !== 'object') {
+        out.arch = merged
+        continue
+      }
+      // Voll-Zuweisen: before === peer. Formwechsel: Stichmaß spannweitenabhängig → Auto.
+      // Absolutes Donor-riseCm (z. B. 8) darf Peers nicht zu Mini-Bögen machen (v2.0.444).
+      const isFullAssign = before === peer
+      const beforeArch = normalizeOpeningArch(beforeRec.arch as OpeningArch | undefined)
+      const afterArch = normalizeOpeningArch(afterRec.arch as OpeningArch | undefined)
+      const formChanged =
+        beforeArch.form !== afterArch.form || beforeArch.enabled !== afterArch.enabled
+      if (isFullAssign || formChanged) {
+        const { riseCm: _omit, ...rest } = merged
+        out.arch = rest
+      } else {
+        out.arch = merged
+      }
       continue
     }
     // Nested Opening-Configs (gruenderzeit, pediment, …) per deepApplyChanged mergen —

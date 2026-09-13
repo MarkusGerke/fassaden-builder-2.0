@@ -444,7 +444,10 @@ export function syncAwningControls(): void {
   for (const btn of document.querySelectorAll<HTMLButtonElement>('[data-awning-kind]')) {
     btn.classList.toggle('active', btn.dataset.awningKind === awning.kind)
   }
-  syncAwningKindFields(awning.kind, 'opening')
+  syncAwningKindFields(awning.kind, 'opening', { isGroup: Boolean(groupAwning) })
+  // Seitenüberstand für alle Typen inkl. Fallarm (Breite = Span/Öffnung + 2×Überstand).
+  const overhangRowOpen = document.querySelector<HTMLElement>('#awning-overhang-row')
+  if (overhangRowOpen) overhangRowOpen.hidden = false
   const fabricHost = document.querySelector<HTMLElement>('#awning-fabric-color-swatches')
   const frameHost = document.querySelector<HTMLElement>('#awning-frame-color-swatches')
   if (fabricHost) {
@@ -519,10 +522,10 @@ function syncAwningKindFields(
   const showDrop = kind === 'dropArm' || kind === 'markisolette'
   if (drop) drop.hidden = !showDrop
   if (marki) marki.hidden = kind !== 'markisolette'
-  // Seitenüberstand: Öffnung immer (außer Fallarm); Studio nur bei Gruppen-Markise.
+  // Seitenüberstand: Öffnung immer; Studio nur bei Gruppen-Markise (auch Fallarm).
   if (overhangRow) {
-    if (scope === 'opening') overhangRow.hidden = kind === 'dropArm'
-    else overhangRow.hidden = !opts?.isGroup || kind === 'dropArm'
+    if (scope === 'opening') overhangRow.hidden = false
+    else overhangRow.hidden = !opts?.isGroup
   }
   // Fallarm: Armlänge kommt aus der Konsolenhöhe → keine Ausladung. Markisolette: Drehpunkt = Schienenende → keine Konsole.
   if (projectionRow) projectionRow.hidden = kind === 'dropArm'
@@ -565,7 +568,6 @@ export function syncStudioAwningControls(): void {
   const xRow = document.querySelector<HTMLElement>('#studio-awning-x-row')
   const yRow = document.querySelector<HTMLElement>('#studio-awning-y-row')
   if (widthRow) widthRow.hidden = isGroup
-  if (overhangRow) overhangRow.hidden = !isGroup
   if (mountYRelRow) mountYRelRow.hidden = !isGroup
   if (xRow) xRow.hidden = isGroup
   if (yRow) yRow.hidden = isGroup
@@ -603,6 +605,8 @@ export function syncStudioAwningControls(): void {
     btn.classList.toggle('active', btn.dataset.studioAwningKind === awning.kind)
   }
   syncAwningKindFields(awning.kind, 'studio', { isGroup })
+  // Nach Kind-Sync: Gruppen-Seitenüberstand sichtbar halten (auch Fallarm).
+  if (overhangRow) overhangRow.hidden = !isGroup
   const fabricHost = document.querySelector<HTMLElement>('#studio-awning-fabric-color-swatches')
   const frameHost = document.querySelector<HTMLElement>('#studio-awning-frame-color-swatches')
   if (fabricHost) {

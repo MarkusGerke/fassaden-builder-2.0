@@ -539,4 +539,56 @@ describe('assignSelectionPropertiesToScope', () => {
     expect(peerOpen.frameColor).toBe('#A54040')
     expect(peerOpen.x).toBe(200)
   })
+
+  it('weist Bogenform zu ohne manuelles Stichmaß (Auto je Peer-Breite)', () => {
+    const o1 = win({
+      id: 'o1',
+      width: 96,
+      arch: { enabled: true, form: 'round', riseCm: 8, voussoirs: false },
+    })
+    const o2 = win({
+      id: 'o2',
+      x: 200,
+      width: 120,
+      arch: { enabled: false, form: 'rect' },
+    })
+    const state = stateWithWalls([
+      wall({ id: 'w1', openings: [o1, o2] }),
+    ])
+    const next = assignSelectionPropertiesToScope(state, editorForOpening('w1', 'o1'), 'floor')
+    const peerOpen = next.buildings[0]!.walls[0]!.openings.find((o) => o.id === 'o2')!
+    expect(peerOpen.arch?.form).toBe('round')
+    expect(peerOpen.arch?.enabled).toBe(true)
+    expect(peerOpen.arch?.riseCm).toBeUndefined()
+  })
+})
+
+describe('propagateSelectionEdit arch riseCm', () => {
+  it('löscht Peer-Stichmaß bei Formwechsel', () => {
+    const beforeOpen = win({
+      id: 'o1',
+      arch: { enabled: true, form: 'segmental', riseCm: 8, voussoirs: false },
+    })
+    const afterOpen = win({
+      id: 'o1',
+      arch: { enabled: true, form: 'round', voussoirs: false },
+    })
+    const peerOpen = win({
+      id: 'o2',
+      x: 200,
+      width: 120,
+      arch: { enabled: true, form: 'segmental', riseCm: 8, voussoirs: false },
+    })
+    const before = stateWithWalls([wall({ id: 'w1', openings: [beforeOpen, peerOpen] })])
+    const after = stateWithWalls([
+      wall({
+        id: 'w1',
+        openings: [afterOpen, peerOpen],
+      }),
+    ])
+    const next = propagateSelectionEdit(before, after, editorForOpening('w1', 'o1'), 'floor')
+    const peer = next.buildings[0]!.walls[0]!.openings.find((o) => o.id === 'o2')!
+    expect(peer.arch?.form).toBe('round')
+    expect(peer.arch?.riseCm).toBeUndefined()
+  })
 })

@@ -2,6 +2,46 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Rechtsklick-Menüs teilbezogen (2026-09-13) — v2.0.445
+
+**Symptom:** Rechtsklick auf Sockel/Gesims/Paneele öffnete das volle Wandmenü (Drehen, Öffnung einfügen, Wand lösen, Kopieren→Verdachung, …).
+
+**Fix:** `showElementContextMenu` routet `plinth`/`cornice`/`cladding` auf `wallPartContextItems` (Kopieren des Teils, Zuweisen, Entfernen); Öffnungsteile außer `group`/`frame`/`awning` auf `openingPartContextItems`. Schrift-Menü ohne Fassaden-/Stil-Einfügen. Auswahl behält den Teil-Fokus.
+
+Docs: [ux.md](ux.md).
+
+### Bogen-Stichmaß Auto beim Scope-Zuweisen (2026-09-13) — v2.0.444
+
+**Symptom:** Fenster mit manuellem Stichmaß (z. B. 8 cm) → „Zuweisen für“ Etage/Typ/Fassade → Peers bekamen denselben Absolutwert → Mini-Bogen / kaputte Öffnungen.
+
+**Ursache:** `assignSelectionPropertiesToScope` / `applyOpeningPropertyDelta` kopierte `arch.riseCm` per `deepApplyChanged`. Stichmaß ist spannweitenabhängig; Formwechsel in der Toolbar setzte schon Auto (v2.0.13), Zuweisen nicht.
+
+**Fix:** Bei Voll-Zuweisen (`before === peer`) und bei Form-/Enable-Wechsel `riseCm` am Peer weglassen → Form-Standard je Breite. Nur reines Stichmaß-Delta behält den Wert. Dateien: `scopePropagate.ts`, Test, Docs.
+
+### Fallarm Seitenüberstand (2026-09-13) — v2.0.443
+
+**Nutzer:** Seitenüberstand war bei Fallarm ausgeblendet. Geometrie nutzte `widthCm`/`overhangCm` schon; UI verbarg das Feld. **Fix:** Überstand für alle Typen inkl. Fallarm (Öffnung + Gruppe).
+
+Docs: [awnings.md](awnings.md).
+
+### Erker-Rock, Markisolette-Stoff, Gruppen-Überstand (2026-09-13) — v2.0.442
+
+1. **Erker-Verlängerung dunkel:** Gegenlicht-Shader auf der nackten Rock-Schale → pechschwarz. Fix: bei `bayWallSkirtDropCm > 0` Exterior-Material ohne Shade neu aufbauen, volle Wandfarbe.
+2. **Fensterprofil durch Markisolette:** Profil `polygonOffsetUnits −16` gewann gegen Stoff (−6). Fix: Stoff −32 / `renderOrder` 12.
+3. **Gruppen-Markise Seitenüberstand:** Sichtbarkeit nach Kind-Sync wiederherstellen; Überstand ändert Breite (Test).
+
+Docs: [bay-windows.md](bay-windows.md), [awnings.md](awnings.md).
+
+### Innenwand Phase A: Mittelachse, Platzierung auf Innenwände (2026-09-13) — v2.0.441
+
+**Nutzer:** Blauer Ghost auf Innenwand, Klick setzte nichts. Konzept: Mittelachse ±½ Dicke.
+
+**Ursache:** Im Platzier-Modus wurde Klick auf bestehende Innenwand als Auswahl behandelt (v2.0.438). Ghost ohne `fromFace`.
+
+**Fix:** Platzierung hat Vorrang solange Modus aktiv (danach entwaffnen → Auswahl wieder möglich). Ghost und `createInteriorWallFromHostNormal` teilen `fromFace`; Mittelachse dockt an Host-Fläche, Dicke ±½ (Persistenz weiter Flanken-`origin`/`panelFlip`, kein Rewrite alter Häuser). Außenwand-Asymmetrie = Phase B.
+
+Docs: [ux.md](ux.md), [floor-plan.md](floor-plan.md). Test: `interiorWallHost.test.ts`.
+
 ### Innenwände Rechtsklick, Host-Innenwände, Andocken Innenseite (2026-09-13) — v2.0.440
 
 **Nutzer:** (1) Rechtsklick löschen/ausblenden, (2) Platzierung auf Innenwänden, (3) T/Kreuz von Ecken, (4) Andocken an Außenwände.

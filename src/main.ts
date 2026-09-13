@@ -1857,8 +1857,13 @@ let armedInteriorWallDepthCm: number | null = null
 /** Standard-Segmentbreite wenn nur Innenwand-Stärke gewählt (wie Wand 96). */
 const INTERIOR_WALL_DEFAULT_LENGTH_CM = 96
 /** Hover-Segment: Außenwand-Split oder Innenwand-Platzierung. */
-let wallSplitHover: { wallId: string; startCm: number; endCm: number; mode?: 'split' | 'interior' } | null =
-  null
+let wallSplitHover: {
+  wallId: string
+  startCm: number
+  endCm: number
+  mode?: 'split' | 'interior'
+  fromFace?: 'inner' | 'outer'
+} | null = null
 /** Aktuell gefilterte Farbkategorie in der Bibliothek (Dropdown). */
 let libraryColorCategory: FacadeColorCategoryId | null = null
 
@@ -2005,11 +2010,6 @@ function syncLibraryTabs() {
 
 function setLibraryTab(tab: LibraryTab) {
   if (tab !== 'walls') {
-    // #region agent log
-    if (armedInteriorWallDepthCm != null || armedLibraryWallPresetId) {
-      fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-A',location:'main.ts:setLibraryTab',message:'clearing wall arming on tab leave',data:{fromTab:libraryTab,toTab:tab,armedInteriorWallDepthCm,armedLibraryWallPresetId},timestamp:Date.now()})}).catch(()=>{});
-    }
-    // #endregion
     armedLibraryWallPresetId = null
     armedInteriorWallDepthCm = null
     if (wallSplitHover) clearWallSplitHover()
@@ -3518,9 +3518,6 @@ function armInteriorWallDepth(depthCm: number) {
   updateWallLibraryGizmos()
   syncLibraryAppliedOutline()
   const len = armedInteriorSegmentCm() ?? INTERIOR_WALL_DEFAULT_LENGTH_CM
-  // #region agent log
-  fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-E',location:'main.ts:armInteriorWallDepth',message:'interior wall armed',data:{depthCm,libraryTab,segmentCm:len,placeActive:interiorWallPlaceModeActive(),selectedWalls:editor.selectedWallIds.length,view:currentView},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   planStatus.textContent = `Innenwand ${depthCm} cm — nur von innen auf die Wandfläche klicken (90° in den Raum, Länge ${len} cm); dann Länge ± / Shift-Winkel (oder Grundriss zeichnen)`
 }
 
@@ -3698,12 +3695,13 @@ function drawWallSplitGhost(stack: Wall[], range: { startCm: number; endCm: numb
   if (isPerspectiveSceneView()) render3dFrame()
 }
 
-/** Cyan: 90°-Stummel von der Host-Innenseite in den Raum. */
+/** Cyan: 90°-Stummel — Mittelachse an Host-Fläche, Dicke ±½ (wie createInteriorWallFromHostNormal). */
 function drawInteriorWallPlaceGhost(
   host: Wall,
   localXCm: number,
   lengthCm: number,
   depthCm: number,
+  fromFace: 'inner' | 'outer' = 'inner',
 ) {
   clearWallDockSceneGhost()
   const preview = createInteriorWallFromHostNormal({
@@ -3711,6 +3709,7 @@ function drawInteriorWallPlaceGhost(
     localXCm,
     lengthCm,
     depthCm,
+    fromFace,
   })
   if (!preview) return
   const fillMat = new THREE.MeshBasicMaterial({
@@ -3787,9 +3786,6 @@ function pickInteriorHostFaceAtClient(
         const accept = hostIsInterior
           ? true
           : !camOutside && distInner <= distOuter + 2
-        // #region agent log
-        fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-G',location:'main.ts:pickInteriorHostFaceAtClient',message:'interior face pick',data:{wallId,hostIsInterior,fromFace,localX,localZ,inner,outer,distInner,distOuter,camOutside,accept},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         if (!accept) return null
         return { wall, localX, localY, localZ, fromFace }
       }
@@ -3830,6 +3826,7 @@ function updateWallSplitHover(event: { clientX: number; clientY: number }) {
       wallSplitHover &&
       wallSplitHover.mode === 'interior' &&
       wallSplitHover.wallId === hit.wall.id &&
+      wallSplitHover.fromFace === hit.fromFace &&
       Math.abs(wallSplitHover.startCm - localX) < 0.5
     ) {
       return
@@ -3839,9 +3836,10 @@ function updateWallSplitHover(event: { clientX: number; clientY: number }) {
       startCm: localX,
       endCm: localX,
       mode: 'interior',
+      fromFace: hit.fromFace,
     }
-    drawInteriorWallPlaceGhost(hit.wall, localX, lengthCm, depthCm)
-    planStatus.textContent = `Klick: Innenwand 90° in den Raum (${Math.round(lengthCm)}×${Math.round(depthCm)} cm)`
+    drawInteriorWallPlaceGhost(hit.wall, localX, lengthCm, depthCm, hit.fromFace)
+    planStatus.textContent = `Klick: Innenwand 90° (${Math.round(lengthCm)}×${Math.round(depthCm)} cm, Mittelachse ±½)`
     return
   }
 
@@ -3905,14 +3903,11 @@ function tryInteriorWallPlaceAtEvent(event: { clientX: number; clientY: number }
         localX: wallSplitHover.startCm,
         localY: hoverWall.height / 2,
         localZ: studioWallInnerLocalZ(hoverWall),
-        fromFace: 'inner',
+        fromFace: wallSplitHover.fromFace ?? 'inner',
       }
       usedHoverFallback = true
     }
   }
-  // #region agent log
-  fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-K',location:'main.ts:tryInteriorWallPlaceAtEvent',message:'interior place attempt',data:{hasHit:Boolean(hit),usedHoverFallback,hostId:hit?.wall.id,localX:hit?.localX,depthCm:armedInteriorWallDepthCm,hoverMode:wallSplitHover?.mode},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   if (!hit) {
     planStatus.textContent = 'Innenwand nur von innen auf die Wandfläche setzen'
     return true
@@ -3930,17 +3925,11 @@ function tryInteriorWallPlaceAtEvent(event: { clientX: number; clientY: number }
   })
   clearWallSplitHover()
   if (!wall) {
-    // #region agent log
-    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-M',location:'main.ts:tryInteriorWallPlaceAtEvent',message:'create returned null',data:{localX,lengthCm,depthCm,hostWidth:hit.wall.width},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     planStatus.textContent = 'Innenwand konnte hier nicht erzeugt werden'
     return true
   }
   const building = findBuildingForWall(state, hit.wall.id) ?? activeBuilding()
   if (studioWallsCollideIdentical(building.walls, wall)) {
-    // #region agent log
-    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-L',location:'main.ts:tryInteriorWallPlaceAtEvent',message:'collide with existing',data:{hostId:hit.wall.id,newYaw:wall.yawDeg,newWidth:wall.width},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     planStatus.textContent = 'Innenwand überlappt bestehende Wand'
     return true
   }
@@ -3967,9 +3956,6 @@ function tryInteriorWallPlaceAtEvent(event: { clientX: number; clientY: number }
   rebuildFloorPlanOverlay()
   const hostAfter = getWall(state, hostId)
   const placed = getWall(state, wall.id)
-  // #region agent log
-  fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',runId:'post-fix',hypothesisId:'H-N',location:'main.ts:tryInteriorWallPlaceAtEvent',message:'interior place success + disarmed',data:{usedHoverFallback,hostId,hostIsInterior:isInteriorWall(hit.wall),fromFace:hit.fromFace,newId:wall.id,hostYaw,newYaw:placed?.yawDeg,yawDelta:((placed?.yawDeg ?? 0) - hostYaw + 360) % 360,hostWidthBefore:hostBefore?.width,hostWidthAfter:hostAfter?.width,newWidth:placed?.width,armedAfter:armedInteriorWallDepthCm,startTouchesHost:placed?wallEndTouchesForeignSpine(placed,'start',activeBuilding().walls):false},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   planStatus.textContent = `Innenwand ${Math.round(placed?.width ?? wall.width)} cm (${depthCm} cm stark) — Länge ± / Shift-Winkel; weitere: Bibliothek erneut wählen`
   return true
 }
@@ -3978,16 +3964,10 @@ function tryInteriorWallPlaceAtEvent(event: { clientX: number; clientY: number }
 function tryWallSplitAtEvent(event: { clientX: number; clientY: number }): boolean {
   if (!wallSplitModeActive()) return false
   const target = resolveWallSplitTarget(event)
-  // #region agent log
-  fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-D',location:'main.ts:tryWallSplitAtEvent',message:'split attempt',data:{hasTarget:Boolean(target),wallId:target?.wall.id,range:target?.range,armedInteriorWallDepthCm},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   if (!target) return false
   const result = splitWallStackRange(state, target.wall.id, target.range)
   clearWallSplitHover()
   if (!result) {
-    // #region agent log
-    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-D',location:'main.ts:tryWallSplitAtEvent',message:'splitWallStackRange failed',data:{wallId:target.wall.id,range:target.range,wallWidth:target.wall.width},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     planStatus.textContent =
       target.range.startCm <= 0.5 && target.wall.width - target.range.endCm <= 0.5
         ? `Wand ist bereits ${Math.round(target.wall.width)} cm — nichts zu teilen`
@@ -4581,9 +4561,6 @@ function applyWallResizePreview(
 
     // Verknüpfte Ecke: Außenwände nur strecken/Winkel; Innenwände dürfen dritte Wand (T) abzweigen.
     const interiorTFromCorner = isInteriorWall(wall) && yaw !== null
-    // #region agent log
-    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-T',location:'main.ts:applyWallResizePreview',message:'shift branch corner check',data:{wallId:wall.id,role:wall.role,linkedCorner:Boolean(linkedCorner),yaw,interiorTFromCorner,willBranch:!(linkedCorner && !interiorTFromCorner) || yaw!==null && (!linkedCorner || interiorTFromCorner)},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     if (linkedCorner && !interiorTFromCorner) {
       if (yaw === null) {
         const raw = alongWidthDeltaFromMove(wall.yawDeg ?? 0, wallEnd, dx, dz)
@@ -13471,15 +13448,9 @@ function syncLibraryTabForOpeningSelection() {
   const allowed = allowedLibraryTabs()
   // Bewaffnete Wand-/Innenwand-Aktion nicht durch Auto-Farben abbrechen.
   if (armedInteriorWallDepthCm != null || armedLibraryWallPresetId) {
-    // #region agent log
-    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-A',location:'main.ts:syncLibraryTabForOpeningSelection',message:'skip farbe auto-switch while wall armed',data:{prevTab:libraryTab,armedInteriorWallDepthCm,armedLibraryWallPresetId,wallKey,openingKey,part},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     return
   }
   if (allowed.has('farbe') && libraryTab !== 'farbe') {
-    // #region agent log
-    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-A',location:'main.ts:syncLibraryTabForOpeningSelection',message:'auto-switch to farbe',data:{prevTab:libraryTab,armedInteriorWallDepthCm,armedLibraryWallPresetId,wallKey,openingKey,part},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     setLibraryTab('farbe')
   } else if (libraryTab === 'farbe') {
     initOpeningLibrary()
@@ -13785,7 +13756,7 @@ function copyStylesFromWall(wallId: string, keys?: string[]) {
   planStatus.textContent = `${label} kopiert — Rechtsklick auf ein Ziel zum Einfügen`
 }
 
-function copyStylesFromOpening(wallId: string, openingId: string) {
+function copyStylesFromOpening(wallId: string, openingId: string, keys?: string[]) {
   const wall = getWall(state, wallId)
   const opening = wall?.openings.find((item) => item.id === openingId)
   if (!wall || !opening) return
@@ -13794,8 +13765,9 @@ function copyStylesFromOpening(wallId: string, openingId: string) {
     frameProfileId:
       wall.profiles.find((profile) => profile.openingId === opening.id)?.profileId ?? null,
   }
-  styleClipboardKeys = null
-  planStatus.textContent = 'Stil kopiert — Rechtsklick auf ein Ziel zum Einfügen'
+  styleClipboardKeys = keys && keys.length > 0 ? [...keys] : null
+  const label = !keys || keys.length === 0 ? 'Stil' : keys.length === 1 ? 'Eigenschaft' : 'Eigenschaften'
+  planStatus.textContent = `${label} kopiert — Rechtsklick auf ein Ziel zum Einfügen`
 }
 
 function openingObjectCopyLabel(type: Opening['type'] | undefined): string {
@@ -14199,6 +14171,93 @@ function runDuplicateWallsAbove(wallId: string) {
   rebuildFloorPlanOverlay()
 }
 
+/** Zuweisen-Untermenü für Kontextaktionen (Wand-/Öffnungsteil). */
+function scopeAssignMenuItem(before: () => void): MenuItem {
+  return {
+    label: 'Zuweisen für',
+    children: [
+      {
+        label: 'Typ',
+        action: () => {
+          before()
+          commitAssignSelectionToScope('type')
+        },
+      },
+      {
+        label: 'Etage',
+        action: () => {
+          before()
+          commitAssignSelectionToScope('floor')
+        },
+      },
+      {
+        label: 'Fassade',
+        action: () => {
+          before()
+          commitAssignSelectionToScope('facade')
+        },
+      },
+    ],
+  }
+}
+
+/**
+ * Rechtsklick auf Sockel / Gesims / Paneele: nur stilbezogene Aktionen
+ * (kein Drehen, Wand lösen, Öffnung einfügen, …).
+ */
+function wallPartContextItems(
+  wallId: string,
+  wallPart: 'plinth' | 'cornice' | 'cladding',
+): MenuItem[] {
+  const ensure = () => selectWall(wallId, false, wallPart)
+  const copyStylePart = (keys: string[]) => () => {
+    ensure()
+    copyStylesFromWall(wallId, keys)
+  }
+  const items: MenuItem[] = []
+  if (wallPart === 'plinth') {
+    items.push({ label: 'Sockel kopieren', action: copyStylePart(['plinth']) })
+  } else if (wallPart === 'cornice') {
+    items.push({ label: 'Gesims kopieren', action: copyStylePart(['cornice']) })
+  } else {
+    items.push(
+      { label: 'Paneele kopieren', action: copyStylePart(['panel']) },
+      { label: 'Wandfarbe kopieren', action: copyStylePart(['wallColor']) },
+      { label: 'Bekleidungsfarbe kopieren', action: copyStylePart(['claddingColor']) },
+    )
+  }
+  if (styleClipboard) {
+    items.push({
+      label: 'Stile einfügen…',
+      action: () => {
+        ensure()
+        askStylePaste({ kind: 'wall', ids: scopedWallIds() })
+      },
+    })
+  }
+  items.push(scopeAssignMenuItem(ensure))
+  if (wallPart === 'plinth') {
+    items.push({
+      label: 'Sockel entfernen',
+      danger: true,
+      action: () => {
+        ensure()
+        commitStudioPanelPatch({ plinthEnabled: false })
+      },
+    })
+  } else if (wallPart === 'cornice') {
+    items.push({
+      label: 'Gesims entfernen',
+      danger: true,
+      action: () => {
+        ensure()
+        commitCornicePatch({ enabled: false })
+      },
+    })
+  }
+  return items
+}
+
 function wallContextItems(
   wallId: string,
   pasteAt?: { localX: number; localY: number },
@@ -14434,6 +14493,146 @@ function wallContextItems(
     },
   })
   return items
+}
+
+/**
+ * Rechtsklick auf Öffnungs-Teil (Verdachung, Bank, …): nur passende Stil-/Entfernen-Aktionen.
+ * Ganz-Öffnung (`group` / `frame`) und Markise nutzen andere Menüs.
+ */
+function openingPartContextItems(
+  wallId: string,
+  openingId: string,
+  part: OpeningPart,
+): MenuItem[] {
+  const ensure = () => selectOpening(wallId, openingId, false, part)
+  const items: MenuItem[] = []
+
+  const copyLabel =
+    part === 'pediment'
+      ? 'Verdachung kopieren'
+      : part === 'consoles'
+        ? 'Konsolen kopieren'
+        : part === 'sillOuter' || part === 'sillInner'
+          ? 'Fensterbank kopieren'
+          : part === 'stairs'
+            ? 'Treppe kopieren'
+            : part === 'grille'
+              ? 'Gitter kopieren'
+              : part === 'rollerShutter'
+                ? 'Rollladen kopieren'
+                : part === 'trim'
+                  ? 'Rahmenprofil kopieren'
+                  : 'Stil kopieren'
+
+  const copyKeys: string[] | undefined =
+    part === 'pediment' || part === 'consoles'
+      ? ['pediment']
+      : part === 'sillOuter' || part === 'sillInner'
+        ? ['sills']
+        : part === 'trim'
+          ? ['frameProfile']
+          : undefined
+
+  items.push({
+    label: copyLabel,
+    action: () => {
+      ensure()
+      copyStylesFromOpening(wallId, openingId, copyKeys)
+    },
+  })
+
+  if (styleClipboard) {
+    items.push({
+      label: 'Stile einfügen…',
+      action: () => {
+        ensure()
+        askStylePaste({ kind: 'opening', refs: scopedOpeningRefs() })
+      },
+    })
+  }
+
+  items.push(scopeAssignMenuItem(ensure))
+
+  const removeLabel =
+    part === 'pediment'
+      ? 'Verdachung entfernen'
+      : part === 'consoles'
+        ? 'Konsolen entfernen'
+        : part === 'sillOuter'
+          ? 'Außenbank entfernen'
+          : part === 'sillInner'
+            ? 'Innenbank entfernen'
+            : part === 'stairs'
+              ? 'Treppe entfernen'
+              : part === 'grille'
+                ? 'Gitter entfernen'
+                : part === 'rollerShutter'
+                  ? 'Rollladen entfernen'
+                  : null
+
+  if (removeLabel) {
+    items.push({
+      label: removeLabel,
+      danger: true,
+      action: () => {
+        ensure()
+        disableOpeningPartOnSelection(part)
+      },
+    })
+  }
+
+  return items
+}
+
+function disableOpeningPartOnSelection(part: OpeningPart) {
+  const refs = scopedOpeningRefs()
+  if (refs.length === 0) return
+  let next = state
+  for (const ref of refs) {
+    const wall = getWall(next, ref.wallId)
+    const opening = wall?.openings.find((o) => o.id === ref.openingId)
+    if (!opening) continue
+    if (part === 'pediment') {
+      if (!opening.pediment) continue
+      next = updateOpening(next, ref.wallId, ref.openingId, {
+        pediment: { ...opening.pediment, enabled: false },
+      })
+    } else if (part === 'consoles') {
+      const ped = opening.pediment
+      if (!ped?.consoles) continue
+      next = updateOpening(next, ref.wallId, ref.openingId, {
+        pediment: {
+          ...ped,
+          consoles: { ...ped.consoles, enabled: false },
+        },
+      })
+    } else if (part === 'sillOuter') {
+      if (!opening.sillOuter) continue
+      next = updateOpening(next, ref.wallId, ref.openingId, {
+        sillOuter: { ...opening.sillOuter, enabled: false },
+      })
+    } else if (part === 'sillInner') {
+      if (!opening.sillInner) continue
+      next = updateOpening(next, ref.wallId, ref.openingId, {
+        sillInner: { ...opening.sillInner, enabled: false },
+      })
+    } else if (part === 'stairs') {
+      if (!opening.stairs) continue
+      next = updateOpening(next, ref.wallId, ref.openingId, {
+        stairs: { ...opening.stairs, enabled: false },
+      })
+    } else if (part === 'grille') {
+      next = updateOpening(next, ref.wallId, ref.openingId, {
+        guard: normalizeOpeningGuard({ ...opening.guard, enabled: false }),
+      })
+    } else if (part === 'rollerShutter') {
+      if (!opening.rollerShutter) continue
+      next = updateOpening(next, ref.wallId, ref.openingId, {
+        rollerShutter: { ...opening.rollerShutter, enabled: false },
+      })
+    }
+  }
+  commitState(next)
 }
 
 function openingContextItems(wallId: string, openingId: string): MenuItem[] {
@@ -14953,11 +15152,22 @@ function showElementContextMenu(
     return
   }
   if (hit.wallId && hit.openingId) {
+    const part = hit.openingPart ?? 'group'
     const inSel = editor.selectedOpenings.some(
       (ref) => ref.wallId === hit.wallId && ref.openingId === hit.openingId,
     )
-    if (!inSel) selectOpening(hit.wallId, hit.openingId, false)
-    showContextMenu(clientX, clientY, openingContextItems(hit.wallId, hit.openingId))
+    if (!inSel) selectOpening(hit.wallId, hit.openingId, false, part)
+    const slimPart =
+      part !== 'group' &&
+      part !== 'frame' &&
+      part !== 'awning'
+    showContextMenu(
+      clientX,
+      clientY,
+      slimPart
+        ? openingPartContextItems(hit.wallId, hit.openingId, part)
+        : openingContextItems(hit.wallId, hit.openingId),
+    )
     return
   }
   // Öffnungs-Mehrfachauswahl: Treffer auf die Wandfläche nicht zu einer Einzelwand kollabieren.
@@ -14988,6 +15198,19 @@ function showElementContextMenu(
   if (hit.wallId && hit.wallPart === 'label') {
     selectWall(hit.wallId, false, 'label', undefined, hit.labelId)
     showContextMenu(clientX, clientY, labelContextItems(hit.wallId, hit.labelId))
+    return
+  }
+  if (
+    hit.wallId &&
+    (hit.wallPart === 'plinth' || hit.wallPart === 'cornice' || hit.wallPart === 'cladding')
+  ) {
+    const part = hit.wallPart
+    const inSel =
+      editor.selectedWallIds.includes(hit.wallId) &&
+      editor.selectedOpenings.length === 0 &&
+      editor.selectedWallPart === part
+    if (!inSel) selectWall(hit.wallId, false, part)
+    showContextMenu(clientX, clientY, wallPartContextItems(hit.wallId, part))
     return
   }
   if (hit.wallId) {
@@ -15029,30 +15252,13 @@ function labelContextItems(wallId: string, labelId?: string): MenuItem[] {
         copyWallLabelToClipboard(wallId, labelId)
       },
     },
-    {
-      label: 'Stil kopieren',
-      action: () => {
-        selectWall(wallId, false, 'label', undefined, labelId)
-        copyStylesFromWall(wallId)
-      },
-    },
   ]
-  items.push(...elementPasteMenuItems({ wallId }))
   if (labelClipboard) {
     items.push({
       label: 'Schrift einfügen',
       action: () => {
         selectWall(wallId, false, 'label', undefined, labelId)
         pasteWallLabelClipboard(wallId)
-      },
-    })
-  }
-  if (styleClipboard) {
-    items.push({
-      label: 'Stile einfügen…',
-      action: () => {
-        selectWall(wallId, false, 'label', undefined, labelId)
-        askStylePaste({ kind: 'wall', ids: scopedWallIds() })
       },
     })
   }
@@ -16839,7 +17045,6 @@ function makeColorNumberInput(min: number, max: number, step: number): HTMLInput
   el.className = 'color-channel-input'
   return el
 }
-
 
 function hideFinishSelectHost(select: HTMLSelectElement) {
   select.hidden = true
@@ -24015,9 +24220,6 @@ canvas.addEventListener('pointerdown', (event) => {
   if (interiorMeshPick) {
     const meshWall = getWall(state, interiorMeshPick.wallId)
     if (meshWall && isInteriorWall(meshWall)) {
-      // #region agent log
-      fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-N',location:'main.ts:pointerdown',message:'prefer interior mesh pick over ceiling/other',data:{interiorId:meshWall.id,prevKind:hit?.ceiling?'ceiling':hit?.wallId?'wall':hit?'other':'null',prevWallId:hit?.wallId},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       hit = { wallId: meshWall.id, wallPart: 'group' }
     }
   }
@@ -24042,23 +24244,12 @@ canvas.addEventListener('pointerdown', (event) => {
     if (currentView === '3d') controls.enabled = true
     return
   }
-  // Innenwand-Modus VOR Decke/Öffnung — aber bestehende Innenwand → Auswahl, nicht neu platzieren.
+  // Innenwand-Platzierung VOR Decke/Auswahl — auch auf bestehende Innenwände (Ghost = Klick).
+  // Nach Erfolg entwaffnet tryInteriorWallPlaceAtEvent → nächster Klick wählt wieder.
   if (interiorWallPlaceModeActive()) {
-    const pickId = hit?.wallId
-    const pickWall = pickId ? getWall(state, pickId) : undefined
-    if (pickWall && isInteriorWall(pickWall)) {
-      // #region agent log
-      fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-N',location:'main.ts:pointerdown',message:'place mode: select existing interior instead of place',data:{wallId:pickWall.id},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
-      // fall through to normal wall selection below
-    } else {
-      // #region agent log
-      fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-K',location:'main.ts:pointerdown',message:'interior place before ceiling',data:{pickKind:hit?.ceiling?'ceiling':hit?.openingId?'opening':hit?.wallId?'wall':hit?'other':'null',wallId:hit?.wallId,hover:wallSplitHover},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
-      if (tryInteriorWallPlaceAtEvent(event)) {
-        if (currentView === '3d') controls.enabled = true
-        return
-      }
+    if (tryInteriorWallPlaceAtEvent(event)) {
+      if (currentView === '3d') controls.enabled = true
+      return
     }
   }
   if (hit?.ceiling) {
@@ -24089,17 +24280,9 @@ canvas.addEventListener('pointerdown', (event) => {
   }
   // Segment-Modus (Wände-Tab, Breite gewählt, nichts markiert): Klick teilt statt zu wählen.
   if (hit?.wallId && wallSplitModeActive() && tryWallSplitAtEvent(event)) {
-    // #region agent log
-    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-C',location:'main.ts:pointerdown',message:'split path taken',data:{wallId:hit.wallId,armedInteriorWallDepthCm},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     if (currentView === '3d') controls.enabled = true
     return
   }
-  // #region agent log
-  if (armedInteriorWallDepthCm != null && hit?.wallId) {
-    fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-B',location:'main.ts:pointerdown',message:'interior armed but place path skipped',data:{wallId:hit.wallId,placeActive:interiorWallPlaceModeActive(),splitActive:wallSplitModeActive(),libraryTab,segmentCm:armedInteriorSegmentCm(),selectedWalls:editor.selectedWallIds.length,selectedOpenings:editor.selectedOpenings.length,view:currentView,canEdit:canEditActiveBuildingNow()},timestamp:Date.now()})}).catch(()=>{});
-  }
-  // #endregion
   if (hit?.openingId && hit.wallId) {
     const wall = getWall(state, hit.wallId)
     const opening = wall?.openings.find(o => o.id === hit.openingId)
@@ -27645,9 +27828,6 @@ canvas.addEventListener('contextmenu', (event) => {
   if (interiorMeshPick) {
     const meshWall = getWall(state, interiorMeshPick.wallId)
     if (meshWall && isInteriorWall(meshWall)) {
-      // #region agent log
-      fetch('http://127.0.0.1:7776/ingest/9414f33d-5b29-4b40-be42-dc7dff4db9a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b976a'},body:JSON.stringify({sessionId:'5b976a',hypothesisId:'H-CTX',location:'main.ts:contextmenu',message:'prefer interior mesh over pickFromEvent',data:{interiorId:meshWall.id,prevKind:hit?.ceiling?'ceiling':hit?.wallId?'wall':hit?'other':'null',prevWallId:hit?.wallId},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       hit = { wallId: meshWall.id, wallPart: 'group' }
     }
   }

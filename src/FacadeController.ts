@@ -145,6 +145,7 @@ import { planFacesWithHoles } from './studio/floorPlan'
 import { notchSlabRingAtOpenings } from './studio/slabNotches'
 import { floorIndex, storeyFloorSurfaceY, storeyTopY } from './utils/layers'
 import { isStudioWall, leafOpenSignForWall, outerSillBoardPose, studioFacadeOutwardLocalZ, studioFacadeSelectionLocalZ, studioPanelFaceLocalZ, studioProfileAnchorLocalZ, studioWallTransform, studioWindowOriginZ, wallEndPoint, wallHasPanels, wallStartPoint, windowDepthForwardSign } from './studio/walls'
+import { bayWallSkirtDropCm } from './studio/bayWindow'
 import { buildMansardRoof } from './studio/roof'
 import {
   buildDownpipeGeometry,
@@ -3013,7 +3014,7 @@ export class FacadeController {
     if (fabric?.geometry) {
       applyAwningFabricPositions(fabric.geometry, pose)
       fabric.visible = ext > 0.02
-      fabric.renderOrder = 8
+      fabric.renderOrder = 12
     }
   }
 
@@ -3864,7 +3865,18 @@ export class FacadeController {
     const wallColor = bare ? '#ffffff' : (wall.wallColor ?? DEFAULT_WALL_COLOR)
     const interiorColor = bare ? '#ffffff' : (wall.interiorColor ?? DEFAULT_INTERIOR_COLOR)
     const finish = bare ? undefined : wall.wallFinish
+    const skirtDrop =
+      isStudioWall(wall) && (wall.bayRole || wall.bayParentId || wall.bayWindow)
+        ? bayWallSkirtDropCm(wall, this.buildingWalls(wall))
+        : 0
+    const bayRock = skirtDrop > 0.5
     let exterior = this.wallMaterials.get(wall.id)
+    // Erker-Rock: Material ohne Gegenlicht-Shader neu aufbauen (skip allein entfernt den Patch nicht).
+    if (exterior && bayRock && exterior.userData.facadeShadeApplied === true) {
+      exterior.dispose()
+      this.wallMaterials.delete(wall.id)
+      exterior = undefined
+    }
     if (!exterior) {
       exterior = createTintedMaterial(this.material, wallColor, finish)
       this.wallMaterials.set(wall.id, exterior)
@@ -3875,8 +3887,14 @@ export class FacadeController {
     exterior.side = THREE.FrontSide
     exterior.shadowSide = shadowSide
     this.finishExteriorMaterial(exterior)
-    // Schale liegt nur 0,15 cm hinter Steinrücken/Mörtel — Tiefenrang statt Geometrie-Abstand.
-    applyDepthLayerOffset(exterior, DEPTH_LAYER_WALL_SHELL_UNITS)
+    if (bayRock) {
+      exterior.userData.skipFacadeShade = true
+      applyDepthLayerOffset(exterior, 0)
+    } else {
+      delete exterior.userData.skipFacadeShade
+      // Schale liegt nur 0,15 cm hinter Steinrücken/Mörtel — Tiefenrang statt Geometrie-Abstand.
+      applyDepthLayerOffset(exterior, DEPTH_LAYER_WALL_SHELL_UNITS)
+    }
 
     let interior = this.wallInteriorMaterials.get(wall.id)
     if (!interior) {
@@ -5164,11 +5182,14 @@ export class FacadeController {
     fabricMat.depthWrite = true
     fabricMat.depthTest = true
     if ('polygonOffset' in fabricMat) {
+      // Profil-Material zieht mit Units −16 nach vorn — Stoff muss stärker ziehen,
+      // sonst schimmert das Fensterprofil durch die Markisolette (v2.0.442).
       fabricMat.polygonOffset = true
-      fabricMat.polygonOffsetFactor = -6
-      fabricMat.polygonOffsetUnits = -6
+      fabricMat.polygonOffsetFactor = -1
+      fabricMat.polygonOffsetUnits = -32
     }
     this.finishExteriorMaterial(fabricMat)
+    fabricMat.userData.skipFacadeShade = true
 
     const group = new THREE.Group()
     group.userData.wallId = wall.id
@@ -5299,7 +5320,7 @@ export class FacadeController {
     fabric.castShadow = true
     fabric.receiveShadow = true
     fabric.frustumCulled = false
-    fabric.renderOrder = 8
+    fabric.renderOrder = 12
     fabric.userData.role = 'fabric'
     fabric.userData.originalMaterial = fabricMat
     tagPickable(fabric, pick)
