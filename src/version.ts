@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.463'
+export const APP_VERSION = '2.0.471'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,77 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.471',
+    date: '2026-09-14',
+    title: 'Touch: Farb-Kacheln wieder voll',
+    changes: [
+      'Farb-Swatches in der Bibliothek nicht mehr gequetscht',
+      'Filter-Band fest reserviert — kein Blitzen und volle Kartenhöhe',
+    ],
+  },
+  {
+    version: '2.0.470',
+    date: '2026-09-14',
+    title: 'Touch: Bühne ohne Blitzen bei Farben',
+    changes: [
+      'Anwählen / Farben-Filter lässt die Bühne nicht mehr blitzen oder springen',
+      'Farb-Kacheln bleiben vollständig sichtbar unter den Filter-Chips',
+    ],
+  },
+  {
+    version: '2.0.469',
+    date: '2026-09-14',
+    title: 'Touch: 3D mit Finger orbitieren',
+    changes: [
+      'In 3D auf Touch/schmalem Viewport: Ein-Finger-Ziehen dreht die Kamera (ohne Cmd/Ctrl)',
+      'Tippen wählt weiter; Fenster/Lichter bleiben ziehbar',
+    ],
+  },
+  {
+    version: '2.0.468',
+    date: '2026-09-14',
+    title: 'Himmel: keine schwarzen Stern-Punkte',
+    changes: [
+      'Tagsüber keine schwarzen Punkte mehr im Himmel (Sterne nur nachts)',
+      'Sterne nutzen dieselbe Display-Belichtung wie der Himmel',
+    ],
+  },
+  {
+    version: '2.0.467',
+    date: '2026-09-14',
+    title: 'Touch: Bibliothek randlos',
+    changes: [
+      'Farb-Filter schneidet Kacheln nicht mehr ab',
+      'Register, Filter und Kacheln ohne seitliches Padding und ohne Scrollbalken',
+      'Sockel-/Studio-Stepper: Plus-Button wieder sichtbar',
+    ],
+  },
+  {
+    version: '2.0.466',
+    date: '2026-09-14',
+    title: 'Touch: keine graue Fläche links',
+    changes: [
+      'Viewport füllt die volle Breite — keine leere Spalte mehr links (z. B. nach Sockel in der Bibliothek)',
+    ],
+  },
+  {
+    version: '2.0.465',
+    date: '2026-09-14',
+    title: 'Touch: Himmelsrichtung schräg',
+    changes: [
+      'Ansicht links/rechts: Kamera ±45° zur Front statt 90° seitlich',
+    ],
+  },
+  {
+    version: '2.0.464',
+    date: '2026-09-14',
+    title: 'Touch: Datei-Kachel',
+    changes: [
+      'Neue Bibliothek-Kachel Datei hinter Lampen & Leuchten',
+      'Sheet: Link kopieren (nur Zwischenablage), Datei hoch- und herunterladen',
+    ],
+  },
   {
     version: '2.0.463',
     date: '2026-09-14',

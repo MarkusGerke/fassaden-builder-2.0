@@ -47,9 +47,16 @@ export const LIBRARY_TAB_EDIT_SECTIONS: Record<string, string[]> = {
   sceneSun: ['sun'],
   sceneBloom: ['bloom'],
   sceneLights: ['sceneLights'],
+  sceneFile: ['file'],
 }
 
-export const SCENE_LIBRARY_TABS = ['sceneView', 'sceneSun', 'sceneBloom', 'sceneLights'] as const
+export const SCENE_LIBRARY_TABS = [
+  'sceneView',
+  'sceneSun',
+  'sceneBloom',
+  'sceneLights',
+  'sceneFile',
+] as const
 export type SceneLibraryTab = (typeof SCENE_LIBRARY_TABS)[number]
 
 /** Kacheln in der Touch-Bibliothek ohne Auswahl. */
@@ -62,6 +69,7 @@ export const SCENE_LIBRARY_TILES: ReadonlyArray<{
   { tab: 'sceneSun', label: 'Licht & Schatten', sections: ['sun'] },
   { tab: 'sceneBloom', label: 'Bloom', sections: ['bloom'] },
   { tab: 'sceneLights', label: 'Lampen & Leuchten', sections: ['sceneLights'] },
+  { tab: 'sceneFile', label: 'Datei', sections: ['file'] },
 ]
 
 export function isSceneLibraryTab(tab: string): tab is SceneLibraryTab {
@@ -69,7 +77,7 @@ export function isSceneLibraryTab(tab: string): tab is SceneLibraryTab {
 }
 
 /** Settings-Sektionen, die aus der Szene-Toolbar (nicht Auswahl) kommen. */
-export const SCENE_EDIT_SECTIONS = new Set(['view', 'sun', 'bloom', 'sceneLights'])
+export const SCENE_EDIT_SECTIONS = new Set(['view', 'sun', 'bloom', 'sceneLights', 'file'])
 
 export function isSceneEditFocus(sections: string[] | null | undefined): boolean {
   return Boolean(sections?.some((id) => SCENE_EDIT_SECTIONS.has(id)))
@@ -82,11 +90,14 @@ export function normalizeYaw360(yaw: number): number {
   return ((yaw % 360) + 360) % 360
 }
 
+/** Offset links/rechts relativ zur Front: schräg (±45°), nicht seitlich (±90°). */
+export const TOUCH_FACING_YAW_OFFSET_DEG = 45
+
 export function yawForTouchFacing(homeYaw: number, facing: TouchFacadeFacing): number {
   const home = normalizeYaw360(homeYaw)
   if (facing === 'frontal') return home
-  if (facing === 'left') return normalizeYaw360(home + 90)
-  return normalizeYaw360(home - 90)
+  if (facing === 'left') return normalizeYaw360(home + TOUCH_FACING_YAW_OFFSET_DEG)
+  return normalizeYaw360(home - TOUCH_FACING_YAW_OFFSET_DEG)
 }
 
 /** `null` = Yaw liegt nicht auf dem Triade links/frontal/rechts. */
@@ -94,8 +105,8 @@ export function touchFacingFromYaw(homeYaw: number, yaw: number): TouchFacadeFac
   const home = normalizeYaw360(homeYaw)
   const y = normalizeYaw360(yaw)
   if (Math.abs(y - home) < 0.5 || Math.abs(y - home) > 359.5) return 'frontal'
-  if (Math.abs(y - normalizeYaw360(home + 90)) < 0.5) return 'left'
-  if (Math.abs(y - normalizeYaw360(home - 90)) < 0.5) return 'right'
+  if (Math.abs(y - normalizeYaw360(home + TOUCH_FACING_YAW_OFFSET_DEG)) < 0.5) return 'left'
+  if (Math.abs(y - normalizeYaw360(home - TOUCH_FACING_YAW_OFFSET_DEG)) < 0.5) return 'right'
   return null
 }
 
@@ -148,6 +159,23 @@ export function isTouchChromeLayout(_view: string, win: Window = window): boolea
   return isCoarseOrNarrowViewport(win)
 }
 
+/**
+ * Touch-Chrome 3D: Ein-Finger-Orbit ohne Cmd/Ctrl.
+ * Leerfläche und Wand (Geometrie gesperrt) → Orbit; Öffnung/Licht/Fallrohr bleiben Drag/Auswahl.
+ */
+export function shouldTouchChromeBeginOrbit3d(opts: {
+  view: string
+  touchChrome: boolean
+  button: number
+  hasMod: boolean
+  hit: { openingId?: string; sceneLightId?: string; downpipe?: unknown } | null | undefined
+}): boolean {
+  if (opts.view !== '3d' || !opts.touchChrome) return false
+  if (opts.button !== 0 || opts.hasMod) return false
+  if (opts.hit?.openingId || opts.hit?.sceneLightId || opts.hit?.downpipe) return false
+  return true
+}
+
 export function loadTouchViewPreference(win: Window = window): TouchViewPreference {
   try {
     const raw = win.localStorage.getItem(TOUCH_VIEW_PREF_KEY)
@@ -180,7 +208,7 @@ export function shouldForcePresentView(view: string, win: Window = window): bool
 export const TOUCH_SCENE_HIDDEN_SECTIONS = new Set(['anim', 'perf'])
 
 /** Touch-only Szene-Sektionen (Desktop: hidden). */
-export const TOUCH_SCENE_ONLY_SECTIONS = new Set(['view'])
+export const TOUCH_SCENE_ONLY_SECTIONS = new Set(['view', 'file'])
 
 export const LIBRARY_EDIT_SHEET_HEIGHTS = [100, 75, 50, 25] as const
 export type LibraryEditSheetHeight = (typeof LIBRARY_EDIT_SHEET_HEIGHTS)[number]
@@ -195,6 +223,7 @@ export const LIBRARY_EDIT_SHEET_COMPACT_SECTIONS = new Set([
   'bloom',
   'sceneLights',
   'sceneLight',
+  'file',
   'label',
   'awning',
   'stairs',

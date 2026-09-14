@@ -185,6 +185,7 @@ body {
   height: 100%;
   font-size: var(--fs-body);
   font-variant-numeric: tabular-nums;
+  overflow: hidden; /* Intrinsic-breite number-Inputs dürfen + nicht überdecken */
 }
 
 .ui-stepper-input-wrap > input[type='number'],
@@ -205,6 +206,8 @@ body {
   background: #fff;
   box-sizing: border-box;
   -moz-appearance: textfield;
+  /* Native number-Inputs haben oft große Intrinsic-Min-Breite — sonst Überdeckung des +. */
+  field-sizing: fixed;
 }
 
 .ui-stepper-input-wrap > input::-webkit-outer-spin-button,
@@ -2532,7 +2535,8 @@ button.field-info:focus-visible {
   background: #fff;
 }
 
-/* Schmale Inline-Zahlfelder / Stepper nicht aufblasen, Sektion nicht überlaufen. */
+/* Schmale Inline-Zahlfelder / Stepper nicht aufblasen, Sektion nicht überlaufen.
+   Auch im Touch-Bottom-Sheet (Panels werden aus #ui-right heraus portiert). */
 #ui-right .toolbar-inline-value > input[type='number'],
 #ui-right .toolbar-inline-pairs > input[type='number'],
 #ui-right .opening-width-controls > input[type='number'],
@@ -2541,10 +2545,21 @@ button.field-info:focus-visible {
 #ui-right .toolbar-stepper input[type='number'],
 #ui-right .toolbar-stepper-value,
 #ui-right .ui-stepper input[type='number'],
-#ui-right .field-stepper input[type='number'] {
-  width: var(--input-narrow);
-  max-width: var(--input-narrow);
-  min-width: var(--input-narrow);
+#ui-right .field-stepper input[type='number'],
+.library-edit-sheet .toolbar-inline-value > input[type='number'],
+.library-edit-sheet .toolbar-inline-pairs > input[type='number'],
+.library-edit-sheet .opening-width-controls > input[type='number'],
+.library-edit-sheet .toolbar-row-2.toolbar-inline-cells input[type='number'],
+.library-edit-sheet .field-control-row > input[type='number'].toolbar-inline-narrow,
+.library-edit-sheet .toolbar-stepper input[type='number'],
+.library-edit-sheet .toolbar-stepper-value,
+.library-edit-sheet .ui-stepper input[type='number'],
+.library-edit-sheet .field-stepper input[type='number'],
+.ui-stepper input[type='number'],
+.field-stepper input[type='number'] {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   flex: 0 0 auto;
 }
 
@@ -2552,7 +2567,12 @@ button.field-info:focus-visible {
 #ui-right .toolbar-group,
 #ui-right .window-style-config,
 #ui-right .selection-toolbar-panels,
-#ui-right .right-selection-toolbar {
+#ui-right .right-selection-toolbar,
+.library-edit-sheet .settings-section,
+.library-edit-sheet .toolbar-group,
+.library-edit-sheet .window-style-config,
+.library-edit-sheet .selection-toolbar-panels,
+.library-edit-sheet .right-selection-toolbar {
   max-width: 100%;
   min-width: 0;
   box-sizing: border-box;
@@ -3070,6 +3090,18 @@ button:hover {
   min-width: 4.5rem;
   padding: 0.25rem 0.35rem;
   font-size: 0.85rem;
+}
+
+/* Stepper-Wert: keine 4,5rem-Min — sonst überdeckt das Input den Plus-Button. */
+#toolbar-studio .ui-stepper input[type='number'],
+#toolbar-studio .field-stepper input[type='number'],
+#toolbar-studio .toolbar-stepper input[type='number'],
+#toolbar-studio .toolbar-stepper-value {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  padding: 0.15rem 0.2rem;
+  font-size: var(--fs-body);
 }
 
 .validation-hint {
@@ -5424,6 +5456,11 @@ html.ui-touch-chrome #app {
   grid-template-columns: minmax(0, 1fr) !important;
 }
 
+/* Sonst bleibt #viewport auf grid-column: 2 → leere implizite Spalte links (grau). */
+html.ui-touch-chrome #viewport {
+  grid-column: 1 !important;
+}
+
 html.ui-touch-chrome #scope-bar-slot {
   display: flex !important;
 }
@@ -5437,15 +5474,24 @@ html.ui-touch-chrome #library-dock > .library-tabs {
   overflow-y: hidden;
   scroll-snap-type: x proximity;
   -webkit-overflow-scrolling: touch;
-  scrollbar-width: thin;
+  padding-left: 0;
+  padding-right: 0;
+  scrollbar-width: none;
+}
+
+html.ui-touch-chrome #library-dock > .library-tabs::-webkit-scrollbar {
+  display: none;
+  height: 0;
 }
 
 /*
  * Ohne Auswahl: keine sichtbare Registerleiste.
- * Dock-Mindesthöhe = Tabzeile + Kartenleiste, damit der Viewport nicht springt (v2.0.462).
+ * Dock-Mindesthöhe = Tabzeile + Filter-Band + Kartenleiste (v2.0.462 / v2.0.471).
+ * Filter-Band ist immer reserviert → Anzeigen des Filters ändert die Dock-Höhe nicht
+ * und quetscht die festen 6,5rem-Karten nicht (kein items padding-top).
  */
 html.ui-touch-chrome #library-dock {
-  min-height: calc(2.6rem + 7.55rem + env(safe-area-inset-bottom, 0px));
+  min-height: calc(2.6rem + 2.75rem + 7.55rem + env(safe-area-inset-bottom, 0px));
 }
 
 html.ui-touch-chrome #app:not(.has-selection) #library-dock > .library-tabs {
@@ -5471,24 +5517,36 @@ html.ui-touch-chrome #library-dock > .library-chrome {
 html.ui-touch-chrome #library-dock > .library-chrome > #opening-library {
   flex: 1 1 auto;
   min-height: 0;
+  /* Kacheln / Filter bis an den Rand (kein seitliches Padding) */
+  padding-left: 0;
+  padding-right: 0;
 }
 
-/* Farb-Filter immer aus dem Flex-Flow (auch hidden) — sonst Gap/Höhe → Viewport-Sprung */
 html.ui-touch-chrome #library-mode {
   position: relative;
+  gap: 0.25rem;
+  /* Immer Filter-Band freilassen — Items behalten height:6.5rem (box-sizing border-box). */
+  padding-top: 2.75rem;
+  box-sizing: border-box;
 }
 
+/*
+ * Farb-Filter absolut im reservierten Band (v2.0.461/470/471).
+ * Nie padding-top auf #opening-library-items — das quetscht die Karten.
+ * hidden = display:none.
+ */
 html.ui-touch-chrome #library-filter-row {
   position: absolute;
   left: 0;
   right: 0;
   top: 0;
-  z-index: 3;
+  z-index: 2;
   max-height: none !important;
   margin: 0 !important;
-  padding: 0.15rem 0.9rem 0.35rem;
-  background: rgba(255, 255, 255, 0.96);
+  padding: 0.15rem 0 0.35rem;
+  background: #fff;
   order: 0;
+  overflow: visible;
 }
 
 html.ui-touch-chrome #library-filter-row:not([hidden]) {
@@ -5502,6 +5560,30 @@ html.ui-touch-chrome #library-filter-row[hidden] {
   opacity: 0;
   pointer-events: none;
   max-height: none !important;
+}
+
+html.ui-touch-chrome .library-filter-tabs {
+  padding: 0.15rem 0 0.25rem;
+  margin: 0;
+  scrollbar-width: none;
+}
+
+html.ui-touch-chrome .library-filter-tabs::-webkit-scrollbar {
+  display: none;
+  height: 0;
+}
+
+html.ui-touch-chrome .opening-library-items {
+  scrollbar-width: none;
+  scrollbar-gutter: auto;
+  /* Erste/letzte Kachel an den Rand; Gap bleibt zwischen Karten */
+  padding-left: 0;
+  padding-right: 0;
+}
+
+html.ui-touch-chrome .opening-library-items::-webkit-scrollbar {
+  display: none;
+  height: 0;
 }
 
 html.ui-touch-chrome #library-dock > .library-tabs .library-tab {

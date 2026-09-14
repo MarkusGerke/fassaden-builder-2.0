@@ -2,6 +2,86 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Touch: Farb-Kacheln zerquetscht durch Items-Padding (2026-09-14) — v2.0.471
+
+**Symptom:** Nach v2.0.470 keine Blitze mehr, aber Farb-Swatches in der Bibliothek vertikal gequetscht.
+
+**Ursache (Runtime):** `padding-top: 2.75rem` auf `#opening-library-items` bei fester `height: 6.5rem` + `box-sizing: border-box` → Content-Höhe ≈ 6,5 rem − 44 px.
+
+**Fix:** Filter-Band dauerhaft in Dock-`min-height` und `#library-mode { padding-top }`; Items ohne Extra-Padding. Rule `keine-regression-bekannter-fixes` ergänzt.
+
+Docs: [ux.md](ux.md).
+
+### Touch: Bühnen-Blitzen durch Filter-Flow (2026-09-14) — v2.0.470
+
+**Symptom:** Anwählen / Farben ließ die Bühne wieder blitzen und springen (Regression nach v2.0.467).
+
+**Ursache (Runtime):** Filter wieder `position:static` im Flex-Flow → `dockH` 168→200 px bei Farben (`filterH` ~34). v2.0.461 hatte absolut + `display:none` verlangt.
+
+**Verworfen:** Filter nur im Flow gegen Abschneiden (v2.0.467) — opfert Viewport-Stabilität.
+
+**Fix:** Filter wieder absolut; bei sichtbarem Filter `padding-top` auf `#opening-library-items`. Rule `.cursor/rules/keine-regression-bekannter-fixes.mdc`.
+
+Docs: [ux.md](ux.md).
+
+### Touch: 3D-Orbit ohne Modifier (2026-09-14) — v2.0.469
+
+**Symptom:** Auf Touch/schmalem Viewport passierte beim Ziehen in 3D nichts.
+
+**Ursache (Runtime):** Capture-Orbit nur bei Cmd/Ctrl (`willBeginNavMod:false`); Bubble setzte `controls.enabled=false`. Touch-Chrome war aktiv, Treffer oft leer (`selectableHit:false`).
+
+**Fix:** `shouldTouchChromeBeginOrbit3d` → `beginNav3d` ohne Modifier (Leerfläche/Wand). Öffnung/Licht/Fallrohr bleiben im Bubble-Pfad ziehbar; Tippen wählt über `handleNav3dClick`.
+
+Docs: [ux.md](ux.md), [camera.md](camera.md).
+
+### Himmel: schwarze Stern-Punkte tagsüber (2026-09-14) — v2.0.468
+
+**Symptom:** Schwarze Punkte im Himmel (Tageslicht).
+
+**Ursache (Runtime):** `StarsMaterial` mit `background:true` schreibt `GetSkyRadiance` ohne `uSkyDisplayExposure` (Himmel ×7) → dunkle Overwrites; Sterne blieben bei `activeLight:sun` sichtbar (~9000 Punkte).
+
+**Verworfen:** Bloom-Fireflies — Logs zeigten Sterne/Exposure-Mismatch, nicht Bloom.
+
+**Fix:** Sterne nur wenn `activeLight !== 'sun'`; dieselbe Display-Exposure/HDR-Kappe wie `SkyMaterial` (`patchStarsFragmentShader`).
+
+Docs: [celestial-sky.md](celestial-sky.md).
+
+### Touch: Bibliothek randlos, Filter nicht über Kacheln (2026-09-14) — v2.0.467
+
+**Symptom:** Farb-Kacheln vom Filter/Tabs abgeschnitten; graue Scrollbalken; seitliches Padding.
+
+**Ursache:** Filter war `position: absolute` über den Kacheln (Viewport-Stabilität).
+
+**Fix:** Filter wieder im Flex-Flow (`display:none` wenn hidden). Tabs/Filter/Kacheln ohne seitliches Padding; `scrollbar-width: none`. Zusätzlich: Studio-Stepper-Plus nicht mehr von `min-width: 4.5rem` überdeckt.
+
+Docs: [ux.md](ux.md).
+
+### Touch: keine graue Fläche links (2026-09-14) — v2.0.466
+
+**Symptom:** Nach Klick auf Bibliothek-Reiter (z. B. Sockel) erschien links eine graue Fläche.
+
+**Ursache:** Touch-Chrome setzte `#app` auf eine Spalte, `#viewport` blieb `grid-column: 2` → leere implizite Spalte links.
+
+**Fix:** `html.ui-touch-chrome #viewport { grid-column: 1 }` (wie Stage-Modus).
+
+Docs: [ux.md](ux.md).
+
+### Touch: Himmelsrichtung schräg ±45° (2026-09-14) — v2.0.465
+
+**Soll:** links/rechts nicht 90° seitlich, sondern schräg (±45°) zur Front.
+
+**Fix:** `TOUCH_FACING_YAW_OFFSET_DEG = 45` in `yawForTouchFacing` / `touchFacingFromYaw`.
+
+Docs: [ux.md](ux.md).
+
+### Touch: Datei-Kachel (2026-09-14) — v2.0.464
+
+**Soll:** Nach Lampen & Leuchten eine Kachel **Datei** mit Link kopieren (nur Zwischenablage), Upload und Download.
+
+**Fix:** `SCENE_LIBRARY_TILES` + `#scene-file-section` (Touch-only); Buttons teilen die Share-/JSON-Handler; Status ohne URL-Anzeige.
+
+Docs: [ux.md](ux.md).
+
 ### Touch: Sheet öffnet kompakt (2026-09-14) — v2.0.463
 
 **Soll:** Bottom-Sheet bei wenig Inhalt (Ansicht, Lampen, Bloom, …) bei **25 %**; sonst Standard max. **50 %**. **75 / 100** nur per Drag.

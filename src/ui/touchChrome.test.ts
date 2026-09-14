@@ -10,6 +10,7 @@ import {
   touchFacingFromYaw,
   TOUCH_CHROME_MAX_WIDTH_PX,
   yawForTouchFacing,
+  shouldTouchChromeBeginOrbit3d,
 } from './touchChrome'
 
 function mockWin(opts: { coarse?: boolean; width?: number }): Window {
@@ -63,19 +64,30 @@ describe('touchChrome', () => {
     expect(isSceneEditFocus(['measures'])).toBe(false)
   })
 
-  it('maps links/frontal/rechts relative to home yaw', () => {
+  it('maps links/frontal/rechts as ±45° from home yaw', () => {
     expect(yawForTouchFacing(0, 'frontal')).toBe(0)
-    expect(yawForTouchFacing(0, 'left')).toBe(90)
-    expect(yawForTouchFacing(0, 'right')).toBe(270)
-    expect(touchFacingFromYaw(0, 90)).toBe('left')
-    expect(touchFacingFromYaw(0, 270)).toBe('right')
-    expect(touchFacingFromYaw(0, 45)).toBe(null)
+    expect(yawForTouchFacing(0, 'left')).toBe(45)
+    expect(yawForTouchFacing(0, 'right')).toBe(315)
+    expect(touchFacingFromYaw(0, 45)).toBe('left')
+    expect(touchFacingFromYaw(0, 315)).toBe('right')
+    expect(touchFacingFromYaw(0, 90)).toBe(null)
+  })
+
+  it('touch 3d orbit without mod on empty/wall, not on openings', () => {
+    const base = { view: '3d', touchChrome: true, button: 0, hasMod: false }
+    expect(shouldTouchChromeBeginOrbit3d({ ...base, hit: null })).toBe(true)
+    expect(shouldTouchChromeBeginOrbit3d({ ...base, hit: { } })).toBe(true)
+    expect(shouldTouchChromeBeginOrbit3d({ ...base, hit: { openingId: 'o1' } })).toBe(false)
+    expect(shouldTouchChromeBeginOrbit3d({ ...base, hasMod: true, hit: null })).toBe(false)
+    expect(shouldTouchChromeBeginOrbit3d({ ...base, view: 'present', hit: null })).toBe(false)
+    expect(shouldTouchChromeBeginOrbit3d({ ...base, touchChrome: false, hit: null })).toBe(false)
   })
 
   it('picks compact sheet open height from sections', () => {
     expect(defaultLibraryEditSheetHeight(['view'])).toBe(25)
     expect(defaultLibraryEditSheetHeight(['sceneLights'])).toBe(25)
     expect(defaultLibraryEditSheetHeight(['bloom'])).toBe(25)
+    expect(defaultLibraryEditSheetHeight(['file'])).toBe(25)
     expect(defaultLibraryEditSheetHeight(['sun'])).toBe(50)
     expect(defaultLibraryEditSheetHeight(['measures', 'style'])).toBe(50)
   })
