@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.453'
+export const APP_VERSION = '2.0.463'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,98 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.463',
+    date: '2026-09-14',
+    title: 'Touch: Sheet kompakt öffnen',
+    changes: [
+      'Ansicht, Lampen & Leuchten und andere kurze Sheets öffnen bei 25 % Höhe',
+      'Standard-Öffnung maximal 50 %; 75 % und 100 % weiterhin per Ziehgriff',
+    ],
+  },
+  {
+    version: '2.0.462',
+    date: '2026-09-14',
+    title: 'Touch: Szene-Kacheln Bearbeiten, keine Leer-Register',
+    changes: [
+      'Szene-Kacheln (Ansicht …): Titel nur im Thumb, unten „Bearbeiten“',
+      'Ohne Auswahl keine sichtbare leere Registerleiste — Dock-Höhe bleibt stabil',
+    ],
+  },
+  {
+    version: '2.0.461',
+    date: '2026-09-14',
+    title: 'Touch: stabile Bühnenhöhe bei Auswahl',
+    changes: [
+      'Bibliothek-Tabzeile behält ihre Höhe auch ohne Auswahl — Viewport/Haus springen und blitzen nicht mehr',
+      'Farb-Filter liegt über den Kacheln (kein Flex-Gap); Present-Kamera nicht mehr jeden Frame neu berechnet',
+    ],
+  },
+  {
+    version: '2.0.460',
+    date: '2026-09-14',
+    title: 'Touch: kein Bibliothek-Flash bei Auswahl',
+    changes: [
+      'Auswahl wechselt die Bibliothek ohne Opacity-Blitz — nur noch weiche Tab-/Viewport-Höhe',
+    ],
+  },
+  {
+    version: '2.0.459',
+    date: '2026-09-14',
+    title: 'Touch: Dock-Transition, Sheet-Scroll',
+    changes: [
+      'Ohne Auswahl keine Farb-Filter-Chips mehr über den Szene-Kacheln',
+      'Leistenwechsel Auswahl↔Idle und Bühnenhöhe weich (0,28 s), analog zum Bottom-Sheet',
+      'Bottom-Sheet ohne graue sticky Register — nur Header-Titel; Scrollen im Sheet-Body auch bei 25 %',
+    ],
+  },
+  {
+    version: '2.0.458',
+    date: '2026-09-14',
+    title: 'Touch: Szene-Kacheln, Fenster-Front',
+    changes: [
+      'Ohne Auswahl: keine Register — nur Kacheln Ansicht / Licht & Schatten / Bloom / Lampen & Leuchten → Bottom-Sheet; Fenster und weitere Kataloge ausgeblendet',
+      'Frontseite = Fassade mit den meisten Fenstern, automatisch zum Nutzer ausgerichtet',
+    ],
+  },
+  {
+    version: '2.0.457',
+    date: '2026-09-14',
+    title: 'Touch: Szene in Bibliothek-Tabs',
+    changes: [
+      'Ohne Auswahl: Ansicht, Licht & Schatten, Bloom, Lampen & Leuchten als Bibliothek-Tabs → Bottom-Sheet (kein Register-Panel darüber)',
+      'Himmelsrichtung als links / frontal / rechts — immer Hausfront; Darstellung Fassade|3D rechts im Sheet-Titel',
+    ],
+  },
+  {
+    version: '2.0.456',
+    date: '2026-09-14',
+    title: 'Touch: Ansicht, Szene-Register, Filter, Sheet',
+    changes: [
+      'Mobil ohne Auswahl: Ansicht (Himmelsrichtung + Fassade/3D), Licht & Schatten, Bloom, Lampen & Leuchten — Animation/Debug ausgeblendet',
+      'In 3D mit dem Finger navigieren; Wände bleiben gesperrt; Farbkategorien als Filter-Chips',
+      'Bearbeiten-Sheet per Ziehgriff auf 100/75/50/25 % verkleinerbar',
+    ],
+  },
+  {
+    version: '2.0.455',
+    date: '2026-09-14',
+    title: 'Bibliothek steuert Objekte, Einstellungen nur Parameter',
+    changes: [
+      '„… anzeigen“ entfällt — An/Aus über Bibliothek Keines/Keine (inkl. Rollläden-Tab, Schrift-Keines, Fensterbank Keines/Brett/Profil)',
+      'Rechte Leiste ohne Farb-Swatches und ohne Farben-Tab — Farben nur Bibliothek; Finish-Selects bleiben',
+      'Einstellungen nur noch Maße, Dropdowns, Slider und Feature-Unteroptionen',
+    ],
+  },
+  {
+    version: '2.0.454',
+    date: '2026-09-14',
+    title: 'Fensterbank ohne Profil-Zeile rechts',
+    changes: [
+      'Unter Fensterbank keine Überschrift „Profil“ und keine Zeile „Fensterbankprofil“ mehr',
+      'Bankprofil weiter über Bibliothek (Tab Profile) oder Drag aufs Fenster',
+    ],
+  },
   {
     version: '2.0.453',
     date: '2026-09-13',

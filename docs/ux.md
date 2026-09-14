@@ -263,22 +263,29 @@ Persistiert als `editScope` / `editFacadeYawFilter` in localStorage (`PersistedA
 
 ---
 
-## Touch-Chrome (v2.0.451)
+## Touch-Chrome (v2.0.451 / v2.0.456 / v2.0.457 / v2.0.458 / v2.0.459)
 
 Layout-Schalter: `html.ui-touch-chrome`, **nur** wenn **`(pointer: coarse)` ODER Viewport ≤ 900 px**. **Nicht** allein wegen Ansicht Fassade (`present`) auf großem Desktop — dort bleibt das klassische Layout (2D/3D/Fassade/Export, Himmel/Neutral, Licht, Ebenen, Kompass, Nav-Hilfe, Gültig für, rechte Inspector-Leiste).
 
 | Verhalten | Details |
 |---|---|
-| Ansicht | Auf Touch/schmal → **Fassade** erzwungen (`#view-btn-present`); großes Desktop behält freie Ansichtswahl |
+| Ohne Auswahl | **Keine** sichtbare Bibliothek-Register (Höhe 0). Vier **Kacheln**: Ansicht · Licht & Schatten · Bloom · Lampen & Leuchten (Thumb = Titel, unten **Bearbeiten**) → Bottom-Sheet. **Keine** Farb-Filter-Chips. Fenster/Farben/… erst bei Objektauswahl |
+| Leistenwechsel | Dock `min-height` hält Viewport stabil trotz eingeklappter Tab-Zeile (v2.0.462). Farb-Filter überlagert die Kartenzeile |
+| Ansicht | Sheet: **Darstellung** Fassade\|3D oben, darunter Himmelsrichtung **links \| frontal \| rechts** (nur bei Fassade; immer Hausfront). Frontseite = Fassade mit den meisten Fenstern (`facadeYawWithMostWindows`). Preference: `localStorage` `fassaden-builder-touch-view` |
+| Bottom-Sheet | Titel nur im Header — **keine** grauen sticky Sektions-Register. Scrollen nur im Sheet-Body (auch bei 25 %); innere Panels ohne eigenen Overflow |
+| Öffnungs-Höhe | **Standard max. 50 %**. Wenig Inhalt (**Ansicht, Bloom, Lampen & Leuchten**, …) → **25 %** (`defaultLibraryEditSheetHeight`). **75 / 100 %** nur per Drag-Rasten; Unter ~18 % → schließen. Session speichert letzte Drag-Höhe, Öffnen setzt wieder den Inhalts-Default |
 | HUD aus | gesamte Ansichts-Leiste (inkl. Fassade), Farbe/Zeichnung, Vorschau/Render, Himmel/Neutral, Licht, linke Ebenen (`#ui`), Kompass, Nav-Hilfe, **Gültig für** (`#edit-scope-bar`) — nur im Touch-Chrome |
 | Toast | `#scope-propagate-offer` bleibt (über dem Sheet, 7 s) |
-| Bibliothek-Tabs | horizontal swipebar (`overflow-x`, `scroll-snap`) |
-| Wand-Geometrie | kein Place/DnD/Resize/Move/Innenwand/Erker-Platzieren; Styling (Farben, Paneele, Gesims, Öffnungen) bleibt |
-| Bearbeiten | Nur Touch-Chrome: aktive Karte → unterstrichenes **Bearbeiten** (Hit-Zone unter Thumb); öffnet Bottom-Sheet am `document.body` (`openLibraryEdit`, portiert `#selection-toolbar-panels`). Desktop: Kartentitel + volle rechte Leiste |
+| Bibliothek-Tabs | bei Auswahl horizontal swipebar; ohne Auswahl eingeklappt (nicht `display:none`) |
+| Farben-Filter | Kategorie als horizontale **Filter-Chips** nur im Tab Farben — Idle ausgeblendet |
+| Wand-Geometrie | kein Place/DnD/Resize/Move/Innenwand/Erker-Platzieren (`wallGeomLockedByTouchChrome`); Styling (Farben, Paneele, Gesims, Öffnungen) bleibt |
+| Bearbeiten | Nur Touch-Chrome: aktive Karte → **Bearbeiten**; Bottom-Sheet am `document.body` mit **Ziehgriff** und Rasten **100 / 75 / 50 / 25 %**. Öffnen: Inhalts-Default 25 oder 50 (nicht zuletzt 75) |
 | Bibliothek-Cursor | Touch-Chrome: **kein** grab/grabbing, kein DnD (`draggable=false`); Tippen wendet an / Bearbeiten öffnet Sheet. Desktop: klassisches Ziehen bleibt |
 | Verdachung | Summary-Kacheln Form/Profil/Konsole → Galerie → Profil-Maße eine Ebene tiefer (im Sheet) |
 
-Implementierung: `src/ui/touchChrome.ts`, Wiring in `src/main.ts` / `src/style.css` / `index.html` (`#library-edit-sheet`).
+Implementierung: `src/ui/touchChrome.ts`, Wiring in `src/main.ts` / `src/style.css` / `index.html` (`#library-edit-sheet`, `#scene-view-section`).
+
+**Fallstricke:** `renderUi` darf Szene-Sheets ohne Auswahl nicht schließen (`isSceneEditFocus`). Gestapeltes `#ui-right`-Overlay und Szene-**Register** ohne Auswahl nicht wieder einführen. `syncLibraryTabVisibility` bei `allowed.size === 0` muss Filter-Row **und** Szene-Kacheln neu setzen. Nested `overflow` auf `#selection-toolbar-panels` im Sheet bricht Scrollen bei niedriger Sheet-Höhe.
 
 ---
 
@@ -426,45 +433,46 @@ UI-Felder und Konstanten: [profiles.md](profiles.md) / [opening-features.md](ope
 
 ## Register-Navigation (Auswahl, v0.7.55+)
 
-### Grundgesetz (v2.0.153–154)
+### Grundgesetz (v2.0.455)
 
-1. **Bibliothek = Typ & Preset** (Karten). **Rechts = Parameter** des Ausgewählten.
-2. **Katalog-Tabs folgen der Auswahl** (Kontext), nicht einer festen Alles-Liste.
-3. **Inaktive Parameter ausblenden** (Toggle aus → Felder weg).
-4. **Funktionen nicht still löschen** — außer explizit freigegeben.
-5. **Farben:** Swatch + HEX dauerhaft; Overlay mit RGB und Oberflächen-Mix (schließen nur Außenklick).
-6. **Lesereihenfolge** am Objekt von oben nach unten (Gesims → Zierband → Schrift → Fassade → … → Sockel).
+1. **Bibliothek = Objekt an/aus + Typ & Preset** (Karten). Erste Kachel oft **Keine/Keines**. Aktive Nicht-Keine-Karte → **Bearbeiten** (Touch: Sheet; Desktop: rechte Parameter).
+2. **Rechts = nur harte Parameter** (Stepper, Number, Range, Select, Feature-Unteroptionen wie Drücker). Keine „… anzeigen“-Checkboxen, keine Farb-Swatches, keine Profil-/Form-/Font-/Muster-Picker.
+3. **Farben nur Bibliothek-Tab Farben** (`applyFacadeLibraryColor`). Oberfläche (Stumpf/Glänzend/Metall) bleibt als Select in der Objekt-Sektion.
+4. **Katalog-Tabs folgen der Auswahl** (Kontext), nicht einer festen Alles-Liste.
+5. **Inaktive Parameter ausblenden** (Objekt aus / Keines → Felder weg).
+6. **Funktionen nicht still löschen** — außer explizit freigegeben.
+7. **Lesereihenfolge** am Objekt von oben nach unten (Gesims → Zierband → Schrift → Fassade → … → Sockel).
 
-#### Objekt-Affinitäts-Matrix (v2.0.154–156)
+#### Objekt-Affinitäts-Matrix (v2.0.154–156, An/Aus v2.0.455)
 
 `selection = { kind, part, openingType? }` steuert **Bibliothek-Tabs**, **Preset-Karten** und **rechte Sektionen**. Fremdes ausblenden. Implementierung: `allowedLibraryTabs()` / `applyOpeningPartVisibility` / `applyWallPartVisibility` / `pickFromEvent` in `main.ts`.
 
-**Grundgesetz:** Bibliothek = Typ & Preset-Karten. Rechts = nur Parameter (Enable, Maße, Farbe, Scale, Orientierung). Keine Verbände-/Profil-/Form-/Font-Karten rechts (`.sidebar-library-picker` / `hidden`, IDs bleiben).
+**Grundgesetz:** Bibliothek = An/Aus + Preset-Karten. Rechts = nur Maße/Scale/Orientierung/Feature-Checkboxen. Keine Verbände-/Profil-/Form-/Font-Karten und keine Farb-Swatches rechts (`.sidebar-library-picker` / `hidden`, IDs bleiben).
 
 ##### Bibliothek (unten)
 
 | Auswahl | Tabs | Preset-Sammlung (Muster) |
 |---|---|---|
 | Nichts | Fenster · Türen · Fassade · Wände · Farben · Erker · Balkone&Loggia · Licht | Platzieren |
-| Wand ganz | Fenster · Türen · Fassade · Farben · Gesims · Zierbänder · Sockel · Schrift · Nischen · Erker · Balkone (**ohne** Wände / Licht) | je Katalog **Keine/Keines** zuerst |
+| Wand ganz | Fenster · Türen · Fassade · Farben · Gesims · Zierbänder · Sockel · Schrift · Nischen · Erker · Balkone · Markisen (**ohne** Wände / Licht) | je Katalog **Keine/Keines** zuerst |
 | Wand-Teil Fassade (`cladding`) | **wie Wand ganz** (Highlight bleibt auf Paneel) | Verbände + **Keine** |
-| Wand-Teil Gesims / Sockel / Zierband / Schrift | nur dieser Katalog | Profile/Fonts; Gesims/Sockel/Zierband **Keines** |
-| Fenster ganz | Fenster · Fensterform · Profile · Verdachung | Typen; Bogenformen; Rahmen+Bank; Verdachung |
-| Tür ganz | Türen · Fensterform · Profile · Verdachung · Treppen | + Treppen-Anzahl/Form |
+| Wand-Teil Gesims / Sockel / Zierband / Schrift | nur dieser Katalog | Profile/Fonts; Gesims/Sockel/Zierband/Schrift **Keines** |
+| Fenster ganz | Fenster · Fensterform · Profile · Verdachung · Rollläden · Farben | Typen; Bogenformen; Rahmen+Bank; Verdachung; Rollläden |
+| Tür ganz | Türen · Fensterform · Profile · Verdachung · Treppen · Farben | + Treppen-Anzahl/Form |
 | Nische/Konche ganz | Nischen | Nischen-Presets |
-| Teil Profil (`trim`) | Profile | **nur Rahmen** |
-| Teil Fensterbrett | Profile | **Keines** · Brett |
-| Teil Fensterbank | Profile | Bankprofile + **Keines** |
-| Teil Verdachung / Konsolen | Verdachung | Form + Profil + Konsolen (**Keine** zuerst) |
-| Teil Treppe | **nur Treppen** | **Keine** · 1–8 Stufen · Form (bündig / Überstand / Aufweitung) |
-| Teil Rollladen | (leer / kein Fremdkatalog) | Parameter rechts |
-| Teil Rahmen/Gitter | Fenster bzw. Türen · Profile | |
+| Teil Profil (`trim`) | Profile · Farben | **nur Rahmen** |
+| Teil Fensterbrett | Profile · Farben | **Keines** · Brett |
+| Teil Fensterbank | Profile · Farben | **Keines** · Brett · Bankprofile |
+| Teil Verdachung / Konsolen | Verdachung · Farben | Form + Profil + Konsolen (**Keine** zuerst) |
+| Teil Treppe | **nur Treppen** · Farben | **Keine** · 1–8 Stufen · Form (bündig / Überstand / Aufweitung) |
+| Teil Rollladen | Rollläden · Farben | **Keines** · Rollläden |
+| Teil Rahmen/Gitter | Fenster bzw. Türen · Profile · Farben | |
 | Licht / Licht-Modus | nur Licht | Licht-Presets |
 | Dach / Decke | vorerst keine Extra-Tabs | |
 
 - **Fassade** = Verbände; Preset **„Keine“**.
-- **Gesims / Zierband / Sockel:** jeweils **„Keines“** (Zierband: Profilkatalog wie Gesims).
-- **Schrift:** Font-Karten; Löschen per Rechtsklick; **kein „Keine“**.
+- **Gesims / Zierband / Sockel / Schrift / Rollläden / Markise / Treppe / Verdachung:** jeweils **„Keines/Keine“** schaltet `enabled: false`.
+- **Fensterbank:** **Keines** = aus; **Brett** = Brett-Modus; sonst Profil-ID.
 - Öffnungsauswahl zeigt **keine** Wand-Kataloge (Fassade/Schrift/…), außer der Teil gehört zur Wand.
 
 ##### Picking (v2.0.155)
@@ -479,11 +487,11 @@ Auswahl darf die Aufriss-Skala nicht springen lassen: bei gleichem `contentKey` 
 
 | Auswahl | Sektionen |
 |---|---|
-| Wand ganz / Fassade (`cladding`) | Maße · Farben · Fassade · Gesims/Sockel/… (Hide-when-off; **keine** Verbände-Karten; Schrift-Reiter nur bei vorhandener Schrift) |
-| Wand-Teil Gesims/Sockel/… | nur der passende Reiter (+ Farbe wenn sinnvoll); **keine** Profilkarten |
-| Öffnung ganz | Maße · Farben · Profil · Verdachung · Rollladen · Treppe (Tür) · … — Form/Profil-Karten hidden |
-| Teil Treppe | **nur** Treppen-Parameter (Stufen/Maße/Farbe) — **kein** Rollladen/Verdachung |
-| Teil Rollladen | nur Rollladen |
+| Wand ganz / Fassade (`cladding`) | Maße · Fassade · Gesims/Sockel/… (Hide-when-off; **keine** Verbände-/Farb-Karten; Schrift-Reiter nur bei vorhandener Schrift) |
+| Wand-Teil Gesims/Sockel/… | nur der passende Reiter (Maße/Finish/Orientierung); **keine** Profil-/Farbkarten |
+| Öffnung ganz | Maße · Profil-Parameter · Verdachung · Rollladen · Treppe (Tür) · … — Form/Profil/Farb-Karten hidden |
+| Teil Treppe | **nur** Treppen-Parameter (Stufen/Maße/Finish) — **kein** Rollladen/Verdachung |
+| Teil Rollladen | nur Rollladen-Parameter |
 | Teil Bank / Verdachung / Profil | nur dieser Block (Arch/Fill/Reveal/Typ aus) |
 
 **Tot / raus (v2.0.153):** Öffnungs-Gehrung; abwechselnde Ebenen; zwei Bänder; Ecke-Dropdown (`cornerJoin=none`).
@@ -517,23 +525,21 @@ Bei Wand-, Öffnungs-, Studio-, Dach- oder Decken-Auswahl:
 - Ohne Auswahl: rechts **immer** die Szeneneinstellungen (`#lighting-accordion`, Geschwister von `#selection-toolbar` unter `#ui-right` — nicht darin verschachtelt, sonst verschwindet die Szene mit `[hidden]` der Auswahl-Toolbar).
 - **`data-settings-inline-all`**: kein eigener Reiter, im aktiven rechten Panel mit sichtbar (Modell/Aktionen).
 - Tab-Wechsel filtert per CSS-Klasse `selection-tab-filtered-out` — bestehende `hidden`-Logik bleibt maßgeblich.
-- Wechsel der Auswahl setzt den Tab auf **Farben** (v2.0.434; zuvor Übersicht v2.0.230).
+- Wechsel der Auswahl: Bibliothek oft **Farben**; rechts **Maße** (v2.0.455; zuvor Farben-Tab rechts v2.0.434).
 - **Einfach/Komplex:** Sektionen mit `data-ui-level="advanced"` erscheinen nur im Modus Komplex auch als Reiter. **Bossensteine** stehen im Tab Paneele (unter Mauerwerk), auch im Modus Einfach.
 - **Keine Akkordeons** in den Auswahl-Panels; Navigation über sticky Sektionsköpfe (volle Breite).
 
 ### Tab-Reihenfolge rechts (für alle Objekte)
 
-**Konvention (verbindlich):** **Übersicht → Maße → Farbe → übliche Einstellungen.** Cursor-Rule: `.cursor/rules/ui-reihenfolge-masse-farbe.mdc`.
+**Konvention (verbindlich, v2.0.455):** **Übersicht → Maße → übliche Einstellungen.** Farben nicht mehr als rechter Tab — nur Bibliothek. Cursor-Rule: `.cursor/rules/ui-reihenfolge-masse-farbe.mdc` (Farben-Tab rechts obsolet).
 
-Gilt für die **rechten Einstellungs-Register** bei jeder Objektauswahl (Wand, Öffnung, Dach, Decke, Licht, …) und analog für die **Szene** ohne Auswahl. Nur Tabs, die für das aktuelle Objekt **sichtbar** sind (`hidden` / UI-Level / fehlende Features), erscheinen. Innerhalb einer Sektion: Maß-Felder vor Farb-Feldern, dann der Rest.
+Gilt für die **rechten Einstellungs-Register** bei jeder Objektauswahl (Wand, Öffnung, Dach, Decke, Licht, …) und analog für die **Szene** ohne Auswahl. Nur Tabs, die für das aktuelle Objekt **sichtbar** sind (`hidden` / UI-Level / fehlende Features), erscheinen.
 
 | Position | Tab | Inhalt / Beispiele |
 |---|---|---|
 | **0.** | **Übersicht** | Alle Sektionen untereinander (`selectionToolbarTab === 'all'`) — manuell wählbar |
 | **1.** | **Maße** / Größenangaben | Breite, Höhe, Tiefe, Position, Geschosshöhe, Wandstärke, … (`dimensions`, `measures`) |
-| **2.** | **Farben** | Flächen-, Rahmen-, Glas-, Paneele/Ziegel-Farben, … (`colors`) — **bei Objekt-Klick aktiv** (v2.0.434) |
-| **3.** | **Formen** / Profile | Querschnitte, Profilwahl, Teilung/Stil wenn formgebend (`profile`, ggf. Dachform) |
-| **danach** | Dekor & Anbauteile **von oben nach unten** am Objekt | Reihenfolge wie an der Fassade gelesen |
+| **2.+** | Dekor & Anbauteile **von oben nach unten** am Objekt | Parameter ohne Farb-Swatches; Reihenfolge wie an der Fassade gelesen |
 
 **Von oben nach unten** (nur wenn vorhanden; `data-settings-order` bzw. DOM-Reihenfolge danach ausrichten):
 
@@ -547,7 +553,7 @@ Gilt für die **rechten Einstellungs-Register** bei jeder Objektauswahl (Wand, �
 
 **Technik:** Synthetischer Tab **Übersicht** zuerst; übrige Tabs aus `.settings-section[data-settings-section]` sortiert nach `data-settings-order`. Szene: ebenfalls **Übersicht** (`sceneToolbarTab === 'all'`).
 
-**Tab nach Markierung (v2.0.434):** Standard = **Farben** (rechts und Bibliothek). Innerhalb derselben Auswahl kann der Nutzer andere Reiter wählen (Sticky bis zum nächsten Objekt-Klick).
+**Tab nach Markierung (v2.0.455):** Bibliothek springt oft auf **Farben**; rechts Standard = **Maße** (oder erste sichtbare Parameter-Sektion). Sticky bis zum nächsten Objekt-Klick.
 
 **Nicht:** alphabetisch; nicht „was zufällig im HTML zuerst steht“, wenn Order fehlt — dann Order nachtragen.
 
@@ -647,7 +653,7 @@ Tabs in `#opening-library`: **Wände** | **Fenster** | **Fensterform** | **Türe
 | Profile | Rahmen, Gesims, Sockel, Fensterbank | Drag (`application/x-library-asset`) auf Fenster/Tür/Einbuchtung bzw. Wand; Klick nutzt die Auswahl |
 | Verdachung | Form, Verdachungsprofil, Konsolen | auf Fenster/Tür droppen |
 
-Profil-, Verbands-, Font-, Form- und Bogenform-Karten in der **rechten Seitenleiste** sind ausgeblendet (`.sidebar-library-picker`, IDs bleiben) — Auswahl nur in der Bibliothek. Rechts: Zahlen, Checkboxen, Farben, Scale, Orientierung. MIME `application/x-library-asset` plus `activeLibraryAssetDrag` (Dragover hat oft leere Custom-MIME).
+Profil-, Verbands-, Font-, Form- und Bogenform-Karten in der **rechten Seitenleiste** sind ausgeblendet (`.sidebar-library-picker`, IDs bleiben) — Auswahl nur in der Bibliothek. Farb-Swatches ebenfalls nur Bibliothek. Rechts: Zahlen, Feature-Checkboxen, Scale, Orientierung, Finish-Selects. MIME `application/x-library-asset` plus `activeLibraryAssetDrag` (Dragover hat oft leere Custom-MIME).
 
 **Aktive Kachel (v0.7.167–v0.7.175):** Die Karte, die bereits zur Auswahl gehört, hat einen **1 px schwarzen** Rahmen (`.library-card-applied`). Ohne Auswahl ist **Keines** so umrandet. Bei Wandauswahl erscheinen +/− an der Wand (folgen der Wand auch beim Orbit); + links/rechts/oben fügt aus der Zwischenablage ein oder dupliziert die Auswahl. Drag auf die Bühne bleibt.
 
