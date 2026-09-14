@@ -410,9 +410,11 @@ export function syncAwningControls(): void {
   if (!groupAwning) {
     enabled.checked = awning.enabled
     options.hidden = !awning.enabled
+    section.classList.toggle('object-presence-off', !awning.enabled)
     if (!awning.enabled) return
   } else {
     options.hidden = false
+    section.classList.remove('object-presence-off')
   }
 
   const widthRow = document.querySelector<HTMLElement>('#awning-width-row')

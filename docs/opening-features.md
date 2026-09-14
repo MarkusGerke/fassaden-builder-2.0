@@ -38,8 +38,9 @@ Kern: `src/utils/archForms.ts`, `openingGeometry.ts`. Schichten-Vertrag (Shell/F
 
 Nur Fenster mit `y > 0`. Hydrate/`ensureWindowSills` ergänzt fehlende Felder. UI `#window-sill-section` nur bei `type === 'window'`.
 
-- **Innen (`sillInner`):** Brett (Tiefe × Stärke), symmetrischer Überstand (`overhang`, Default 8 cm).
+- **Innen (`sillInner`):** Brett (Tiefe × Stärke), symmetrischer Überstand (`overhang`, Default 8 cm). An/Aus über Bibliothek Profile (**Keines** / **Brett**).
 - **Außen (`sillOuter`):** `board` (Quader, Tiefe max 16 cm `OUTER_SILL_MAX_CM`, Gefälle) oder `profile` (Sweep `buildSillOuterPaths`). Überstand symmetrisch. Oberkante bündig mit unterer Laibung.
+- **Profil-Wahl (v2.0.455):** Bibliothek Profile — **Keines** (`enabled: false`) → **Brett** → Bankprofile. Rechts keine Anzeigen-Checkbox und keine Farb-Swatches; bei aktivem Objekt Maße/Finish/Profil-Optionen. Rollläden: eigener Bibliothek-Tab.
 
 Orientierung: 90°-Drehung, Spiegeln oben/unten und vorne/hinten. Innenbank an Innenkante; Außenbank-Sweep an Oberkante der Bankplatte.
 

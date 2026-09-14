@@ -5102,6 +5102,53 @@ html[data-ui-mode='simple'] [data-ui-level='advanced'] {
   display: none !important;
 }
 
+/* v2.0.455: Objekt an/aus nur über Bibliothek „Keines“ */
+label.toolbar-check:has(#studio-cornice-enabled),
+label.toolbar-check:has(#wall-cornice-enabled),
+label.toolbar-check:has(#studio-plinth-enabled),
+label.toolbar-check:has(#studio-panels-enabled),
+label.toolbar-check:has(#studio-label-enabled),
+label.toolbar-check:has(#sill-inner-enabled),
+label.toolbar-check:has(#sill-outer-enabled),
+label.toolbar-check:has(#pediment-enabled),
+label.toolbar-check:has(#pediment-consoles-enabled),
+label.toolbar-check:has(#stairs-enabled),
+label.toolbar-check:has(#roller-shutter-enabled),
+label.toolbar-check:has(#awning-enabled) {
+  display: none !important;
+}
+
+/* v2.0.455: Farb-Swatches nur Bibliothek; Finish-Selects bleiben */
+#toolbar-opening .color-swatches,
+#toolbar-wall .color-swatches,
+#toolbar-studio .color-swatches,
+#toolbar-downpipe .color-swatches,
+#toolbar-ceiling .color-swatches,
+#toolbar-roof .color-swatches {
+  display: none !important;
+}
+
+.settings-section[data-settings-section="colors"],
+.opening-colors-hub,
+#opening-colors-section {
+  display: none !important;
+}
+
+/* Orphaned color labels when swatches are hidden */
+.toolbar-label:has(+ .color-swatches),
+.settings-subheading-nested:has(+ .toolbar-group .color-swatches),
+.settings-subheading-nested:has(+ .color-swatches),
+.settings-subheading-nested:has(+ .toolbar-group:has(.color-swatches)),
+p.settings-subheading-nested:has(+ span.toolbar-label + .color-swatches) {
+  display: none !important;
+}
+
+/* Objekt aus (Keines) → Parameter weg */
+.settings-section.object-presence-off > *:not(label.toolbar-check):not(.object-presence-keep),
+.toolbar-group.object-presence-off > *:not(label.toolbar-check):not(.object-presence-keep) {
+  display: none !important;
+}
+
 .opening-library-thumb-wall {
   width: 100%;
   height: 72px;
@@ -5368,6 +5415,11 @@ html.ui-touch-chrome #ui-right-collapse {
   display: none !important;
 }
 
+html.ui-touch-chrome #lighting-accordion [data-settings-section='anim'],
+html.ui-touch-chrome #lighting-accordion [data-settings-section='perf'] {
+  display: none !important;
+}
+
 html.ui-touch-chrome #app {
   grid-template-columns: minmax(0, 1fr) !important;
 }
@@ -5388,6 +5440,70 @@ html.ui-touch-chrome #library-dock > .library-tabs {
   scrollbar-width: thin;
 }
 
+/*
+ * Ohne Auswahl: keine sichtbare Registerleiste.
+ * Dock-Mindesthöhe = Tabzeile + Kartenleiste, damit der Viewport nicht springt (v2.0.462).
+ */
+html.ui-touch-chrome #library-dock {
+  min-height: calc(2.6rem + 7.55rem + env(safe-area-inset-bottom, 0px));
+}
+
+html.ui-touch-chrome #app:not(.has-selection) #library-dock > .library-tabs {
+  height: 0 !important;
+  min-height: 0 !important;
+  max-height: 0 !important;
+  opacity: 0;
+  padding: 0 !important;
+  border: none !important;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+html.ui-touch-chrome #library-dock > .library-chrome {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.28s ease, opacity 0.28s ease;
+  position: relative;
+}
+
+html.ui-touch-chrome #library-dock > .library-chrome > #opening-library {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Farb-Filter immer aus dem Flex-Flow (auch hidden) — sonst Gap/Höhe → Viewport-Sprung */
+html.ui-touch-chrome #library-mode {
+  position: relative;
+}
+
+html.ui-touch-chrome #library-filter-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 3;
+  max-height: none !important;
+  margin: 0 !important;
+  padding: 0.15rem 0.9rem 0.35rem;
+  background: rgba(255, 255, 255, 0.96);
+  order: 0;
+}
+
+html.ui-touch-chrome #library-filter-row:not([hidden]) {
+  display: block !important;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+html.ui-touch-chrome #library-filter-row[hidden] {
+  display: none !important;
+  opacity: 0;
+  pointer-events: none;
+  max-height: none !important;
+}
+
 html.ui-touch-chrome #library-dock > .library-tabs .library-tab {
   scroll-snap-align: start;
 }
@@ -5396,10 +5512,6 @@ html.ui-touch-chrome #library-dock.is-edit-sheet-open > .library-chrome {
   transform: translateY(110%);
   pointer-events: none;
   opacity: 0.35;
-}
-
-html.ui-touch-chrome #library-dock > .library-chrome {
-  transition: transform 0.28s ease, opacity 0.28s ease;
 }
 
 /* Touch-Chrome: Bibliothek tippen/klicken — kein grab/DnD-Cursor */
@@ -5479,19 +5591,46 @@ html.ui-touch-chrome .opening-library-card .library-card-edit {
   left: 0;
   right: 0;
   bottom: 0;
-  max-height: min(72vh, 640px);
+  height: var(--library-edit-sheet-vh, 50vh);
+  max-height: 100vh;
   display: flex;
   flex-direction: column;
   background: #fff;
   border-radius: 14px 14px 0 0;
   box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.18);
   transform: translateY(105%);
-  transition: transform 0.28s ease;
+  transition: transform 0.28s ease, height 0.2s ease;
   padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.library-edit-sheet-panel[data-sheet-height='drag'] {
+  transition: transform 0.28s ease;
 }
 
 .library-edit-sheet.is-open .library-edit-sheet-panel {
   transform: translateY(0);
+}
+
+.library-edit-sheet-handle {
+  flex: none;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 0.55rem 0 0.25rem;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.library-edit-sheet-handle:active {
+  cursor: grabbing;
+}
+
+.library-edit-sheet-handle-bar {
+  width: 42px;
+  height: 4px;
+  border-radius: 999px;
+  background: #c8c8c8;
 }
 
 .library-edit-sheet-header {
@@ -5506,26 +5645,63 @@ html.ui-touch-chrome .opening-library-card .library-card-edit {
 .library-edit-sheet-header h2 {
   margin: 0;
   flex: 1;
+  min-width: 0;
   font-size: 0.95rem;
   font-weight: 600;
-  text-align: center;
+  text-align: left;
+}
+
+.library-edit-sheet-trailing {
+  flex: none;
+  display: flex;
+  align-items: center;
+}
+
+.library-edit-sheet-trailing[hidden] {
+  display: none !important;
+}
+
+.library-edit-sheet-trailing .preset-group {
+  flex-wrap: nowrap;
 }
 
 .library-edit-sheet-body {
   flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
   padding: 0.75rem 0.9rem 1rem;
 }
 
-.library-edit-sheet-body .selection-toolbar-panels {
+.library-edit-sheet-body .selection-toolbar-panels,
+.library-edit-sheet-body #scene-toolbar-panels {
   display: flex;
   flex-direction: column;
   gap: var(--space-4, 32px);
+  /* Nur das Sheet-Body scrollt — kein zweites nested Scroll-Panel */
+  overflow: visible !important;
+  height: auto !important;
+  max-height: none !important;
+  min-height: 0;
+  flex: none;
+  position: static;
+}
+
+/* Graue sticky Register im Sheet aus — Titel steht im Header */
+.library-edit-sheet-body .settings-section > .settings-section-head {
+  display: none !important;
+}
+
+.library-edit-sheet-body .settings-section {
+  padding-top: 0 !important;
 }
 
 /* Fokussierter Inspector nur im Touch-Chrome (Bottom-Sheet); Desktop klassisch. */
-html.ui-touch-chrome.ui-library-edit-focus #selection-toolbar-panels .settings-section.library-edit-filtered-out {
+html.ui-touch-chrome.ui-library-edit-focus #selection-toolbar-panels .settings-section.library-edit-filtered-out,
+html.ui-touch-chrome.ui-library-edit-focus #scene-toolbar-panels .settings-section.library-edit-filtered-out {
   display: none !important;
 }
 
@@ -5616,4 +5792,96 @@ html.ui-touch-chrome.ui-library-edit-focus #selection-toolbar-panels .settings-s
 #pediment-options.pediment-catalog-root[data-pediment-depth='root'] > .settings-gallery,
 #pediment-options.pediment-catalog-root[data-pediment-depth='root'] > .settings-deep-edit {
   display: none !important;
+}
+
+/* Touch: Ansicht links/frontal/rechts + Farb-Filter-Chips (v2.0.457) */
+.scene-view-facing-btn.active {
+  outline: 1px solid #111;
+  font-weight: 700;
+}
+
+.opening-library-card.scene-library-tile {
+  width: auto;
+  min-width: 5.75rem;
+  max-width: 7.25rem;
+  cursor: pointer;
+}
+
+.opening-library-card.scene-library-tile .opening-library-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1.15;
+  padding: 0.35rem 0.3rem;
+  white-space: normal;
+  hyphens: auto;
+}
+
+.opening-library-card.scene-library-tile > .library-card-edit {
+  color: #c45c26;
+  font-weight: 600;
+  font-size: 0.72rem;
+}
+
+.library-filter-tabs {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.35rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  padding: 0.15rem 0 0.45rem;
+  margin: 0 0 0.25rem;
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+.library-filter-tab {
+  flex: 0 0 auto;
+  appearance: none;
+  border: 1px solid #d0d0d0;
+  background: #f7f7f7;
+  color: #333;
+  border-radius: var(--btn-radius, 6px);
+  padding: 0.35rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.library-filter-tab.active {
+  background: #111;
+  border-color: #111;
+  color: #fff;
+}
+
+.library-color-filter {
+  display: none !important;
+}
+
+.library-filter-row {
+  flex: none;
+  width: 100%;
+  min-width: 0;
+  padding: 0 0.15rem;
+  order: -1;
+  overflow: hidden;
+  max-height: 3.25rem;
+  opacity: 1;
+  transition: max-height 0.28s ease, opacity 0.28s ease, padding 0.28s ease, margin 0.28s ease;
+}
+
+.library-filter-row[hidden] {
+  display: block !important;
+  max-height: 0;
+  opacity: 0;
+  padding: 0;
+  margin: 0;
+  pointer-events: none;
+  border: none;
 }

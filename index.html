@@ -360,6 +360,10 @@
 
         <div id="library-dock" aria-label="Element-Bibliothek">
             <div class="library-tabs" role="tablist" aria-label="Elemente">
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="sceneView" id="library-tab-scene-view" hidden>Ansicht</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="sceneSun" id="library-tab-scene-sun" hidden>Licht &amp; Schatten</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="sceneBloom" id="library-tab-scene-bloom" hidden>Bloom</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="sceneLights" id="library-tab-scene-lights" hidden>Lampen &amp; Leuchten</button>
               <button type="button" class="library-tab active" role="tab" aria-selected="true" data-library-tab="windows" id="library-tab-windows" data-library-when="wall">Fenster</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="doors" id="library-tab-doors" data-library-when="wall">Türen</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="panels" id="library-tab-panels" data-library-when="wall">Fassade</button>
@@ -378,11 +382,13 @@
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="stairs" id="library-tab-stairs" data-library-when="stairs" hidden>Treppen</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="profiles" id="library-tab-profiles" data-library-when="opening">Profile</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="pediment" id="library-tab-pediment" data-library-when="opening">Verdachung</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="rollerShutters" id="library-tab-roller-shutters" data-library-when="opening">Rollläden</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="lights" id="library-tab-lights" data-library-when="always">Licht</button>
             </div>
           <div class="library-chrome">
           <div id="opening-library" aria-label="Bibliothek">
             <div id="library-mode" class="bottom-bar-mode">
+              <div id="library-filter-row" class="library-filter-row" hidden></div>
               <div id="opening-library-items" class="opening-library-items"></div>
             </div>
           </div>
@@ -390,7 +396,10 @@
         </div>
         <div id="library-edit-sheet" class="library-edit-sheet" hidden aria-hidden="true">
           <div class="library-edit-sheet-backdrop" data-library-edit-dismiss tabindex="-1"></div>
-          <div class="library-edit-sheet-panel" role="dialog" aria-modal="true" aria-labelledby="library-edit-sheet-title">
+          <div class="library-edit-sheet-panel" role="dialog" aria-modal="true" aria-labelledby="library-edit-sheet-title" data-sheet-height="50">
+            <div class="library-edit-sheet-handle" id="library-edit-sheet-handle" role="slider" aria-label="Höhe" aria-valuemin="25" aria-valuemax="100" aria-valuenow="50" tabindex="0">
+              <span class="library-edit-sheet-handle-bar" aria-hidden="true"></span>
+            </div>
             <header class="library-edit-sheet-header">
               <button type="button" id="library-edit-sheet-back" class="preset-btn" hidden>Zurück</button>
               <h2 id="library-edit-sheet-title">Bearbeiten</h2>
@@ -2335,12 +2344,7 @@
                   <span class="toolbar-label">Gefälle (°)</span>
                   <input id="sill-outer-angle" type="number" min="0" max="30" step="1" value="5" title="Gefälle nach außen in Grad" data-unit="°" />
                 </div>
-                <p class="settings-subheading settings-subheading-nested">Profil</p>
-                <div class="toolbar-group">
-                  <span class="toolbar-label">Fensterbankprofil</span>
-                  <p class="toolbar-hint compact-hint">Bankprofil in der Bibliothek (Tab Profile) wählen oder auf das Fenster ziehen.</p>
-                  <div id="sill-outer-profile-cards" class="tpl-card-row profile-picker-row sidebar-library-picker" role="listbox" aria-label="Fensterbankprofil"></div>
-                </div>
+                <div id="sill-outer-profile-cards" class="tpl-card-row profile-picker-row sidebar-library-picker" role="listbox" aria-label="Fensterbankprofil"></div>
                 <p class="settings-subheading settings-subheading-nested">Farbe</p>
                 <div class="toolbar-group ui-field-inline">
                   <span class="toolbar-label">Fensterbankfarbe</span>
@@ -2678,7 +2682,26 @@
         <div id="lighting-accordion" class="sidebar-accordion scene-sidebar-accordion">
           <div id="scene-toolbar" class="right-selection-toolbar scene-toolbar">
             <div id="scene-toolbar-panels" class="selection-toolbar-panels">
-              <div class="settings-section" data-settings-section="sun" data-settings-label="Licht" data-settings-order="10">
+              <div id="scene-view-section" class="settings-section ui-stack" data-settings-section="view" data-settings-label="Ansicht" data-settings-order="5" hidden>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Darstellung</span>
+                  <div class="preset-group" role="group" aria-label="Darstellung">
+                    <button type="button" class="preset-btn active" id="scene-view-mode-present">Fassade</button>
+                    <button type="button" class="preset-btn" id="scene-view-mode-3d">3D</button>
+                  </div>
+                </div>
+                <div id="scene-view-facing-block" class="ui-stack">
+                  <p class="settings-subheading settings-subheading-nested">Himmelsrichtung</p>
+                  <div id="scene-view-facing" class="preset-group" role="group" aria-label="Himmelsrichtung">
+                    <button type="button" class="preset-btn scene-view-facing-btn" data-facing="left">links</button>
+                    <button type="button" class="preset-btn scene-view-facing-btn active" data-facing="frontal">frontal</button>
+                    <button type="button" class="preset-btn scene-view-facing-btn" data-facing="right">rechts</button>
+                  </div>
+                </div>
+                <p id="scene-view-hint" class="toolbar-hint compact-hint">Fassade = eine Hausfront. In 3D außerhalb des Hauses mit einem Finger drehen; mit zwei Fingern schwenken und zoomen. Wände lassen sich mobil nicht verschieben.</p>
+              </div>
+
+              <div class="settings-section" data-settings-section="sun" data-settings-label="Licht &amp; Schatten" data-settings-order="10">
                 <p class="settings-subheading settings-subheading-nested">Sonne</p>
                 <label class="slider-label">
                   <span>Datum (Berlin)</span>
@@ -2761,8 +2784,9 @@
                 </label>
                 <input id="sun-color-temp" type="range" min="2700" max="8000" step="100" value="3500" />
                 <p class="toolbar-hint compact-hint">Manuell verstellbar; wird bei Datum/Tageszeit wieder aus dem Sonnenstand gesetzt.</p>
+              </div>
 
-                <p class="settings-subheading settings-subheading-nested">Lichter</p>
+              <div class="settings-section ui-stack" data-settings-section="sceneLights" data-settings-label="Lampen &amp; Leuchten" data-settings-order="12">
                 <label class="toolbar-check" id="view-all-scene-lights-row">
                   <input id="view-all-scene-lights" type="checkbox" />
                   Alle Lichter an
@@ -2774,8 +2798,9 @@
                   Lichtpunkte anzeigen
                 </label>
                 <p class="toolbar-hint compact-hint">Glühen der platzierten Punktlichter — nur Anzeige, die Lichtwirkung bleibt.</p>
+              </div>
 
-                <p class="settings-subheading settings-subheading-nested">Bloom</p>
+              <div class="settings-section ui-stack" data-settings-section="bloom" data-settings-label="Bloom" data-settings-order="14">
                 <div class="toolbar-group">
                   <label class="toolbar-check">
                     <input id="bloom-enabled" type="checkbox" />

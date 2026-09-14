@@ -554,9 +554,27 @@ import { normalizeYawDeg, snapYawTo1, snapYawTo45, solarAzimuthToWallYaw, viewed
 import { panelCourseCount, visiblePanelRowRange, layoutPanelTiles } from './studio/panelLayout'
 import { APP_VERSION } from './version'
 import {
+  defaultLibraryEditSheetHeight,
+  facadeYawWithMostWindows,
+  isSceneEditFocus,
+  isSceneLibraryTab,
   isTouchChromeLayout,
   LIBRARY_TAB_EDIT_SECTIONS,
+  loadLibraryEditSheetHeight,
+  loadTouchViewPreference,
+  saveLibraryEditSheetHeight,
+  saveTouchViewPreference,
+  SCENE_LIBRARY_TILES,
   shouldForcePresentView,
+  snapLibraryEditSheetHeight,
+  touchFacingFromYaw,
+  TOUCH_SCENE_HIDDEN_SECTIONS,
+  TOUCH_SCENE_ONLY_SECTIONS,
+  yawForTouchFacing,
+  type LibraryEditSheetHeight,
+  type SceneLibraryTab,
+  type TouchFacadeFacing,
+  type TouchViewPreference,
 } from './ui/touchChrome'
 
 import {
@@ -816,7 +834,7 @@ import {
 } from './lighting/lodSettings'
 import { closeContextMenu, showContextMenu, type MenuItem } from './ui/contextMenu'
 import { installFieldInfo } from './ui/fieldInfo'
-import { scrollToSettingsSection, syncScrollableSettingsPanel } from './ui/scrollableSettingsSections'
+import { detachScrollableSettingsPanel, scrollToSettingsSection, syncScrollableSettingsPanel } from './ui/scrollableSettingsSections'
 import { initReleaseNotesUi } from './ui/releaseNotes'
 import { initCreditsUi } from './ui/creditsDialog'
 import {
@@ -1778,7 +1796,12 @@ type LibraryTab =
   | 'profiles'
   | 'openingForm'
   | 'pediment'
+  | 'rollerShutters'
   | 'lights'
+  | 'sceneView'
+  | 'sceneSun'
+  | 'sceneBloom'
+  | 'sceneLights'
 
 /** Objekt-Affinität: welche Bibliothek-Tabs zur aktuellen Auswahl gehören (docs/ux.md). */
 function wallGeomLockedByTouchChrome(): boolean {
@@ -1799,7 +1822,7 @@ function allowedLibraryTabs(): Set<LibraryTab> {
       Boolean(opening && (opening.type === 'cutout' || opening.type === 'conch' || openingLacksWindowChrome(opening)))
 
     if (part === 'stairs') return new Set<LibraryTab>(['stairs', 'farbe'])
-    if (part === 'rollerShutter') return new Set<LibraryTab>(['farbe'])
+    if (part === 'rollerShutter') return new Set<LibraryTab>(['rollerShutters', 'farbe'])
     if (part === 'awning') return new Set<LibraryTab>(['awnings', 'farbe'])
     if (part === 'sillInner' || part === 'sillOuter') return new Set<LibraryTab>(['profiles', 'farbe'])
     if (part === 'pediment' || part === 'consoles') return new Set<LibraryTab>(['pediment', 'farbe'])
@@ -1810,9 +1833,27 @@ function allowedLibraryTabs(): Set<LibraryTab> {
       return new Set<LibraryTab>(['windows', 'profiles', 'openingForm', 'farbe'])
     }
     // Öffnung ganz
-    if (isDoor) return new Set<LibraryTab>(['doors', 'profiles', 'openingForm', 'pediment', 'stairs', 'awnings', 'farbe'])
+    if (isDoor) {
+      return new Set<LibraryTab>([
+        'doors',
+        'profiles',
+        'openingForm',
+        'pediment',
+        'stairs',
+        'awnings',
+        'farbe',
+      ])
+    }
     if (isNiche) return new Set<LibraryTab>(['niches', 'profiles', 'awnings', 'farbe'])
-    return new Set<LibraryTab>(['windows', 'profiles', 'openingForm', 'pediment', 'awnings', 'farbe'])
+    return new Set<LibraryTab>([
+      'windows',
+      'profiles',
+      'openingForm',
+      'pediment',
+      'rollerShutters',
+      'awnings',
+      'farbe',
+    ])
   }
 
   if (editor.selectedWallIds.length > 0) {
@@ -1858,12 +1899,24 @@ function allowedLibraryTabs(): Set<LibraryTab> {
     return new Set<LibraryTab>(['farbe'])
   }
 
-  // Keine Auswahl / Dach/Decke: Platzieren — Fenster/Türen neben Wänden sichtbar (v2.0.231).
-  // Touch-/Fassade-Chrome: keine Wand-/Erker-Geometrie anlegen.
+  // Keine Auswahl: Touch zeigt nur Szene-Kacheln (keine Register, kein Fenster+).
   if (wallGeomLockedByTouchChrome()) {
-    return new Set<LibraryTab>(['windows', 'doors', 'farbe', 'lights', 'awnings', 'panels'])
+    return new Set<LibraryTab>()
   }
   return new Set<LibraryTab>(['windows', 'doors', 'walls', 'farbe', 'bay', 'balcony', 'lights', 'awnings'])
+}
+
+/** Touch ohne Objektauswahl: Szene-Kacheln statt Katalog-Register. */
+function isTouchSceneLibraryIdle(): boolean {
+  if (!wallGeomLockedByTouchChrome()) return false
+  if (lightEditMode) return false
+  if (editor.selectedOpenings.length > 0) return false
+  if (editor.selectedWallIds.length > 0) return false
+  if (editor.selectedRoofBuildingId || editor.selectedRoofPart) return false
+  if (editor.selectedCeiling) return false
+  if (editor.selectedSceneLightId || (editor.selectedSceneLightIds?.length ?? 0) > 0) return false
+  if (editor.selectedDownpipe) return false
+  return true
 }
 
 function loadUiMode(): UiMode {
@@ -1970,10 +2023,18 @@ function syncLibraryTabVisibility() {
   }
   const activeBtn = buttons.find((btn) => btn.dataset.libraryTab === libraryTab)
   if (allowed.size === 0) {
-    // Teilobjekt ohne Katalog (z. B. Rollladen): kein Tab aktiv, leere Leiste
+    // Touch idle: Szene-Kacheln; sonst Teilobjekt ohne Katalog → leere Leiste
     syncLibraryTabs()
+    clearLibraryFilterRow()
+    if (isTouchSceneLibraryIdle()) {
+      const host = document.querySelector('#opening-library-items')
+      if (host) {
+        host.replaceChildren()
+        appendTouchSceneLibraryTiles(host)
+      }
+      return
+    }
     if (libraryTab !== 'lights') {
-      // initOpeningLibrary: unbekannter Tab → leere Items
       const host = document.querySelector('#opening-library-items')
       host?.replaceChildren()
     }
@@ -2007,9 +2068,13 @@ function syncLibraryTabVisibility() {
                               ? 'profiles'
                               : allowed.has('pediment')
                                 ? 'pediment'
-                                : allowed.has('walls')
-                                  ? 'walls'
-                                  : undefined) ?? [...allowed][0]
+                                : allowed.has('rollerShutters')
+                                  ? 'rollerShutters'
+                                  : allowed.has('awnings')
+                                    ? 'awnings'
+                                      : allowed.has('walls')
+                                      ? 'walls'
+                                      : undefined) ?? [...allowed][0]
     const fallbackBtn =
       (preferred
         ? buttons.find((btn) => btn.dataset.libraryTab === preferred && !btn.hidden)
@@ -2045,6 +2110,14 @@ function setLibraryTab(tab: LibraryTab) {
   libraryTab = tab
   syncLibraryTabVisibility()
   initOpeningLibrary()
+  if (isSceneLibraryTab(tab) && isTouchChromeLayout(currentView)) {
+    const sections = LIBRARY_TAB_EDIT_SECTIONS[tab]
+    if (sections?.length) {
+      openLibraryEdit(sections, libraryTabEditTitle(tab), 'scene')
+    }
+  } else if (libraryEditSheetOpen && isSceneEditFocus(libraryEditFocusSections)) {
+    closeLibraryEdit()
+  }
 }
 
 function wallLengthPreviewSvg(lengthCm: number): string {
@@ -5275,8 +5348,8 @@ function matchingBayLibraryPresetId(wall: Wall): string | null {
 
 function isLibraryCardApplied(card: HTMLElement): boolean {
   const hasSelection = editor.selectedWallIds.length > 0 || editor.selectedOpenings.length > 0
-  if (libraryTab === 'profiles' || libraryTab === 'pediment' || libraryTab === 'openingForm' || libraryTab === 'cornice' || libraryTab === 'plinth') {
-    return card.classList.contains('active')
+  if (libraryTab === 'profiles' || libraryTab === 'pediment' || libraryTab === 'openingForm' || libraryTab === 'cornice' || libraryTab === 'plinth' || libraryTab === 'rollerShutters') {
+    return card.classList.contains('active') || card.classList.contains('library-card-applied')
   }
   // Bewaffnete Wand-Breite (Segment-Modus / Ziehen) ist auch ohne Auswahl „aktiv“ umrandet.
   if (armedLibraryWallPresetId && card.dataset.wallPresetId) {
@@ -5459,6 +5532,8 @@ function decorateLibraryEditButtons() {
   // „Bearbeiten“-Link nur im Touch-Chrome (Mobile/coarse/narrow), nicht auf großem Desktop.
   const editEnabled =
     isTouchChromeLayout(currentView) &&
+    !isTouchSceneLibraryIdle() &&
+    !isSceneLibraryTab(libraryTab) &&
     Boolean(sections?.length) &&
     libraryTab !== 'walls' &&
     libraryTab !== 'bay' &&
@@ -5466,6 +5541,7 @@ function decorateLibraryEditButtons() {
     libraryTab !== 'loggia'
 
   for (const card of host.querySelectorAll<HTMLElement>('.opening-library-card')) {
+    if (card.classList.contains('scene-library-tile')) continue
     const label = card.querySelector<HTMLElement>(':scope > span:not(.opening-library-card-del)')
     if (!label) continue
 
@@ -5523,6 +5599,84 @@ function restoreSelectionPanelsHome() {
   }
 }
 
+function portalScenePanelsToSheet() {
+  if (!sceneToolbarPanels || !libraryEditSheetBody) return
+  if (!sceneToolbarPanelsHome) {
+    sceneToolbarPanelsHome = sceneToolbarPanels.parentElement
+  }
+  if (sceneToolbarPanels.parentElement !== libraryEditSheetBody) {
+    libraryEditSheetBody.appendChild(sceneToolbarPanels)
+  }
+}
+
+function restoreScenePanelsHome() {
+  if (!sceneToolbarPanels || !sceneToolbarPanelsHome) return
+  if (sceneToolbarPanels.parentElement !== sceneToolbarPanelsHome) {
+    sceneToolbarPanelsHome.appendChild(sceneToolbarPanels)
+  }
+}
+
+function applyLibraryEditSheetHeight(height: LibraryEditSheetHeight) {
+  const panel = libraryEditSheet?.querySelector<HTMLElement>('.library-edit-sheet-panel')
+  const handle = document.querySelector<HTMLElement>('#library-edit-sheet-handle')
+  if (!panel) return
+  panel.dataset.sheetHeight = String(height)
+  panel.style.setProperty('--library-edit-sheet-vh', `${height}vh`)
+  if (handle) {
+    handle.setAttribute('aria-valuenow', String(height))
+  }
+  saveLibraryEditSheetHeight(height)
+}
+
+function bindLibraryEditSheetResize() {
+  const panel = libraryEditSheet?.querySelector<HTMLElement>('.library-edit-sheet-panel')
+  const handle = document.querySelector<HTMLElement>('#library-edit-sheet-handle')
+  if (!panel || !handle) return
+  applyLibraryEditSheetHeight(loadLibraryEditSheetHeight())
+
+  let dragging = false
+  let startY = 0
+  let startHeightPx = 0
+
+  const onPointerMove = (event: PointerEvent) => {
+    if (!dragging) return
+    const dy = startY - event.clientY
+    const nextPx = Math.max(48, startHeightPx + dy)
+    const pct = (nextPx / window.innerHeight) * 100
+    panel.style.setProperty('--library-edit-sheet-vh', `${Math.min(100, Math.max(12, pct))}vh`)
+    panel.dataset.sheetHeight = 'drag'
+  }
+
+  const onPointerUp = (event: PointerEvent) => {
+    if (!dragging) return
+    dragging = false
+    handle.releasePointerCapture(event.pointerId)
+    window.removeEventListener('pointermove', onPointerMove)
+    window.removeEventListener('pointerup', onPointerUp)
+    const current = Number.parseFloat(
+      getComputedStyle(panel).getPropertyValue('--library-edit-sheet-vh') || '50',
+    )
+    const snap = snapLibraryEditSheetHeight(current)
+    if (snap === 'close') {
+      closeLibraryEdit()
+      applyLibraryEditSheetHeight(loadLibraryEditSheetHeight())
+      return
+    }
+    applyLibraryEditSheetHeight(snap)
+  }
+
+  handle.addEventListener('pointerdown', (event) => {
+    if (!libraryEditSheetOpen) return
+    event.preventDefault()
+    dragging = true
+    startY = event.clientY
+    startHeightPx = panel.getBoundingClientRect().height
+    handle.setPointerCapture(event.pointerId)
+    window.addEventListener('pointermove', onPointerMove)
+    window.addEventListener('pointerup', onPointerUp)
+  })
+}
+
 function syncLibraryEditSheetChrome() {
   const touch = isTouchChromeLayout(currentView)
   const open = Boolean(libraryEditFocusSections && libraryEditSheetOpen && touch)
@@ -5533,14 +5687,38 @@ function syncLibraryEditSheetChrome() {
     if (libraryEditSheet.parentElement !== document.body) {
       document.body.appendChild(libraryEditSheet)
     }
+    // Höhe setzt openLibraryEdit (Inhalt) bzw. Drag — hier nicht auf Session-75 zurücksetzen.
     libraryEditSheet.hidden = false
     libraryEditSheet.setAttribute('aria-hidden', 'false')
     requestAnimationFrame(() => libraryEditSheet?.classList.add('is-open'))
-    portalSelectionPanelsToSheet()
+    if (libraryEditPortalSource === 'scene') {
+      restoreSelectionPanelsHome()
+      portalScenePanelsToSheet()
+      applySceneToolbarTabFilter()
+      detachScrollableSettingsPanel(sceneToolbarPanels)
+      for (const head of sceneToolbarPanels.querySelectorAll<HTMLElement>(
+        '.settings-section > .settings-section-head',
+      )) {
+        head.hidden = true
+      }
+    } else {
+      restoreScenePanelsHome()
+      portalSelectionPanelsToSheet()
+      const panels = selectionToolbarPanelsEl()
+      if (panels) {
+        detachScrollableSettingsPanel(panels)
+        for (const head of panels.querySelectorAll<HTMLElement>(
+          '.settings-section > .settings-section-head',
+        )) {
+          head.hidden = true
+        }
+      }
+    }
   } else {
     libraryEditSheet.classList.remove('is-open')
     libraryEditSheet.setAttribute('aria-hidden', 'true')
     restoreSelectionPanelsHome()
+    restoreScenePanelsHome()
     window.setTimeout(() => {
       if (!libraryEditSheetOpen && libraryEditSheet) libraryEditSheet.hidden = true
     }, 300)
@@ -5553,33 +5731,43 @@ function syncLibraryEditSheetChrome() {
   if (libraryEditSheetBack) libraryEditSheetBack.hidden = !showBack
 }
 
-function openLibraryEdit(sections: string[], title: string) {
+function openLibraryEdit(
+  sections: string[],
+  title: string,
+  portalSource: 'selection' | 'scene' = 'selection',
+) {
   // Fokussierter Inspector / Bottom-Sheet nur Touch-Chrome — Desktop bleibt klassisch.
   const touch = isTouchChromeLayout(currentView)
   if (!touch) return
   libraryEditFocusSections = [...sections]
   libraryEditFocusTitle = title || 'Bearbeiten'
+  libraryEditPortalSource = portalSource
   pedimentCatalogDepth = 'root'
   libraryEditSheetOpen = true
   document.documentElement.classList.toggle('ui-library-edit-focus', true)
   if (sections[0]) {
     pendingSelectionToolbarTab = sections[0]
     selectionToolbarTab = sections[0]
+    if (portalSource === 'scene') sceneToolbarTab = sections[0]
   }
+  applyLibraryEditSheetHeight(defaultLibraryEditSheetHeight(sections))
   syncLibraryEditSheetChrome()
   syncPedimentCatalogChrome()
   syncSelectionToolbarTabs()
+  syncSceneToolbarTabs()
   renderUi({ skipLayerList: true })
 }
 
 function closeLibraryEdit() {
   libraryEditFocusSections = null
   libraryEditSheetOpen = false
+  libraryEditPortalSource = 'selection'
   pedimentCatalogDepth = 'root'
   document.documentElement.classList.remove('ui-library-edit-focus')
   syncLibraryEditSheetChrome()
   syncPedimentCatalogChrome()
   syncSelectionToolbarTabs()
+  syncSceneToolbarTabs()
 }
 
 function setPedimentCatalogDepth(depth: PedimentCatalogDepth) {
@@ -5671,12 +5859,22 @@ function syncPedimentCatalogChrome() {
 }
 
 function syncTouchChromeLayout() {
-  if (shouldForcePresentView(currentView)) {
-    setView('present')
-    return
-  }
   const touch = isTouchChromeLayout(currentView)
   document.documentElement.classList.toggle('ui-touch-chrome', touch)
+  const viewSection = document.querySelector<HTMLElement>('#scene-view-section')
+  if (viewSection) viewSection.hidden = !touch
+
+  if (touch) {
+    const pref = loadTouchViewPreference()
+    if (pref === '3d' && currentView !== '3d' && currentView !== 'export') {
+      setView('3d')
+    } else if (pref === 'present' && shouldForcePresentView(currentView)) {
+      setView('present')
+    }
+  } else if (shouldForcePresentView(currentView)) {
+    setView('present')
+  }
+
   if (!touch && (libraryEditSheetOpen || libraryEditFocusSections)) {
     closeLibraryEdit()
   }
@@ -5688,6 +5886,9 @@ function syncTouchChromeLayout() {
   decorateLibraryEditButtons()
   updateWallResizeGizmos()
   syncLibraryTabVisibility()
+  syncTouchFrontFacadeOrientation()
+  syncSceneViewControls()
+  syncSceneToolbarTabs()
 }
 
 window.matchMedia('(pointer: coarse)').addEventListener('change', () => syncTouchChromeLayout())
@@ -7053,6 +7254,12 @@ type PedimentCatalogDepth = 'root' | 'form' | 'profile' | 'profile-deep' | 'cons
 let pedimentCatalogDepth: PedimentCatalogDepth = 'root'
 let libraryEditSheetOpen = false
 let selectionToolbarPanelsHome: HTMLElement | null = null
+let sceneToolbarPanelsHome: HTMLElement | null = null
+/** Welche Panels ins Bottom-Sheet portiert werden. */
+let libraryEditPortalSource: 'selection' | 'scene' = 'selection'
+/** Touch: Bezug-Yaw für links/frontal/rechts (Hausfront). */
+let touchFacingHomeYaw = 0
+let touchFacadeFacing: TouchFacadeFacing = 'frontal'
 const libraryEditSheet = document.querySelector<HTMLElement>('#library-edit-sheet')
 const libraryEditSheetBody = document.querySelector<HTMLElement>('#library-edit-sheet-body')
 const libraryEditSheetTitle = document.querySelector<HTMLElement>('#library-edit-sheet-title')
@@ -8983,6 +9190,57 @@ function setCompassYaw(yaw: number) {
     markViewportDirty()
   }
   scheduleShareHashWrite()
+  syncSceneViewControls()
+}
+
+function syncSceneViewControls() {
+  const presentBtn = document.querySelector<HTMLButtonElement>('#scene-view-mode-present')
+  const mode3dBtn = document.querySelector<HTMLButtonElement>('#scene-view-mode-3d')
+  const facingBlock = document.querySelector<HTMLElement>('#scene-view-facing-block')
+  const yaw = currentElevation.kind === 'yaw' ? snapYawTo45(currentElevation.yaw) : 0
+  const isPresent = currentView === 'present'
+  const is3d = currentView === '3d'
+  presentBtn?.classList.toggle('active', isPresent)
+  mode3dBtn?.classList.toggle('active', is3d)
+  if (facingBlock) facingBlock.hidden = !isPresent
+  const matched = touchFacingFromYaw(touchFacingHomeYaw, yaw)
+  if (matched) touchFacadeFacing = matched
+  for (const btn of document.querySelectorAll<HTMLButtonElement>('.scene-view-facing-btn')) {
+    btn.classList.toggle('active', btn.dataset.facing === touchFacadeFacing)
+    btn.disabled = !isPresent
+  }
+}
+
+function setTouchFacadeFacing(facing: TouchFacadeFacing) {
+  touchFacadeFacing = facing
+  const yaw = snapYawTo45(yawForTouchFacing(touchFacingHomeYaw, facing))
+  // Himmelsrichtung nur in Fassade (Present).
+  setTouchViewMode('present')
+  setCompassYaw(yaw)
+  syncSceneViewControls()
+}
+
+function setTouchViewMode(mode: TouchViewPreference) {
+  saveTouchViewPreference(mode)
+  setView(mode)
+  syncTouchFrontFacadeOrientation()
+  syncSceneViewControls()
+}
+
+function bindSceneViewControls() {
+  for (const btn of document.querySelectorAll<HTMLButtonElement>('.scene-view-facing-btn')) {
+    btn.addEventListener('click', () => {
+      const facing = btn.dataset.facing as TouchFacadeFacing | undefined
+      if (facing !== 'left' && facing !== 'frontal' && facing !== 'right') return
+      setTouchFacadeFacing(facing)
+    })
+  }
+  document.querySelector('#scene-view-mode-present')?.addEventListener('click', () => {
+    setTouchViewMode('present')
+  })
+  document.querySelector('#scene-view-mode-3d')?.addEventListener('click', () => {
+    setTouchViewMode('3d')
+  })
 }
 
 /** Kamera weich auf den Sonnen-Azimut drehen (Grad, ohne 45°-Raster / 2D-Ansicht). */
@@ -9380,6 +9638,9 @@ function syncStudioPanelVisibility(
   studioTaperOptions.hidden = !panelsOn || (panel.taperDepth ?? 0) <= 0
   studioCorniceOptions.hidden = !corniceEnabled
   studioPlinthOptions.hidden = panel.plinthEnabled === false
+  document
+    .querySelector('#toolbar-studio [data-settings-section="plinth"]')
+    ?.classList.toggle('object-presence-off', panel.plinthEnabled === false)
   // Tot: Abwechselnde Ebenen / Zwei-Bänder / Gehrung / Ecke-Dropdown (UI bleibt im DOM, hidden)
   studioPanelsAlternateRow.hidden = true
   studioAlternateLayers.hidden = true
@@ -9546,6 +9807,13 @@ function syncLabelControls(wall: Wall) {
   const label = wallLabel(wall, editor.selectedLabelId)
   studioLabelEnabled.checked = Boolean(label.enabled)
   studioLabelOptions.hidden = !label.enabled
+  document
+    .querySelector('#toolbar-studio [data-settings-section="label"]')
+    ?.classList.toggle('object-presence-off', !label.enabled)
+  if (!label.enabled) {
+    syncLabelFontCards(label.fontId)
+    return
+  }
   studioLabelText.value = label.text ?? ''
   studioLabelHeight.value = String(label.heightCm ?? DEFAULT_WALL_LABEL.heightCm)
   studioLabelX.max = String(wall.width)
@@ -9768,6 +10036,12 @@ function syncCorniceControls(wall: Wall) {
   const edge = cornice.edge ?? 'top'
   const profileId = cornice.enabled ? (cornice.profileId ?? 'traufgesims70x150') : ''
   studioCorniceEnabled.checked = Boolean(cornice.enabled)
+  document
+    .querySelector('#toolbar-studio [data-settings-section="cornice"]')
+    ?.classList.toggle('object-presence-off', !cornice.enabled)
+  document
+    .querySelector('#toolbar-wall [data-settings-section="cornice"]')
+    ?.classList.toggle('object-presence-off', !cornice.enabled)
   studioCorniceTop.classList.toggle('active', edge === 'top')
   studioCorniceBottom.classList.toggle('active', edge === 'bottom')
   syncCorniceHeightInputs(wall, cornice)
@@ -10166,11 +10440,21 @@ function applyLibraryAsset(asset: LibraryAsset, hit?: { wallId?: string; opening
       planStatus.textContent = 'Bankprofil auf ein Fenster ziehen'
       return
     }
-    commitState(
-      updateOpeningSills(state, refs, {
-        outer: asset.id ? { enabled: true, mode: 'profile', profileId: asset.id } : { mode: 'board', profileId: undefined },
-      }),
-    )
+    if (!asset.id) {
+      commitState(updateOpeningSills(state, refs, { outer: { enabled: false } }))
+    } else if (asset.id === 'board') {
+      commitState(
+        updateOpeningSills(state, refs, {
+          outer: { enabled: true, mode: 'board', profileId: undefined },
+        }),
+      )
+    } else {
+      commitState(
+        updateOpeningSills(state, refs, {
+          outer: { enabled: true, mode: 'profile', profileId: asset.id },
+        }),
+      )
+    }
     return
   }
   if (asset.kind === 'pediment-form') {
@@ -10416,6 +10700,76 @@ function appendLibraryProfileCards(
   }
 }
 
+function clearLibraryFilterRow() {
+  const filterHost = document.querySelector<HTMLDivElement>('#library-filter-row')
+  if (!filterHost) return
+  filterHost.replaceChildren()
+  filterHost.hidden = true
+}
+
+function appendTouchSceneLibraryTiles(host: HTMLElement) {
+  clearLibraryFilterRow()
+  const focus = libraryEditFocusSections ?? []
+  for (const tile of SCENE_LIBRARY_TILES) {
+    const card = document.createElement('button')
+    card.type = 'button'
+    card.className = 'opening-library-card scene-library-tile'
+    card.dataset.sceneLibraryTab = tile.tab
+    card.title = tile.label
+    const active = tile.sections.some((id) => focus.includes(id)) && libraryEditSheetOpen
+    card.classList.toggle('active', active)
+    card.classList.toggle('library-card-applied', active)
+    const thumb = document.createElement('div')
+    thumb.className = 'opening-library-thumb'
+    thumb.textContent = tile.label
+    const label = document.createElement('span')
+    label.className = 'library-card-edit'
+    label.textContent = 'Bearbeiten'
+    card.dataset.libraryCardTitle = tile.label
+    card.append(thumb, label)
+    card.addEventListener('click', () => {
+      openSceneLibraryTile(tile.tab)
+    })
+    host.appendChild(card)
+  }
+}
+
+function openSceneLibraryTile(tab: SceneLibraryTab) {
+  const tile = SCENE_LIBRARY_TILES.find((t) => t.tab === tab)
+  if (!tile) return
+  libraryTab = tab
+  syncLibraryTabs()
+  openLibraryEdit([...tile.sections], tile.label, 'scene')
+  // Kachel-Aktivzustand nach Sheet-Open aktualisieren
+  const host = document.querySelector('#opening-library-items')
+  if (host && isTouchSceneLibraryIdle()) {
+    host.replaceChildren()
+    appendTouchSceneLibraryTiles(host)
+  }
+}
+
+/**
+ * Frontseite = Fassade mit den meisten Fenstern → Bezug für links/frontal/rechts.
+ * In Present-Ansicht Kamera daran ausrichten.
+ */
+function syncTouchFrontFacadeOrientation() {
+  if (!isTouchChromeLayout(currentView)) return
+  const front = facadeYawWithMostWindows(getAllWalls(state), snapYawTo45)
+  if (front == null) return
+  touchFacingHomeYaw = front
+  if (currentView !== 'present') {
+    syncSceneViewControls()
+    return
+  }
+  const target = snapYawTo45(yawForTouchFacing(touchFacingHomeYaw, touchFacadeFacing))
+  const current = currentElevation.kind === 'yaw' ? snapYawTo45(currentElevation.yaw) : null
+  if (current !== target) {
+    setCompassYaw(target)
+  } else {
+    syncSceneViewControls()
+  }
+}
+
 function appendLibraryIdleNoneCard(host: HTMLElement, label = 'Keines') {
   const card = document.createElement('button')
   card.type = 'button'
@@ -10455,9 +10809,23 @@ function hideNativeDragImage(event: DragEvent) {
 
 function initOpeningLibrary() {
   const host = document.querySelector<HTMLDivElement>('#opening-library-items')
+  const filterHost = document.querySelector<HTMLDivElement>('#library-filter-row')
   if (!host) return
   syncLibraryTabs()
   host.replaceChildren()
+  if (filterHost) {
+    filterHost.replaceChildren()
+    filterHost.hidden = true
+  }
+  // Szene-Kacheln ohne Auswahl (keine Register, kein Fenster+).
+  if (isTouchSceneLibraryIdle()) {
+    appendTouchSceneLibraryTiles(host)
+    return
+  }
+  // Szene-Tabs öffnen nur das Bottom-Sheet — keine Platzier-Karten.
+  if (isSceneLibraryTab(libraryTab)) {
+    return
+  }
 
   const appendOpeningPresetCard = (preset: (typeof WALL_OPENING_PRESETS)[number]) => {
     const card = document.createElement('button')
@@ -10772,27 +11140,32 @@ function initOpeningLibrary() {
 
   if (libraryTab === 'farbe') {
     if (!libraryColorCategory) libraryColorCategory = defaultFacadeColorCategory()
-    const filterRow = document.createElement('div')
-    filterRow.className = 'library-color-filter'
-    const filterLabel = document.createElement('span')
-    filterLabel.className = 'toolbar-label'
-    filterLabel.textContent = 'Kategorie'
-    const filterSelect = document.createElement('select')
-    filterSelect.className = 'library-color-category-select'
-    filterSelect.title = 'Farbkategorie'
-    for (const kat of FACADE_COLOR_CATEGORIES) {
-      const opt = document.createElement('option')
-      opt.value = kat.id
-      opt.textContent = kat.name
-      if (kat.id === libraryColorCategory) opt.selected = true
-      filterSelect.appendChild(opt)
+    const filterHost = document.querySelector<HTMLDivElement>('#library-filter-row')
+    if (filterHost) {
+      filterHost.hidden = false
+      filterHost.replaceChildren()
+      const filterRow = document.createElement('div')
+      filterRow.className = 'library-filter-tabs'
+      filterRow.setAttribute('role', 'tablist')
+      filterRow.setAttribute('aria-label', 'Farbkategorie')
+      for (const kat of FACADE_COLOR_CATEGORIES) {
+        const chip = document.createElement('button')
+        chip.type = 'button'
+        chip.className = 'library-filter-tab'
+        chip.setAttribute('role', 'tab')
+        chip.dataset.categoryId = kat.id
+        chip.textContent = kat.name
+        const selected = kat.id === libraryColorCategory
+        chip.classList.toggle('active', selected)
+        chip.setAttribute('aria-selected', selected ? 'true' : 'false')
+        chip.addEventListener('click', () => {
+          libraryColorCategory = kat.id
+          initOpeningLibrary()
+        })
+        filterRow.appendChild(chip)
+      }
+      filterHost.appendChild(filterRow)
     }
-    filterSelect.addEventListener('change', () => {
-      libraryColorCategory = filterSelect.value as FacadeColorCategoryId
-      initOpeningLibrary()
-    })
-    filterRow.append(filterLabel, filterSelect)
-    host.appendChild(filterRow)
 
     const activeKat =
       FACADE_COLOR_CATEGORIES.find((k) => k.id === libraryColorCategory) ?? FACADE_COLOR_CATEGORIES[0]!
@@ -11141,17 +11514,38 @@ function initOpeningLibrary() {
       editor.selectedWallPart === 'label' &&
       Boolean(editor.selectedLabelId) &&
       wallLabels(wall!).some((item) => item.id === editor.selectedLabelId)
-    const activeFont = labelFocused
-      ? wallLabel(wall!, editor.selectedLabelId).fontId
-      : wall
-        ? wallLabel(wall, editor.selectedLabelId).fontId
-        : undefined
+    const activeLabel = labelFocused ? wallLabel(wall!, editor.selectedLabelId) : null
+    const activeFont = activeLabel?.fontId
+    const labelOff = labelFocused && activeLabel?.enabled === false
+
+    const none = document.createElement('button')
+    none.type = 'button'
+    none.className = 'opening-library-card'
+    none.dataset.libraryNone = '1'
+    if (labelOff || (labelFocused && !activeLabel?.enabled)) none.classList.add('library-card-applied')
+    none.title = 'Schrift ausblenden'
+    const noneThumb = document.createElement('div')
+    noneThumb.className = 'opening-library-thumb tpl-card-thumb-empty'
+    noneThumb.textContent = '—'
+    const noneLabel = document.createElement('span')
+    noneLabel.textContent = 'Keines'
+    none.append(noneThumb, noneLabel)
+    none.addEventListener('click', () => {
+      if (!labelFocused) {
+        planStatus.textContent = 'Schrift auf der Fassade auswählen, dann Keines'
+        return
+      }
+      commitLabelPatch({ enabled: false })
+      initOpeningLibrary()
+    })
+    host.appendChild(none)
+
     for (const font of LABEL_FONTS) {
       const card = document.createElement('button')
       card.type = 'button'
       card.className = 'opening-library-card'
       card.draggable = true
-      if (labelFocused && activeFont === font.id) card.classList.add('library-card-applied')
+      if (labelFocused && !labelOff && activeFont === font.id) card.classList.add('library-card-applied')
       card.title = labelFocused
         ? `${font.name} — Schriftart der Auswahl tauschen`
         : `${font.name} — auf Wand ziehen oder klicken (weitere Schrift)`
@@ -11172,7 +11566,7 @@ function initOpeningLibrary() {
           return
         }
         if (labelFocused) {
-          selectLabelFont(font.id)
+          commitLabelPatch({ enabled: true, fontId: font.id })
           initOpeningLibrary()
           return
         }
@@ -11309,14 +11703,78 @@ function initOpeningLibrary() {
     }
     appendLibraryGroupLabel(host, 'Fensterbank')
     const sill = openingSel?.opening.sillOuter
-    appendLibraryProfileCards(
-      host,
-      sillOuterProfileDefinitions(),
-      'sill-profile',
-      sill?.mode === 'profile' ? (sill.profileId ?? '') : '',
-      sill?.color ?? activeTrimColor(),
-      'Keines',
-    )
+    const outerNorm = sill ? normalizeOpeningSillOuter(sill) : null
+    const sillOff = !outerNorm || outerNorm.enabled === false
+    const sillBoard = Boolean(outerNorm && outerNorm.enabled !== false && outerNorm.mode !== 'profile')
+    const sillProfileId =
+      outerNorm && outerNorm.enabled !== false && outerNorm.mode === 'profile'
+        ? (outerNorm.profileId ?? '')
+        : ''
+    appendLibraryNoneCard(host, { kind: 'sill-profile', id: '' }, 'Keines', sillOff)
+    {
+      const board = document.createElement('button')
+      board.type = 'button'
+      board.className = 'opening-library-card'
+      if (sillBoard) board.classList.add('library-card-applied')
+      board.title = 'Fensterbank (Brett)'
+      const thumb = document.createElement('div')
+      thumb.className = 'opening-library-thumb'
+      thumb.innerHTML =
+        '<svg viewBox="0 0 48 28" width="48" height="28" aria-hidden="true"><rect x="4" y="12" width="40" height="8" fill="none" stroke="#6a6358" stroke-width="2"/></svg>'
+      const label = document.createElement('span')
+      label.textContent = 'Brett'
+      board.append(thumb, label)
+      board.addEventListener('click', () => {
+        if (board.dataset.didDrag === '1') {
+          delete board.dataset.didDrag
+          return
+        }
+        applyLibraryAsset({ kind: 'sill-profile', id: 'board' })
+        initOpeningLibrary()
+      })
+      board.addEventListener('dragstart', (event) => {
+        board.dataset.didDrag = '1'
+        hideNativeDragImage(event)
+        const asset: LibraryAsset = { kind: 'sill-profile', id: 'board' }
+        event.dataTransfer?.setData('application/x-library-asset', JSON.stringify(asset))
+        event.dataTransfer!.effectAllowed = 'copy'
+        activeLibraryAssetDrag = asset
+        board.classList.add('is-dragging')
+      })
+      board.addEventListener('dragend', () => {
+        board.classList.remove('is-dragging')
+        activeLibraryAssetDrag = null
+        viewport.classList.remove('library-drop-target')
+      })
+      host.appendChild(board)
+    }
+    for (const profile of sillOuterProfileDefinitions()) {
+      const thumb = document.createElement('div')
+      thumb.className = 'opening-library-thumb'
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+      svg.setAttribute('viewBox', '-2 -2 18 18')
+      svg.setAttribute('width', '48')
+      svg.setAttribute('height', '48')
+      thumb.appendChild(svg)
+      drawSectionPreview(
+        svg,
+        profile.id,
+        { rotationDeg: 0, flipOutward: false, flipForward: false },
+        sill?.color ?? activeTrimColor(),
+      )
+      appendLibraryAssetCard(
+        host,
+        { kind: 'sill-profile', id: profile.id },
+        profileCardDisplayLabel(profile.label),
+        thumb,
+      )
+      const last = host.lastElementChild as HTMLElement | null
+      if (last) {
+        const selected = !sillOff && !sillBoard && profile.id === canonicalProfileId(sillProfileId)
+        last.classList.toggle('active', selected)
+        last.classList.toggle('library-card-applied', selected)
+      }
+    }
     syncLibraryAppliedOutline()
     return
   }
@@ -11374,6 +11832,67 @@ function initOpeningLibrary() {
       pediment?.color ?? activeTrimColor(),
       'Keine',
     )
+    syncLibraryAppliedOutline()
+    return
+  }
+
+  if (libraryTab === 'rollerShutters') {
+    const sel = selectedWindowOpening()
+    const supports = Boolean(sel && openingSupportsRollerShutter(sel.opening))
+    const shutter = sel?.opening.rollerShutter
+      ? normalizeOpeningRollerShutter(sel.opening.rollerShutter)
+      : null
+    const off = !supports || !shutter || !shutter.enabled
+    const none = document.createElement('button')
+    none.type = 'button'
+    none.className = 'opening-library-card'
+    none.dataset.libraryNone = '1'
+    if (off) none.classList.add('library-card-applied')
+    none.title = 'Rollläden entfernen'
+    const noneThumb = document.createElement('div')
+    noneThumb.className = 'opening-library-thumb tpl-card-thumb-empty'
+    noneThumb.textContent = '—'
+    const noneLabel = document.createElement('span')
+    noneLabel.textContent = 'Keines'
+    none.append(noneThumb, noneLabel)
+    none.addEventListener('click', () => {
+      if (!supports) {
+        planStatus.textContent = 'Rollläden: Fenster auswählen'
+        return
+      }
+      commitRollerShutterPatch({ enabled: false })
+      initOpeningLibrary()
+    })
+    host.appendChild(none)
+
+    const card = document.createElement('button')
+    card.type = 'button'
+    card.className = 'opening-library-card'
+    if (!off) card.classList.add('library-card-applied')
+    card.title = 'Rollläden an Fenster'
+    const thumb = document.createElement('div')
+    thumb.className = 'opening-library-thumb'
+    thumb.innerHTML =
+      '<svg viewBox="0 0 48 28" width="48" height="28" aria-hidden="true"><rect x="6" y="4" width="36" height="4" fill="#6a6358"/><rect x="6" y="10" width="36" height="3" fill="#8a8378"/><rect x="6" y="15" width="36" height="3" fill="#8a8378"/><rect x="6" y="20" width="36" height="3" fill="#8a8378"/></svg>'
+    const label = document.createElement('span')
+    label.textContent = 'Rollläden'
+    card.append(thumb, label)
+    card.addEventListener('click', () => {
+      if (!supports) {
+        planStatus.textContent = 'Rollläden: Fenster auswählen'
+        return
+      }
+      commitRollerShutterPatch({ enabled: true })
+      if (sel) {
+        applyEditorSelection({
+          ...editor,
+          selectedOpeningPart: 'rollerShutter',
+          selectedOpenings: [{ wallId: sel.wall.id, openingId: sel.opening.id }],
+        })
+      }
+      initOpeningLibrary()
+    })
+    host.appendChild(card)
     syncLibraryAppliedOutline()
     return
   }
@@ -13843,6 +14362,9 @@ function finishRenderUi() {
   syncLibraryTabVisibility()
   syncLibraryAppliedOutline()
   updateWallLibraryGizmos()
+  if (isTouchChromeLayout(currentView)) {
+    syncTouchFrontFacadeOrientation()
+  }
   requestAnimationFrame(positionToolbar)
 }
 
@@ -13901,7 +14423,9 @@ function renderUi(opts?: { skipLayerList?: boolean }) {
   const showSelectionUi =
     !SHOWCASE_VIEW_MODE &&
     (hasWall || hasOpening || hasRoof || hasCeiling || hasSceneLight || hasDownpipe)
-  if (!showSelectionUi && libraryEditFocusSections) {
+  if (showSelectionUi && isSceneEditFocus(libraryEditFocusSections)) {
+    closeLibraryEdit()
+  } else if (!showSelectionUi && libraryEditFocusSections && !isSceneEditFocus(libraryEditFocusSections)) {
     closeLibraryEdit()
   }
   lightingAccordion.hidden = SHOWCASE_VIEW_MODE ? false : showSelectionUi
@@ -19436,15 +19960,20 @@ function rebuildSillOuterProfileCards() {
   const normalized = sel?.opening.sillOuter
     ? normalizeOpeningSillOuter(sel.opening.sillOuter)
     : normalizeOpeningSillOuter({ enabled: true, mode: 'board' })
-  const selectedId = normalized.mode === 'profile' ? (normalized.profileId ?? '') : ''
-  buildProfilePickerCards(sillOuterProfileCards, sillOuterProfileDefinitions(), selectedId, {
-    noneLabel: 'Keines (Brett)',
+  const selectedId =
+    normalized.enabled === false
+      ? ''
+      : normalized.mode === 'profile'
+        ? (normalized.profileId ?? '')
+        : 'board'
+  buildProfilePickerCards(sillOuterProfileCards, sillOuterProfileDefinitions(), selectedId === 'board' ? '' : selectedId, {
+    noneLabel: 'Keines',
     color: normalized.color ?? activeTrimColor(),
     onSelect: (profileId) => {
       if (!profileId) {
-        commitOpeningSillPatch({ outer: { mode: 'board', profileId: undefined } })
+        commitOpeningSillPatch({ outer: { enabled: false } })
       } else {
-        commitOpeningSillPatch({ outer: { mode: 'profile', profileId } })
+        commitOpeningSillPatch({ outer: { enabled: true, mode: 'profile', profileId } })
       }
       rebuildSillOuterProfileCards()
       syncWindowSillControls()
@@ -19488,7 +20017,7 @@ function refreshAllProfileCards() {
 
 function fillAllProfileSelects() {
   refreshAllProfileCards()
-  if (libraryTab === 'profiles' || libraryTab === 'pediment' || libraryTab === 'openingForm' || libraryTab === 'cornice' || libraryTab === 'plinth' || libraryTab === 'label' || libraryTab === 'panels' || libraryTab === 'awnings') initOpeningLibrary()
+  if (libraryTab === 'profiles' || libraryTab === 'pediment' || libraryTab === 'openingForm' || libraryTab === 'cornice' || libraryTab === 'plinth' || libraryTab === 'label' || libraryTab === 'panels' || libraryTab === 'awnings' || libraryTab === 'rollerShutters') initOpeningLibrary()
 }
 
 function selectedWindowOpening() {
@@ -19513,28 +20042,39 @@ function syncWindowSillControls() {
   if (!showSills || !sel) return
   const inner = sel.opening.sillInner
   const outer = normalizeOpeningSillOuter(sel.opening.sillOuter)
-  sillInnerEnabled.checked = inner?.enabled !== false
-  sillInnerOverhang.value = String(inner?.overhang ?? 8)
-  sillInnerDepth.value = String(inner?.depth ?? 16)
-  sillInnerThickness.value = String(inner?.thickness ?? 4)
-  renderColorSwatches(
-    sillInnerColorSwatches,
-    'profile',
-    inner?.color ?? '#ffffff',
-    (color) => {
-      commitOpeningSillPatch({ inner: { color } })
-    },
-    previewSelectionColor((color) =>
-      updateOpeningSills(state, scopedOpeningRefs(), { inner: { color } }),
-    ),
-    {
-      value: normalizeSurfaceFinish(inner?.finish ?? sel.wall.profileFinish),
-      select: sillInnerFinishSelect,
-      onChange: (finish) => commitOpeningSillPatch({ inner: { finish } }),
-    },
-  )
-  sillOuterEnabled.checked = outer.enabled !== false
+  const innerOn = inner?.enabled !== false
+  const outerOn = outer.enabled !== false
+  sillInnerEnabled.checked = innerOn
+  sillOuterEnabled.checked = outerOn
+  sillInnerAcc?.classList.toggle('object-presence-off', !innerOn)
+  sillOuterAcc?.classList.toggle('object-presence-off', !outerOn)
+  if (!innerOn && !outerOn) {
+    rebuildSillOuterProfileCards()
+    return
+  }
+  if (innerOn) {
+    sillInnerOverhang.value = String(inner?.overhang ?? 8)
+    sillInnerDepth.value = String(inner?.depth ?? 16)
+    sillInnerThickness.value = String(inner?.thickness ?? 4)
+    renderColorSwatches(
+      sillInnerColorSwatches,
+      'profile',
+      inner?.color ?? '#ffffff',
+      (color) => {
+        commitOpeningSillPatch({ inner: { color } })
+      },
+      previewSelectionColor((color) =>
+        updateOpeningSills(state, scopedOpeningRefs(), { inner: { color } }),
+      ),
+      {
+        value: normalizeSurfaceFinish(inner?.finish ?? sel.wall.profileFinish),
+        select: sillInnerFinishSelect,
+        onChange: (finish) => commitOpeningSillPatch({ inner: { finish } }),
+      },
+    )
+  }
   rebuildSillOuterProfileCards()
+  if (!outerOn) return
   sillOuterOverhang.value = String(outer.overhang ?? 16)
   sillOuterDepth.value = String(outer.depth ?? 16)
   sillOuterThickness.value = String(outer.thickness ?? 4)
@@ -19582,6 +20122,7 @@ function syncPedimentControls() {
   const pediment = normalizeOpeningPediment(sel.opening.pediment)
   pedimentEnabled.checked = pediment.enabled
   pedimentOptions.hidden = !pediment.enabled
+  document.querySelector('#opening-pediment-section')?.classList.toggle('object-presence-off', !pediment.enabled)
   pedimentOptions.classList.toggle('is-disabled', !pediment.enabled)
   pedimentOptions.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>(
     'input, select, button',
@@ -19646,6 +20187,9 @@ function syncPedimentControls() {
   if (overhangRow) overhangRow.hidden = false
   pedimentConsolesEnabled.checked = Boolean(pediment.consoles?.enabled)
   pedimentConsoleOptions.hidden = !pediment.consoles?.enabled
+  document
+    .querySelector('#opening-consoles-section')
+    ?.classList.toggle('object-presence-off', !pediment.consoles?.enabled)
   pedimentConsoleOptions.classList.toggle('is-disabled', !pediment.enabled || !pediment.consoles?.enabled)
   pedimentConsoleWallOffset.value = String(pediment.consoles?.wallOffset ?? 0)
   pedimentConsoleWallOffset.disabled = !pediment.enabled || !pediment.consoles?.enabled
@@ -19911,6 +20455,8 @@ function syncDoorStairsControls() {
   const stairs = { ...defaultOpeningStairs(sel.opening), ...sel.opening.stairs }
   stairsEnabled.checked = Boolean(stairs.enabled)
   stairsOptions.hidden = !stairs.enabled
+  doorStairsSection.classList.toggle('object-presence-off', !stairs.enabled)
+  if (!stairs.enabled) return
   stairsCount.value = String(stairs.count)
   stairsRise.value = String(stairs.rise)
   stairsTread.value = String(stairs.tread)
@@ -19953,6 +20499,7 @@ function syncRollerShutterControls() {
   const shutter = normalizeOpeningRollerShutter(sel.opening.rollerShutter)
   rollerShutterEnabled.checked = shutter.enabled
   rollerShutterOptions.hidden = !shutter.enabled
+  openingRollerShutterSection.classList.toggle('object-presence-off', !shutter.enabled)
   if (!shutter.enabled) return
 
   const pct = Math.round(shutter.drop * 100)
@@ -20216,12 +20763,12 @@ function syncSelectionToolbarTabs() {
     syncStudioPanelColorControls(wall)
   }
 
-  // Bei neuer Auswahl zu Farben scrollen (v2.0.434) — nicht im fokussierten Bearbeiten.
-  if (selectionToolbarTab === 'colors' && !libraryEditFocusSections) {
-    const colorsSection = tabSections.find((s) => s.dataset.settingsSection === 'colors')
-    const panel = colorsSection?.closest('.selection-toolbar-panels') as HTMLElement | null
-    if (colorsSection && panel) {
-      requestAnimationFrame(() => scrollToSettingsSection(panel, colorsSection, 'auto'))
+  // Bei neuer Auswahl zu Maße scrollen (v2.0.455) — Farben nur noch Bibliothek.
+  if (selectionToolbarTab === 'measures' && !libraryEditFocusSections) {
+    const measuresSection = tabSections.find((s) => s.dataset.settingsSection === 'measures')
+    const panel = measuresSection?.closest('.selection-toolbar-panels') as HTMLElement | null
+    if (measuresSection && panel) {
+      requestAnimationFrame(() => scrollToSettingsSection(panel, measuresSection, 'auto'))
     }
   } else if (libraryEditFocusSections?.[0]) {
     const focusId = libraryEditFocusSections[0]
@@ -20236,6 +20783,17 @@ function syncSelectionToolbarTabs() {
 function syncSettingsSectionStickyHeads(sections: HTMLElement[]) {
   const panel = sections[0]?.closest('.selection-toolbar-panels') as HTMLElement | null
   if (!panel) return
+  // Bottom-Sheet: keine grauen sticky Register — Titel nur im Sheet-Header.
+  if (libraryEditFocusSections?.length) {
+    detachScrollableSettingsPanel(panel)
+    for (const head of panel.querySelectorAll<HTMLElement>('.settings-section > .settings-section-head')) {
+      head.hidden = true
+    }
+    return
+  }
+  for (const head of panel.querySelectorAll<HTMLElement>('.settings-section > .settings-section-head')) {
+    head.hidden = false
+  }
   syncScrollableSettingsPanel(panel, sections)
 }
 
@@ -20255,34 +20813,54 @@ function syncStudioPanelColorControls(wall: Wall) {
 
 function applySceneToolbarTabFilter() {
   if (!sceneToolbarPanels) return
+  const focus =
+    libraryEditPortalSource === 'scene' && libraryEditFocusSections?.length
+      ? libraryEditFocusSections
+      : null
   for (const section of sceneToolbarPanels.querySelectorAll<HTMLElement>('.settings-section')) {
     if (!settingsSectionVisibleForUi(section)) {
       section.classList.remove('selection-tab-filtered-out')
+      section.classList.remove('library-edit-filtered-out')
       continue
     }
+    if (focus) {
+      const id = section.dataset.settingsSection ?? ''
+      section.classList.toggle('library-edit-filtered-out', !focus.includes(id))
+      section.classList.remove('selection-tab-filtered-out')
+      continue
+    }
+    section.classList.remove('library-edit-filtered-out')
     section.classList.remove('selection-tab-filtered-out')
   }
 }
 
 function syncSceneToolbarTabs() {
   if (!sceneToolbarPanels) return
-  if (lightingAccordion.hidden) {
+  // Auswahl aktiv oder Szene-Bottom-Sheet: keine sticky Register-Leiste bauen.
+  if (lightingAccordion.hidden || isSceneEditFocus(libraryEditFocusSections)) {
     applySceneToolbarTabFilter()
     return
   }
 
+  const touch = isTouchChromeLayout(currentView)
   markEmptySettingsSections(sceneToolbarPanels)
   const tabSections = [...sceneToolbarPanels.querySelectorAll<HTMLElement>('.settings-section')]
-    .filter(
-      (section) =>
+    .filter((section) => {
+      const id = section.dataset.settingsSection
+      if (!id) return false
+      if (touch && TOUCH_SCENE_HIDDEN_SECTIONS.has(id)) return false
+      if (!touch && TOUCH_SCENE_ONLY_SECTIONS.has(id)) return false
+      return (
         settingsSectionVisibleForUi(section) &&
-        section.dataset.settingsSection &&
         !settingsSectionSkipsTab(section) &&
         settingsSectionHasUsableBody(section) &&
         (!SHOWCASE_VIEW_MODE ||
           section.dataset.settingsSection === 'sun' ||
-          section.dataset.settingsSection === 'anim'),
-    )
+          section.dataset.settingsSection === 'anim' ||
+          section.dataset.settingsSection === 'bloom' ||
+          section.dataset.settingsSection === 'sceneLights')
+      )
+    })
     .sort(
       (a, b) =>
         Number(a.dataset.settingsOrder ?? 999) - Number(b.dataset.settingsOrder ?? 999),
@@ -20295,7 +20873,7 @@ function syncSceneToolbarTabs() {
     seen.add(id)
   }
   if (sceneToolbarTab !== 'all' && !seen.has(sceneToolbarTab)) {
-    sceneToolbarTab = 'all'
+    sceneToolbarTab = touch && seen.has('view') ? 'view' : 'all'
   }
   applySceneToolbarTabFilter()
   syncSettingsSectionStickyHeads(tabSections)
@@ -21370,17 +21948,17 @@ function openingPartToSettingsTab(part: OpeningPart): string | null {
     case 'group':
       return null
     case 'grille':
-      return 'colors'
+      return 'measures'
     default:
       return null
   }
 }
 
-/** Bei jeder Auswahl: rechter Bereich startet auf „Farben“. */
+/** Bei jeder Auswahl: rechter Bereich startet auf „Maße“ (Farben = Bibliothek, v2.0.455). */
 function queueSelectionToolbarTab(_preferredTab: string | null) {
   if (selectionToolbarTabLocked) return
   if (libraryEditFocusSections) return
-  pendingSelectionToolbarTab = 'colors'
+  pendingSelectionToolbarTab = 'measures'
 }
 
 function selectWall(
@@ -22913,6 +23491,8 @@ libraryEditSheetClose?.addEventListener('click', () => closeLibraryEdit())
 libraryEditSheet
   ?.querySelector('[data-library-edit-dismiss]')
   ?.addEventListener('click', () => closeLibraryEdit())
+bindLibraryEditSheetResize()
+bindSceneViewControls()
 
 document.querySelector('#opening-library-items')?.addEventListener(
   'dragstart',
@@ -28503,7 +29083,8 @@ function animate() {
     ) {
       facade.updatePerformanceLod(camera, viewportRenderHeight())
     }
-    if (currentView === 'present' && !objectFocusBookmark && !objectFocusAnim) syncPresentCamera()
+    // Present-Overview nicht jeden Frame neu berechnen — sonst springt das Haus bei
+    // jedem Dock-/Layout-Tick (v2.0.461). Reframe nur in resizeCanvasView / setView / Elevation.
     render3dFrame()
     perfRendered = true
     updateViewCompass()

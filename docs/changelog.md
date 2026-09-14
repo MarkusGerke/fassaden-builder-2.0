@@ -2,6 +2,86 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Touch: Sheet öffnet kompakt (2026-09-14) — v2.0.463
+
+**Soll:** Bottom-Sheet bei wenig Inhalt (Ansicht, Lampen, Bloom, …) bei **25 %**; sonst Standard max. **50 %**. **75 / 100** nur per Drag.
+
+**Fix:** `defaultLibraryEditSheetHeight` in `touchChrome.ts`; `openLibraryEdit` setzt Inhalts-Default (nicht Session-75). Snaps 25/50/75/100 bleiben.
+
+Docs: [ux.md](ux.md).
+
+### Touch: Szene-Kacheln Bearbeiten, keine Leer-Register (2026-09-14) — v2.0.462
+
+**Soll:** Ohne Auswahl keine sichtbare leere Registerleiste über den Szene-Kacheln. Kacheln: Titel im Thumb, unten „Bearbeiten“ (nicht Titel doppelt).
+
+**Fix:** Tab-Zeile Höhe 0 wenn idle; Dock `min-height` hält Viewport stabil. `appendTouchSceneLibraryTiles` setzt unteren Span auf Bearbeiten.
+
+Docs: [ux.md](ux.md).
+
+### Touch: stabile Bühnenhöhe bei Auswahl (2026-09-14) — v2.0.461
+
+**Symptom:** An-/Abwählen ließ die Bühne blitzen und vertikal schrumpfen; Haus verrutschte.
+
+**Ursache (Logs):** Tab-Zeile 0→2,6 rem + Filter-Höhe → `vpH` 745→664; `runLibraryDockViewportTransition` rief `resizeCanvasView`/`syncPresentCamera` mehrfach (Reframe). Zusätzlich: Filter-Row trotz `hidden` im Flex-Flow (+Gap); `syncPresentCamera` lief **jeden Present-Frame** (~44 Hz) und reframed bei jedem Layout-Tick.
+
+**Fix:** Tab-Höhe immer reserviert (Idle nur opacity 0); Farb-Filter absolut + `display:none` wenn hidden; Present-Overview nur noch bei Resize/View/Elevation, nicht im Anim-Loop.
+
+Docs: [ux.md](ux.md).
+
+### Touch: kein Bibliothek-Flash bei Auswahl (2026-09-14) — v2.0.460
+
+**Symptom:** Bei jeder Auswahl blitzte die Bibliothek kurz weiß/leer (Opacity-Swap `is-dock-swap`).
+
+**Fix:** Opacity-/Translate-Flash entfernt; Tab-Höhe und Viewport-Nachzug bleiben.
+
+Docs: [ux.md](ux.md).
+
+### Touch: Dock-Transition, Sheet ohne sticky Register (2026-09-14) — v2.0.459
+
+**Symptom:** Farb-Filter-Chips über Szene-Kacheln ohne Auswahl; harter Cut bei Leistenwechsel (Haus sprang); graue sticky Register im Bottom-Sheet; Scrollen bei Sheet &lt;100 % kaputt (nested Overflow).
+
+**Fix:** Filter-Row bei Idle leeren. Tab-Zeile per Höhe/Opacity 0,28 s; Viewport währenddessen nachziehen. Sheet: sticky Heads aus, Titel nur im Header; nur `.library-edit-sheet-body` scrollt.
+
+Docs: [ux.md](ux.md).
+
+### Touch: Szene-Kacheln ohne Register, Fenster-Front (2026-09-14) — v2.0.458
+
+**Soll:** Ohne Auswahl keine Bibliothek-Register; nur Kacheln Ansicht / Licht & Schatten / Bloom / Lampen & Leuchten → Bottom-Sheet. Ab Fenster alles ausgeblendet. Frontseite = Fassade mit den meisten Fenstern, automatisch zum Nutzer.
+
+**Fallstricke:** `syncLibraryTabVisibility` bei leerem `allowed` darf die Kacheln nicht leerwischen.
+
+Docs: [ux.md](ux.md).
+
+### Touch: Szene in Bibliothek-Tabs, Blickrichtung (2026-09-14) — v2.0.457
+
+**Symptom:** Mobil ohne Auswahl lagen Szene-Register (Ansicht, Licht, …) als Panel über der Bibliothek gestapelt.
+
+**Fix:** Ohne Auswahl erscheinen **Ansicht / Licht & Schatten / Bloom / Lampen & Leuchten** als Bibliothek-Tabs; Tap öffnet das Bottom-Sheet (ohne Settings-Registertabs). Himmelsrichtung = **links \| frontal \| rechts** (immer Hausfront). **Darstellung** (Fassade\|3D) rechts auf Höhe des Sheet-Titels. **Hinweis:** v2.0.458 ersetzt Tabs durch Kacheln und blendet Fenster+ aus.
+
+**Fallstricke:** `renderUi` darf Szene-Sheets ohne Auswahl nicht schließen (`isSceneEditFocus`). Gestapeltes `#ui-right`-Overlay nicht wieder einführen.
+
+Docs: [ux.md](ux.md).
+
+### Touch: Ansicht, Szene-Register, Filter, Sheet (2026-09-14) — v2.0.456
+
+**Touch/Mobil ohne Auswahl:** Register Ansicht (Yaw + Fassade/3D), Licht & Schatten, Bloom, Lampen & Leuchten; Animation/Debug ausgeblendet. 3D-Finger-Orbit; Wand-Geometrie weiter gesperrt. Farben-Kategorie = Filter-Chips. Bearbeiten-Sheet Ziehgriff mit Rasten 100/75/50/25 %. **Hinweis:** Overlay-Register durch v2.0.457 ersetzt.
+
+Docs: [ux.md](ux.md).
+
+### Bibliothek steuert Objekte (2026-09-14) — v2.0.455
+
+**Soll:** Objekt-Präsenz nur Bibliothek (Keines + Kacheln + Bearbeiten). Rechts nur harte Parameter. Farben nur Bibliothek-Tab.
+
+**Umsetzung:** „… anzeigen“-Checkboxen per CSS ausgeblendet; `object-presence-off` blendet Parameter bei `enabled: false`. Neuer Tab Rollläden; Schrift-Keines; Fensterbank Keines/Brett/Profile. Farben-Sektionen und Swatches rechts ausgeblendet. Default-Reiter rechts = Maße.
+
+Docs: [ux.md](ux.md), [opening-features.md](opening-features.md), [ui-kit.md](ui-kit.md).
+
+### Fensterbank: Profil-UI rechts entfernt (2026-09-14) — v2.0.454
+
+**Nutzer:** Überschrift „Profil“ und Zeile „Fensterbankprofil“ in `#sill-outer-accordion` entfernt (Auswahl bleibt Bibliothek). `#sill-outer-profile-cards` bleibt als ausgeblendeter Picker (ID).
+
+Docs: [opening-features.md](opening-features.md), [ux.md](ux.md).
+
 ### Bibliothek Bearbeiten öffnet Bottom-Sheet (2026-09-13) — v2.0.453
 
 **Symptom:** Klick auf „Bearbeiten“ öffnete kein Bottom-Sheet.
