@@ -3,11 +3,14 @@ import type {
   Building,
   FacadeState,
   RoofConfig,
+  RoofEdgeMode,
+  RoofKind,
   RoofTileProfile,
   StudioPanelConfig,
   StudioPanelPattern,
   Wall,
 } from '../types/facade'
+import { DEFAULT_WALL_COLOR } from '../constants/colorPalettes'
 import { getActiveBuilding } from '../utils/buildings'
 import { floorIndex } from '../utils/layers'
 import {
@@ -19,17 +22,40 @@ import {
 } from './floorPlan'
 import { layoutPanelTiles } from './panelLayout'
 import { MASONRY_KIND_PATTERNS, PANEL_KIND_PATTERNS } from './constants'
+import {
+  buildRoofEnvelope,
+  buildRoofEnvelopeGeometry,
+  edgeCompassLabel,
+  isRoofKind,
+  orientRingCcw,
+  roofEdgeKey,
+  type RoofEnvelope,
+  type XZ,
+} from './roofForms'
 import { isStudioWall, wallEndPoint, wallHasPanels, wallStartPoint } from './walls'
 
 export type { RoofConfig, RoofTileProfile }
+export { ROOF_KIND_LABELS, ROOF_KINDS, roofKindUsesPitch, roofKindUsesRidgeDir } from './roofForms'
 
 const TILE_PATTERNS: StudioPanelPattern[] = [
   ...PANEL_KIND_PATTERNS.filter((p) => p !== 'strip'),
   ...MASONRY_KIND_PATTERNS,
 ]
 
+/** Firstrichtung / Pult-Hochseite: 45er-Raster (Wand-Yaw). */
+export const ROOF_RIDGE_STEP_DEG = 45
+export const ROOF_PITCH_MIN = 10
+export const ROOF_PITCH_MAX = 75
+export const ROOF_HALF_HIP_MIN = 0
+export const ROOF_HALF_HIP_MAX = 400
+
 export const DEFAULT_ROOF: RoofConfig = {
   enabled: false,
+  kind: 'mansard',
+  pitch: 45,
+  ridgeDeg: null,
+  halfHipHeight: 120,
+  covering: 'tiles',
   pitchLower: 70,
   pitchUpper: 30,
   overhang: 40,
@@ -53,9 +79,25 @@ export function normalizeRoof(raw?: Partial<RoofConfig> | null): RoofConfig {
     ? (base.tilePattern as StudioPanelPattern)
     : DEFAULT_ROOF.tilePattern
   const profile: RoofTileProfile = base.tileProfile === 'barrel' ? 'barrel' : 'pantile'
+  const kind: RoofKind = isRoofKind(base.kind) ? base.kind : 'mansard'
+  // Gespeicherte Wahl bleibt erhalten (Rückwechsel zur Mansarde behält Ziegel);
+  // wirksam ist `roofEffectiveCovering` — Ziegel gibt es bisher nur für die Mansarde.
+  const covering: RoofConfig['covering'] = base.covering === 'smooth' ? 'smooth' : 'tiles'
+  const ridgeDeg =
+    typeof base.ridgeDeg === 'number' && Number.isFinite(base.ridgeDeg)
+      ? ((Math.round(base.ridgeDeg / ROOF_RIDGE_STEP_DEG) * ROOF_RIDGE_STEP_DEG) % 360 + 360) % 360
+      : null
+  const edgeModes = normalizeEdgeModes(base.edgeModes)
   return {
     enabled: Boolean(base.enabled),
     hidden: Boolean(base.hidden),
+    kind,
+    pitch: clamp(base.pitch, ROOF_PITCH_MIN, ROOF_PITCH_MAX),
+    ridgeDeg,
+    halfHipHeight: snap8(clamp(base.halfHipHeight, ROOF_HALF_HIP_MIN, ROOF_HALF_HIP_MAX)),
+    covering,
+    ...(edgeModes ? { edgeModes } : {}),
+    ...(typeof base.gableColor === 'string' && base.gableColor ? { gableColor: base.gableColor } : {}),
     pitchLower: clamp(base.pitchLower, 45, 80),
     pitchUpper: clamp(base.pitchUpper, 10, 45),
     overhang: clamp(base.overhang, 0, 120),
@@ -80,6 +122,22 @@ export function normalizeRoof(raw?: Partial<RoofConfig> | null): RoofConfig {
 function clamp(n: number, min: number, max: number): number {
   if (!Number.isFinite(n)) return min
   return Math.min(max, Math.max(min, n))
+}
+
+/** Wirksame Eindeckung: Ziegel nur bei Mansarde, sonst glatt. */
+export function roofEffectiveCovering(roof: RoofConfig): RoofConfig['covering'] {
+  return roof.kind === 'mansard' ? roof.covering : 'smooth'
+}
+
+function normalizeEdgeModes(
+  raw: unknown,
+): Record<string, RoofEdgeMode> | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const out: Record<string, RoofEdgeMode> = {}
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (value === 'free' || value === 'flush') out[key] = value
+  }
+  return Object.keys(out).length > 0 ? out : undefined
 }
 
 function snap8(n: number): number {
@@ -278,22 +336,85 @@ function pointToSegmentDist(
   return Math.hypot(p.x - (a.x + abx * t), p.z - (a.z + abz * t))
 }
 
-function overhangPerEdge(
-  building: Building,
-  outer: Array<{ x: number; z: number }>,
-  overhang: number,
-): number[] {
+/** Traufkante des obersten Rings für UI und Geometrie. */
+export interface RoofEdgeInfo {
+  key: string
+  index: number
+  a: XZ
+  b: XZ
+  lengthCm: number
+  /** Kompass der Außenseite (N, S/O, …). */
+  compass: string
+  /** Anzeige: Kompass + Laufnummer bei gleicher Richtung + Länge. */
+  label: string
+  wallId?: string
+  /** Gespeicherter Modus (fehlend = `auto`). */
+  mode: RoofEdgeMode
+  /** Wirksam bündig: `flush`, oder `auto` und Wand ohne Paneele. */
+  flush: boolean
+}
+
+/** Plan-Außenring der obersten Etage, CCW orientiert (Indizes stabil für `flush`). */
+export function roofOuterRing(building: Building): XZ[] | null {
+  const floors = building.floors
+  if (!floors || floors.length === 0) return null
+  const face = topRoofFaceWorld(floors[floors.length - 1])
+  if (!face || face.outer.length < 3) return null
+  return orientRingCcw(face.outer)
+}
+
+export function roofEdgeModeFor(roof: RoofConfig, key: string): RoofEdgeMode {
+  return roof.edgeModes?.[key] ?? 'auto'
+}
+
+export function listRoofEdges(building: Building, roof: RoofConfig): RoofEdgeInfo[] {
+  const outer = roofOuterRing(building)
+  if (!outer) return []
+  return listRoofEdgesForRing(building, roof, outer)
+}
+
+function listRoofEdgesForRing(building: Building, roof: RoofConfig, outer: XZ[]): RoofEdgeInfo[] {
   const topFloor = (building.floors?.length ?? 1) - 1
   const n = outer.length
-  const dists: number[] = []
+  const edges: RoofEdgeInfo[] = []
+  const compassCount = new Map<string, number>()
   for (let i = 0; i < n; i += 1) {
     const a = outer[i]
     const b = outer[(i + 1) % n]
+    const lengthCm = Math.hypot(b.x - a.x, b.z - a.z)
     const wall = findWallForEdge(building, a, b, topFloor)
-    if (wall && wallIsBareForRoof(wall)) dists.push(0)
-    else dists.push(overhang)
+    const key = roofEdgeKey(a, b)
+    const mode = roofEdgeModeFor(roof, key)
+    const autoFlush = Boolean(wall && wallIsBareForRoof(wall))
+    const flush = mode === 'flush' || (mode === 'auto' && autoFlush)
+    const compass = edgeCompassLabel(a, b)
+    compassCount.set(compass, (compassCount.get(compass) ?? 0) + 1)
+    edges.push({
+      key,
+      index: i,
+      a,
+      b,
+      lengthCm,
+      compass,
+      label: '',
+      wallId: wall?.id,
+      mode,
+      flush,
+    })
   }
-  return dists
+  const seen = new Map<string, number>()
+  for (const edge of edges) {
+    const total = compassCount.get(edge.compass) ?? 1
+    const nth = (seen.get(edge.compass) ?? 0) + 1
+    seen.set(edge.compass, nth)
+    const suffix = total > 1 ? ` ${nth}` : ''
+    edge.label = `${edge.compass}${suffix} · ${Math.round(edge.lengthCm)} cm`
+  }
+  return edges
+}
+
+function overhangPerEdge(edges: RoofEdgeInfo[], overhang: number): number[] {
+  return edges.map((edge) => (edge.flush ? 0 : overhang))
 }
 
 function appendTri(
@@ -785,6 +906,7 @@ function buildTiledBands(
   y0: number,
   y1: number,
   roof: RoofConfig,
+  smooth = false,
 ) {
   const n = Math.min(lower.length, upper.length)
   if (n < 3) return
@@ -794,7 +916,8 @@ function buildTiledBands(
     const L1 = new THREE.Vector3(lower[j].x, y0, lower[j].z)
     const U1 = new THREE.Vector3(upper[j].x, y1, upper[j].z)
     const U0 = new THREE.Vector3(upper[i].x, y1, upper[i].z)
-    addTiledFacet(positions, normals, uvs, indices, L0, L1, U1, U0, roof)
+    if (smooth) appendQuad(positions, normals, uvs, indices, L0, L1, U1, U0)
+    else addTiledFacet(positions, normals, uvs, indices, L0, L1, U1, U0, roof)
   }
 }
 
@@ -856,42 +979,100 @@ function buildRidgeTiles(
 export interface RoofBuildResult {
   roof: THREE.BufferGeometry
   gutter: THREE.BufferGeometry | null
+  /** Giebel-/Füllwände über der Traufe (nur Sattel/Walm/Krüppelwalm/Pult). */
+  gable: THREE.BufferGeometry | null
   tileColor: string
   gutterColor: string
+  gableColor: string
+}
+
+interface RoofSinks {
+  positions: number[]
+  normals: number[]
+  uvs: number[]
+  indices: number[]
+  gutterPositions: number[]
+  gutterNormals: number[]
+  gutterUvs: number[]
+  gutterIndices: number[]
+  gablePositions: number[]
+  gableNormals: number[]
+  gableUvs: number[]
+  gableIndices: number[]
+}
+
+/** Gemeinsame Vorbereitung: Traufhöhe, Ring, Kanten, Überstand. */
+function roofBase(building: Building, roof: RoofConfig): {
+  outer: XZ[]
+  holes: XZ[][]
+  eave: XZ[]
+  eaveY: number
+  edges: RoofEdgeInfo[]
+  edgeOverhang: number[]
+} | null {
+  const floors = building.floors
+  if (!floors || floors.length === 0) return null
+  const face = topRoofFaceWorld(floors[floors.length - 1])
+  if (!face || face.outer.length < 3) return null
+  const outer = orientRingCcw(face.outer)
+  const edges = listRoofEdgesForRing(building, roof, outer)
+  const edgeOverhang = overhangPerEdge(edges, roof.overhang)
+  return {
+    outer,
+    holes: face.holes,
+    eave: offsetPolygonPerEdge(outer, edgeOverhang),
+    eaveY: floors.length * building.wallHeight,
+    edges,
+    edgeOverhang,
+  }
 }
 
 /**
- * Berliner Mansarde: Ziegel auf den Mänteln, Firstziegel, optional gehrungene Rinne.
- * Leere Fassadenseiten: Überstand 0, keine Rinne.
+ * Envelope-Dach (Sattel/Walm/Krüppelwalm/Pult) für UI-Abfragen wie Firsthöhe
+ * oder Kantenrollen — ohne Geometrie. `null` bei Mansarde oder fehlendem Ring.
+ */
+export function roofEnvelopeForBuilding(building: Building, rawRoof?: Partial<RoofConfig> | null): RoofEnvelope | null {
+  const roof = normalizeRoof(rawRoof ?? building.roof)
+  if (roof.kind === 'mansard') return null
+  const base = roofBase(building, roof)
+  if (!base) return null
+  return buildRoofEnvelope({
+    kind: roof.kind,
+    outer: base.outer,
+    eave: base.eave,
+    eaveY: base.eaveY,
+    flush: base.edges.map((e) => e.flush),
+    roof,
+  })
+}
+
+/** Firsthöhe über Traufe (cm) — Mansarde: `ridgeHeight`, sonst aus dem Envelope. */
+export function roofRidgeHeightCm(building: Building, rawRoof?: Partial<RoofConfig> | null): number {
+  const roof = normalizeRoof(rawRoof ?? building.roof)
+  if (roof.kind === 'mansard') return roof.ridgeHeight
+  const env = roofEnvelopeForBuilding(building, roof)
+  return env ? Math.max(0, env.ridgeY - env.eaveY) : 0
+}
+
+/**
+ * Berliner Mansarde: Ziegel (oder glatte Bänder) auf den Mänteln, Firstziegel,
+ * optional gehrungene Rinne. Bündige Kanten: Überstand 0, keine Rinne.
  */
 function buildMansardRoofForBuilding(
   building: Building,
   roof: RoofConfig,
-  positions: number[],
-  normals: number[],
-  uvs: number[],
-  indices: number[],
-  gutterPositions: number[],
-  gutterNormals: number[],
-  gutterUvs: number[],
-  gutterIndices: number[],
+  sinks: RoofSinks,
 ): boolean {
-  if (!roof.enabled) return false
-  const floors = building.floors
-  if (!floors || floors.length === 0) return false
-  const topPlan = floors[floors.length - 1]
-  const face = topRoofFaceWorld(topPlan)
-  if (!face || face.outer.length < 3) return false
-  const outer = face.outer
-
-  const eaveY = floors.length * building.wallHeight
-  const edgeOverhang = overhangPerEdge(building, outer, roof.overhang)
-  const eave = offsetPolygonPerEdge(outer, edgeOverhang)
+  const base = roofBase(building, roof)
+  if (!base) return false
+  const { positions, normals, uvs, indices } = sinks
+  const { eave, eaveY, edgeOverhang, holes } = base
+  const smooth = roofEffectiveCovering(roof) === 'smooth'
   const breakRise = roof.ridgeHeight * 0.55
   const upperRise = roof.ridgeHeight - breakRise
   const breakPoly = insetByPitch(eave, breakRise, roof.pitchLower)
   const ridgePoly = insetByPitch(breakPoly, upperRise, roof.pitchUpper)
-  const ridgeHoles = face.holes
+  const ridgeHoles = holes
     .map((hole) =>
       insetByPitch(hole, breakRise + upperRise, (roof.pitchLower + roof.pitchUpper) * 0.5),
     )
@@ -907,6 +1088,7 @@ function buildMansardRoofForBuilding(
     eaveY,
     eaveY + breakRise,
     roof,
+    smooth,
   )
   buildTiledBands(
     positions,
@@ -918,26 +1100,76 @@ function buildMansardRoofForBuilding(
     eaveY + breakRise,
     eaveY + roof.ridgeHeight,
     roof,
+    smooth,
   )
   buildCap(positions, normals, uvs, indices, ridgePoly, eaveY + roof.ridgeHeight, ridgeHoles)
-  buildRidgeTiles(positions, normals, uvs, indices, ridgePoly, eaveY + roof.ridgeHeight, roof)
-
-  const edgeActive = edgeOverhang.map((d) => d > 0.5)
-  if (roof.gutter && edgeActive.some(Boolean)) {
-    const gutterGeo = buildGutterGeometry(eave, eaveY, edgeActive)
-    if (gutterGeo) {
-      appendBufferGeometry(
-        gutterGeo,
-        gutterPositions,
-        gutterNormals,
-        gutterUvs,
-        gutterIndices,
-      )
-      gutterGeo.dispose()
-    }
+  if (!smooth) {
+    buildRidgeTiles(positions, normals, uvs, indices, ridgePoly, eaveY + roof.ridgeHeight, roof)
   }
 
+  const edgeActive = edgeOverhang.map((d) => d > 0.5)
+  appendGutter(sinks, roof, eave, eaveY, edgeActive)
   return true
+}
+
+/** Sattel/Walm/Krüppelwalm/Pult: glatte Platte + Füllwände + Rinne an Traufkanten. */
+function buildEnvelopeRoofForBuilding(
+  building: Building,
+  roof: RoofConfig,
+  sinks: RoofSinks,
+): boolean {
+  const base = roofBase(building, roof)
+  if (!base) return false
+  const env = buildRoofEnvelope({
+    kind: roof.kind,
+    outer: base.outer,
+    eave: base.eave,
+    eaveY: base.eaveY,
+    flush: base.edges.map((e) => e.flush),
+    roof,
+  })
+  if (!env) return false
+  const built = buildRoofEnvelopeGeometry(env)
+  appendBufferGeometry(built.roof, sinks.positions, sinks.normals, sinks.uvs, sinks.indices)
+  built.roof.dispose()
+  if (built.gable) {
+    appendBufferGeometry(
+      built.gable,
+      sinks.gablePositions,
+      sinks.gableNormals,
+      sinks.gableUvs,
+      sinks.gableIndices,
+    )
+    built.gable.dispose()
+  }
+  appendGutter(sinks, roof, env.eave, built.gutterEaveY, built.gutterEdgeActive)
+  return true
+}
+
+function appendGutter(
+  sinks: RoofSinks,
+  roof: RoofConfig,
+  eave: XZ[],
+  eaveY: number,
+  edgeActive: boolean[],
+) {
+  if (!roof.gutter || !edgeActive.some(Boolean)) return
+  const gutterGeo = buildGutterGeometry(eave, eaveY, edgeActive)
+  if (!gutterGeo) return
+  appendBufferGeometry(
+    gutterGeo,
+    sinks.gutterPositions,
+    sinks.gutterNormals,
+    sinks.gutterUvs,
+    sinks.gutterIndices,
+  )
+  gutterGeo.dispose()
+}
+
+function buildRoofForBuilding(building: Building, roof: RoofConfig, sinks: RoofSinks): boolean {
+  if (!roof.enabled) return false
+  if (roof.kind === 'mansard') return buildMansardRoofForBuilding(building, roof, sinks)
+  return buildEnvelopeRoofForBuilding(building, roof, sinks)
 }
 
 function appendBufferGeometry(
@@ -968,69 +1200,69 @@ export function buildMansardRoof(state: FacadeState, raw?: Partial<RoofConfig> |
   const visibleBuildings = state.buildings.filter((building) => !building.hidden)
   if (visibleBuildings.length === 0) return null
 
-  const positions: number[] = []
-  const normals: number[] = []
-  const uvs: number[] = []
-  const indices: number[] = []
-  const gutterPositions: number[] = []
-  const gutterNormals: number[] = []
-  const gutterUvs: number[] = []
-  const gutterIndices: number[] = []
+  const sinks: RoofSinks = {
+    positions: [],
+    normals: [],
+    uvs: [],
+    indices: [],
+    gutterPositions: [],
+    gutterNormals: [],
+    gutterUvs: [],
+    gutterIndices: [],
+    gablePositions: [],
+    gableNormals: [],
+    gableUvs: [],
+    gableIndices: [],
+  }
 
   let tileColor = DEFAULT_ROOF.tileColor
   let gutterColor = DEFAULT_ROOF.gutterColor ?? '#8E8A88'
+  let gableColor = DEFAULT_WALL_COLOR
   let anyBuilt = false
 
   for (const building of visibleBuildings) {
     const roof = normalizeRoof(raw ?? building.roof)
-    if (
-      buildMansardRoofForBuilding(
-        building,
-        roof,
-        positions,
-        normals,
-        uvs,
-        indices,
-        gutterPositions,
-        gutterNormals,
-        gutterUvs,
-        gutterIndices,
-      )
-    ) {
+    if (buildRoofForBuilding(building, roof, sinks)) {
       anyBuilt = true
       tileColor = roof.tileColor
       gutterColor = roof.gutterColor ?? gutterColor
+      gableColor = roof.gableColor ?? gableColor
     }
   }
 
-  if (!anyBuilt || positions.length === 0) return null
+  if (!anyBuilt || sinks.positions.length === 0) return null
 
   const geo = new THREE.BufferGeometry()
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-  geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3))
-  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
-  geo.setIndex(indices)
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(sinks.positions, 3))
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(sinks.normals, 3))
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(sinks.uvs, 2))
+  geo.setIndex(sinks.indices)
   geo.computeVertexNormals()
   geo.computeBoundingSphere()
 
-  const gutter =
-    gutterPositions.length > 0
-      ? (() => {
-          const gutterGeo = new THREE.BufferGeometry()
-          gutterGeo.setAttribute('position', new THREE.Float32BufferAttribute(gutterPositions, 3))
-          gutterGeo.setAttribute('normal', new THREE.Float32BufferAttribute(gutterNormals, 3))
-          gutterGeo.setAttribute('uv', new THREE.Float32BufferAttribute(gutterUvs, 2))
-          gutterGeo.setIndex(gutterIndices)
-          gutterGeo.computeVertexNormals()
-          gutterGeo.computeBoundingSphere()
-          return gutterGeo
-        })()
-      : null
+  const packGeometry = (
+    positions: number[],
+    normals: number[],
+    uvs: number[],
+    indices: number[],
+  ): THREE.BufferGeometry | null => {
+    if (positions.length === 0) return null
+    const g = new THREE.BufferGeometry()
+    g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3))
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
+    g.setIndex(indices)
+    g.computeVertexNormals()
+    g.computeBoundingSphere()
+    return g
+  }
 
   return {
     roof: geo,
-    gutter,
+    gutter: packGeometry(sinks.gutterPositions, sinks.gutterNormals, sinks.gutterUvs, sinks.gutterIndices),
+    gable: packGeometry(sinks.gablePositions, sinks.gableNormals, sinks.gableUvs, sinks.gableIndices),
     tileColor,
     gutterColor,
+    gableColor,
   }
 }

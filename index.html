@@ -667,27 +667,74 @@
               <div class="toolbar-group">
                 <label class="toolbar-check">
                   <input id="roof-enabled" type="checkbox" />
-                  Berliner Mansarde
+                  Dach
                 </label>
               </div>
               <div id="roof-options">
-                <div id="roof-shell-options" class="settings-section" data-settings-section="roof-shell" data-settings-label="Dachform">
+                <div id="roof-shell-options" class="settings-section ui-stack" data-settings-section="roof-shell" data-settings-label="Dachform">
+                <p class="settings-subheading settings-subheading-nested">Form</p>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Dachform</span>
+                  <select id="roof-kind" aria-label="Dachform">
+                    <option value="mansard">Berliner Mansarde</option>
+                    <option value="gable">Satteldach</option>
+                    <option value="hip">Walmdach</option>
+                    <option value="halfHip">Krüppelwalm</option>
+                    <option value="shed">Pultdach</option>
+                  </select>
+                </div>
+                <div id="roof-ridge-dir-row" class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span id="roof-ridge-dir-label" class="toolbar-label">Firstrichtung</span>
+                  <select id="roof-ridge-dir" aria-label="Firstrichtung"></select>
+                </div>
+                <div id="roof-covering-row" class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Eindeckung</span>
+                  <select id="roof-covering" aria-label="Eindeckung">
+                    <option value="tiles">Ziegel</option>
+                    <option value="smooth">Glatt (ohne Ziegel)</option>
+                  </select>
+                </div>
+                <p id="roof-covering-hint" class="toolbar-hint compact-hint" hidden>Ziegel für diese Dachform folgen — Fläche wird glatt dargestellt.</p>
                 <p class="settings-subheading settings-subheading-nested">Maße</p>
-                <div class="toolbar-group">
+                <div id="roof-mansard-rows" class="ui-stack">
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
                   <span class="toolbar-label">Untere Neigung (°)</span>
                   <input id="roof-pitch-lower" type="number" min="45" max="80" step="1" value="70" />
                 </div>
-                <div class="toolbar-group">
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
                   <span class="toolbar-label">Obere Neigung (°)</span>
                   <input id="roof-pitch-upper" type="number" min="10" max="45" step="1" value="30" />
                 </div>
-                <div class="toolbar-group">
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Firsthöhe (cm)</span>
+                  <input id="roof-ridge-height" type="number" min="80" max="600" step="8" value="280" />
+                </div>
+                </div>
+                <div id="roof-pitch-row" class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Neigung (°)</span>
+                  <input id="roof-pitch" type="number" min="10" max="75" step="1" value="45" />
+                </div>
+                <div id="roof-half-hip-row" class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Giebelhöhe bis Walm (cm)</span>
+                  <input id="roof-half-hip-height" type="number" min="0" max="400" step="8" value="120" />
+                </div>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
                   <span class="toolbar-label">Traufüberstand (cm)</span>
                   <input id="roof-overhang" type="number" min="0" max="120" step="8" value="40" />
                 </div>
-                <div class="toolbar-group">
+                <div id="roof-ridge-derived-row" class="toolbar-group toolbar-inline-value ui-field-inline">
                   <span class="toolbar-label">Firsthöhe (cm)</span>
-                  <input id="roof-ridge-height" type="number" min="80" max="600" step="8" value="280" />
+                  <output id="roof-ridge-derived">–</output>
+                </div>
+                <p class="settings-subheading settings-subheading-nested">Kanten</p>
+                <p class="toolbar-hint compact-hint">Bündig = kein Überstand, keine Rinne (Nachbardach / Brandwand). Beim Walm endet die Fläche dort senkrecht.</p>
+                <div id="roof-edge-list" class="ui-stack" aria-label="Traufkanten"></div>
+                <div id="roof-gable-color-row" class="ui-stack">
+                <p class="settings-subheading settings-subheading-nested">Farbe</p>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Giebelwand</span>
+                  <div id="roof-gable-color-swatches" class="color-swatches"></div>
+                </div>
                 </div>
                 </div>
                 <div id="roof-tiles-options" class="settings-section" data-settings-section="roof-tiles" data-settings-label="Ziegel">

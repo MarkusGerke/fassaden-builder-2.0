@@ -609,10 +609,18 @@ import {
   studioPanelDefaultsForPattern,
 } from './studio/constants'
 import {
+  DEFAULT_ROOF,
   facadeHasRoofablePlan,
+  listRoofEdges,
   normalizeRoof,
+  ROOF_KIND_LABELS,
+  roofEffectiveCovering,
+  roofKindUsesPitch,
+  roofKindUsesRidgeDir,
+  roofRidgeHeightCm,
   type RoofConfig,
 } from './studio/roof'
+import type { RoofEdgeMode, RoofKind } from './types/facade'
 import {
   addDownpipeToFacade,
   createDownpipeFixture,
@@ -7733,6 +7741,24 @@ const roofTileColorSwatches = document.querySelector<HTMLDivElement>('#roof-tile
 const roofGutter = document.querySelector<HTMLInputElement>('#roof-gutter')!
 const roofGutterColorSwatches = document.querySelector<HTMLDivElement>('#roof-gutter-color-swatches')!
 const roofHint = document.querySelector<HTMLParagraphElement>('#roof-hint')!
+// Dachkonfigurator (v2.0.472): Form, Neigung, Firstrichtung, Eindeckung, Kanten.
+const roofKind = document.querySelector<HTMLSelectElement>('#roof-kind')!
+const roofRidgeDirRow = document.querySelector<HTMLDivElement>('#roof-ridge-dir-row')!
+const roofRidgeDirLabel = document.querySelector<HTMLSpanElement>('#roof-ridge-dir-label')!
+const roofRidgeDir = document.querySelector<HTMLSelectElement>('#roof-ridge-dir')!
+const roofCoveringRow = document.querySelector<HTMLDivElement>('#roof-covering-row')!
+const roofCovering = document.querySelector<HTMLSelectElement>('#roof-covering')!
+const roofCoveringHint = document.querySelector<HTMLParagraphElement>('#roof-covering-hint')!
+const roofMansardRows = document.querySelector<HTMLDivElement>('#roof-mansard-rows')!
+const roofPitchRow = document.querySelector<HTMLDivElement>('#roof-pitch-row')!
+const roofPitch = document.querySelector<HTMLInputElement>('#roof-pitch')!
+const roofHalfHipRow = document.querySelector<HTMLDivElement>('#roof-half-hip-row')!
+const roofHalfHipHeight = document.querySelector<HTMLInputElement>('#roof-half-hip-height')!
+const roofRidgeDerivedRow = document.querySelector<HTMLDivElement>('#roof-ridge-derived-row')!
+const roofRidgeDerived = document.querySelector<HTMLOutputElement>('#roof-ridge-derived')!
+const roofEdgeList = document.querySelector<HTMLDivElement>('#roof-edge-list')!
+const roofGableColorRow = document.querySelector<HTMLDivElement>('#roof-gable-color-row')!
+const roofGableColorSwatches = document.querySelector<HTMLDivElement>('#roof-gable-color-swatches')!
 const toolbarDownpipe = document.querySelector<HTMLDivElement>('#toolbar-downpipe')!
 const downpipeX = document.querySelector<HTMLInputElement>('#downpipe-x')!
 const downpipeDiameter = document.querySelector<HTMLInputElement>('#downpipe-diameter')!
@@ -9385,6 +9411,7 @@ function syncRoofUI() {
   roofPitchUpper.value = String(roof.pitchUpper)
   roofOverhang.value = String(roof.overhang)
   roofRidgeHeight.value = String(roof.ridgeHeight)
+  syncRoofFormUI(roof)
   if (editor.selectedRoofBuildingId) rebuildRoofPatternCardsIfNeeded()
   roofTileProfile.value = roof.tileProfile
   roofTileWidth.value = String(roof.tileWidth)
@@ -9430,8 +9457,10 @@ function syncRoofUI() {
 
   const part = editor.selectedRoofPart ?? 'group'
   const showAll = part === 'group'
+  const tilesAvailable = roofEffectiveCovering(roof) === 'tiles'
   roofShellOptions.hidden = !showAll && part !== 'shell'
-  roofTilesOptions.hidden = !showAll && part !== 'tiles'
+  // Inaktive Einstellungen ausblenden: Ziegel-Sektion nur bei Ziegel-Eindeckung.
+  roofTilesOptions.hidden = (!showAll && part !== 'tiles') || !tilesAvailable
   roofGutterOptions.hidden = !showAll && part !== 'gutter'
   if (part !== 'group') {
     roofEnabled.closest('.toolbar-group')?.classList.add('hidden')
@@ -9459,6 +9488,141 @@ function commitRoofPatch(patch: Partial<RoofConfig>) {
   if (!facadeHasRoofablePlan(state) && patch.enabled) return
   const next = normalizeRoof({ ...normalizeRoof(activeBuilding().roof), ...patch })
   commitState(updateActiveBuilding(state, { roof: next }))
+}
+
+/** Firstrichtung (Sattel/Krüppelwalm: Achse) bzw. Hochseite (Pult): Optionen je Form. */
+const ROOF_RIDGE_AXIS_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'auto', label: 'Automatisch (längste Traufe)' },
+  { value: '90', label: 'O–W' },
+  { value: '0', label: 'N–S' },
+  { value: '45', label: 'NW–SO' },
+  { value: '135', label: 'NO–SW' },
+]
+const ROOF_SHED_HIGH_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'auto', label: 'Automatisch (gegenüber längster Traufe)' },
+  ...[0, 315, 270, 225, 180, 135, 90, 45].map((yaw) => ({
+    value: String(yaw),
+    label: wallCompassLabel(yaw),
+  })),
+]
+
+function fillSelectOptions(select: HTMLSelectElement, options: Array<{ value: string; label: string }>) {
+  const signature = options.map((o) => o.value).join('|')
+  if (select.dataset.signature === signature) return
+  select.dataset.signature = signature
+  select.replaceChildren(
+    ...options.map((o) => {
+      const opt = document.createElement('option')
+      opt.value = o.value
+      opt.textContent = o.label
+      return opt
+    }),
+  )
+}
+
+/** Sichtbarkeit und Werte der Dachform-Felder — inaktive Felder `hidden`, nicht nur disabled. */
+function syncRoofFormUI(roof: RoofConfig) {
+  const usesPitch = roofKindUsesPitch(roof.kind)
+  const usesRidge = roofKindUsesRidgeDir(roof.kind)
+  roofKind.value = roof.kind
+  roofMansardRows.hidden = usesPitch
+  roofPitchRow.hidden = !usesPitch
+  roofPitch.value = String(roof.pitch)
+  roofHalfHipRow.hidden = roof.kind !== 'halfHip'
+  roofHalfHipHeight.value = String(roof.halfHipHeight)
+
+  roofRidgeDirRow.hidden = !usesRidge
+  if (usesRidge) {
+    const shed = roof.kind === 'shed'
+    roofRidgeDirLabel.textContent = shed ? 'Hochseite' : 'Firstrichtung'
+    fillSelectOptions(roofRidgeDir, shed ? ROOF_SHED_HIGH_OPTIONS : ROOF_RIDGE_AXIS_OPTIONS)
+    const ridge = roof.ridgeDeg
+    let value = 'auto'
+    if (ridge !== null) {
+      // Sattel/Krüppelwalm: Achse ist richtungslos (mod 180).
+      const norm = shed ? ridge : ridge % 180
+      const candidates = Array.from(roofRidgeDir.options).map((o) => o.value)
+      value = candidates.includes(String(norm)) ? String(norm) : 'auto'
+    }
+    roofRidgeDir.value = value
+  }
+
+  // Eindeckung: Ziegel nur Mansarde; sonst glatt + Hinweis (Wahl bleibt gespeichert).
+  roofCoveringRow.hidden = false
+  roofCovering.value = roofEffectiveCovering(roof)
+  const tilesLocked = roof.kind !== 'mansard'
+  roofCovering.disabled = tilesLocked || !roofEnabled.checked
+  roofCoveringHint.hidden = !tilesLocked
+
+  // Abgeleitete Firsthöhe (Envelope) nur bei Neigungs-Formen.
+  roofRidgeDerivedRow.hidden = !usesPitch
+  if (usesPitch) {
+    const h = roofRidgeHeightCm(activeBuilding(), roof)
+    roofRidgeDerived.textContent = h > 0 ? String(Math.round(h)) : '–'
+  }
+
+  roofGableColorRow.hidden = !usesPitch
+  if (usesPitch) {
+    renderColorControl(roofGableColorSwatches, roof.gableColor ?? DEFAULT_WALL_COLOR, (color) =>
+      commitRoofPatch({ gableColor: color }),
+    )
+    for (const el of roofGableColorSwatches.querySelectorAll('input,button')) {
+      ;(el as HTMLInputElement).disabled = !roofEnabled.checked
+    }
+  }
+
+  renderRoofEdgeList(roof)
+  for (const input of [roofKind, roofRidgeDir, roofPitch, roofHalfHipHeight]) {
+    input.disabled = !roofEnabled.checked
+  }
+}
+
+/** Traufkanten mit Modus Auto / Frei / Bündig — eine Zeile je Kante (Titel links, Select rechts). */
+function renderRoofEdgeList(roof: RoofConfig) {
+  const edges = listRoofEdges(activeBuilding(), roof)
+  const signature = edges.map((e) => `${e.key}:${e.mode}:${e.flush ? 1 : 0}:${e.label}`).join('|') + (roofEnabled.checked ? ':on' : ':off')
+  if (roofEdgeList.dataset.signature === signature) return
+  roofEdgeList.dataset.signature = signature
+  roofEdgeList.replaceChildren()
+  if (edges.length === 0) {
+    const hint = document.createElement('p')
+    hint.className = 'toolbar-hint compact-hint'
+    hint.textContent = 'Kein geschlossener Ring — keine Traufkanten.'
+    roofEdgeList.appendChild(hint)
+    return
+  }
+  for (const edge of edges) {
+    const row = document.createElement('div')
+    row.className = 'toolbar-group toolbar-inline-value ui-field-inline'
+    const label = document.createElement('span')
+    label.className = 'toolbar-label'
+    label.textContent = edge.label
+    label.title = edge.flush ? 'Wirksam: bündig' : 'Wirksam: frei (Überstand)'
+    const select = document.createElement('select')
+    select.setAttribute('aria-label', `Kante ${edge.label}`)
+    const autoLabel = edge.mode === 'auto' ? (edge.flush ? 'Auto (bündig)' : 'Auto (frei)') : 'Auto'
+    for (const [value, text] of [
+      ['auto', autoLabel],
+      ['free', 'Frei'],
+      ['flush', 'Bündig'],
+    ] as Array<[RoofEdgeMode, string]>) {
+      const opt = document.createElement('option')
+      opt.value = value
+      opt.textContent = text
+      select.appendChild(opt)
+    }
+    select.value = edge.mode
+    select.disabled = !roofEnabled.checked
+    select.addEventListener('change', () => {
+      const mode = select.value as RoofEdgeMode
+      const next: Record<string, RoofEdgeMode> = { ...(roof.edgeModes ?? {}) }
+      if (mode === 'auto') delete next[edge.key]
+      else next[edge.key] = mode
+      commitRoofPatch({ edgeModes: next })
+    })
+    row.append(label, select)
+    roofEdgeList.appendChild(row)
+  }
 }
 
 function syncBuildingRotateUI() {
@@ -17257,8 +17421,8 @@ function renderLayerList() {
             roofBody.appendChild(rowWrap)
           }
 
-          addRoofPartRow('Dach', 'Mansarde', 'shell')
-          addRoofPartRow('Ziegel', 'Ziegel', 'tiles')
+          addRoofPartRow('Dach', ROOF_KIND_LABELS[roof.kind], 'shell')
+          addRoofPartRow('Ziegel', 'Ziegel', 'tiles', roofEffectiveCovering(roof) !== 'tiles')
           addRoofPartRow('Rinne', 'Rinne', 'gutter', !roof.gutter)
 
           roofLi.appendChild(roofBody)
@@ -31130,6 +31294,38 @@ roofTileTaper.addEventListener('change', () => {
 })
 roofGutter.addEventListener('change', () => {
   commitRoofPatch({ gutter: roofGutter.checked })
+})
+/** Start-Neigung je Form beim Wechsel (Pult flach, Steildächer 45°). */
+const ROOF_KIND_DEFAULT_PITCH: Partial<Record<RoofKind, number>> = {
+  gable: 45,
+  hip: 45,
+  halfHip: 45,
+  shed: 15,
+}
+
+roofKind.addEventListener('change', () => {
+  const kind = roofKind.value as RoofKind
+  const prev = normalizeRoof(activeBuilding().roof)
+  // Eindeckung bleibt gespeichert (wirksam über roofEffectiveCovering) — Rückwechsel behält Ziegel.
+  const patch: Partial<RoofConfig> = { kind }
+  // Neigung folgt der Form, wenn sie noch dem Default der vorigen Form entspricht.
+  const prevDefault = ROOF_KIND_DEFAULT_PITCH[prev.kind] ?? DEFAULT_ROOF.pitch
+  const nextDefault = ROOF_KIND_DEFAULT_PITCH[kind]
+  if (nextDefault !== undefined && prev.pitch === prevDefault) patch.pitch = nextDefault
+  commitRoofPatch(patch)
+})
+roofRidgeDir.addEventListener('change', () => {
+  const v = roofRidgeDir.value
+  commitRoofPatch({ ridgeDeg: v === 'auto' ? null : Number(v) })
+})
+roofCovering.addEventListener('change', () => {
+  commitRoofPatch({ covering: roofCovering.value as RoofConfig['covering'] })
+})
+roofPitch.addEventListener('change', () => {
+  commitRoofPatch({ pitch: Number(roofPitch.value) })
+})
+roofHalfHipHeight.addEventListener('change', () => {
+  commitRoofPatch({ halfHipHeight: Number(roofHalfHipHeight.value) })
 })
 
 buildingRotateCcw.addEventListener('click', () => commitBuildingRotate(45))

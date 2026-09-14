@@ -2260,6 +2260,23 @@ export class FacadeController {
       roofMesh.userData.buildingId = building.id
       this.roofGroup.add(roofMesh)
 
+      if (built.gable) {
+        // Giebel-/Füllwände über der Traufe (Sattel/Walm/Krüppelwalm/Pult): Wandfarbe, matt.
+        const gableMat = new THREE.MeshStandardMaterial({
+          color: new THREE.Color(built.gableColor),
+          roughness: 0.92,
+          metalness: 0.0,
+          side: THREE.DoubleSide,
+        })
+        if (!this.isPerfPresentation()) this.finishExteriorMaterial(gableMat)
+        const gableMesh = new THREE.Mesh(built.gable, gableMat)
+        gableMesh.castShadow = true
+        gableMesh.receiveShadow = true
+        gableMesh.userData.roofPart = 'shell'
+        gableMesh.userData.buildingId = building.id
+        this.roofGroup.add(gableMesh)
+      }
+
       if (built.gutter) {
         const gutterColor = built.gutterColor ?? '#8E8A88'
         const zincDefault = gutterColor.replace(/\s/g, '').toLowerCase() === '#8e8a88'

@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.471'
+export const APP_VERSION = '2.0.472'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,17 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.472',
+    date: '2026-09-14',
+    title: 'Dachkonfigurator: Sattel, Walm, Krüppelwalm, Pult',
+    changes: [
+      'Dachform wählbar: Berliner Mansarde, Satteldach, Walmdach, Krüppelwalm, Pultdach — zunächst mit glatter Dachhaut (Ziegel folgen)',
+      'Kanten je Seite Auto / Frei / Bündig: bündig = kein Überstand, keine Rinne (Nachbardach, Brandwand); beim Walm endet die Seite senkrecht',
+      'Neigung, Firstrichtung bzw. Pult-Hochseite, Giebelhöhe (Krüppelwalm), abgeleitete Firsthöhe und Giebelwand-Farbe',
+      'Mansarde: Eindeckung Ziegel oder Glatt; Ziegel-Einstellungen nur bei Ziegel sichtbar',
+    ],
+  },
   {
     version: '2.0.471',
     date: '2026-09-14',

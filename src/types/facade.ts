@@ -11,9 +11,42 @@ import type { GroundLeaf } from '../scene/groundLeaves'
 import type { SurfaceFinish } from '../utils/surfaceFinish'
 export type { FloorPlan, DaySchedule, GroundLeaf, SurfaceFinish }
 
-/** Berliner Mansarddach auf dem obersten Grundriss-Ring. */
+/**
+ * Dachform auf dem obersten Grundriss-Ring.
+ * `mansard` = Berliner Mansarde (Bestand, Ziegel möglich). Übrige Formen (v2.0.472):
+ * Ebenen-Envelope über dem Traufpolygon, Eindeckung vorerst glatt.
+ */
+export type RoofKind = 'mansard' | 'gable' | 'hip' | 'halfHip' | 'shed'
+
+/** Eindeckung: Ziegel-Geometrie (nur Mansarde) oder glatte Dachhaut. */
+export type RoofCovering = 'tiles' | 'smooth'
+
+/**
+ * Traufkante: `auto` = ohne Paneele bündig (Bestand), `free` = Überstand + Rinne,
+ * `flush` = bündig ohne Überstand/Rinne (Nachbardach / Brandwand).
+ */
+export type RoofEdgeMode = 'auto' | 'free' | 'flush'
+
+/** Dach auf dem obersten Grundriss-Ring (Mansarde, Sattel, Walm, Krüppelwalm, Pult). */
 export interface RoofConfig {
   enabled: boolean
+  /** Dachform, Default `mansard`. */
+  kind: RoofKind
+  /** Neigung (Grad) für Sattel/Walm/Krüppelwalm/Pult. Mansarde nutzt `pitchLower`/`pitchUpper`. */
+  pitch: number
+  /**
+   * Firstrichtung (Sattel/Krüppelwalm, Wand-Yaw-Konvention 0 = N–S, 90 = O–W, 45er-Raster)
+   * bzw. Hochseite beim Pultdach (0…315). `null` = automatisch (längste Traufkante).
+   */
+  ridgeDeg: number | null
+  /** Krüppelwalm: Höhe der Giebelwand über der Traufe bis zum Walmansatz (cm). */
+  halfHipHeight: number
+  /** Eindeckung: `tiles` (nur Mansarde) oder `smooth`. */
+  covering: RoofCovering
+  /** Kanten-Modi je Traufkante (`roofEdgeKey`), fehlend = `auto`. */
+  edgeModes?: Record<string, RoofEdgeMode>
+  /** Farbe der Giebel-/Füllwände über der Traufe (Default Wandweiß). */
+  gableColor?: string
   /** Untere Mansarden-Neigung (Grad zur Horizontalen), steil. */
   pitchLower: number
   /** Obere Mansarden-Neigung (Grad), flacher. */

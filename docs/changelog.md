@@ -2,6 +2,18 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Dachkonfigurator: Formen ohne Ziegel, bündige Kanten (2026-09-14) — v2.0.472
+
+**Ziel (abgestimmt):** MVP „Formen zuerst, Eindeckung danach“ — Dachformen auf 45°-Grundrissen und mit Nachbaranschluss prüfen, bevor Ziegel, Zwerchgiebel, Gauben folgen.
+
+**Neu:** `RoofConfig.kind` (`mansard` | `gable` | `hip` | `halfHip` | `shed`), `pitch`, `ridgeDeg` (Firstachse/Pult-Hochseite, 45er, `null` = Auto), `halfHipHeight`, `covering` (`tiles` | `smooth`; wirksam nur Mansarde → `roofEffectiveCovering`), `edgeModes` (`roofEdgeKey` → `free`/`flush`), `gableColor`. Nicht-Mansarden als **Ebenen-Envelope** (`src/studio/roofForms.ts`): untere Einhüllende von Dachebenen über dem Traufpolygon; Fläche je Ebene = Polygon ∩ Halbebenen. Platte 10 cm, Füllwände auf der Wandlinie (`envelopeAlongSegment`), Rinne nur an Traufkanten (`isEave`) ohne `flush`. Bündige Kante beim Walm → keine Ebene → senkrechter Giebel (Brandwand). Mansarde: `covering: 'smooth'` = Bänder als Quads.
+
+**UI:** `#roof-kind`, `#roof-ridge-dir`, `#roof-covering` (+ Hinweis), `#roof-pitch`, `#roof-half-hip-height`, abgeleitete Firsthöhe `#roof-ridge-derived`, Kantenliste `#roof-edge-list` (Auto/Frei/Bündig je Kante mit Kompass + Länge), Giebelfarbe. Ebenen-Zeile zeigt Formnamen; „Ziegel“-Zeile/-Sektion nur bei wirksamer Ziegel-Eindeckung. Formwechsel: Neigung folgt (45° / Pult 15°) nur, wenn sie noch dem alten Default entsprach.
+
+**Versuche:** `isEave` zunächst nur an Kantenendpunkten → Giebelseiten galten als Traufe (Ecken liegen auf Traufhöhe) → Rinne am Giebel. Fix: gesamtes Höhenprofil. Erwartung „Krüppelwalm senkt den First“ war falsch — nur die Firstlänge schrumpft. Ring-Orientierung erst im Envelope gedreht → `flush[]`-Indizes verdreht; jetzt `orientRingCcw` vor der Kantenableitung.
+
+**Kein Schema-Step:** rein additive Defaults über `normalizeRoof`. Tests: `src/studio/roofForms.test.ts`. Docs: [roof.md](roof.md).
+
 ### Touch: Farb-Kacheln zerquetscht durch Items-Padding (2026-09-14) — v2.0.471
 
 **Symptom:** Nach v2.0.470 keine Blitze mehr, aber Farb-Swatches in der Bibliothek vertikal gequetscht.
