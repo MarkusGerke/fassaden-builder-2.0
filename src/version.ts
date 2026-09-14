@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.472'
+export const APP_VERSION = '2.0.473'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,16 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.473',
+    date: '2026-09-14',
+    title: 'Dach: Traufe an Geschosshöhe, ohne Ziegel, Zwerchgiebel',
+    changes: [
+      'Dach sitzt auf der echten Oberkante der obersten Etage — kein leeres Geschoss mehr bei kürzeren Obergeschossen',
+      'Ziegel-Geometrie und Ziegel-Einstellungen vorerst aus (Formen-MVP, glatte Dachhaut)',
+      'Zwerchgiebel: Seite, Breite und Tiefe — schneidet in die Dachhaut; Gauben und Dachfenster folgen',
+    ],
+  },
   {
     version: '2.0.472',
     date: '2026-09-14',

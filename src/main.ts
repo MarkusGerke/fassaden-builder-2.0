@@ -614,7 +614,6 @@ import {
   listRoofEdges,
   normalizeRoof,
   ROOF_KIND_LABELS,
-  roofEffectiveCovering,
   roofKindUsesPitch,
   roofKindUsesRidgeDir,
   roofRidgeHeightCm,
@@ -7757,7 +7756,14 @@ const roofHalfHipHeight = document.querySelector<HTMLInputElement>('#roof-half-h
 const roofRidgeDerivedRow = document.querySelector<HTMLDivElement>('#roof-ridge-derived-row')!
 const roofRidgeDerived = document.querySelector<HTMLOutputElement>('#roof-ridge-derived')!
 const roofEdgeList = document.querySelector<HTMLDivElement>('#roof-edge-list')!
+const roofCrossGableSection = document.querySelector<HTMLDivElement>('#roof-cross-gable-section')!
+const roofCrossGableEnabled = document.querySelector<HTMLInputElement>('#roof-cross-gable-enabled')!
+const roofCrossGableOptions = document.querySelector<HTMLDivElement>('#roof-cross-gable-options')!
+const roofCrossGableEdge = document.querySelector<HTMLSelectElement>('#roof-cross-gable-edge')!
+const roofCrossGableWidth = document.querySelector<HTMLInputElement>('#roof-cross-gable-width')!
+const roofCrossGableDepth = document.querySelector<HTMLInputElement>('#roof-cross-gable-depth')!
 const roofGableColorRow = document.querySelector<HTMLDivElement>('#roof-gable-color-row')!
+const roofGableWallColorRow = document.querySelector<HTMLDivElement>('#roof-gable-wall-color-row')!
 const roofGableColorSwatches = document.querySelector<HTMLDivElement>('#roof-gable-color-swatches')!
 const toolbarDownpipe = document.querySelector<HTMLDivElement>('#toolbar-downpipe')!
 const downpipeX = document.querySelector<HTMLInputElement>('#downpipe-x')!
@@ -9457,10 +9463,9 @@ function syncRoofUI() {
 
   const part = editor.selectedRoofPart ?? 'group'
   const showAll = part === 'group'
-  const tilesAvailable = roofEffectiveCovering(roof) === 'tiles'
+  // MVP: Ziegel deaktiviert (ROOF_TILES_ENABLED) — Sektion bleibt im DOM, aber hidden.
   roofShellOptions.hidden = !showAll && part !== 'shell'
-  // Inaktive Einstellungen ausblenden: Ziegel-Sektion nur bei Ziegel-Eindeckung.
-  roofTilesOptions.hidden = (!showAll && part !== 'tiles') || !tilesAvailable
+  roofTilesOptions.hidden = true
   roofGutterOptions.hidden = !showAll && part !== 'gutter'
   if (part !== 'group') {
     roofEnabled.closest('.toolbar-group')?.classList.add('hidden')
@@ -9547,12 +9552,10 @@ function syncRoofFormUI(roof: RoofConfig) {
     roofRidgeDir.value = value
   }
 
-  // Eindeckung: Ziegel nur Mansarde; sonst glatt + Hinweis (Wahl bleibt gespeichert).
-  roofCoveringRow.hidden = false
-  roofCovering.value = roofEffectiveCovering(roof)
-  const tilesLocked = roof.kind !== 'mansard'
-  roofCovering.disabled = tilesLocked || !roofEnabled.checked
-  roofCoveringHint.hidden = !tilesLocked
+  // Eindeckung/Ziegel-UI: MVP ohne Ziegel — Sektion und Select ausblenden (IDs bleiben).
+  roofCoveringRow.hidden = true
+  roofCoveringHint.hidden = true
+  roofTilesOptions.hidden = true
 
   // Abgeleitete Firsthöhe (Envelope) nur bei Neigungs-Formen.
   roofRidgeDerivedRow.hidden = !usesPitch
@@ -9561,7 +9564,9 @@ function syncRoofFormUI(roof: RoofConfig) {
     roofRidgeDerived.textContent = h > 0 ? String(Math.round(h)) : '–'
   }
 
-  roofGableColorRow.hidden = !usesPitch
+  // Dachfarbe immer; Giebelwand-Farbe nur bei Formen mit Füllwand.
+  roofGableColorRow.hidden = false
+  roofGableWallColorRow.hidden = !usesPitch
   if (usesPitch) {
     renderColorControl(roofGableColorSwatches, roof.gableColor ?? DEFAULT_WALL_COLOR, (color) =>
       commitRoofPatch({ gableColor: color }),
@@ -9572,9 +9577,61 @@ function syncRoofFormUI(roof: RoofConfig) {
   }
 
   renderRoofEdgeList(roof)
-  for (const input of [roofKind, roofRidgeDir, roofPitch, roofHalfHipHeight]) {
+  syncRoofCrossGableUI(roof)
+  for (const input of [roofKind, roofRidgeDir, roofPitch, roofHalfHipHeight, roofCrossGableEnabled, roofCrossGableEdge, roofCrossGableWidth, roofCrossGableDepth]) {
     input.disabled = !roofEnabled.checked
   }
+}
+
+/** Zwerchgiebel: nur bei Nicht-Mansarde; inaktive Optionen ausblenden. */
+function syncRoofCrossGableUI(roof: RoofConfig) {
+  const usesPitch = roofKindUsesPitch(roof.kind)
+  roofCrossGableSection.hidden = !usesPitch
+  if (!usesPitch) return
+  const cg = roof.crossGables?.[0]
+  const on = Boolean(cg)
+  roofCrossGableEnabled.checked = on
+  roofCrossGableOptions.hidden = !on
+  const edges = listRoofEdges(activeBuilding(), roof)
+  fillSelectOptions(
+    roofCrossGableEdge,
+    edges.map((e) => ({ value: e.key, label: e.label })),
+  )
+  if (cg) {
+    if (edges.some((e) => e.key === cg.edgeKey)) roofCrossGableEdge.value = cg.edgeKey
+    else if (edges[0]) roofCrossGableEdge.value = edges[0].key
+    roofCrossGableWidth.value = String(cg.widthCm)
+    roofCrossGableDepth.value = String(cg.depthCm)
+  } else if (edges[0]) {
+    roofCrossGableEdge.value = edges[0].key
+  }
+}
+
+function commitRoofCrossGablePatch(patch: {
+  enabled?: boolean
+  edgeKey?: string
+  widthCm?: number
+  depthCm?: number
+}) {
+  const roof = normalizeRoof(activeBuilding().roof)
+  const prev = roof.crossGables?.[0]
+  const enabled = patch.enabled ?? Boolean(prev)
+  if (!enabled) {
+    commitRoofPatch({ crossGables: [] })
+    return
+  }
+  const edges = listRoofEdges(activeBuilding(), roof)
+  const edgeKey = patch.edgeKey ?? prev?.edgeKey ?? edges[0]?.key
+  if (!edgeKey) return
+  commitRoofPatch({
+    crossGables: [
+      {
+        edgeKey,
+        widthCm: patch.widthCm ?? prev?.widthCm ?? 320,
+        depthCm: patch.depthCm ?? prev?.depthCm ?? 160,
+      },
+    ],
+  })
 }
 
 /** Traufkanten mit Modus Auto / Frei / Bündig — eine Zeile je Kante (Titel links, Select rechts). */
@@ -17422,7 +17479,8 @@ function renderLayerList() {
           }
 
           addRoofPartRow('Dach', ROOF_KIND_LABELS[roof.kind], 'shell')
-          addRoofPartRow('Ziegel', 'Ziegel', 'tiles', roofEffectiveCovering(roof) !== 'tiles')
+          // Ziegel-Zeile ausgeblendet, solange ROOF_TILES_ENABLED false (MVP Formen).
+          addRoofPartRow('Ziegel', 'Ziegel', 'tiles', true)
           addRoofPartRow('Rinne', 'Rinne', 'gutter', !roof.gutter)
 
           roofLi.appendChild(roofBody)
@@ -31326,6 +31384,18 @@ roofPitch.addEventListener('change', () => {
 })
 roofHalfHipHeight.addEventListener('change', () => {
   commitRoofPatch({ halfHipHeight: Number(roofHalfHipHeight.value) })
+})
+roofCrossGableEnabled.addEventListener('change', () => {
+  commitRoofCrossGablePatch({ enabled: roofCrossGableEnabled.checked })
+})
+roofCrossGableEdge.addEventListener('change', () => {
+  commitRoofCrossGablePatch({ edgeKey: roofCrossGableEdge.value })
+})
+roofCrossGableWidth.addEventListener('change', () => {
+  commitRoofCrossGablePatch({ widthCm: Number(roofCrossGableWidth.value) })
+})
+roofCrossGableDepth.addEventListener('change', () => {
+  commitRoofCrossGablePatch({ depthCm: Number(roofCrossGableDepth.value) })
 })
 
 buildingRotateCcw.addEventListener('click', () => commitBuildingRotate(45))

@@ -36,7 +36,12 @@ function cloneFloorPlan(plan: FloorPlan): FloorPlan {
 }
 
 function cloneRoof(roof: RoofConfig | undefined): RoofConfig | undefined {
-  return roof ? { ...roof } : undefined
+  if (!roof) return undefined
+  return {
+    ...roof,
+    edgeModes: roof.edgeModes ? { ...roof.edgeModes } : undefined,
+    crossGables: roof.crossGables?.map((c) => ({ ...c })),
+  }
 }
 
 export function syncWallBuildingIds(building: Building): Building {

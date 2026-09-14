@@ -27,6 +27,19 @@ export type RoofCovering = 'tiles' | 'smooth'
  */
 export type RoofEdgeMode = 'auto' | 'free' | 'flush'
 
+/**
+ * Zwerchgiebel (Quergiebel) auf einer Traufkante — Formen-MVP ohne Gauben/Dachfenster.
+ * Sitzt auf der Fassaden-/Traufkante, schneidet in die Dachhaut, eigenes Satteldach nach innen.
+ */
+export interface RoofCrossGable {
+  /** Kante (`roofEdgeKey` am Plan-Outer). */
+  edgeKey: string
+  /** Breite entlang der Fassade (cm). */
+  widthCm: number
+  /** Tiefe nach innen vom Traufpolygon (cm). */
+  depthCm: number
+}
+
 /** Dach auf dem obersten Grundriss-Ring (Mansarde, Sattel, Walm, Krüppelwalm, Pult). */
 export interface RoofConfig {
   enabled: boolean
@@ -47,6 +60,8 @@ export interface RoofConfig {
   edgeModes?: Record<string, RoofEdgeMode>
   /** Farbe der Giebel-/Füllwände über der Traufe (Default Wandweiß). */
   gableColor?: string
+  /** Zwerchgiebel (0…n); MVP-UI steuert den ersten Eintrag. */
+  crossGables?: RoofCrossGable[]
   /** Untere Mansarden-Neigung (Grad zur Horizontalen), steil. */
   pitchLower: number
   /** Obere Mansarden-Neigung (Grad), flacher. */

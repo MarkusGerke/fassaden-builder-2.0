@@ -4,8 +4,10 @@ import {
   buildRoofEnvelope,
   buildRoofEnvelopeGeometry,
   clipPolygonByHalfPlane,
+  crossGableFootprint,
   edgeCompassLabel,
   orientRingCcw,
+  roofEdgeKey,
   roofEnvelopeHeightAt,
   yawToDirXZ,
   type XZ,
@@ -163,21 +165,55 @@ describe('roofForms – Krüppelwalm und Pult', () => {
   })
 })
 
+describe('roofForms – Zwerchgiebel', () => {
+  it('Fußabdruck liegt innen an der Traufkante und schneidet die Dachhaut', () => {
+    const outer = rect()
+    const env = envelopeFor('gable', outer)
+    const edgeIdx = 0
+    const a = env.eave[edgeIdx]
+    const b = env.eave[(edgeIdx + 1) % env.eave.length]
+    const foot = crossGableFootprint(a, b, 320, 240)
+    expect(foot.length).toBe(4)
+    const geo = buildRoofEnvelopeGeometry(env, [{ edgeKey: roofEdgeKey(env.outer[edgeIdx], env.outer[(edgeIdx + 1) % env.outer.length]), widthCm: 320, depthCm: 240 }], 45)
+    expect(geo.roof.getAttribute('position').count).toBeGreaterThan(0)
+    expect(geo.gable).not.toBeNull()
+    // Rinne an der Zwerchgiebel-Kante aus
+    expect(geo.gutterEdgeActive[edgeIdx]).toBe(false)
+  })
+})
+
 describe('normalizeRoof – neue Felder', () => {
-  it('Alt-Save ohne kind → Mansarde mit Ziegeln, Kantenmodi leer', () => {
+  it('Alt-Save ohne kind → Mansarde, Kantenmodi leer', () => {
     const roof = normalizeRoof({ enabled: true })
     expect(roof.kind).toBe('mansard')
-    expect(roof.covering).toBe('tiles')
     expect(roof.edgeModes).toBeUndefined()
     expect(roof.ridgeDeg).toBeNull()
   })
 
-  it('Nicht-Mansarde: Ziegel-Wahl bleibt gespeichert, wirksam glatt; Firstrichtung rastet auf 45°', () => {
-    const roof = normalizeRoof({ kind: 'gable', covering: 'tiles', ridgeDeg: 100, edgeModes: { 'a:b': 'flush', 'c:d': 'auto' as never } })
-    expect(roof.covering).toBe('tiles')
+  it('MVP: Ziegel abgeschaltet — wirksame Eindeckung immer glatt', () => {
+    const roof = normalizeRoof({ kind: 'mansard', covering: 'tiles', ridgeDeg: 100, edgeModes: { 'a:b': 'flush', 'c:d': 'auto' as never } })
     expect(roofEffectiveCovering(roof)).toBe('smooth')
-    expect(roofEffectiveCovering({ ...roof, kind: 'mansard' })).toBe('tiles')
+    expect(roofEffectiveCovering({ ...roof, kind: 'gable' })).toBe('smooth')
     expect(roof.ridgeDeg).toBe(90)
     expect(roof.edgeModes).toEqual({ 'a:b': 'flush' })
+  })
+})
+
+describe('roof eaveY – echte Geschossoberkante', () => {
+  it('storeyTopY statt floors×wallHeight: kürzere Obergeschosse erzeugen keine Lücke', async () => {
+    const { storeyTopY } = await import('../utils/layers')
+    const building = {
+      id: 't',
+      name: 't',
+      wallHeight: 448,
+      walls: [
+        { id: 'w0', x: 0, y: 0, width: 100, height: 448, openings: [], storeyIndex: 0 },
+        { id: 'w4', x: 0, y: 1504, width: 100, height: 352, openings: [], storeyIndex: 4 },
+      ],
+      floors: [{ nodes: [], edges: [] }, { nodes: [], edges: [] }, { nodes: [], edges: [] }, { nodes: [], edges: [] }, { nodes: [], edges: [] }],
+    } as any
+    expect(storeyTopY(building, 4)).toBe(1856)
+    expect(building.floors.length * building.wallHeight).toBe(2240)
+    expect(building.floors.length * building.wallHeight - storeyTopY(building, 4)).toBe(384)
   })
 })

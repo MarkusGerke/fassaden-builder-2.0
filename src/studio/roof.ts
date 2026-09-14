@@ -3,6 +3,7 @@ import type {
   Building,
   FacadeState,
   RoofConfig,
+  RoofCrossGable,
   RoofEdgeMode,
   RoofKind,
   RoofTileProfile,
@@ -12,7 +13,7 @@ import type {
 } from '../types/facade'
 import { DEFAULT_WALL_COLOR } from '../constants/colorPalettes'
 import { getActiveBuilding } from '../utils/buildings'
-import { floorIndex } from '../utils/layers'
+import { floorIndex, storeyTopY } from '../utils/layers'
 import {
   planFacesWithHoles,
   planHasClosedRing,
@@ -55,7 +56,9 @@ export const DEFAULT_ROOF: RoofConfig = {
   pitch: 45,
   ridgeDeg: null,
   halfHipHeight: 120,
-  covering: 'tiles',
+  /** MVP Formen: immer glatt — Ziegel kommen in einer späteren Stufe. */
+  covering: 'smooth',
+  crossGables: [],
   pitchLower: 70,
   pitchUpper: 30,
   overhang: 40,
@@ -88,6 +91,7 @@ export function normalizeRoof(raw?: Partial<RoofConfig> | null): RoofConfig {
       ? ((Math.round(base.ridgeDeg / ROOF_RIDGE_STEP_DEG) * ROOF_RIDGE_STEP_DEG) % 360 + 360) % 360
       : null
   const edgeModes = normalizeEdgeModes(base.edgeModes)
+  const crossGables = normalizeCrossGables(base.crossGables)
   return {
     enabled: Boolean(base.enabled),
     hidden: Boolean(base.hidden),
@@ -97,6 +101,7 @@ export function normalizeRoof(raw?: Partial<RoofConfig> | null): RoofConfig {
     halfHipHeight: snap8(clamp(base.halfHipHeight, ROOF_HALF_HIP_MIN, ROOF_HALF_HIP_MAX)),
     covering,
     ...(edgeModes ? { edgeModes } : {}),
+    ...(crossGables.length > 0 ? { crossGables } : {}),
     ...(typeof base.gableColor === 'string' && base.gableColor ? { gableColor: base.gableColor } : {}),
     pitchLower: clamp(base.pitchLower, 45, 80),
     pitchUpper: clamp(base.pitchUpper, 10, 45),
@@ -124,9 +129,16 @@ function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n))
 }
 
-/** Wirksame Eindeckung: Ziegel nur bei Mansarde, sonst glatt. */
-export function roofEffectiveCovering(roof: RoofConfig): RoofConfig['covering'] {
-  return roof.kind === 'mansard' ? roof.covering : 'smooth'
+/**
+ * Wirksame Eindeckung. MVP Dachformen (v2.0.473): **immer glatt** —
+ * die Ziegel-Pipeline (`addTiledFacet` / ~10⁵ Vertices) bleibt im Code,
+ * wird aber nicht mehr aufgerufen, bis die Formen stimmen.
+ */
+export const ROOF_TILES_ENABLED = false
+
+export function roofEffectiveCovering(_roof: RoofConfig): RoofConfig['covering'] {
+  if (!ROOF_TILES_ENABLED) return 'smooth'
+  return _roof.kind === 'mansard' ? _roof.covering : 'smooth'
 }
 
 function normalizeEdgeModes(
@@ -138,6 +150,22 @@ function normalizeEdgeModes(
     if (value === 'free' || value === 'flush') out[key] = value
   }
   return Object.keys(out).length > 0 ? out : undefined
+}
+
+function normalizeCrossGables(raw: unknown): RoofCrossGable[] {
+  if (!Array.isArray(raw)) return []
+  const out: RoofCrossGable[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const edgeKey = typeof (item as RoofCrossGable).edgeKey === 'string' ? (item as RoofCrossGable).edgeKey : ''
+    if (!edgeKey) continue
+    out.push({
+      edgeKey,
+      widthCm: snap8(clamp((item as RoofCrossGable).widthCm, 80, 2000)),
+      depthCm: snap8(clamp((item as RoofCrossGable).depthCm, 40, 1200)),
+    })
+  }
+  return out
 }
 
 function snap8(n: number): number {
@@ -1017,11 +1045,15 @@ function roofBase(building: Building, roof: RoofConfig): {
   const outer = orientRingCcw(face.outer)
   const edges = listRoofEdgesForRing(building, roof, outer)
   const edgeOverhang = overhangPerEdge(edges, roof.overhang)
+  // Traufe = echte Geschossoberkante der obersten Etage (storeyTopY), nicht
+  // floors.length × wallHeight — obere Etagen können kürzer sein (z. B. 352 statt 448)
+  // und würden sonst ein „leeres Geschoss“ zwischen Fassade und Dach erzeugen.
+  const topFloor = floors.length - 1
   return {
     outer,
     holes: face.holes,
     eave: offsetPolygonPerEdge(outer, edgeOverhang),
-    eaveY: floors.length * building.wallHeight,
+    eaveY: storeyTopY(building, topFloor),
     edges,
     edgeOverhang,
   }
@@ -1129,7 +1161,7 @@ function buildEnvelopeRoofForBuilding(
     roof,
   })
   if (!env) return false
-  const built = buildRoofEnvelopeGeometry(env)
+  const built = buildRoofEnvelopeGeometry(env, roof.crossGables ?? [], roof.pitch)
   appendBufferGeometry(built.roof, sinks.positions, sinks.normals, sinks.uvs, sinks.indices)
   built.roof.dispose()
   if (built.gable) {

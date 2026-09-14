@@ -687,7 +687,7 @@
                   <span id="roof-ridge-dir-label" class="toolbar-label">Firstrichtung</span>
                   <select id="roof-ridge-dir" aria-label="Firstrichtung"></select>
                 </div>
-                <div id="roof-covering-row" class="toolbar-group toolbar-inline-value ui-field-inline">
+                <div id="roof-covering-row" class="toolbar-group toolbar-inline-value ui-field-inline" hidden>
                   <span class="toolbar-label">Eindeckung</span>
                   <select id="roof-covering" aria-label="Eindeckung">
                     <option value="tiles">Ziegel</option>
@@ -729,15 +729,41 @@
                 <p class="settings-subheading settings-subheading-nested">Kanten</p>
                 <p class="toolbar-hint compact-hint">Bündig = kein Überstand, keine Rinne (Nachbardach / Brandwand). Beim Walm endet die Fläche dort senkrecht.</p>
                 <div id="roof-edge-list" class="ui-stack" aria-label="Traufkanten"></div>
+                <div id="roof-cross-gable-section" class="ui-stack">
+                <p class="settings-subheading settings-subheading-nested">Zwerchgiebel</p>
+                <label class="toolbar-check">
+                  <input id="roof-cross-gable-enabled" type="checkbox" />
+                  Zwerchgiebel
+                </label>
+                <div id="roof-cross-gable-options" class="ui-stack" hidden>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Seite</span>
+                  <select id="roof-cross-gable-edge" aria-label="Zwerchgiebel Seite"></select>
+                </div>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Breite (cm)</span>
+                  <input id="roof-cross-gable-width" type="number" min="80" max="2000" step="8" value="320" />
+                </div>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Tiefe (cm)</span>
+                  <input id="roof-cross-gable-depth" type="number" min="40" max="1200" step="8" value="160" />
+                </div>
+                <p class="toolbar-hint compact-hint">Tiefe höchstens halbe Breite (sonst unter der Dachhaut). Gauben und Dachfenster folgen später.</p>
+                </div>
+                </div>
                 <div id="roof-gable-color-row" class="ui-stack">
                 <p class="settings-subheading settings-subheading-nested">Farbe</p>
                 <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Dachhaut</span>
+                  <div id="roof-tile-color-swatches" class="color-swatches"></div>
+                </div>
+                <div id="roof-gable-wall-color-row" class="toolbar-group toolbar-inline-value ui-field-inline">
                   <span class="toolbar-label">Giebelwand</span>
                   <div id="roof-gable-color-swatches" class="color-swatches"></div>
                 </div>
                 </div>
                 </div>
-                <div id="roof-tiles-options" class="settings-section" data-settings-section="roof-tiles" data-settings-label="Ziegel">
+                <div id="roof-tiles-options" class="settings-section" data-settings-section="roof-tiles" data-settings-label="Ziegel" hidden>
                 <p class="settings-subheading settings-subheading-nested">Muster</p>
                 <div class="toolbar-group">
                   <span class="toolbar-label">Ziegel-Muster</span>
@@ -775,11 +801,6 @@
                   <span class="toolbar-label">Zugespitzt</span>
                   <input id="roof-tile-taper" type="range" min="0.2" max="1" step="0.05" value="0.85" />
                   <output id="roof-tile-taper-value">0.85</output>
-                </div>
-                <p class="settings-subheading settings-subheading-nested">Farbe</p>
-                <div class="toolbar-group">
-                  <span class="toolbar-label">Ziegel-Farbe</span>
-                  <div id="roof-tile-color-swatches" class="color-swatches"></div>
                 </div>
                 </div>
                 <div id="roof-gutter-options" class="settings-section" data-settings-section="roof-gutter" data-settings-label="Rinne">

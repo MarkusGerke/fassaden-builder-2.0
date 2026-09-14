@@ -31,7 +31,7 @@
 | [roller-shutter.md](roller-shutter.md) | Rollläden: Lamellen, Höhe, Stapel, Animation (Ein Zug / Kabelzug), Uhrzeiten |
 | [awnings.md](awnings.md) | Markisen: Gelenkarm/Fallarm/Markisolette, Volant, Neigung, Live-Schatten |
 | [wind.md](wind.md) | Bühnen-Wind: Intensität windstill→stürmisch, Stoff-Registry |
-| [roof.md](roof.md) | Dachkonfigurator: Mansarde (Ziegel), Sattel/Walm/Krüppelwalm/Pult (Ebenen-Envelope), Kanten Auto/Frei/Bündig, Gehrungsrinne |
+| [roof.md](roof.md) | Dachkonfigurator: Formen, Traufe an Geschosshöhe, Zwerchgiebel, Kanten, Ziegel vorerst aus |
 | [downpipes.md](downpipes.md) | Fallrohre (mehrgeschossig), Nische/Schmuck-Durchbruch, Schellen, Regenrinne |
 | [gallery.md](gallery.md) | QA-Galerie: alle Standards im Raster, Abstand, Zufall, Projekt-Schutz |
 | [deploy-allinkl.md](deploy-allinkl.md) | Auto-Deploy auf All-Inkl (GitHub Actions, FTPS, Passwortschutz) |

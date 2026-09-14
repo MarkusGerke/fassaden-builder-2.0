@@ -2,6 +2,20 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Dach: Traufe, Ziegel aus, Zwerchgiebel (2026-09-14) — v2.0.473
+
+**Symptom:** Zwischen 4. OG und Dach wirkte ein leeres Geschoss; Performance poorly bei Mansarde mit Ziegeln; Ziegel trotz Absprache „Formen zuerst“.
+
+**Ursache Traufe:** `eaveY = floors.length × wallHeight` (z. B. 5×448 = 2240), obwohl Obergeschosse kürzer sind (Wandhöhe 352, Oberkante 1856) → Lücke ~384 cm.
+
+**Fix Traufe:** `storeyTopY(building, topFloor)` statt der Formel.
+
+**Ziegel:** `ROOF_TILES_ENABLED = false` → `roofEffectiveCovering` immer `smooth`; Ziegel-Sektion/`#roof-covering` ausgeblendet (IDs bleiben). Dachfarbe unter Dachform. Performance: statt ~10⁵ Ziegel-Vertices nur wenige Dutzend.
+
+**Zwerchgiebel (Formen-MVP):** `RoofConfig.crossGables[]` — Checkbox, Seite, Breite, Tiefe. Loch in der Haupthaut + eigenes Satteldach; Tiefe intern auf ≤ Breite/2 begrenzt (sonst Quergiebel unter der Haut). Gauben/Dachfenster bewusst **nicht** in diesem Schritt (Absprache: nach Ziegeln).
+
+Docs: [roof.md](roof.md).
+
 ### Dachkonfigurator: Formen ohne Ziegel, bündige Kanten (2026-09-14) — v2.0.472
 
 **Ziel (abgestimmt):** MVP „Formen zuerst, Eindeckung danach“ — Dachformen auf 45°-Grundrissen und mit Nachbaranschluss prüfen, bevor Ziegel, Zwerchgiebel, Gauben folgen.

@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import type { RoofConfig, RoofKind } from '../types/facade'
+import type { RoofConfig, RoofCrossGable, RoofKind } from '../types/facade'
 import { normalizeYawDeg, wallCompassLabel } from './compass'
 
 /**
@@ -495,14 +495,26 @@ function pushLiftedPolygon(
   poly: XZ[],
   heightAt: (p: XZ) => number,
   upward: boolean,
+  holes: XZ[][] = [],
 ) {
   if (poly.length < 3) return
   const contour = poly.map((p) => new THREE.Vector2(p.x, p.z))
-  const tris = THREE.ShapeUtils.triangulateShape(contour, [])
-  for (const [i, j, k] of tris) {
-    const pa = poly[i]
-    const pb = poly[j]
-    const pc = poly[k]
+  const holeContours = holes
+    .filter((h) => h.length >= 3)
+    .map((h) => h.map((p) => new THREE.Vector2(p.x, p.z)))
+  let tris: number[][]
+  try {
+    tris = THREE.ShapeUtils.triangulateShape(contour, holeContours)
+  } catch {
+    tris = THREE.ShapeUtils.triangulateShape(contour, [])
+  }
+  // ShapeUtils-Indizes: [Kontur | Loch0 | Loch1 | …]
+  const flat = [...poly, ...holes.filter((h) => h.length >= 3).flat()]
+  for (const tri of tris) {
+    const pa = flat[tri[0]]
+    const pb = flat[tri[1]]
+    const pc = flat[tri[2]]
+    if (!pa || !pb || !pc) continue
     const a = new THREE.Vector3(pa.x, heightAt(pa), pa.z)
     const b = new THREE.Vector3(pb.x, heightAt(pb), pb.z)
     const c = new THREE.Vector3(pc.x, heightAt(pc), pc.z)
@@ -512,6 +524,73 @@ function pushLiftedPolygon(
     if (up === upward) pushTri(sink, a, b, c)
     else pushTri(sink, a, c, b)
   }
+}
+
+/** Konvexe Schnittmenge (Sutherland–Hodgman, Clip CCW). */
+export function intersectConvexPolygons(subject: XZ[], clip: XZ[]): XZ[] {
+  let out = subject
+  const n = clip.length
+  for (let i = 0; i < n; i += 1) {
+    const a = clip[i]
+    const b = clip[(i + 1) % n]
+    const outN = edgeOutwardXZ(a, b)
+    // Innenseite behalten: −outward · (p − a) ≥ 0
+    const fa = -outN.x
+    const fb = -outN.z
+    const fc = -(fa * a.x + fb * a.z)
+    out = clipPolygonByHalfPlane(out, fa, fb, fc)
+    if (out.length < 3) return []
+  }
+  return out
+}
+
+/** Rechteck-Fußabdruck eines Zwerchgiebels auf Traufkante a→b, nach innen. */
+export function crossGableFootprint(a: XZ, b: XZ, widthCm: number, depthCm: number): XZ[] {
+  const len = Math.hypot(b.x - a.x, b.z - a.z) || 1
+  const tx = (b.x - a.x) / len
+  const tz = (b.z - a.z) / len
+  const out = edgeOutwardXZ(a, b)
+  const inward = { x: -out.x, z: -out.z }
+  const mid = { x: (a.x + b.x) / 2, z: (a.z + b.z) / 2 }
+  const half = Math.min(widthCm, len - 2) / 2
+  if (half < 20 || depthCm < 20) return []
+  const p0 = { x: mid.x - tx * half, z: mid.z - tz * half }
+  const p1 = { x: mid.x + tx * half, z: mid.z + tz * half }
+  const p2 = { x: p1.x + inward.x * depthCm, z: p1.z + inward.z * depthCm }
+  const p3 = { x: p0.x + inward.x * depthCm, z: p0.z + inward.z * depthCm }
+  return orientRingCcw([p0, p1, p2, p3])
+}
+
+function yawFromDirXZ(d: XZ): number {
+  const headingDeg = (Math.atan2(d.x, -d.z) * 180) / Math.PI
+  return normalizeYawDeg(360 - headingDeg)
+}
+
+/**
+ * Zwerchgiebel-Envelope: Sattel mit First nach innen (senkrecht zur Fassadenkante).
+ */
+export function buildCrossGableEnvelope(
+  footprint: XZ[],
+  eaveY: number,
+  pitchDeg: number,
+  facadeA: XZ,
+  facadeB: XZ,
+): RoofEnvelope | null {
+  const inward = { x: -edgeOutwardXZ(facadeA, facadeB).x, z: -edgeOutwardXZ(facadeA, facadeB).z }
+  const ridgeDeg = yawFromDirXZ(inward)
+  const roof = {
+    pitch: pitchDeg,
+    ridgeDeg,
+    halfHipHeight: 0,
+  } as RoofConfig
+  return buildRoofEnvelope({
+    kind: 'gable',
+    outer: footprint,
+    eave: footprint,
+    eaveY,
+    flush: footprint.map(() => false),
+    roof,
+  })
 }
 
 function pointOnSegment(p: XZ, a: XZ, b: XZ, tol: number): boolean {
@@ -581,18 +660,44 @@ function toGeometry(sink: Sink): THREE.BufferGeometry | null {
 
 /**
  * Glatte Dachplatte (Ober-/Unterseite + Stirn an der Traufe) und Füllwände
- * (Giebel / Traufschluss) über der Wandlinie.
+ * (Giebel / Traufschluss) über der Wandlinie. Optional Zwerchgiebel: Loch in der
+ * Hauptdachhaut + eigenes Satteldach auf dem Fußabdruck.
  */
-export function buildRoofEnvelopeGeometry(env: RoofEnvelope): RoofEnvelopeGeometry {
+export function buildRoofEnvelopeGeometry(
+  env: RoofEnvelope,
+  crossGables: RoofCrossGable[] = [],
+  pitchDeg = 45,
+): RoofEnvelopeGeometry {
   const roofSink: Sink = { positions: [], normals: [], uvs: [], indices: [] }
   const gableSink: Sink = { positions: [], normals: [], uvs: [], indices: [] }
   const tv = env.tv
 
+  const footprints: Array<{ foot: XZ[]; edgeIdx: number; a: XZ; b: XZ }> = []
+  for (const cg of crossGables) {
+    const edgeIdx = env.outer.findIndex((oa, i) => {
+      const ob = env.outer[(i + 1) % env.outer.length]
+      return roofEdgeKey(oa, ob) === cg.edgeKey
+    })
+    if (edgeIdx < 0) continue
+    const a = env.eave[edgeIdx]
+    const b = env.eave[(edgeIdx + 1) % env.eave.length]
+    // Bei gleicher Neigung schneidet der Quergiebel die Haupthaut bei Tiefe ≈ Breite/2.
+    // Tiefer → Quergiebel unter der Haupthaut und sichtbares Loch (v2.0.473).
+    const depth = Math.min(cg.depthCm, cg.widthCm * 0.5)
+    const foot = crossGableFootprint(a, b, cg.widthCm, depth)
+    if (foot.length >= 4) footprints.push({ foot, edgeIdx, a, b })
+  }
+
   for (const face of env.faces) {
     const top = (p: XZ) => planeY(face.plane, p)
     const bottom = (p: XZ) => planeY(face.plane, p) - tv
-    pushLiftedPolygon(roofSink, face.poly, top, true)
-    pushLiftedPolygon(roofSink, face.poly, bottom, false)
+    const holes: XZ[][] = []
+    for (const { foot } of footprints) {
+      const hit = intersectConvexPolygons(face.poly, foot)
+      if (hit.length >= 3 && Math.abs(polygonArea(hit)) > AREA_MIN) holes.push(hit)
+    }
+    pushLiftedPolygon(roofSink, face.poly, top, true, holes)
+    pushLiftedPolygon(roofSink, face.poly, bottom, false, holes)
 
     // Stirnflächen nur an Traufkanten (innere Grate/Kehlen teilen sich Nachbarflächen).
     const m = face.poly.length
@@ -601,13 +706,14 @@ export function buildRoofEnvelopeGeometry(env: RoofEnvelope): RoofEnvelopeGeomet
       const v = face.poly[(i + 1) % m]
       const edgeIdx = eaveEdgeOf(env, u, v)
       if (edgeIdx < 0) continue
+      // Stirn vor dem Zwerchgiebel weglassen (dort sitzt die Giebelwand).
+      if (footprints.some((f) => f.edgeIdx === edgeIdx)) continue
       const flush = env.flush[edgeIdx]
       let yuTop = top(u)
       let yvTop = top(v)
       let yuBot = bottom(u)
       let yvBot = bottom(v)
       if (flush) {
-        // Unter der Traufhöhe liegt die Platte im Wandkörper → nicht doppelt zeichnen.
         yuBot = Math.max(yuBot, env.eaveY)
         yvBot = Math.max(yvBot, env.eaveY)
         yuTop = Math.max(yuTop, env.eaveY)
@@ -619,11 +725,43 @@ export function buildRoofEnvelopeGeometry(env: RoofEnvelope): RoofEnvelopeGeomet
       const B = new THREE.Vector3(v.x, yvTop, v.z)
       const C = new THREE.Vector3(v.x, yvBot, v.z)
       const D = new THREE.Vector3(u.x, yuBot, u.z)
-      // Winding so, dass die Normale nach außen zeigt.
       const nrm = new THREE.Vector3()
         .crossVectors(new THREE.Vector3().subVectors(B, A), new THREE.Vector3().subVectors(C, A))
       if (nrm.x * out.x + nrm.z * out.z >= 0) pushQuad(roofSink, A, B, C, D)
       else pushQuad(roofSink, A, D, C, B)
+    }
+  }
+
+  // Zwerchgiebel: eigenes Satteldach + Frontgiebelwand.
+  for (const { foot, a, b } of footprints) {
+    const cross = buildCrossGableEnvelope(foot, env.eaveY, pitchDeg, a, b)
+    if (!cross) continue
+    for (const face of cross.faces) {
+      const top = (p: XZ) => planeY(face.plane, p)
+      const bottom = (p: XZ) => planeY(face.plane, p) - tv
+      pushLiftedPolygon(roofSink, face.poly, top, true)
+      pushLiftedPolygon(roofSink, face.poly, bottom, false)
+    }
+    // Frontgiebel auf der Traufkante: von eaveY bis Dachhaut.
+    const front = [foot[0], foot[1]]
+    const samples = envelopeAlongSegment(cross.planes, front[0], front[1])
+    const out = edgeOutwardXZ(a, b)
+    for (let s = 0; s + 1 < samples.length; s += 1) {
+      const s0 = samples[s]
+      const s1 = samples[s + 1]
+      const y0 = Math.max(env.eaveY, s0.y - tv)
+      const y1 = Math.max(env.eaveY, s1.y - tv)
+      if (y0 - env.eaveY < 0.05 && y1 - env.eaveY < 0.05) continue
+      const p0 = { x: front[0].x + (front[1].x - front[0].x) * s0.t, z: front[0].z + (front[1].z - front[0].z) * s0.t }
+      const p1 = { x: front[0].x + (front[1].x - front[0].x) * s1.t, z: front[0].z + (front[1].z - front[0].z) * s1.t }
+      const A = new THREE.Vector3(p0.x, env.eaveY, p0.z)
+      const B = new THREE.Vector3(p1.x, env.eaveY, p1.z)
+      const C = new THREE.Vector3(p1.x, y1, p1.z)
+      const D = new THREE.Vector3(p0.x, y0, p0.z)
+      const nrm = new THREE.Vector3()
+        .crossVectors(new THREE.Vector3().subVectors(B, A), new THREE.Vector3().subVectors(C, A))
+      if (nrm.x * out.x + nrm.z * out.z >= 0) pushQuad(gableSink, A, B, C, D)
+      else pushQuad(gableSink, A, D, C, B)
     }
   }
 
@@ -654,12 +792,15 @@ export function buildRoofEnvelopeGeometry(env: RoofEnvelope): RoofEnvelopeGeomet
     }
   }
 
-  const gutterEdgeActive = env.isEave.map((eave, i) => eave && !env.flush[i])
+  const gutterEdgeActive = env.isEave.map((eave, i) => {
+    if (!eave || env.flush[i]) return false
+    // Keine Rinne vor dem Zwerchgiebel.
+    return !footprints.some((f) => f.edgeIdx === i)
+  })
   return {
     roof: toGeometry(roofSink) ?? new THREE.BufferGeometry(),
     gable: toGeometry(gableSink),
     gutterEdgeActive,
-    // buildGutterGeometry: yTop = eaveY − 4 → Rinne direkt unter der Plattenkante.
     gutterEaveY: env.eaveY - tv + 4,
   }
 }
