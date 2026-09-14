@@ -8,7 +8,7 @@ Physikalischer Himmel in **3D** und **Oben** (Bruneton Precomputed Atmospheric S
 - **Tageszeit** (`#sun-time`): fest **0:00–24:00** — goldene Stunde, blaue Stunde, Nacht.
 - **Sonnenwinkel (Himmelsrichtung)** (`#sun-azimuth`): horizontal am Himmelskreis (0°=N, 90°=O). **Sonnenwinkel (Höhe)** (`#sun-elevation`): vertikal über dem Horizont (−12°…70°). Beide manuell; **Datum/Tageszeit** setzt Azimut, Elevation, Intensität, Weichheit und Farbtemperatur aus Berlin wieder. **v2.0.358:** Höhen-Slider zieht Intensität/Weichheit/Farbtemperatur wie Tageszeit mit — sonst nach Abend/Tageszyklus hohe Höhe bei Sonnenlicht ≈ 0. Manuell schaltet den Tageszyklus aus.
 - **Dämmerung:** weicher Übergang Tag↔Nacht durch Streuungsmodell (kein harter Sonne/Mond-Pop).
-- Bei Nacht: Sterne (Yale BSC5), Mond mit Phase aus Datum.
+- Bei Nacht: Sterne (Yale BSC5), Mond mit Phase aus Datum. **v2.0.468:** Sterne nur wenn `activeLight !== 'sun'` — tagsüber keine schwarzen Punkte mehr.
 - **Szenenfarben**
   - **Bodenfarbe** (`#scene-ground-color`) färbt die Bodenplatte (Albedo). Licht folgt der Sonne wie beim Mauerwerk.
   - **Himmel/Hintergrund** steuern Glas-Reflexion bzw. `scene.background` (Fallback).
@@ -45,6 +45,7 @@ Schatten: weiter ortho Shadow-Map auf `dirLight`; Nacht/Mond über `resolveCeles
 ### Himmel
 
 - Screen-Quad mit `SkyMaterial` (Clip-Space, folgt nicht der Kamera), Sterne als `Points`. **v2.0.172:** `depthTest` aus, `depthWrite` aus, `renderOrder` −1000 (Himmel) / −999 (Sterne) — vor der Geometrie. Früher: `depthTest` an + `renderOrder` 1000; im Bloom-Composer (HalfFloat-Depth) fiel der Far-Plane-Test aus → `scene.background` (#616161) als flächiger „grauer Kasten“ statt Himmel.
+- **Sterne BACKGROUND (v2.0.468):** Takram zeichnet pro Stern erneut `GetSkyRadiance` + Sternfarbe. Ohne dieselbe `uSkyDisplayExposure`/HDR-Kappe wie `SkyMaterial` wirken die Punkte tagsüber schwarz. Fix: `patchStarsFragmentShader` + Sterne nur nachts (`starsWantedForCelestial`).
 - **Sonnenlicht liegt nicht im Himmels-Root** — sonst wandert der Schatten mit der Orbit-Kamera.
 - Welt→ECEF: Szene-Ursprung = Berlin; Basis **+X Ost, +Y oben, −Z Nord** (wie `directionFromSolar`).
 - Sonnenrichtung aus UI-Azimut/Elevation (Welt), dann in ECEF.

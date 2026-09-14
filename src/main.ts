@@ -567,6 +567,7 @@ import {
   SCENE_LIBRARY_TILES,
   shouldForcePresentView,
   snapLibraryEditSheetHeight,
+  shouldTouchChromeBeginOrbit3d,
   touchFacingFromYaw,
   TOUCH_SCENE_HIDDEN_SECTIONS,
   TOUCH_SCENE_ONLY_SECTIONS,
@@ -5863,6 +5864,8 @@ function syncTouchChromeLayout() {
   document.documentElement.classList.toggle('ui-touch-chrome', touch)
   const viewSection = document.querySelector<HTMLElement>('#scene-view-section')
   if (viewSection) viewSection.hidden = !touch
+  const fileSection = document.querySelector<HTMLElement>('#scene-file-section')
+  if (fileSection) fileSection.hidden = !touch
 
   if (touch) {
     const pref = loadTouchViewPreference()
@@ -7503,6 +7506,10 @@ const copyLinkButton = document.querySelector<HTMLButtonElement>('#copy-link')!
 const copyShowcaseLinkButton = document.querySelector<HTMLButtonElement>('#copy-showcase-link')!
 const loadJsonInput = document.querySelector<HTMLInputElement>('#load-json-input')!
 const shareStatus = document.querySelector<HTMLParagraphElement>('#share-status')!
+const sceneCopyLinkButton = document.querySelector<HTMLButtonElement>('#scene-copy-link')
+const sceneSaveJsonButton = document.querySelector<HTMLButtonElement>('#scene-save-json')
+const sceneLoadJsonButton = document.querySelector<HTMLButtonElement>('#scene-load-json')
+const sceneShareStatus = document.querySelector<HTMLParagraphElement>('#scene-share-status')
 const wallColorSwatches = document.querySelector<HTMLDivElement>('#wall-color-swatches')!
 const profileColorSwatches = document.querySelector<HTMLDivElement>('#profile-color-swatches')!
 const frameColorSwatches = document.querySelector<HTMLDivElement>('#frame-color-swatches')!
@@ -14438,7 +14445,7 @@ function renderUi(opts?: { skipLayerList?: boolean }) {
   // Auswahl-Optionen liegen unten; rechte Toolbar nur als DOM-Host (CSS blendet aus).
   selectionToolbar.hidden = !showSelectionUi
   appRoot.classList.toggle('has-selection', showSelectionUi)
-    toolbarWall.hidden =
+  toolbarWall.hidden =
     !hasWall || hasOpening || studioWall || hasRoof || hasCeiling || hasSceneLight || hasDownpipe
   toolbarStudio.hidden =
     !hasWall || hasOpening || !studioWall || hasRoof || hasCeiling || hasSceneLight || hasDownpipe
@@ -18877,11 +18884,34 @@ function syncColorSwatches(_wall: Wall) {
 }
 
 function showShareStatus(message: string) {
-  shareStatus.hidden = false
-  shareStatus.textContent = message
+  for (const el of [shareStatus, sceneShareStatus]) {
+    if (!el) continue
+    el.hidden = false
+    el.textContent = message
+  }
   window.setTimeout(() => {
-    shareStatus.hidden = true
+    for (const el of [shareStatus, sceneShareStatus]) {
+      if (el) el.hidden = true
+    }
   }, 3000)
+}
+
+async function exportFacadeJsonFile() {
+  downloadFacadeJson(state)
+  showShareStatus('JSON-Datei wurde heruntergeladen.')
+}
+
+function pickFacadeJsonFile() {
+  loadJsonInput.click()
+}
+
+async function copyFacadeShareLink() {
+  try {
+    await copyFacadeLink(sharePayloadFromApp())
+    showShareStatus('Link in Zwischenablage kopiert.')
+  } catch {
+    showShareStatus('Link konnte nicht kopiert werden.')
+  }
 }
 
 function fillCladdingSelect(wall: Wall) {
@@ -28626,12 +28656,11 @@ bindSceneDualControl(
 )
 
 saveJsonButton.addEventListener('click', () => {
-  downloadFacadeJson(state)
-  showShareStatus('JSON-Datei wurde heruntergeladen.')
+  void exportFacadeJsonFile()
 })
 
 loadJsonButton.addEventListener('click', () => {
-  loadJsonInput.click()
+  pickFacadeJsonFile()
 })
 
 loadJsonInput.addEventListener('change', async () => {
@@ -28648,25 +28677,26 @@ loadJsonInput.addEventListener('change', async () => {
   }
 })
 
-copyLinkButton.addEventListener('click', async () => {
-  try {
-    const link = await copyFacadeLink(sharePayloadFromApp())
-    showShareStatus(navigator.clipboard ? 'Link in Zwischenablage kopiert.' : `Link: ${link}`)
-  } catch {
-    showShareStatus('Link konnte nicht erstellt werden.')
-  }
+copyLinkButton.addEventListener('click', () => {
+  void copyFacadeShareLink()
+})
+
+sceneSaveJsonButton?.addEventListener('click', () => {
+  void exportFacadeJsonFile()
+})
+sceneLoadJsonButton?.addEventListener('click', () => {
+  pickFacadeJsonFile()
+})
+sceneCopyLinkButton?.addEventListener('click', () => {
+  void copyFacadeShareLink()
 })
 
 copyShowcaseLinkButton.addEventListener('click', async () => {
   try {
-    const link = await copyShowcaseLink(sharePayloadFromApp())
-    showShareStatus(
-      navigator.clipboard
-        ? 'Showcase-Link in Zwischenablage kopiert.'
-        : `Showcase-Link: ${link}`,
-    )
+    await copyShowcaseLink(sharePayloadFromApp())
+    showShareStatus('Showcase-Link in Zwischenablage kopiert.')
   } catch {
-    showShareStatus('Showcase-Link konnte nicht erstellt werden.')
+    showShareStatus('Showcase-Link konnte nicht kopiert werden.')
   }
 })
 
@@ -28918,7 +28948,15 @@ canvas.addEventListener(
   'pointerdown',
   (event) => {
     if (currentView !== '3d' && currentView !== 'top') return
-    if (event.button === 0 && (event.metaKey || event.ctrlKey || modKeyHeld)) {
+    const hasMod = event.metaKey || event.ctrlKey || modKeyHeld
+    const touchOrbit = shouldTouchChromeBeginOrbit3d({
+      view: currentView,
+      touchChrome: isTouchChromeLayout(currentView),
+      button: event.button,
+      hasMod,
+      hit: currentView === '3d' ? pickFromEvent(event) : null,
+    })
+    if (event.button === 0 && (hasMod || touchOrbit)) {
       event.preventDefault()
       event.stopImmediatePropagation()
       beginNav3d(event)

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
-import { applyDisplaySunColor, berlinWorldToECEFMatrix, patchSkyFragmentShader, sunSettingsToDate } from './atmosphereSky'
+import { applyDisplaySunColor, berlinWorldToECEFMatrix, patchSkyFragmentShader, patchStarsFragmentShader, starsWantedForCelestial, sunSettingsToDate } from './atmosphereSky'
 import { resolveCelestialState } from '../utils/celestialSky'
 import { DEFAULT_SUN_SETTINGS } from '../utils/sunLighting'
 import { SOLAR_REF_YEAR } from '../utils/solar'
@@ -70,5 +70,37 @@ outputColor.a = 1.0;`
     expect(next).toContain('float fragmentAngle = 0.0030;')
     expect(next).toContain('SKY_HDR_CLAMP')
     expect(next).not.toContain('length(dRDdx + dRDdy)')
+  })
+
+  it('patchStarsFragmentShader wendet dieselbe Display-Exposure an', () => {
+    const src = `layout(location = 0) out vec4 outputColor;
+outputColor = vec4(radiance, 1.0);
+#include <mrt_output>`
+    const next = patchStarsFragmentShader(src)
+    expect(next).toContain('uniform float uSkyDisplayExposure')
+    expect(next).toContain('SKY_HDR_CLAMP')
+    expect(next).toContain('#include <mrt_output>')
+  })
+
+  it('starsWantedForCelestial nur ohne aktive Sonne', () => {
+    const day = resolveCelestialState({
+      ...DEFAULT_SUN_SETTINGS,
+      month: 6,
+      day: 21,
+      timeOfDay: 12,
+      elevationRad: 1,
+    })
+    expect(day.activeLight).toBe('sun')
+    expect(starsWantedForCelestial(day)).toBe(false)
+
+    const night = resolveCelestialState({
+      ...DEFAULT_SUN_SETTINGS,
+      month: 12,
+      day: 21,
+      timeOfDay: 0,
+      elevationRad: -0.8,
+    })
+    expect(night.activeLight).not.toBe('sun')
+    expect(starsWantedForCelestial(night)).toBe(true)
   })
 })

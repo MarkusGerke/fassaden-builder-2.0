@@ -145,6 +145,49 @@ function patchSkyDisplayToneMap(material: SkyMaterial): void {
   }
 }
 
+/**
+ * Sterne mit BACKGROUND schreiben GetSkyRadiance erneut — ohne dieselbe Display-Exposure
+ * wie SkyMaterial erscheinen sie tagsüber als schwarze Punkte.
+ */
+export function patchStarsFragmentShader(fragmentShader: string): string {
+  let src = fragmentShader
+  if (!src.includes('uniform float uSkyDisplayExposure')) {
+    src = src.replace(
+      'layout(location = 0) out vec4 outputColor;',
+      `uniform float uSkyDisplayExposure;
+layout(location = 0) out vec4 outputColor;`,
+    )
+  }
+  if (!src.includes('SKY_HDR_CLAMP')) {
+    src = src.replace(
+      '#include <mrt_output>',
+      `outputColor.rgb *= uSkyDisplayExposure;
+  float skyPeak = max(max(outputColor.r, outputColor.g), outputColor.b);
+  float skyCapped = skyPeak / (1.0 + skyPeak * ${SKY_BLOOM_PEAK_COMPRESS.toFixed(2)});
+  outputColor.rgb *= skyCapped / max(skyPeak, 1e-4);
+  outputColor.rgb = min(outputColor.rgb, vec3(${SKY_BLOOM_PEAK_MAX.toFixed(1)}));
+  // SKY_HDR_CLAMP
+  #include <mrt_output>`,
+    )
+  }
+  return src
+}
+
+function patchStarsDisplayToneMap(material: StarsMaterial): void {
+  material.uniforms.uSkyDisplayExposure = skyExposureUniform
+  const prev = material.onBeforeCompile.bind(material)
+  material.onBeforeCompile = (parameters, renderer) => {
+    prev(parameters, renderer)
+    parameters.uniforms.uSkyDisplayExposure = skyExposureUniform
+    parameters.fragmentShader = patchStarsFragmentShader(parameters.fragmentShader)
+  }
+}
+
+/** Sterne nur nachts / bei Mond — tagsüber nur schwarze Exposure-Löcher. */
+export function starsWantedForCelestial(celestial: CelestialState): boolean {
+  return celestial.activeLight !== 'sun'
+}
+
 /** Anzeige-Sonne: Kelvin aus celestial; Intensität = celestial (Slider dort) × optional Studio-Skala. */
 export function applyDisplaySunColor(
   light: THREE.DirectionalLight,
@@ -229,9 +272,11 @@ export class AtmosphereSky {
     })
     this.starsMaterial.depthWrite = false
     this.starsMaterial.depthTest = false
+    patchStarsDisplayToneMap(this.starsMaterial)
     this.stars = new THREE.Points(new THREE.BufferGeometry(), this.starsMaterial)
     this.stars.frustumCulled = false
     this.stars.renderOrder = -999
+    this.stars.visible = false
     this.root.add(this.stars)
     this.root.visible = false
   }
@@ -337,6 +382,7 @@ export class AtmosphereSky {
     this.starsMaterial.sunDirection.copy(this.sunDirection)
     this.starsMaterial.worldToECEFMatrix.copy(this.worldToECEFMatrix)
     this.stars.setRotationFromMatrix(this.inertialToECEFMatrix)
+    this.stars.visible = starsWantedForCelestial(celestial)
 
     // Key + SkyLightProbe: dieselbe Richtung wie resolveCelestialState (nicht physische Sonne unter 0°).
     if (celestial.activeLight === 'night' && celestial.lightIntensity <= 1e-4) {

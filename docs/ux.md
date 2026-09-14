@@ -263,22 +263,26 @@ Persistiert als `editScope` / `editFacadeYawFilter` in localStorage (`PersistedA
 
 ---
 
-## Touch-Chrome (v2.0.451 / v2.0.456 / v2.0.457 / v2.0.458 / v2.0.459)
+## Touch-Chrome (v2.0.451 / v2.0.456 / v2.0.457 / v2.0.458 / v2.0.459 / v2.0.469 / v2.0.470 / v2.0.471)
 
 Layout-Schalter: `html.ui-touch-chrome`, **nur** wenn **`(pointer: coarse)` ODER Viewport ≤ 900 px**. **Nicht** allein wegen Ansicht Fassade (`present`) auf großem Desktop — dort bleibt das klassische Layout (2D/3D/Fassade/Export, Himmel/Neutral, Licht, Ebenen, Kompass, Nav-Hilfe, Gültig für, rechte Inspector-Leiste).
 
 | Verhalten | Details |
 |---|---|
-| Ohne Auswahl | **Keine** sichtbare Bibliothek-Register (Höhe 0). Vier **Kacheln**: Ansicht · Licht & Schatten · Bloom · Lampen & Leuchten (Thumb = Titel, unten **Bearbeiten**) → Bottom-Sheet. **Keine** Farb-Filter-Chips. Fenster/Farben/… erst bei Objektauswahl |
-| Leistenwechsel | Dock `min-height` hält Viewport stabil trotz eingeklappter Tab-Zeile (v2.0.462). Farb-Filter überlagert die Kartenzeile |
-| Ansicht | Sheet: **Darstellung** Fassade\|3D oben, darunter Himmelsrichtung **links \| frontal \| rechts** (nur bei Fassade; immer Hausfront). Frontseite = Fassade mit den meisten Fenstern (`facadeYawWithMostWindows`). Preference: `localStorage` `fassaden-builder-touch-view` |
+| Ohne Auswahl | **Keine** sichtbare Bibliothek-Register (Höhe 0). Fünf **Kacheln**: Ansicht · Licht & Schatten · Bloom · Lampen & Leuchten · **Datei** (Thumb = Titel, unten **Bearbeiten**) → Bottom-Sheet. **Keine** Farb-Filter-Chips. Fenster/Farben/… erst bei Objektauswahl |
+| Leistenwechsel | Dock `min-height` = Tabs + **Filter-Band 2,75 rem** + Karten (v2.0.471). Filter absolut im Band; **kein** `padding-top` auf `#opening-library-items` (quetscht sonst die festen 6,5 rem-Karten). `display:none` wenn Filter hidden |
+| Swipe-Leisten | Register, Filter-Chips und Kacheln **randlos** (kein seitliches Padding); Scrollbars ausgeblendet |
+| Ansicht | Sheet: **Darstellung** Fassade\|3D oben, darunter Himmelsrichtung **links \| frontal \| rechts** (nur bei Fassade). **links/rechts = ±45°** zur Front (`TOUCH_FACING_YAW_OFFSET_DEG`), nicht 90°. Frontseite = Fassade mit den meisten Fenstern. Preference: `localStorage` `fassaden-builder-touch-view` |
+| Datei | Sheet (25 %): **Link kopieren** (nur Zwischenablage, URL nicht anzeigen), **Datei herunterladen** / **hochladen** (JSON). Desktop weiter über linkes Menü **Datei** |
 | Bottom-Sheet | Titel nur im Header — **keine** grauen sticky Sektions-Register. Scrollen nur im Sheet-Body (auch bei 25 %); innere Panels ohne eigenen Overflow |
-| Öffnungs-Höhe | **Standard max. 50 %**. Wenig Inhalt (**Ansicht, Bloom, Lampen & Leuchten**, …) → **25 %** (`defaultLibraryEditSheetHeight`). **75 / 100 %** nur per Drag-Rasten; Unter ~18 % → schließen. Session speichert letzte Drag-Höhe, Öffnen setzt wieder den Inhalts-Default |
+| Öffnungs-Höhe | **Standard max. 50 %**. Wenig Inhalt (**Ansicht, Bloom, Lampen & Leuchten, Datei**, …) → **25 %** (`defaultLibraryEditSheetHeight`). **75 / 100 %** nur per Drag-Rasten; Unter ~18 % → schließen. Session speichert letzte Drag-Höhe, Öffnen setzt wieder den Inhalts-Default |
 | HUD aus | gesamte Ansichts-Leiste (inkl. Fassade), Farbe/Zeichnung, Vorschau/Render, Himmel/Neutral, Licht, linke Ebenen (`#ui`), Kompass, Nav-Hilfe, **Gültig für** (`#edit-scope-bar`) — nur im Touch-Chrome |
+| Layout | `#app` eine Spalte; **`#viewport { grid-column: 1 }`** (v2.0.466) — sonst bleibt Spalte 2 und links eine leere graue Fläche |
 | Toast | `#scope-propagate-offer` bleibt (über dem Sheet, 7 s) |
 | Bibliothek-Tabs | bei Auswahl horizontal swipebar; ohne Auswahl eingeklappt (nicht `display:none`) |
 | Farben-Filter | Kategorie als horizontale **Filter-Chips** nur im Tab Farben — Idle ausgeblendet |
 | Wand-Geometrie | kein Place/DnD/Resize/Move/Innenwand/Erker-Platzieren (`wallGeomLockedByTouchChrome`); Styling (Farben, Paneele, Gesims, Öffnungen) bleibt |
+| 3D-Orbit (v2.0.469) | Ein-Finger-Ziehen orbitiert ohne Cmd/Ctrl (`shouldTouchChromeBeginOrbit3d` → `beginNav3d`). Tippen wählt weiter; Öffnung/Licht/Fallrohr bleiben ziehbar |
 | Bearbeiten | Nur Touch-Chrome: aktive Karte → **Bearbeiten**; Bottom-Sheet am `document.body` mit **Ziehgriff** und Rasten **100 / 75 / 50 / 25 %**. Öffnen: Inhalts-Default 25 oder 50 (nicht zuletzt 75) |
 | Bibliothek-Cursor | Touch-Chrome: **kein** grab/grabbing, kein DnD (`draggable=false`); Tippen wendet an / Bearbeiten öffnet Sheet. Desktop: klassisches Ziehen bleibt |
 | Verdachung | Summary-Kacheln Form/Profil/Konsole → Galerie → Profil-Maße eine Ebene tiefer (im Sheet) |
@@ -657,7 +661,7 @@ Profil-, Verbands-, Font-, Form- und Bogenform-Karten in der **rechten Seitenlei
 
 **Aktive Kachel (v0.7.167–v0.7.175):** Die Karte, die bereits zur Auswahl gehört, hat einen **1 px schwarzen** Rahmen (`.library-card-applied`). Ohne Auswahl ist **Keines** so umrandet. Bei Wandauswahl erscheinen +/− an der Wand (folgen der Wand auch beim Orbit); + links/rechts/oben fügt aus der Zwischenablage ein oder dupliziert die Auswahl. Drag auf die Bühne bleibt.
 
-Unter **Datei**: „Exportieren als .json“, „Importieren einer .json“, „Link kopieren“, **„Showcase-Link kopieren“** (v2.0.313).
+Unter **Datei** (Desktop links; Touch: Bibliothek-Kachel **Datei**): „Exportieren als .json“ / „Datei herunterladen“, „Importieren einer .json“ / „Datei hochladen“, „Link kopieren“ (nur Zwischenablage, ohne URL-Anzeige), **„Showcase-Link kopieren“** (v2.0.313, Desktop-Menü).
 
 Bloom und Gobo-Schatten sind entfernt; `render3dFrame()` nutzt direkt `renderer.render`.
 

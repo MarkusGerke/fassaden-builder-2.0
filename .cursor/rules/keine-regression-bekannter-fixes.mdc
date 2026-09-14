@@ -1,0 +1,30 @@
+---
+description: Behobene wiederkehrende Fehler dürfen in Korrekturschleifen nicht stillschweigend rückgängig gemacht werden
+alwaysApply: true
+---
+
+# Keine Regression bekannter Fixes
+
+## Prozess (bei jeder Änderung)
+
+1. **Vor dem Edit:** Passt die Änderung an CSS/Layout/Himmel/Orbit/Schatten/Bloom? → kurz gegen diese Liste und die verlinkten Rules prüfen.
+2. **Kein „temporäres“ Zurückdrehen** eines dokumentierten Fixes, nur weil ein anderes Symptom auftaucht — erst Lösung finden, die **beide** Ziele hält.
+3. **Nach dem Fix eines Regressionsbugs:** Rule + `docs/changelog.md` (Symptom / Ursache / was nicht rückgängig) + Version — wie `fehler-versuche-dokumentieren.mdc`.
+
+## Bekannte Fallen (nicht wieder einführen)
+
+| Symptom | Verbotene „Lösung“ | Erlaubte Richtung | Rule / Doc |
+|---|---|---|---|
+| Bühne blitzt/springt bei Auswahl | Farb-Filter wieder in den **Flex-Flow** (Dock wächst) | Filter **absolut** im **dauerhaft reservierten** Band; Dock-`min-height` inkl. Band | v2.0.461 / v2.0.470 / v2.0.471, `docs/ux.md` |
+| Farb-Kacheln abgeschnitten | Filter absolut **ohne** reserviertes Band | Band in Dock-Höhe + Filter absolute `top:0` im Band | |
+| Farb-Kacheln zerquetscht | `padding-top` auf `#opening-library-items` (frisst die festen 6,5 rem) | Nie Items-Padding; Band außerhalb der Kartenzeile | v2.0.471 |
+| Orbit-Schatten hart / Wandfarbe springt | PCSS-Lite, DPR 1 im Render-Orbit | siehe `orbit-visual-stability.mdc` | |
+| Grauer/schwarzer Kasten mit Bloom | Composer auf Default-FB; Bloom bei Orbit aus | `bloom-canvas-kasten.mdc` | |
+| Schwarze Punkte im Himmel | Sterne tagsüber mit BACKGROUND ohne Exposure | Sterne nur nachts + gleiche Display-Exposure | v2.0.468, `celestial-sky.md` |
+| Touch 3D kein Orbit | Nur Cmd/Ctrl-`beginNav3d` | `shouldTouchChromeBeginOrbit3d` | v2.0.469 |
+| Erker/Außenwand zu breit | `panelFlip: false` / Depth-Tweaks | `erker-aussenkante.mdc` | |
+| Schatten-Look „verbessern“ | Penumbra/Density ohne Auftrag | `schatten-qualitaet-soll.mdc` | |
+
+## Konflikt zweier Nutzerwünsche
+
+Wenn Fix A Symptom B erzeugt: **nicht** Fix A löschen. Kombinierte Lösung (wie Filter absolut + Kachel-Padding). Unklarheit → Nutzer fragen, nicht raten und einen alten Fix opfern.
