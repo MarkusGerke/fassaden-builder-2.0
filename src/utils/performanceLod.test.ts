@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { FacadeState, Wall } from '../types/facade'
 import { emptyNeighbors } from '../types/facade'
 import { WALL_DEPTH } from '../constants/presets'
-import { buildingIdsNeedingRebuild } from './performanceLod'
+import { buildingIdsNeedingRebuild, buildingIdsNeedingRoofOnlyRebuild } from './performanceLod'
 
 function wall(id: string, buildingId: string, x = 0): Wall {
   return {
@@ -63,5 +63,38 @@ describe('buildingIdsNeedingRebuild', () => {
     const yawed = structuredClone(prev)
     yawed.siteYawDeg = 90
     expect(buildingIdsNeedingRebuild(prev, yawed)).toBeNull()
+  })
+})
+
+describe('buildingIdsNeedingRoofOnlyRebuild', () => {
+  it('erkennt reines Dach-Ausblenden', () => {
+    const prev = stateWithBuildings('b1')
+    prev.buildings[0]!.roof = { enabled: true, hidden: false } as never
+    const next = structuredClone(prev)
+    next.buildings[0]!.roof = { ...next.buildings[0]!.roof!, hidden: true }
+    expect(buildingIdsNeedingRoofOnlyRebuild(prev, next)).toEqual(['b1'])
+  })
+
+  it('ignoriert Floor-Plan-Sync-Rauschen neben Dach-Änderung', () => {
+    const prev = stateWithBuildings('b1')
+    prev.buildings[0]!.roof = { enabled: true, hidden: false } as never
+    const next = structuredClone(prev)
+    next.buildings[0]!.roof = { ...next.buildings[0]!.roof!, hidden: true }
+    next.buildings[0]!.floors = [
+      {
+        nodes: [{ id: 'n1', gx: 0, gz: 0 }],
+        edges: [],
+      },
+    ]
+    expect(buildingIdsNeedingRoofOnlyRebuild(prev, next)).toEqual(['b1'])
+  })
+
+  it('liefert null wenn auch eine Wand geändert wurde', () => {
+    const prev = stateWithBuildings('b1')
+    prev.buildings[0]!.roof = { enabled: true, hidden: false } as never
+    const next = structuredClone(prev)
+    next.buildings[0]!.roof = { ...next.buildings[0]!.roof!, hidden: true }
+    next.buildings[0]!.walls[0]!.x = 48
+    expect(buildingIdsNeedingRoofOnlyRebuild(prev, next)).toBeNull()
   })
 })

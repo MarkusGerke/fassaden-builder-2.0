@@ -2,6 +2,42 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Lichtpfad wie 473, Dach-only Toggle (2026-09-14) — v2.0.476
+
+**A/B (Nutzer):** Dieselbe JSON aus 475 in **v2.0.473** importiert → dort flüssig. Die Szene ist also nicht das Problem.
+
+**Verworfen (nach 473):** EnvMap nach UI-Edits nicht binden / nicht backen; Punktlicht-Cubes nie mitsynchronisieren; Force-Bake während Orbit komplett unterdrücken. Folge: Himmel/Glas anders, Orbit und UI nicht wie 473.
+
+**Behalten (Logs + A/B):**
+- Wind nicht in `liveMotion` (v2.0.474); Default-Wind 0 (v2.0.475).
+- Dach-Toggle: nur `rebuildRoof` + Fallrohre, kein `rebuildBuilding` (~25 ms statt ~300 ms). `forceRoofOnlyIds`, weil `syncFloorPlansFromWalls` sonst `walls` mitändert.
+
+Normale UI-Edits wieder `applySunLighting({ live: true, forceShadowBake: true })` wie 473.
+
+Dateien: `src/main.ts`, `src/utils/performanceLod.ts`, `src/lighting/sceneLightRuntime.ts`. Docs: [performance.md](performance.md), [wind.md](wind.md).
+
+### Wind-Default 0 (2026-09-14) — v2.0.475
+
+**Änderung:** `DEFAULT_SUN_WIND_INTENSITY` von 0,15 → **0**. Markisen-Wind war kaum sichtbar und hatte zuvor Idle-Rendering ausgeschaltet (v2.0.474). Slider bleibt; gespeicherte Settings behalten ihren Wert.
+
+Docs: [wind.md](wind.md).
+
+### Idle: Wind darf Dirty-Skip nicht aushebeln (2026-09-14) — v2.0.474
+
+**Symptom:** 3D blieb extrem langsam (~10 fps), auch mit glatter Dachhaut und wenigen Faces. Nach dem Loslassen der Maus kein Ruhezustand.
+
+**Runtime (Logs):** Dach-Build 1–2 ms, ~180 Vertices, Ziegel-Pfad aus. `tickWindFabrics` CPU ~0 ms. Render CPU 7–11 ms, Bloom aus, DPR 2 / Orbit 1,5, Shadow-Map 8192, ~775 Caster. `rAF`-Abstand ≥100 ms (GPU). `liveMotion: true` **nur** weil `windMoved: true` (2 Markisen, Wind **0,58**).
+
+**Verworfen:** Dach-Tiles als Ursache (Flag aus, glatte Haut). Envelope/Zwerchgiebel als CPU-Last (0–2 ms). Wind-CPU als Bottleneck (`windMs: 0`). PCSS-Lite / DPR 1 im Render-Orbit (verboten, Look-Änderung).
+
+**Ursache:** `tickWindFabrics` vor dem Idle-Skip setzte `liveMotion` jedes Frame, solange Stoffe + Intensität > 0. Dirty-Rendering (nur bei Kamera/State) griff nie; jedes rAF ein volles PCSS-Frame.
+
+**Fix:** Wind nicht in `liveMotion` / `viewportDirty`. `tickWindFabrics` erst **nach** der Entscheidung, dass dieser Frame gerendert wird. Idle: Skip trotz Markisen; Stoffe stehen. Orbit/Licht/Playback: Stoffe laufen mit.
+
+Nicht rückgängig: Wind wieder vor `liveMotion` als „Animation muss immer laufen“.
+
+Dateien: `src/main.ts`. Docs: [performance.md](performance.md), [wind.md](wind.md).
+
 ### Dach: Traufe, Ziegel aus, Zwerchgiebel (2026-09-14) — v2.0.473
 
 **Symptom:** Zwischen 4. OG und Dach wirkte ein leeres Geschoss; Performance poorly bei Mansarde mit Ziegeln; Ziegel trotz Absprache „Formen zuerst“.

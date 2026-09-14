@@ -117,6 +117,32 @@ export function buildingIdsNeedingRebuild(prev: FacadeState, next: FacadeState):
   return changed
 }
 
+/**
+ * Gebäude, bei denen **nur** `roof` abweicht (Ein/Aus, Form, Farbe, …).
+ * `floors` werden ignoriert — `syncFloorPlansFromWalls` erzeugt sonst Rauschen
+ * und erzwingt fälschlich einen Voll-Rebuild (v2.0.476).
+ * `null` = andere Felder geändert → kein Dach-only-Pfad.
+ * Leeres Array = keine / nur Floor-Sync-Änderung.
+ */
+export function buildingIdsNeedingRoofOnlyRebuild(
+  prev: FacadeState,
+  next: FacadeState,
+): string[] | null {
+  if (prev.siteYawDeg !== next.siteYawDeg) return null
+  if (prev.buildings.length !== next.buildings.length) return null
+  const roofOnly: string[] = []
+  for (const nb of next.buildings) {
+    const ob = prev.buildings.find((b) => b.id === nb.id)
+    if (!ob) return null
+    const roofChanged = JSON.stringify(ob.roof ?? null) !== JSON.stringify(nb.roof ?? null)
+    const { roof: _pr, floors: _pf, ...prevRest } = ob
+    const { roof: _nr, floors: _nf, ...nextRest } = nb
+    if (JSON.stringify(prevRest) !== JSON.stringify(nextRest)) return null
+    if (roofChanged) roofOnly.push(nb.id)
+  }
+  return roofOnly
+}
+
 export function averageBuildingColor(building: Building): string {
   const walls = building.walls.filter((w) => !w.hidden)
   if (walls.length === 0) return '#9a8a7a'

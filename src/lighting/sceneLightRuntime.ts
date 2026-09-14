@@ -368,6 +368,18 @@ export class SceneLightRuntime {
     }
   }
 
+  /**
+   * Punktlicht-Cubes sauber halten — sonst zieht ein Sonnen-only-Flush
+   * (renderer.shadowMap.needsUpdate) alle dirty Cubes mit und kostet Sekunden (v2.0.476).
+   */
+  markAllShadowsClean(): void {
+    for (const entry of this.entries.values()) {
+      for (const light of [entry.point, entry.spotDown, entry.spotUp]) {
+        if (light.shadow) light.shadow.needsUpdate = false
+      }
+    }
+  }
+
   private createEntry(colorHex: string): LightEntry {
     const color = new THREE.Color(colorHex)
     const root = new THREE.Group()

@@ -177,7 +177,8 @@ export const SUN_SHADOW_CONTRAST_MIN = 0.5
 export const SUN_SHADOW_CONTRAST_MAX = 10
 export const DEFAULT_SUN_SHADOW_DENSITY = 0.7
 /** Bühnen-Wind: leichter Zug als Default. */
-export const DEFAULT_SUN_WIND_INTENSITY = 0.15
+/** 0 = aus (v2.0.475). Früher 0,15 — kaum sichtbar, konnte Idle-Skip aushebeln. */
+export const DEFAULT_SUN_WIND_INTENSITY = 0
 /** Slider `#sun-shade-depth`: Schattenseite Fassade + Innenraum (v2.0.364). */
 /** Default ≈ altes 0,75 nach Erweiterung (v2.0.419: (0,75+2)/3). */
 export const DEFAULT_SUN_SHADE_DEPTH = (0.75 + 2) / 3

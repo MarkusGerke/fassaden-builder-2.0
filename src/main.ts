@@ -851,7 +851,7 @@ import {
   markPerfFrameStart,
   setPerfOverlayEnabled,
 } from './ui/perfOverlay'
-import { buildingIdsNeedingRebuild } from './utils/performanceLod'
+import { buildingIdsNeedingRebuild, buildingIdsNeedingRoofOnlyRebuild } from './utils/performanceLod'
 
 const GROUND_BASE_SIZE = 2000
 
@@ -6512,7 +6512,7 @@ function renderLitSceneFrame(activeCamera: THREE.Camera) {
   // Shadow-Map nur bei Geometrie/Licht-Änderung (scheduleSunShadowMapUpdate) —
   // nicht jeden Frame bei Punktlicht, sonst stottern Orbit und Verschieben.
   // Während Orbit: Bake unterdrücken (v2.0.259) — 8192² mittendrin = stockig.
-  // Ausnahme: forceShadowBakePending nach Geometrie-Commit (v2.0.320).
+  // Ausnahme: forceShadowBakePending nach Geometrie-Commit (v2.0.320) — wie v2.0.473.
   if ((orbitLite || orbitLitePointer) && renderer.shadowMap.needsUpdate) {
     if (forceShadowBakePending) {
       forceShadowBakePending = false
@@ -9491,8 +9491,11 @@ function syncCeilingUI() {
 
 function commitRoofPatch(patch: Partial<RoofConfig>) {
   if (!facadeHasRoofablePlan(state) && patch.enabled) return
-  const next = normalizeRoof({ ...normalizeRoof(activeBuilding().roof), ...patch })
-  commitState(updateActiveBuilding(state, { roof: next }))
+  const building = activeBuilding()
+  const next = normalizeRoof({ ...normalizeRoof(building.roof), ...patch })
+  commitState(updateActiveBuilding(state, { roof: next }), editor, {
+    forceRoofOnlyIds: [building.id],
+  })
 }
 
 /** Firstrichtung (Sattel/Krüppelwalm: Achse) bzw. Hochseite (Pult): Optionen je Form. */
@@ -13274,6 +13277,7 @@ function flushSunShadowMap(opts?: {
   dirLight.shadow.needsUpdate = true
   // Punktlicht-Cubes hängen nicht am Sonnenstand — nur bei Geometrie mitbacken.
   if (opts?.sceneLights) sceneLightRuntime.markAllShadowsDirty()
+  else if (opts?.sceneLights === false) sceneLightRuntime.markAllShadowsClean()
   renderer.shadowMap.needsUpdate = true
   if (opts?.reflections !== false) markSceneReflectionsDirty()
   markViewportDirty()
@@ -13966,7 +13970,11 @@ function buildingIdsForWallIds(facadeState: FacadeState, wallIds: ReadonlySet<st
   return [...out]
 }
 
-function applyState(nextState: FacadeState, nextEditor = editor) {
+function applyState(
+  nextState: FacadeState,
+  nextEditor = editor,
+  opts?: { forceRoofOnlyIds?: string[] },
+) {
   discardLiveGeometryPreview()
   const openingDragWallIds = facade.peekOpeningDragWallIds()
   facade.endLiveDrag()
@@ -14015,8 +14023,15 @@ function applyState(nextState: FacadeState, nextEditor = editor) {
     !openingDragCommit && facadeStateDiffersOnlyByWallLabels(prevState, state)
   const decorOnly =
     !openingDragCommit && !labelOnly && facadeStateDiffersOnlyByFacadeDecor(prevState, state)
+  const roofOnlyIds =
+    opts?.forceRoofOnlyIds && opts.forceRoofOnlyIds.length > 0
+      ? opts.forceRoofOnlyIds
+      : !openingDragCommit && !labelOnly && !decorOnly
+        ? buildingIdsNeedingRoofOnlyRebuild(prevState, state)
+        : null
+  const roofOnly = roofOnlyIds !== null && roofOnlyIds.length > 0
   let rebuildIds =
-    labelOnly || decorOnly ? [] : buildingIdsNeedingRebuild(prevState, state)
+    labelOnly || decorOnly || roofOnly ? [] : buildingIdsNeedingRebuild(prevState, state)
   if (openingDragCommit) {
     const dragBuildingIds = buildingIdsForWallIds(state, openingDragWallIds)
     if (dragBuildingIds.length === 0) {
@@ -14057,6 +14072,14 @@ function applyState(nextState: FacadeState, nextEditor = editor) {
     }
     // Sofort mit Sichtbarkeit — kein Debounce (sonst Schatten nach dem Mesh).
     flushSunShadowMap({ reflections: false, sceneLights: true, force: true })
+  } else if (roofOnly) {
+    // Dach ein/aus / Form / Farbe: nur Dach + Fallrohre — kein Steine-/Fenster-Rebuild.
+    geometryChanged = true
+    facade.setState(state, { rebuildBuildingIds: [] })
+    for (const buildingId of roofOnlyIds!) {
+      facade.rebuildRoof(buildingId)
+      facade.rebuildDownpipes(buildingId)
+    }
   } else if (geometryUnchanged) {
     // Nur Editor/Selektion/Lichter — kein Geometrie-Rebuild.
     facade.setState(state, { rebuildBuildingIds: [] })
@@ -14068,7 +14091,7 @@ function applyState(nextState: FacadeState, nextEditor = editor) {
     facade.setState(state)
   }
 
-  if ((!labelOnly && (!geometryUnchanged || openingDragCommit)) || decorOnly) {
+  if ((!labelOnly && (!geometryUnchanged || openingDragCommit)) || decorOnly || roofOnly) {
     svgView.setState(state, editor)
   }
 
@@ -14082,10 +14105,16 @@ function applyState(nextState: FacadeState, nextEditor = editor) {
     syncCameraDistanceLimits()
     // Live-Licht: kein Material-Invalidate (grau/dunkel nach Rebuild oder Abwahl).
     // Schatten forcen — sonst Orbit-Lite-Hold + Debounce lassen alte Maps stehen (v2.0.320/372).
-    applySunLighting({ live: true, forceShadowBake: true })
-    bindMaterialsToGlassEnv(scene)
-    syncSceneLightRuntime()
-    syncLeafRuntime()
+    if (roofOnly) {
+      flushSunShadowMap({ reflections: false, sceneLights: false, force: true })
+      bindMaterialsToGlassEnv(scene)
+      syncLeafRuntime()
+    } else {
+      applySunLighting({ live: true, forceShadowBake: true })
+      bindMaterialsToGlassEnv(scene)
+      syncSceneLightRuntime()
+      syncLeafRuntime()
+    }
   } else if (lightsChanged) {
     // Licht-only (Fallback): kein Sonnen-/EnvMap-/Boden-Pfad; Schatten verzögert.
     syncIndoorFillForSceneLights()
@@ -14120,7 +14149,12 @@ function applyState(nextState: FacadeState, nextEditor = editor) {
   if (selChanged) revealSelectionInLayerTree()
   renderUi({
     skipLayerList:
-      geometryUnchanged && !labelOnly && !decorOnly && !lightsChanged && !selChanged,
+      geometryUnchanged &&
+      !labelOnly &&
+      !decorOnly &&
+      !roofOnly &&
+      !lightsChanged &&
+      !selChanged,
   })
   if (selChanged) scrollSelectedLayerRowIntoView()
   updateHistoryButtons()
@@ -14523,11 +14557,15 @@ scopePropagateFloorBtn.addEventListener('click', () => acceptScopePropagate('flo
 scopePropagateFacadeBtn.addEventListener('click', () => acceptScopePropagate('facade'))
 scopePropagateDismissBtn.addEventListener('click', () => hideScopePropagateOffer())
 
-function commitState(nextState: FacadeState, nextEditor = editor) {
+function commitState(
+  nextState: FacadeState,
+  nextEditor = editor,
+  opts?: { forceRoofOnlyIds?: string[] },
+) {
   const before = state
   const scopeAtCommit = editScope
   editHistory.record(currentSnapshot())
-  applyState(nextState, nextEditor)
+  applyState(nextState, nextEditor, opts)
   scheduleShareHashWrite()
   showScopePropagateOfferIfUseful(before, nextState, nextEditor, scopeAtCommit)
 }
@@ -16912,6 +16950,8 @@ function toggleRoofHidden(buildingId: string) {
   const roof = normalizeRoof(building.roof)
   commitState(
     updateBuilding(state, buildingId, { roof: { ...roof, hidden: !roof.hidden } }),
+    editor,
+    { forceRoofOnlyIds: [buildingId] },
   )
 }
 
@@ -29247,6 +29287,14 @@ let animateFramePrevMs = 0
 /** Geglättete Frame-Zeit für Blaulicht (48 ms-Blitze bei niedriger FPS sichtbar halten). */
 let smoothedFrameMs = 16
 
+/** Wind-Stoffe nur, wenn dieser Frame sowieso gerendert wird — nicht als Idle-Killer. */
+function tickStageWindFabrics(animClock: number, paused: boolean) {
+  if (paused) return
+  tickWindFabrics(animClock / 1000, sunSettings.windIntensity ?? DEFAULT_SUN_WIND_INTENSITY, {
+    paused,
+  })
+}
+
 function animate() {
   requestAnimationFrame(animate)
   // Licht-Modus-Wechsel: kein Render, sonst kompiliert der Frame die Shader synchron (Hänger).
@@ -29282,13 +29330,6 @@ function animate() {
   const sceneLightLive = fadingLights || sceneLightAnim
   if (sceneLightLive) viewportDirty = true
 
-  const windMoved =
-    !paused &&
-    tickWindFabrics(animClock / 1000, sunSettings.windIntensity ?? DEFAULT_SUN_WIND_INTENSITY, {
-      paused,
-    })
-  if (windMoved) viewportDirty = true
-
   const leafMoved =
     !paused &&
     !orbitLite &&
@@ -29311,7 +29352,6 @@ function animate() {
     (!paused && Boolean(openingMotionPlayback)) ||
     (!paused && Boolean(rollerShutterPlayback)) ||
     (!paused && isAwningPlaybackActive()) ||
-    windMoved ||
     sceneLightLive ||
     leafMoved
 
@@ -29333,6 +29373,7 @@ function animate() {
       return
     }
     viewportDirty = false
+    tickStageWindFabrics(animClock, paused)
     if (currentView === '3d' && isGalleryModeActive()) syncGalleryNavigationFeel()
     if (
       currentView === '3d' &&
@@ -29354,6 +29395,7 @@ function animate() {
       return
     }
     viewportDirty = false
+    tickStageWindFabrics(animClock, paused)
     renderLitSceneFrame(frontCamera)
     perfRendered = true
     if (!orbitLite) updateWallLibraryGizmos()
@@ -29362,6 +29404,7 @@ function animate() {
       return
     }
     viewportDirty = false
+    tickStageWindFabrics(animClock, paused)
     if (orbitLite) {
       renderer.render(scene, topCamera)
     } else {

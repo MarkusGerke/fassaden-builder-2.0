@@ -23,7 +23,8 @@ alwaysApply: true
 | Schwarze Punkte im Himmel | Sterne tagsüber mit BACKGROUND ohne Exposure | Sterne nur nachts + gleiche Display-Exposure | v2.0.468, `celestial-sky.md` |
 | Touch 3D kein Orbit | Nur Cmd/Ctrl-`beginNav3d` | `shouldTouchChromeBeginOrbit3d` | v2.0.469 |
 | Erker/Außenwand zu breit | `panelFlip: false` / Depth-Tweaks | `erker-aussenkante.mdc` | |
-| Schatten-Look „verbessern“ | Penumbra/Density ohne Auftrag | `schatten-qualitaet-soll.mdc` | |
+| Schatten-Look „verbessern“ | Penumbra/Density ohne Auftrag | `schatten-qualitaet-soll.mdc` |
+| Idle ~10 fps mit Markisen | Wind → `liveMotion` jedes Frame; PCSS-Lite / DPR 1 | Wind erst nach Idle-Skip ticken; Stoffe im Stillstand stehen | v2.0.474, `docs/performance.md`, `docs/wind.md` | |
 
 ## Konflikt zweier Nutzerwünsche
 

@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.473'
+export const APP_VERSION = '2.0.476'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,33 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.476',
+    date: '2026-09-14',
+    title: 'Performance wie 473: Lichtpfad zurück, Dach-Toggle schnell',
+    changes: [
+      'Licht, Schatten und Himmel wieder wie in v2.0.473 (gleiche Szene war dort flüssig)',
+      'Dach ein/aus baut nicht mehr das ganze Haus neu',
+      'Wind bleibt standardmäßig aus und hält die Bühne im Stillstand nicht mehr am Dauer-Render',
+    ],
+  },
+  {
+    version: '2.0.475',
+    date: '2026-09-14',
+    title: 'Wind standardmäßig aus',
+    changes: [
+      'Slider Wind startet bei 0 (windstill) — Markisen bewegen sich erst, wenn Wind bewusst hochgedreht wird',
+    ],
+  },
+  {
+    version: '2.0.474',
+    date: '2026-09-14',
+    title: 'Bühne: Idle wieder ohne Dauer-Render',
+    changes: [
+      'Nach dem Loslassen der Maus rendert die 3D-Ansicht wieder nur bei Bedarf — nicht mehr dauernd wegen Markisen-Wind',
+      'Markisen bewegen sich weiter während Orbit und bei anderen Animationen; im Stillstand stehen sie',
+    ],
+  },
   {
     version: '2.0.473',
     date: '2026-09-14',

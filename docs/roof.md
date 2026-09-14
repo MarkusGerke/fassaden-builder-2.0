@@ -42,6 +42,7 @@ Nicht-Mansarden: untere Einhüllende von Dachebenen (`src/studio/roofForms.ts`).
 
 - Traufe immer über `storeyTopY`, nie `floors × wallHeight`.
 - Ziegel-Flag nicht ohne Absprache wieder auf true — Performance (~10⁵ Vertices).
+- Ruckeln im Idle nach Dach-Arbeit war **nicht** die glatte Dachhaut (v2.0.474: Wind → `liveMotion`).
 - Zwerchgiebel-Tiefe > Breite/2 bei gleicher Neigung → Quergiebel unter der Haut (intern geclampt).
 - Gauben ≠ Zwerchgiebel.
 
