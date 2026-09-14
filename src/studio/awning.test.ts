@@ -3,6 +3,7 @@ import {
   awningArmSegmentSpecs,
   awningGuideLength,
   awningKindDefaults,
+  awningKindSwitchPatch,
   computeAwningPose,
   defaultAwningConfig,
   defaultOpeningAwningWidth,
@@ -251,6 +252,16 @@ describe('awning kinematics', () => {
     expect(awningKindDefaults('markisolette')).toMatchObject({ projectionCm: 64, verticalDropCm: 120, slopeDeg: 45 })
     expect(awningKindDefaults('dropArm')).toMatchObject({ armMountYCm: 144 })
     expect(awningKindDefaults('foldingArm')).toMatchObject({ projectionCm: 144, slopeDeg: 15 })
+  })
+
+  it('kind switch patch keeps style keys out and only changes kind metrics', () => {
+    expect(awningKindSwitchPatch('foldingArm', 'foldingArm')).toEqual({ kind: 'foldingArm' })
+    expect(awningKindSwitchPatch('dropArm', 'foldingArm')).toMatchObject({
+      kind: 'dropArm',
+      armMountYCm: 144,
+    })
+    expect(awningKindSwitchPatch('dropArm', 'foldingArm')).not.toHaveProperty('fabricColor')
+    expect(awningKindSwitchPatch('dropArm', 'foldingArm')).not.toHaveProperty('extension')
   })
 
   it('arm inset moves drop-arm mounts', () => {

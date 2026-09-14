@@ -486,6 +486,69 @@ describe('propagateSelectionEdit — Öffnungs-Deltas nested', () => {
   })
 })
 
+describe('propagateSelectionEdit — nur geänderte Keys', () => {
+  it('Bekleidungsfarbe: keine Markise auf Peers', () => {
+    const donorAwning = {
+      id: 'da',
+      enabled: true,
+      kind: 'foldingArm' as const,
+      extension: 0.5,
+      widthCm: 160,
+      projectionCm: 144,
+      overhangCm: 16,
+      fabricColor: '#112233',
+    }
+    const peerAwning = {
+      id: 'pa',
+      enabled: false,
+      kind: 'foldingArm' as const,
+      extension: 0.65,
+      widthCm: 96,
+      projectionCm: 144,
+      overhangCm: 8,
+    }
+    const before = stateWithWalls([
+      wall({
+        id: 'w1',
+        claddingColor: '#aaaaaa',
+        openings: [win({ id: 'o1', width: 160, awning: donorAwning as never })],
+      }),
+      wall({
+        id: 'w2',
+        claddingColor: '#bbbbbb',
+        originX: 400,
+        openings: [win({ id: 'o2', width: 80, awning: peerAwning as never })],
+      }),
+    ])
+    const after = {
+      ...before,
+      buildings: [
+        {
+          ...before.buildings[0]!,
+          walls: [
+            {
+              ...before.buildings[0]!.walls[0]!,
+              claddingColor: '#cc4444',
+            },
+            before.buildings[0]!.walls[1]!,
+          ],
+        },
+      ],
+    }
+    const editor: EditorState = {
+      selectedWallIds: ['w1'],
+      selectedOpenings: [],
+      selectedEdges: [],
+    }
+    const next = propagateSelectionEdit(before, after, editor, 'floor')
+    const peer = next.buildings[0]!.walls.find((w) => w.id === 'w2')!
+    expect(peer.claddingColor).toBe('#cc4444')
+    const peerOpen = peer.openings.find((o) => o.id === 'o2')!
+    expect(peerOpen.awning?.enabled).toBe(false)
+    expect(peerOpen.awning?.fabricColor).toBeUndefined()
+  })
+})
+
 describe('propagateSelectionEdit — Gesims ganz ersetzen', () => {
   it('übernimmt enabled Gesims auf Etage (kein Partial-Merge)', () => {
     const before = stateWithWalls([

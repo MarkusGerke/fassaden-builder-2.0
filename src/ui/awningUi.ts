@@ -5,6 +5,7 @@
 import type { AwningConfig, AwningKind, FacadeState, MotionCurve, OpeningRef, Wall } from '../types/facade'
 import {
   awningKindDefaults,
+  awningKindSwitchPatch,
   defaultAwningConfig,
   isAwningKind,
   openingSupportsAwning,
@@ -537,10 +538,9 @@ function syncAwningKindFields(
   if (armClearanceRow) armClearanceRow.hidden = !opts?.isGroup || !showDrop
 }
 
-/** Typwechsel: `kind` plus typgerechte Maße (Ausladung/Konsole/Senkrecht), nur wenn sich der Typ ändert. */
+/** Typwechsel: `kind` plus typgerechte Maße — siehe `awningKindSwitchPatch`. */
 function kindSwitchPatch(kind: AwningKind, current: AwningKind | undefined): Partial<AwningConfig> {
-  if (current === kind) return { kind }
-  return { kind, ...awningKindDefaults(kind) }
+  return awningKindSwitchPatch(kind, current)
 }
 
 export function syncStudioAwningControls(): void {
@@ -850,6 +850,12 @@ export function placeLibraryAwning(kind: AwningKind): void {
   const api = d()
   const sel = api.selectedOpening()
   if (sel && openingSupportsAwning(sel.opening)) {
+    const group = findWallAwningCoveringOpening(sel.wall, sel.opening.id)
+    const existing = group ?? (sel.opening.awning?.enabled ? ensureOpeningAwning(sel.opening) : null)
+    if (existing) {
+      commitOpeningPatch({ ...awningKindSwitchPatch(kind, existing.kind), enabled: true })
+      return
+    }
     const { widthCm: _w, id: _id, ...defaults } = defaultAwningConfig({ enabled: true, kind })
     commitOpeningPatch({
       ...defaults,
@@ -861,6 +867,17 @@ export function placeLibraryAwning(kind: AwningKind): void {
   }
   const wallId = api.selectedWallIds()[0]
   if (!wallId) return
+  const wall = api.getWall(api.getState(), wallId)
+  if (!wall) return
+  const selectedId = api.selectedAwningId()
+  const existing =
+    (selectedId ? findWallAwning(wall, selectedId) : undefined) ??
+    (wallAwnings(wall).length === 1 ? wallAwnings(wall)[0] : undefined)
+  if (existing?.enabled) {
+    api.setSelectedAwningId(existing.id)
+    commitWallPatch({ ...awningKindSwitchPatch(kind, existing.kind), enabled: true })
+    return
+  }
   const { state: next, awningId } = addWallAwning(api.getState(), wallId, {
     ...awningKindDefaults(kind),
     enabled: true,

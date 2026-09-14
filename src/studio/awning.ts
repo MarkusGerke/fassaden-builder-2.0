@@ -252,6 +252,18 @@ export function awningKindDefaults(kind: AwningKind): Partial<AwningConfig> {
   return { projectionCm: DEFAULT_AWNING_PROJECTION_CM, slopeDeg: DEFAULT_AWNING_SLOPE_DEG }
 }
 
+/**
+ * Typwechsel (Bibliothek / Toolbar): nur `kind` + typgerechte Maße.
+ * Farben, Ausfahrt, Schedule, Finish, Überstand bleiben am bestehenden Config.
+ */
+export function awningKindSwitchPatch(
+  kind: AwningKind,
+  current: AwningKind | undefined,
+): Partial<AwningConfig> {
+  if (current === kind) return { kind }
+  return { kind, ...awningKindDefaults(kind) }
+}
+
 export function awningArmCount(_kind: AwningKind): number {
   return 4
 }

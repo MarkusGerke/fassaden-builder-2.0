@@ -151,10 +151,16 @@ function openingTakesFrameProfile(opening: Opening): boolean {
   return openingSupportsFrameProfiles(opening)
 }
 
-function applyWallPropertyDelta(peer: Wall, before: Wall, after: Wall): Wall {
+function applyWallPropertyDelta(
+  peer: Wall,
+  before: Wall,
+  after: Wall,
+  keyFilter?: PropagateKeyFilter | null,
+): Wall {
   let next = cloneWall(peer)
   for (const key of Object.keys(after) as (keyof Wall)[]) {
     if (WALL_SKIP.has(key as string)) continue
+    if (!wallKeyAllowed(key as string, keyFilter)) continue
     if (before[key] === after[key]) continue
     const peerRec = peer as unknown as Record<string, unknown>
     const beforeRec = before as unknown as Record<string, unknown>
@@ -208,10 +214,16 @@ function applyWallPropertyDelta(peer: Wall, before: Wall, after: Wall): Wall {
 
 const OPENING_SKIP = new Set(['id', 'width', 'height', 'type', 'hidden'])
 
-function applyOpeningPropertyDelta(peer: Opening, before: Opening, after: Opening): Opening {
+function applyOpeningPropertyDelta(
+  peer: Opening,
+  before: Opening,
+  after: Opening,
+  keyFilter?: PropagateKeyFilter | null,
+): Opening {
   const out = { ...(peer as unknown as Record<string, unknown>) }
   for (const key of Object.keys(after) as (keyof Opening)[]) {
     if (OPENING_SKIP.has(key as string)) continue
+    if (!openingKeyAllowed(key as string, keyFilter)) continue
     if (before[key] === after[key]) continue
     const peerRec = peer as unknown as Record<string, unknown>
     const beforeRec = before as unknown as Record<string, unknown>
@@ -281,6 +293,52 @@ function applyOpeningPropertyDelta(peer: Opening, before: Opening, after: Openin
 
 export type ScopePropagateKind = 'type' | 'floor' | 'facade'
 
+/** Nur Keys, die sich an der Auswahl zwischen before→after geändert haben (Toast-Übernahme). */
+export type PropagateKeyFilter = {
+  wallKeys: ReadonlySet<string>
+  openingKeys: ReadonlySet<string>
+}
+
+export function collectPropagateKeyFilter(
+  before: FacadeState,
+  after: FacadeState,
+  editor: EditorState,
+): PropagateKeyFilter {
+  const wallKeys = new Set<string>()
+  const openingKeys = new Set<string>()
+  for (const id of editor.selectedWallIds) {
+    const b = getWall(before, id)
+    const a = getWall(after, id)
+    if (!b || !a) continue
+    for (const key of Object.keys(a) as (keyof Wall)[]) {
+      if (WALL_SKIP.has(key as string)) continue
+      if (b[key] !== a[key]) wallKeys.add(key as string)
+    }
+  }
+  for (const ref of editor.selectedOpenings) {
+    const bWall = getWall(before, ref.wallId)
+    const aWall = getWall(after, ref.wallId)
+    const bOpen = bWall?.openings.find((o) => o.id === ref.openingId)
+    const aOpen = aWall?.openings.find((o) => o.id === ref.openingId)
+    if (!bOpen || !aOpen) continue
+    for (const key of Object.keys(aOpen) as (keyof Opening)[]) {
+      if (OPENING_SKIP.has(key as string)) continue
+      if (bOpen[key] !== aOpen[key]) openingKeys.add(key as string)
+    }
+  }
+  return { wallKeys, openingKeys }
+}
+
+function wallKeyAllowed(key: string, filter: PropagateKeyFilter | null | undefined): boolean {
+  if (!filter) return true
+  return filter.wallKeys.has(key)
+}
+
+function openingKeyAllowed(key: string, filter: PropagateKeyFilter | null | undefined): boolean {
+  if (!filter) return true
+  return filter.openingKeys.has(key)
+}
+
 /**
  * Toast „Typ“: gleicher Öffnungstyp (Fenster↔Fenster, Tür↔Tür), **beliebige Maße**.
  * Sonst fehlt der Button bei Unikat-Maßen, obwohl Etage/Fassade angeboten werden.
@@ -339,11 +397,28 @@ export function propagateSelectionEdit(
   after: FacadeState,
   editor: EditorState,
   toScope: ScopePropagateKind,
+  keyFilter?: PropagateKeyFilter | null,
 ): FacadeState {
   if (!isPropertyOnlyFacadeEdit(before, after)) return after
+  const filter =
+    keyFilter ??
+    collectPropagateKeyFilter(before, after, editor)
 
   const hasOpenings = editor.selectedOpenings.length > 0
   if (hasOpenings) {
+    let donorProfilesChanged = false
+    for (const ref of editor.selectedOpenings) {
+      const bWall = getWall(before, ref.wallId)
+      const aWall = getWall(after, ref.wallId)
+      if (!bWall || !aWall) continue
+      const beforeProf = profilesForOpening(bWall, ref.openingId)
+      const afterProf = profilesForOpening(aWall, ref.openingId)
+      if (!openingProfilesEqual(beforeProf, afterProf)) {
+        donorProfilesChanged = true
+        break
+      }
+    }
+    if (filter.openingKeys.size === 0 && !donorProfilesChanged) return after
     const targets = propagateOpeningTargets(after, editor, toScope)
     type OpeningDonor = {
       before: Opening
@@ -397,7 +472,7 @@ export function propagateSelectionEdit(
             did = true
           }
           if (!openSame) {
-            nextOpen = applyOpeningPropertyDelta(open, donor.before, donor.after)
+            nextOpen = applyOpeningPropertyDelta(open, donor.before, donor.after, filter)
             did = true
           }
           if (did) break
@@ -408,6 +483,8 @@ export function propagateSelectionEdit(
       return changed ? { ...cloneWall(wall), openings, profiles } : wall
     })
   }
+
+  if (filter.wallKeys.size === 0) return after
 
   const targets = new Set(editWallTargets(after, editor, toScope, null))
   const donorIds = editor.selectedWallIds
@@ -424,7 +501,7 @@ export function propagateSelectionEdit(
   return updateWallsInState(after, (wall) => {
     if (!targets.has(wall.id)) return wall
     if (donorIds.includes(wall.id)) return wall
-    return applyWallPropertyDelta(wall, primary.before, primary.after)
+    return applyWallPropertyDelta(wall, primary.before, primary.after, filter)
   })
 }
 

@@ -506,10 +506,12 @@ import {
   type EditScope,
 } from './studio/editScope'
 import {
+  collectPropagateKeyFilter,
   isPropertyOnlyFacadeEdit,
   propagateSelectionEdit,
   assignSelectionPropertiesToScope,
   scopePropagateAvailable,
+  type PropagateKeyFilter,
   type ScopePropagateKind,
 } from './studio/scopePropagate'
 import { clonePatternPreviewSvg } from './studio/patternPreview'
@@ -1342,7 +1344,7 @@ function handleNav3dClick(event: PointerEvent) {
   if (tryObjectFocusDoubleTap(event)) return
   const hit = pickFromEvent(event)
   if (!hit) {
-    selectWall(null, true)
+    deselectAtEmptyViewportClick(false)
     return
   }
   if (hit.openingId && hit.wallId) {
@@ -1351,6 +1353,14 @@ function handleNav3dClick(event: PointerEvent) {
   }
   if (hit.wallId) {
     selectWall(hit.wallId, true)
+  }
+}
+
+/** Leerer Klick: Auswahl aufheben; nach Objekt-Fokus Kamera-Position behalten (kein Übersicht-Sprung). */
+function deselectAtEmptyViewportClick(additive: boolean) {
+  selectWallFromViewport(null, { additive })
+  if (!additive && objectFocusBookmark) {
+    objectFocusBookmark = null
   }
 }
 
@@ -14166,6 +14176,7 @@ let pendingScopePropagate: {
   after: FacadeState
   editor: EditorState
   fromScope: EditScope
+  keyFilter: PropagateKeyFilter
 } | null = null
 
 const SCOPE_OFFER_SECONDS = 7
@@ -14234,6 +14245,7 @@ function showScopePropagateOfferIfUseful(
       selectedOpenings: nextEditor.selectedOpenings.map((ref) => ({ ...ref })),
     },
     fromScope,
+    keyFilter: collectPropagateKeyFilter(before, after, nextEditor),
   }
   clearScopeOfferTimers()
   scopePropagateTypeBtn.hidden = !offerType
@@ -14265,6 +14277,7 @@ function acceptScopePropagate(toScope: ScopePropagateKind) {
     pending.after,
     pending.editor,
     toScope,
+    pending.keyFilter,
   )
   if (next === pending.after) return
   editHistory.record(currentSnapshot())
@@ -26272,7 +26285,7 @@ canvas.addEventListener('pointerup', (event) => {
     return
   }
   if (!hit) {
-    selectWallFromViewport(null, { additive })
+    deselectAtEmptyViewportClick(additive)
     return
   }
   if (hit.sceneLightId) {

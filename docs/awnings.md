@@ -8,7 +8,7 @@
   - **Gelenkarm** — je Seite zwei Glieder **fester Länge**; der Ellbogen klappt in der Tuchebene **zur Mitte** ein (Zwei-Glied-IK), voll ausgefahren fast gestreckt. Breite standardmäßig Öffnung + 2× **16 cm** Seitenüberstand. Schmale Markisen: Arme kreuzen sich, linker Arm liegt eine Profilhöhe tiefer.
   - **Fallarm** — je Seite **ein starrer Arm** an einer Wandkonsole **Konsole unter Kasten (cm)** (Default 144). Eingefahren steht der Arm senkrecht an der Wand (Ausfallprofil direkt unter dem Kasten); beim Ausfahren **fällt** er auf einem Kreisbogen nach vorn bis **Neigung** unter Horizontal. Armlänge = Konsole → Kastenunterkante, unabhängig von der Ausfahrt. Kein Feld **Ausladung** (ergibt sich aus Konsolenhöhe + Neigung). Konsolen min. **8 cm** neben Öffnungskante/Profil.
   - **Markisolette** — Ausfallprofil und Armgleiter laufen in **Führungsschienen**. Phase 1: alles fährt senkrecht bis zum Stoffaustritt (**Senkrecht (cm)**, Default 120). Dort schlägt der Gleiter am **Blockadeelement** (Schienenende) an — eine Armlänge unter dem Austritt. Phase 2: der starre Arm schwenkt um diesen Drehpunkt nach außen (bis 90° + **Neigung**, Default 45° → 135° Öffnungswinkel wie bei realen Systemen). Das Tuch bleibt bis zum Austritt senkrecht in der Schiene und läuft dann gerade zum Profil. **Ausladung** = horizontale Reichweite voll ausgefahren (Default 64) → Armlänge `Ausladung / sin(90° + Neigung)`. Kein Feld **Konsole** (Drehpunkt = Schienenende).
-- Bibliothek-Tab **Markisen**: zuerst **Keine**, dann Gelenkarm / Fallarm / Markisolette. Typwechsel (Bibliothek oder Typ-Buttons) setzt **typgerechte Maße** (`awningKindDefaults`): Markisolette Ausladung 64 / Senkrecht 120 / Neigung 45; Fallarm Konsole 144 / Neigung 15; Gelenkarm Ausladung 144 / Neigung 15.
+- Bibliothek-Tab **Markisen**: zuerst **Keine**, dann Gelenkarm / Fallarm / Markisolette. **Typwechsel** (Bibliothek oder Typ-Buttons) setzt nur **typgerechte Maße** (`awningKindSwitchPatch` / `awningKindDefaults`): Markisolette Ausladung 64 / Senkrecht 120 / Neigung 45; Fallarm Konsole 144 / Neigung 15; Gelenkarm Ausladung 144 / Neigung 15. **Behalten:** Stoff-/Gestellfarbe, Finish, Ausfahrt (`extension`), Animation/Schedule, Seitenüberstand, `id`. Neu anlegen (noch keine Markise) nutzt volle Defaults. Wand: bei ausgewählter Markise Update statt neuer Instanz.
 - **Ausfahrt** 0…100 %; Slider live ohne Mesh-Rebuild.
 - **Neigung (°)** — Gelenkarm: Tuchneigung; Fallarm/Markisolette: Endwinkel des Arms unter Horizontal (0…45).
 - **Volant** — senkrechter Stoff unter der Vorderkante (0…48 cm, 8er-Raster, Default 16).
@@ -59,10 +59,10 @@ Wand-lokal: X quer, Y hoch, Z nach außen; Kasten bei (0,0), Rolle bei `z = 4,5`
 | Datei | Rolle |
 |---|---|
 | `src/types/facade.ts` | `AwningConfig`, `AwningKind` |
-| `src/studio/awning.ts` | Normalize, Kinematik, Stoff/Volant, `awningKindDefaults` |
+| `src/studio/awning.ts` | Normalize, Kinematik, Stoff/Volant, `awningKindDefaults`, `awningKindSwitchPatch` |
 | `src/utils/awnings.ts` | CRUD; Clipboard; Span-Layout; Gruppen (`createGroupAwningForOpenings`, …) |
 | `src/FacadeController.ts` | Rebuild, Depth/RenderOrder, Schienen, Scharniere |
-| `src/ui/awningUi.ts` | Sync, kind-abhängige Felder, Typwechsel mit Defaults; `settleAwningLiveShadow` nach Playback |
+| `src/ui/awningUi.ts` | Sync, kind-abhängige Felder; Bibliothek/`placeLibraryAwning` = Typwechsel-Patch (Stil behalten); `settleAwningLiveShadow` nach Playback |
 | `index.html` / `main.ts` | UI + Bibliothek; `flushAwningLiveShadowBake` / `settleAwningLiveShadow` |
 | `src/studio/awning.test.ts` | Kinematik-Tests (Armlängen, Phasen, Ellbogen) |
 
@@ -76,4 +76,4 @@ Wand-lokal: X quer, Y hoch, Z nach außen; Kasten bei (0,0), Rolle bei `z = 4,5`
 - **Markisolette (v2.0.426):** Versuch mit Wandgelenk unter dem Kasten + IK (v2.0.425) war mechanisch falsch. Referenz (Montageanleitung Typ 103 „Blockadeelement der Arme in der Führungsschiene“, markilux 740, Mobau 120 R „Öffnungswinkel max. 135°“): Gleiter in der Schiene, fester Anschlag = Drehpunkt, starrer Arm. Physik: in Phase 2 ist die horizontale Reichweite bei waagerechtem Arm größer als bei 135° — kein Bug.
 - **Halterung:** Immer auf der Fassade; Abstand = Öffnungskante + Profil-Outward + `armClearanceCm` (min. 8).
 - Seitenüberstand ändert bei Öffnungs-Markise die Breite (`updateOpeningAwning`).
-- **Typwechsel:** immer `awningKindDefaults(kind)` mitpatchen, sonst bleibt z. B. Ausladung 144 an der Markisolette (Arm 204 cm) oder Konsole 24 am Fallarm.
+- **Typwechsel:** immer `awningKindSwitchPatch` / `awningKindDefaults(kind)` mitpatchen, sonst bleibt z. B. Ausladung 144 an der Markisolette (Arm 204 cm) oder Konsole 24 am Fallarm. **Nicht** `defaultAwningConfig` neu spreaden (löscht Farbe/Ausfahrt).

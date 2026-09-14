@@ -143,6 +143,16 @@ Wand-Batch färbt Fenster **und** Türen.
 
 Unter **Bibliothek** (sticky unten, Tabs Wände/Fenster/Türen): bei Fenster/Türen Presets links, danach ein **vertikaler Trennstrich**, gespeicherte Vorlagen, rechts **Neue Vorlage**. Dialog mit Karten-Vorschaubildern (Typ, Größe, Fenstertyp, Profil, Banken) und großer Live-Vorschau. Speichern schließt den Dialog (`dialog.close`, nicht Form-`close`). Persistenz: localStorage `fassaden-builder-opening-templates-v1` (`src/utils/openingTemplates.ts`). Wand-Tab: Längen-Presets ohne Vorlagen-Dialog (siehe Abschnitt Bibliothek unten). **v2.0.214:** Bei Öffnungsauswahl wechselt der Tab zu Fenster/Tür/Nische und markiert die passende Karte (±16 cm Maß-Toleranz). Klick auf ein anderes Preset/eine Vorlage **ersetzt** die markierten Öffnungen (`replaceOpeningsWithPreset` / Template-Draft); ohne Öffnungsauswahl weiterhin neu platzieren auf markierter Wand.
 
+### Kategorie-Tausch: Stil und Zustand (v2.0.476)
+
+Beim Tausch **derselben Kategorie** (anderer Typ/Preset, gleiches Feature):
+
+- **Behalten:** `id`, Platzierung, Nutzer-Stil (Farben, Finish), Zustand (z. B. Markisen-Ausfahrt, Schedule), Anbauten anderer Kategorien.
+- **Ersetzen:** Typ/Preset-ID und **typgebundene Maße** (`awningKindDefaults`, Paneel-Muster-Defaults, …).
+- **Neu anlegen** (noch keine Instanz): volle Defaults.
+
+**Markisen:** Bibliothek = Toolbar (`awningKindSwitchPatch`). **Fenster/Tür-Preset:** Maße/Fensterstil-Bundle neu; Markise/Verdachung/Rollladen bleiben. **Verdachung/Gesims/Paneel/Treppe-Form/Schrift-Font:** bereits Merge-Patches. Treppen-Stufenkarten setzen nur Count/Rise/Tread (Farbe bleibt).
+
 ## Öffnungs-Mindestabstand
 
 `OPENING_MIN_GAP = 32` cm (`src/utils/validation.ts`); Slot-Suche und Verschieben in `openings.ts` nutzen denselben Wert.
@@ -240,6 +250,7 @@ Yaw-Konvention überall gleich: **0=N, 90=W, 180=S, 270=O** (gegen Uhrzeigersinn
 - **v2.0.207:** Bibliothek-Paneele und Stil einfügen / Stil-Vorlage nutzen `scopedWallIds()` / `scopedOpeningRefs()` — Scope **Etage** gilt auch dafür
 - Öffnungs-Edits (Profil, Fensterbank, Treppe, Rahmen/Glas, Gründerzeit, **Position/Nudge/Drag**): `editOpeningTargets` / `scopedOpeningRefs()`
 - Beim Verschieben: Delta gilt für alle Scoped-Refs. Türen mit aktiver Treppe behalten Auto-Y aus Stufen.
+- **v2.0.473:** Toast nutzt `collectPropagateKeyFilter` — nur Keys, die sich an der Auswahl geändert haben (z. B. `claddingColor` ohne `awning`).
 - **v2.0.233 / v2.0.234 / v2.0.321 / v2.0.322 / v2.0.323 / v2.0.324 / v2.0.381 / v2.0.412 / v2.0.429 / v2.0.444 / v2.0.446 / v2.0.448:** Nach Edit mit Scope **Auswahl**/**Typ**/**Etage** ggf. `#scope-propagate-offer` — **Typ / Etage / Fassade**, **7-s-Countdown** (`SCOPE_OFFER_SECONDS`, v2.0.448; zuvor 5 s). Der Toast überträgt die **letzte Änderung** (Deltas), inkl. **Auto** (gelöschte Felder, z. B. Bogenhöhe `riseCm`, v2.0.446). **v2.0.324:** Toast-Typ auch bei unterschiedlicher Größe (gleicher Öffnungstyp). **v2.0.323:** Farbe/Profil auf Fenster und Türen. **v2.0.412:** Etage/Fassade auch Einbuchtungen und Konchen (`openingSupportsFrameProfiles`). **v2.0.381:** auch nach **Verschieben**; Gesims/`cornice` als Ganzes; Rechtsklick **Zuweisen für** → Typ/Etage/Fassade (`assignSelectionPropertiesToScope`). **v2.0.429:** Toast propagiert nur **Deltas** in Nested-Opening-Configs (z. B. nur `boxWindow`); **Zuweisen für** bleibt Vollstil. **v2.0.444:** Bogen-Stichmaß bei Zuweisen/Formwechsel → Auto (kein fremdes Absolutmaß).
 
 | Scope | Wände | Öffnungen |
@@ -263,19 +274,21 @@ Persistiert als `editScope` / `editFacadeYawFilter` in localStorage (`PersistedA
 
 ---
 
-## Touch-Chrome (v2.0.451 / v2.0.456 / v2.0.457 / v2.0.458 / v2.0.459 / v2.0.469 / v2.0.470 / v2.0.471)
+## Touch-Chrome (v2.0.451 / … / v2.0.471 / v2.0.473)
 
 Layout-Schalter: `html.ui-touch-chrome`, **nur** wenn **`(pointer: coarse)` ODER Viewport ≤ 900 px**. **Nicht** allein wegen Ansicht Fassade (`present`) auf großem Desktop — dort bleibt das klassische Layout (2D/3D/Fassade/Export, Himmel/Neutral, Licht, Ebenen, Kompass, Nav-Hilfe, Gültig für, rechte Inspector-Leiste).
 
 | Verhalten | Details |
 |---|---|
 | Ohne Auswahl | **Keine** sichtbare Bibliothek-Register (Höhe 0). Fünf **Kacheln**: Ansicht · Licht & Schatten · Bloom · Lampen & Leuchten · **Datei** (Thumb = Titel, unten **Bearbeiten**) → Bottom-Sheet. **Keine** Farb-Filter-Chips. Fenster/Farben/… erst bei Objektauswahl |
-| Leistenwechsel | Dock `min-height` = Tabs + **Filter-Band 2,75 rem** + Karten (v2.0.471). Filter absolut im Band; **kein** `padding-top` auf `#opening-library-items` (quetscht sonst die festen 6,5 rem-Karten). `display:none` wenn Filter hidden |
-| Swipe-Leisten | Register, Filter-Chips und Kacheln **randlos** (kein seitliches Padding); Scrollbars ausgeblendet |
-| Ansicht | Sheet: **Darstellung** Fassade\|3D oben, darunter Himmelsrichtung **links \| frontal \| rechts** (nur bei Fassade). **links/rechts = ±45°** zur Front (`TOUCH_FACING_YAW_OFFSET_DEG`), nicht 90°. Frontseite = Fassade mit den meisten Fenstern. Preference: `localStorage` `fassaden-builder-touch-view` |
+| Leistenwechsel | Dock `min-height` **immer** Tabs + Filter-Band 2,75 rem + Karten (v2.0.471 / **v2.0.475**) — nie idle kürzer, sonst Blitz. Filter absolut im Band; **kein** Items-`padding-top` |
+| Swipe-Leisten | **16 px** links bei Kacheln und Farb-Filter-Chips (`--space-3`); Scrollbars ausgeblendet |
+| Ansicht | Sheet-Body: **Darstellung** und **Himmelsrichtung** je als Inline-Zeile (Titel links, Chips rechts). **links = −45°**, **rechts = +45°** zur Front (v2.0.473). Nur bei Fassade aktiv |
+| Licht & Schatten | Sheet: keine Zwischenüberschriften Sonne/Schatten/Farbe; Slider **min-height 2,75 rem** |
+| Bloom | Sheet-Default **50 %**; komplette Stepper (`.ui-stepper`) im Sheet aus; **16 px** Abstand zwischen Reglern, Abstand vor Schwelle |
 | Datei | Sheet (25 %): **Link kopieren** (nur Zwischenablage, URL nicht anzeigen), **Datei herunterladen** / **hochladen** (JSON). Desktop weiter über linkes Menü **Datei** |
 | Bottom-Sheet | Titel nur im Header — **keine** grauen sticky Sektions-Register. Scrollen nur im Sheet-Body (auch bei 25 %); innere Panels ohne eigenen Overflow |
-| Öffnungs-Höhe | **Standard max. 50 %**. Wenig Inhalt (**Ansicht, Bloom, Lampen & Leuchten, Datei**, …) → **25 %** (`defaultLibraryEditSheetHeight`). **75 / 100 %** nur per Drag-Rasten; Unter ~18 % → schließen. Session speichert letzte Drag-Höhe, Öffnen setzt wieder den Inhalts-Default |
+| Öffnungs-Höhe | **Standard max. 50 %**. Wenig Inhalt (**Ansicht, Lampen & Leuchten, Datei**, …) → **25 %** (`defaultLibraryEditSheetHeight`). **Bloom = 50 %** (v2.0.473). **75 / 100 %** nur per Drag-Rasten; Unter ~18 % → schließen |
 | HUD aus | gesamte Ansichts-Leiste (inkl. Fassade), Farbe/Zeichnung, Vorschau/Render, Himmel/Neutral, Licht, linke Ebenen (`#ui`), Kompass, Nav-Hilfe, **Gültig für** (`#edit-scope-bar`) — nur im Touch-Chrome |
 | Layout | `#app` eine Spalte; **`#viewport { grid-column: 1 }`** (v2.0.466) — sonst bleibt Spalte 2 und links eine leere graue Fläche |
 | Toast | `#scope-propagate-offer` bleibt (über dem Sheet, 7 s) |
@@ -374,7 +387,7 @@ Unter **Höhe** im Tab Paneele: **Reihen unten ausblenden** / **Reihen oben ausb
 
 ### Doppelklick-Zoom (v2.0.372 / v2.0.373 / v2.0.389)
 
-**3D:** Doppelklick auf Wand/Öffnung speichert die aktuelle Kamera und zoomt frontal/nah (bildschirmfüllend); zweiter Doppelklick stellt die Übersicht wieder her. **Front/Oben:** erster Doppelklick zoomt unter dem Cursor hinein, zweiter stellt Zoom/Pan wieder her. **v2.0.373:** Erkennung per manuellem Doppel-Tap auf `pointerup` — native `dblclick` wird durch `setPointerCapture` (Wandzug/Orbit) oft unterdrückt. **v2.0.389:** Öffnung — Tap für Zoom auch ohne `drag3dPendingSelect`; Zug erst ab **6 px**; Fokus nutzt Prefer-IDs aus dem Öffnungs-Drag (Raycast auf Ghost unzuverlässig); in Präsentieren setzt Resize/Kompass die Kamera nicht zurück, solange ein Objekt-Fokus-Bookmark aktiv ist. **v2.0.392 / v2.0.393:** 3D/Fassade fährt die Kamera mit Ease-in-out (~800 ms, Sinus, logarithmischer Dolly) — kein Sprung, weicher als der erste 420-ms-Cubic.
+**3D:** Doppelklick auf Wand/Öffnung speichert die aktuelle Kamera und zoomt frontal/nah (bildschirmfüllend); zweiter Doppelklick stellt die Übersicht wieder her. **v2.0.472:** Ein Klick auf leeren Bereich (Himmel/Boden ohne Treffer) hebt die Auswahl auf und lässt die Kamera stehen — auch nach Objekt-Fokus (Bookmark wird verwerfen, kein Übersicht-Sprung). Touch-Orbit-Tipp und ⌘/Ctrl-Orbit-Klick nutzen dieselbe Logik (`deselectAtEmptyViewportClick`). **Front/Oben:** erster Doppelklick zoomt unter dem Cursor hinein, zweiter stellt Zoom/Pan wieder her. **v2.0.373:** Erkennung per manuellem Doppel-Tap auf `pointerup` — native `dblclick` wird durch `setPointerCapture` (Wandzug/Orbit) oft unterdrückt. **v2.0.389:** Öffnung — Tap für Zoom auch ohne `drag3dPendingSelect`; Zug erst ab **6 px**; Fokus nutzt Prefer-IDs aus dem Öffnungs-Drag (Raycast auf Ghost unzuverlässig); in Präsentieren setzt Resize/Kompass die Kamera nicht zurück, solange ein Objekt-Fokus-Bookmark aktiv ist. **v2.0.392 / v2.0.393:** 3D/Fassade fährt die Kamera mit Ease-in-out (~800 ms, Sinus, logarithmischer Dolly) — kein Sprung, weicher als der erste 420-ms-Cubic.
 
 ### Wandbeschriftung (v0.7.109)
 

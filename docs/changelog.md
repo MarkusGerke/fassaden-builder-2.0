@@ -2,6 +2,54 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Bibliothek-Austausch: Stil/Zustand behalten (2026-09-14) — v2.0.476
+
+**Symptom:** Markisen-Typ in der Bibliothek setzte Farbe und Ausfahrt auf Defaults zurück.
+
+**Ursache:** `placeLibraryAwning` spreadete `defaultAwningConfig`; Wand-Pfad legte oft neu an.
+
+**Fix:** `awningKindSwitchPatch` (wie Toolbar); Öffnung/Wand mit bestehender Markise nur Typ+Maße; Neu-Anlage weiter Defaults. Audit: Verdachung/Gesims/Paneel/Treppe/Schrift bereits Merge.
+
+Docs: [awnings.md](awnings.md), [ux.md](ux.md).
+
+### Touch: Bühnen-Blitz durch variable Dock-Höhe (2026-09-14) — v2.0.475
+
+**Symptom:** An-/Abwählen ließ die Bühne wieder blitzen (Regression nach v2.0.473).
+
+**Runtime:** Dock `121→206` px (`tabsH` 0→42, Filter-Band pad 0→44); `min-height` war idle nur Karten, mit Auswahl Tabs+Filter.
+
+**Verworfen:** Idle ohne reserviertes Band gegen Weißraum (v2.0.473) — opfert Viewport-Stabilität.
+
+**Fix:** Wieder feste `min-height` inkl. Tabzeile + Filter-Band + Karten; `#library-mode` immer `padding-top: 2.75rem`.
+
+Docs: [ux.md](ux.md).
+
+### Touch: Ansicht-Zeile & Bloom-Stepper (2026-09-14) — v2.0.474
+
+**Symptom:** links/frontal/rechts saßen fälschlich im Bottom-Sheet-Titel; Bloom zeigte leere −/+-Stepper.
+
+**Fix:** Himmelsrichtung als `ui-field-inline` wie Darstellung; Bloom blendet `.ui-stepper`/`.field-stepper` komplett aus (nicht nur `input[type=number]`).
+
+Docs: [ux.md](ux.md).
+
+### Touch: Ansicht, Bibliothek, Scope-Toast (2026-09-14) — v2.0.473
+
+**Symptom:** Links/rechts-Ansicht vertauscht; großer Weißraum um Szene-Kacheln; Slider schwer greifbar; Bloom-Stepper; Etage/Fassade-Toast kopierte Markisen mit Paneelfarbe.
+
+**Fix:** `yawForTouchFacing` ±45° getauscht; Dock/`#library-mode` Filter-Band nur mit sichtbarem Filter; 16 px links; Sheet-Header `#library-edit-sheet-trailing`; `collectPropagateKeyFilter` in `scopePropagate.ts`.
+
+Docs: [ux.md](ux.md).
+
+### 3D: Abwählen per Klick außerhalb (2026-09-14) — v2.0.472
+
+**Symptom:** Nach Doppelklick-Fokus oder in Touch-Orbit ließ ein Klick auf leeren Bereich die Auswahl nicht verschwinden.
+
+**Ursache:** `handleNav3dClick` rief `selectWall(null, true)` auf — bei `additive === true` bricht `selectWall` ohne Abwahl ab.
+
+**Fix:** `deselectAtEmptyViewportClick(false)`; bei leerem Klick `objectFocusBookmark` verwerfen (Kamera bleibt, kein `restoreObjectFocusBookmark`). Gleiche Hilfsfunktion im Bubble-`pointerup` bei leerem Treffer.
+
+Docs: [ux.md](ux.md), [camera.md](camera.md).
+
 ### Touch: Farb-Kacheln zerquetscht durch Items-Padding (2026-09-14) — v2.0.471
 
 **Symptom:** Nach v2.0.470 keine Blitze mehr, aber Farb-Swatches in der Bibliothek vertikal gequetscht.

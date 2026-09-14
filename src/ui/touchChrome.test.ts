@@ -66,10 +66,10 @@ describe('touchChrome', () => {
 
   it('maps links/frontal/rechts as ±45° from home yaw', () => {
     expect(yawForTouchFacing(0, 'frontal')).toBe(0)
-    expect(yawForTouchFacing(0, 'left')).toBe(45)
-    expect(yawForTouchFacing(0, 'right')).toBe(315)
-    expect(touchFacingFromYaw(0, 45)).toBe('left')
-    expect(touchFacingFromYaw(0, 315)).toBe('right')
+    expect(yawForTouchFacing(0, 'left')).toBe(315)
+    expect(yawForTouchFacing(0, 'right')).toBe(45)
+    expect(touchFacingFromYaw(0, 315)).toBe('left')
+    expect(touchFacingFromYaw(0, 45)).toBe('right')
     expect(touchFacingFromYaw(0, 90)).toBe(null)
   })
 
@@ -86,7 +86,7 @@ describe('touchChrome', () => {
   it('picks compact sheet open height from sections', () => {
     expect(defaultLibraryEditSheetHeight(['view'])).toBe(25)
     expect(defaultLibraryEditSheetHeight(['sceneLights'])).toBe(25)
-    expect(defaultLibraryEditSheetHeight(['bloom'])).toBe(25)
+    expect(defaultLibraryEditSheetHeight(['bloom'])).toBe(50)
     expect(defaultLibraryEditSheetHeight(['file'])).toBe(25)
     expect(defaultLibraryEditSheetHeight(['sun'])).toBe(50)
     expect(defaultLibraryEditSheetHeight(['measures', 'style'])).toBe(50)

@@ -96,8 +96,8 @@ export const TOUCH_FACING_YAW_OFFSET_DEG = 45
 export function yawForTouchFacing(homeYaw: number, facing: TouchFacadeFacing): number {
   const home = normalizeYaw360(homeYaw)
   if (facing === 'frontal') return home
-  if (facing === 'left') return normalizeYaw360(home + TOUCH_FACING_YAW_OFFSET_DEG)
-  return normalizeYaw360(home - TOUCH_FACING_YAW_OFFSET_DEG)
+  if (facing === 'left') return normalizeYaw360(home - TOUCH_FACING_YAW_OFFSET_DEG)
+  return normalizeYaw360(home + TOUCH_FACING_YAW_OFFSET_DEG)
 }
 
 /** `null` = Yaw liegt nicht auf dem Triade links/frontal/rechts. */
@@ -105,8 +105,8 @@ export function touchFacingFromYaw(homeYaw: number, yaw: number): TouchFacadeFac
   const home = normalizeYaw360(homeYaw)
   const y = normalizeYaw360(yaw)
   if (Math.abs(y - home) < 0.5 || Math.abs(y - home) > 359.5) return 'frontal'
-  if (Math.abs(y - normalizeYaw360(home + TOUCH_FACING_YAW_OFFSET_DEG)) < 0.5) return 'left'
-  if (Math.abs(y - normalizeYaw360(home - TOUCH_FACING_YAW_OFFSET_DEG)) < 0.5) return 'right'
+  if (Math.abs(y - normalizeYaw360(home - TOUCH_FACING_YAW_OFFSET_DEG)) < 0.5) return 'left'
+  if (Math.abs(y - normalizeYaw360(home + TOUCH_FACING_YAW_OFFSET_DEG)) < 0.5) return 'right'
   return null
 }
 
@@ -220,7 +220,6 @@ export const LIBRARY_EDIT_SHEET_HEIGHT_KEY = 'fassaden-builder-library-edit-shee
  */
 export const LIBRARY_EDIT_SHEET_COMPACT_SECTIONS = new Set([
   'view',
-  'bloom',
   'sceneLights',
   'sceneLight',
   'file',

@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.471'
+export const APP_VERSION = '2.0.476'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,52 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.476',
+    date: '2026-09-14',
+    title: 'Austausch behält Farbe und Zustand',
+    changes: [
+      'Markisen-Typ in der Bibliothek: Stoff-/Gestellfarbe und Ausfahrt bleiben; nur typgerechte Maße wechseln (wie in der Toolbar).',
+      'Wand-Markise: Typ-Karte aktualisiert die ausgewählte Markise statt eine neue anzulegen.',
+    ],
+  },
+  {
+    version: '2.0.475',
+    date: '2026-09-14',
+    title: 'Touch: kein Bühnen-Blitz bei Auswahl',
+    changes: [
+      'Bibliothek-Dock behält wieder feste Mindesthöhe (Tabs + Filter-Band + Kacheln) — An-/Abwählen lässt die Bühne nicht mehr springen.',
+    ],
+  },
+  {
+    version: '2.0.474',
+    date: '2026-09-14',
+    title: 'Touch: Ansicht-Zeile & Bloom ohne Stepper',
+    changes: [
+      'Himmelsrichtung wieder als Inline-Zeile Titel links / Chips rechts (wie Darstellung) — nicht im Sheet-Header.',
+      'Bloom: leere Stepper-Hüllen (−/+) komplett ausgeblendet, nicht nur die Zahlenfelder.',
+    ],
+  },
+  {
+    version: '2.0.473',
+    date: '2026-09-14',
+    title: 'Touch: Ansicht, Sheets, Scope',
+    changes: [
+      'Himmelsrichtung links/rechts korrigiert (schräg links/rechts); Chips in einer Zeile mit Sheet-Titel „Ansicht“.',
+      'Szene-Kacheln: kein Leerraum ohne Filter; 16 px linker Rand bei Kacheln und Farb-Filtern.',
+      'Licht & Schatten: größere Slider-Griffe, Zwischenüberschriften weg; Bloom 50 %-Sheet, ohne Stepper, 16 px Abstände.',
+      'Etage/Fassade-Toast übernimmt nur die tatsächlich geänderten Eigenschaften (z. B. Paneelfarbe ohne Markisen).',
+    ],
+  },
+  {
+    version: '2.0.472',
+    date: '2026-09-14',
+    title: '3D: Abwählen außerhalb',
+    changes: [
+      'Leerer Klick (Himmel/Boden) hebt die Auswahl auf — auch nach Touch-Orbit-Tipp und ⌘/Ctrl-Orbit-Klick.',
+      'Nach Doppelklick-Zoom auf ein Objekt: ein Klick außerhalb wählt ab, die Kamera bleibt in der Nahansicht (kein Sprung zur Übersicht).',
+    ],
+  },
   {
     version: '2.0.471',
     date: '2026-09-14',

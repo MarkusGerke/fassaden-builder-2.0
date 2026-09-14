@@ -53,6 +53,7 @@ Der Nutzer orbitiert immer um `controls.target`. Liegt das Ziel außerhalb des G
 | Linksklick / Ziehen | Auswahl, Verschieben | Bubble-`pointerdown`, OrbitControls aus |
 | **⌘/Ctrl + Linksklick** ziehen | Orbit (um `controls.target`) | Capture-Phase → `beginNav3d` → `rotateCameraByPixels` → `controls.rotateLeft/Up` |
 | **Touch-Chrome Ein-Finger** (v2.0.469) | Orbit ohne Modifier | `shouldTouchChromeBeginOrbit3d` (Leer/Wand); Tippen → `handleNav3dClick`; Öffnung/Licht/Fallrohr weiter Bubble-Drag |
+| **Leerer Klick** (v2.0.472) | Auswahl aufheben, Kamera bleibt | `deselectAtEmptyViewportClick` (kein `additive`); nach Objekt-Fokus `objectFocusBookmark` verwerfen |
 | **⌘/Ctrl + ⇧ + Linksklick** ziehen | Schwenken (Pan) | `nav3d.mode === 'pan'` → `controls.pan` mit **`keyPanSpeed`** (≈7), nicht `panSpeed` (1) |
 | Rechtsklick | Kontextmenü | Capture stoppt OrbitControls |
 | **⌘/Ctrl + Rechtsklick** ziehen | Schwenken | OrbitControls `RIGHT = PAN`, `enablePan` temporär |

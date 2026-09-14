@@ -5485,10 +5485,9 @@ html.ui-touch-chrome #library-dock > .library-tabs::-webkit-scrollbar {
 }
 
 /*
- * Ohne Auswahl: keine sichtbare Registerleiste.
- * Dock-Mindesthöhe = Tabzeile + Filter-Band + Kartenleiste (v2.0.462 / v2.0.471).
- * Filter-Band ist immer reserviert → Anzeigen des Filters ändert die Dock-Höhe nicht
- * und quetscht die festen 6,5rem-Karten nicht (kein items padding-top).
+ * Ohne Auswahl: keine sichtbare Registerleiste (Höhe 0), aber Dock-Mindesthöhe
+ * bleibt konstant inkl. Tabzeile + Filter-Band + Karten (v2.0.461 / v2.0.471 / v2.0.475).
+ * Nie abweichende min-height bei has-selection — sonst Bühnen-Blitz (Dock 121→206).
  */
 html.ui-touch-chrome #library-dock {
   min-height: calc(2.6rem + 2.75rem + 7.55rem + env(safe-area-inset-bottom, 0px));
@@ -5525,7 +5524,7 @@ html.ui-touch-chrome #library-dock > .library-chrome > #opening-library {
 html.ui-touch-chrome #library-mode {
   position: relative;
   gap: 0.25rem;
-  /* Immer Filter-Band freilassen — Items behalten height:6.5rem (box-sizing border-box). */
+  /* Immer Filter-Band freilassen — Anzeigen des Filters ändert die Höhe nicht. */
   padding-top: 2.75rem;
   box-sizing: border-box;
 }
@@ -5564,6 +5563,7 @@ html.ui-touch-chrome #library-filter-row[hidden] {
 
 html.ui-touch-chrome .library-filter-tabs {
   padding: 0.15rem 0 0.25rem;
+  padding-left: var(--space-3, 16px);
   margin: 0;
   scrollbar-width: none;
 }
@@ -5576,9 +5576,9 @@ html.ui-touch-chrome .library-filter-tabs::-webkit-scrollbar {
 html.ui-touch-chrome .opening-library-items {
   scrollbar-width: none;
   scrollbar-gutter: auto;
-  /* Erste/letzte Kachel an den Rand; Gap bleibt zwischen Karten */
-  padding-left: 0;
+  padding-left: var(--space-3, 16px);
   padding-right: 0;
+  scroll-padding-left: var(--space-3, 16px);
 }
 
 html.ui-touch-chrome .opening-library-items::-webkit-scrollbar {
@@ -5779,6 +5779,46 @@ html.ui-touch-chrome .opening-library-card .library-card-edit {
 
 .library-edit-sheet-body .settings-section {
   padding-top: 0 !important;
+}
+
+html.ui-touch-chrome .library-edit-sheet-body [data-settings-section='sun'] .settings-subheading-nested {
+  display: none;
+}
+
+html.ui-touch-chrome .library-edit-sheet-body [data-settings-section='sun'] {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 16px);
+}
+
+html.ui-touch-chrome .library-edit-sheet-body [data-settings-section='sun'] input[type='range'] {
+  min-height: 2.75rem;
+  margin: 0;
+  touch-action: pan-y;
+}
+
+html.ui-touch-chrome .library-edit-sheet-body [data-settings-section='sun'] .slider-label {
+  margin-bottom: 0;
+}
+
+html.ui-touch-chrome .library-edit-sheet-body [data-settings-section='bloom'] {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 16px);
+}
+
+html.ui-touch-chrome .library-edit-sheet-body [data-settings-section='bloom'] #bloom-options .ui-stepper,
+html.ui-touch-chrome .library-edit-sheet-body [data-settings-section='bloom'] #bloom-options .field-stepper,
+html.ui-touch-chrome .library-edit-sheet-body [data-settings-section='bloom'] #bloom-options input[type='number'] {
+  display: none !important;
+}
+
+html.ui-touch-chrome .library-edit-sheet-body [data-settings-section='bloom'] #bloom-options label:has(+ #bloom-threshold) {
+  margin-top: var(--space-3, 16px);
+}
+
+html.ui-touch-chrome .library-edit-sheet-body [data-settings-section='bloom'] input[type='range'] {
+  margin: 0;
 }
 
 /* Fokussierter Inspector nur im Touch-Chrome (Bottom-Sheet); Desktop klassisch. */

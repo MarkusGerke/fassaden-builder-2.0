@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { createDefaultFacadeState, cloneWall } from '../types/facade'
-import { defaultAwningConfig } from '../studio/awning'
+import {
+  awningKindDefaults,
+  awningKindSwitchPatch,
+  defaultAwningConfig,
+} from '../studio/awning'
 import { updateOpening } from './openings'
 import {
   addWallAwning,
@@ -14,6 +18,89 @@ import {
   wallAwnings,
 } from './awnings'
 import { hydrateOpening, hydrateWall } from './hydrate'
+
+describe('awning kind switch preserves style/state', () => {
+  it('opening: fabricColor + extension survive kind change via switch patch', () => {
+    let state = createDefaultFacadeState()
+    const wall = state.buildings[0]!.walls[0]!
+    const op = {
+      id: 'op-1',
+      type: 'window' as const,
+      x: 48,
+      y: 128,
+      width: 96,
+      height: 192,
+    }
+    state = {
+      ...state,
+      buildings: state.buildings.map((b) => ({
+        ...b,
+        walls: b.walls.map((w) =>
+          w.id === wall.id ? cloneWall({ ...w, openings: [op] }) : w,
+        ),
+      })),
+    }
+    const wallId = wall.id
+    state = updateOpeningAwning(state, [{ wallId, openingId: op.id }], {
+      enabled: true,
+      kind: 'foldingArm',
+      fabricColor: '#228B22',
+      extension: 0.3,
+      frameColor: '#111111',
+    })
+    const before = state.buildings[0]!.walls.find((w) => w.id === wallId)!.openings[0]!.awning!
+    state = updateOpeningAwning(
+      state,
+      [{ wallId, openingId: op.id }],
+      { ...awningKindSwitchPatch('dropArm', before.kind), enabled: true },
+    )
+    const after = state.buildings[0]!.walls.find((w) => w.id === wallId)!.openings[0]!.awning!
+    expect(after.kind).toBe('dropArm')
+    expect(after.fabricColor).toBe('#228B22')
+    expect(after.frameColor).toBe('#111111')
+    expect(after.extension).toBe(0.3)
+    expect(after.id).toBe(before.id)
+    expect(after.armMountYCm).toBe(awningKindDefaults('dropArm').armMountYCm)
+  })
+
+  it('wall: fabricColor + extension survive kind change via switch patch', () => {
+    let state = createDefaultFacadeState()
+    const wallId = state.buildings[0]!.walls[0]!.id
+    const { state: withAwning, awningId } = addWallAwning(state, wallId, {
+      enabled: true,
+      kind: 'foldingArm',
+      fabricColor: '#228B22',
+      extension: 0.3,
+    })
+    state = withAwning
+    state = updateWallAwning(
+      state,
+      [wallId],
+      { ...awningKindSwitchPatch('markisolette', 'foldingArm'), enabled: true },
+      awningId,
+    )
+    const next = wallAwnings(state.buildings[0]!.walls[0]!).find((a) => a.id === awningId)!
+    expect(next.kind).toBe('markisolette')
+    expect(next.fabricColor).toBe('#228B22')
+    expect(next.extension).toBe(0.3)
+    expect(next.projectionCm).toBe(awningKindDefaults('markisolette').projectionCm)
+  })
+
+  it('full defaultAwningConfig would wipe style — switch patch must not equal that', () => {
+    const styled = defaultAwningConfig({
+      enabled: true,
+      kind: 'foldingArm',
+      fabricColor: '#228B22',
+      extension: 0.3,
+    })
+    const wiped = defaultAwningConfig({ enabled: true, kind: 'dropArm' })
+    expect(wiped.fabricColor).not.toBe(styled.fabricColor)
+    expect(wiped.extension).not.toBe(styled.extension)
+    const patch = awningKindSwitchPatch('dropArm', 'foldingArm')
+    expect(patch.fabricColor).toBeUndefined()
+    expect(patch.extension).toBeUndefined()
+  })
+})
 
 describe('awnings CRUD', () => {
   it('adds and removes wall awnings', () => {
