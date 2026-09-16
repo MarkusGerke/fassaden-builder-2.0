@@ -2,6 +2,16 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Schicht-Editor Mauerwerk (2026-09-16) — v2.0.495
+
+**Soll:** Zusätzlich zum wandweiten Muster Reihen einzeln setzen (Größe 0°/90°, Farbstufe), orangene Vorschau, Domino-Animation; Öffnungen über bestehende Clip-Pipeline.
+
+**Umsetzung:** `Wall.courseOverrides`; Layout-Merge in `panelLayout.ts`; Staging/Domino in `main.ts` + Ghosts; Farbe über Palette-Index 0…7.
+
+**Noch nicht:** 45°-Trapez L/R, echter Eck-Umlauf, Dachziegel, Nachfärben einzelner Steine nach dem Legen.
+
+Dateien: `masonryCourseEditor.ts`, `panelLayout.ts`, `panelGeometry.ts`, `FacadeController.ts`, `main.ts`, `index.html`. Docs: [masonry-course-editor.md](masonry-course-editor.md).
+
 ### Geschosskante — Wandkörper kürzen (2026-09-16) — v2.0.494
 
 **Symptom:** Nach v2.0.493 noch minimal sichtbare Geschosskante unter der Traufe.

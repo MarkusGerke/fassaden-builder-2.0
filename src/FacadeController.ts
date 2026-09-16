@@ -1291,6 +1291,55 @@ export class FacadeController {
     this.clearOpeningDragGhosts()
   }
 
+  /**
+   * Mehrere orange Rechtecke (Schicht-Editor Domino) — gleiche Materialien wie
+   * Bibliothek-Ghost, ohne Shadow-Cast.
+   */
+  setMasonryCourseGhosts(
+    wall: Wall,
+    rects: Array<{ x: number; y: number; width: number; height: number }>,
+  ) {
+    this.clearOpeningDragGhosts()
+    if (rects.length === 0) return
+    const localZ = openingDragFloatLocalZ(wall)
+    const transform = wallPlacement(wall)
+    for (let i = 0; i < rects.length; i += 1) {
+      const rect = rects[i]!
+      if (rect.width < 1 || rect.height < 1) continue
+      const synthetic: Opening = {
+        id: `__masonry_course_${i}__`,
+        type: 'cutout',
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+      }
+      const group = new THREE.Group()
+      for (const part of createOpeningDragGhostParts(
+        wall,
+        synthetic,
+        localZ,
+        this.openingDragGhostFillMaterial,
+        this.selectionLineMaterial,
+      )) {
+        part.castShadow = false
+        part.receiveShadow = false
+        group.add(part)
+      }
+      if (group.children.length === 0) continue
+      group.userData = {
+        kind: 'openingDragGhost',
+        wallId: wall.id,
+        openingId: synthetic.id,
+        libraryPlacement: true,
+        masonryCourse: true,
+      }
+      group.position.set(transform.position.x, transform.position.y, transform.position.z)
+      group.rotation.y = transform.rotationY
+      this.openingDragGhostGroup.add(group)
+    }
+  }
+
   private createOpeningDragGhosts(refs: OpeningRef[]) {
     for (const ref of refs) {
       const wall = findWall(this.state, ref.wallId)
@@ -4822,7 +4871,10 @@ export class FacadeController {
         const transform = wallPlacement(wall)
         const building = findBuildingForWall(this.state, wall.id)
         const panelGeomOpts = { windowDepthOffset: building?.windowDepthOffset }
-        if (!(panel.enabled === false || panel.pattern === 'none')) {
+        if (
+          !(panel.enabled === false || panel.pattern === 'none') ||
+          (geomWall.courseOverrides && geomWall.courseOverrides.length > 0)
+        ) {
           try {
             const claddingColor = wall.claddingColor ?? wall.wallColor ?? DEFAULT_WALL_COLOR
             const tiles = layoutPanelTiles(geomWall, panel, neighborWalls)
@@ -4899,7 +4951,8 @@ export class FacadeController {
                           stageIndex: 0,
                           // Bei persistierten Zonen echtes Raster (sonst eine Platte ohne Modulwechsel).
                           geometry:
-                            geomWall.claddingZones && geomWall.claddingZones.length > 0
+                            (geomWall.claddingZones && geomWall.claddingZones.length > 0) ||
+                            (geomWall.courseOverrides && geomWall.courseOverrides.length > 0)
                               ? createStudioPanelGeometry(
                                   geomWall,
                                   panel,

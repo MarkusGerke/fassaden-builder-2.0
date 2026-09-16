@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.494'
+export const APP_VERSION = '2.0.495'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,15 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.495',
+    date: '2026-09-16',
+    title: 'Schicht-Editor für Mauerwerk',
+    changes: [
+      '„Schicht setzen“: Muster aus der Bibliothek je Reihe legen, Stein neben der Wand um 90° drehen, orangene Reihenvorschau und Domino-Animation',
+      'Farbstufe 0–7 nutzt die bestehende Kontrast-Palette; klassisches wandweites Muster bleibt unverändert',
+    ],
+  },
   {
     version: '2.0.494',
     date: '2026-09-16',

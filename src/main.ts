@@ -610,6 +610,17 @@ import {
   studioPanelDefaultsForPattern,
 } from './studio/constants'
 import {
+  courseBandAtLocalY,
+  courseFromStaging,
+  createDefaultCourseStaging,
+  dominoStepMs,
+  previewTilesForCourse,
+  rotateCourseStaging,
+  stagingEffectiveSizes,
+  updateWallCourseOverride,
+  type MasonryCourseStaging,
+} from './studio/masonryCourseEditor'
+import {
   DEFAULT_ROOF,
   facadeHasRoofablePlan,
   listRoofEdges,
@@ -1383,6 +1394,7 @@ function endNav3d(event?: PointerEvent): 'drag' | 'click' | false {
 
 function handleNav3dClick(event: PointerEvent) {
   if (tryObjectFocusDoubleTap(event)) return
+  if (handleMasonryCourseClick(event)) return
   const hit = pickFromEvent(event)
   if (!hit) {
     selectWall(null, true)
@@ -3562,6 +3574,183 @@ function applyPanelPresetFromLibrary(
   )
   rebuildStudioPatternCards()
   planStatus.textContent = `Paneel „${PATTERN_LABELS[pattern]}“ angewendet`
+}
+
+/** Schicht-Editor: Staging + Domino (siehe docs/masonry-course-editor.md). */
+let masonryCourseEditorOn = false
+let masonryCourseStaging: MasonryCourseStaging | null = null
+let masonryCourseHover: { wallId: string; y: number; height: number } | null = null
+let masonryCoursePlayback: {
+  wallId: string
+  course: ReturnType<typeof courseFromStaging>
+  tiles: Array<{ x: number; y: number; width: number; height: number }>
+  revealed: number
+  t0: number
+} | null = null
+
+function isMasonryCourseEditorArmed(): boolean {
+  return masonryCourseEditorOn && masonryCourseStaging !== null && masonryCourseStaging.pattern !== 'none'
+}
+
+function syncMasonryCourseEditorUi() {
+  if (!studioCourseEditorEnabled || !studioCourseEditorOptions || !studioCourseColorStage) return
+  studioCourseEditorEnabled.checked = masonryCourseEditorOn
+  studioCourseEditorOptions.hidden = !masonryCourseEditorOn
+  if (masonryCourseStaging) {
+    studioCourseColorStage.value = String(masonryCourseStaging.colorStage)
+  }
+}
+
+function disarmMasonryCourseEditor(options?: { keepToggle?: boolean }) {
+  if (!options?.keepToggle) {
+    masonryCourseEditorOn = false
+    if (studioCourseEditorEnabled) studioCourseEditorEnabled.checked = false
+  }
+  masonryCourseStaging = null
+  masonryCourseHover = null
+  if (!masonryCoursePlayback) {
+    facade.clearLibraryPlacementGhost()
+    facade.setSelectionHighlightSuppressed(false)
+    svgView.setSelectionHighlightSuppressed(false)
+  }
+  syncMasonryCourseEditorUi()
+  markViewportDirty()
+}
+
+function armMasonryCourseFromLibrary(pattern: StudioPanelPattern) {
+  if (pattern === 'none') {
+    disarmMasonryCourseEditor({ keepToggle: true })
+    planStatus.textContent = 'Schicht-Editor: Bewaffnung beendet'
+    return
+  }
+  const wall = editor.selectedWallIds[0] ? getWall(state, editor.selectedWallIds[0]) : null
+  const defaults = studioPanelDefaultsForPattern(pattern)
+  masonryCourseStaging = createDefaultCourseStaging(pattern, {
+    ...(wall?.panel ?? {}),
+    ...defaults,
+    pattern,
+  })
+  if (studioCourseColorStage) {
+    masonryCourseStaging.colorStage = Math.max(
+      0,
+      Math.min(7, Math.round(Number(studioCourseColorStage.value) || 0)),
+    )
+  }
+  syncMasonryCourseEditorUi()
+  planStatus.textContent = `Schicht: ${PATTERN_LABELS[pattern]} — neben Wand klicken = drehen, Reihe bestätigen = füllen`
+  markViewportDirty()
+}
+
+function updateMasonryCourseHover(clientX: number, clientY: number) {
+  if (!isMasonryCourseEditorArmed() || masonryCoursePlayback || !masonryCourseStaging) {
+    return false
+  }
+  const hit = pickWallAtClient(clientX, clientY)
+  if (!hit) {
+    if (masonryCourseHover) {
+      masonryCourseHover = null
+      facade.clearLibraryPlacementGhost()
+      facade.setSelectionHighlightSuppressed(false)
+      svgView.setSelectionHighlightSuppressed(false)
+      markViewportDirty()
+    }
+    return true
+  }
+  const wall = getWall(state, hit.wallId)
+  if (!wall || !isStudioWall(wall)) return true
+  const sizes = stagingEffectiveSizes(masonryCourseStaging)
+  const band = courseBandAtLocalY(wall, hit.localY, sizes.panelHeight, getAllWalls(state))
+  if (!band) {
+    masonryCourseHover = null
+    facade.clearLibraryPlacementGhost()
+    return true
+  }
+  masonryCourseHover = { wallId: wall.id, y: band.y, height: band.height }
+  facade.setSelectionHighlightSuppressed(true)
+  svgView.setSelectionHighlightSuppressed(true)
+  facade.setLibraryPlacementGhost(wall, {
+    x: 0,
+    y: band.y,
+    width: wall.width,
+    height: band.height,
+    type: 'cutout',
+  })
+  markViewportDirty()
+  return true
+}
+
+function beginMasonryCourseFill(wallId: string, band: { y: number; height: number }) {
+  if (!masonryCourseStaging || masonryCourseStaging.pattern === 'none') return
+  const wall = getWall(state, wallId)
+  if (!wall || !isStudioWall(wall) || !canEditWallNow(wallId)) return
+  const course = courseFromStaging(band, masonryCourseStaging)
+  let tiles = previewTilesForCourse(wall, wall.panel, course, getAllWalls(state))
+    .map((t) => ({ x: t.x, y: t.y, width: t.width, height: t.height }))
+    .sort((a, b) => a.x - b.x || a.y - b.y)
+  if (tiles.length === 0) {
+    tiles = [{ x: 0, y: band.y, width: wall.width, height: band.height }]
+  }
+  masonryCourseHover = null
+  masonryCoursePlayback = {
+    wallId,
+    course,
+    tiles,
+    revealed: 0,
+    t0: performance.now(),
+  }
+  facade.setSelectionHighlightSuppressed(true)
+  svgView.setSelectionHighlightSuppressed(true)
+  facade.setMasonryCourseGhosts(wall, tiles.slice(0, 1))
+  markViewportDirty()
+}
+
+function tickMasonryCoursePlayback(nowMs: number) {
+  const play = masonryCoursePlayback
+  if (!play) return
+  const wall = getWall(state, play.wallId)
+  if (!wall) {
+    masonryCoursePlayback = null
+    facade.clearLibraryPlacementGhost()
+    return
+  }
+  const step = dominoStepMs()
+  const revealed = Math.min(play.tiles.length, Math.floor((nowMs - play.t0) / step) + 1)
+  if (revealed !== play.revealed) {
+    play.revealed = revealed
+    facade.setMasonryCourseGhosts(wall, play.tiles.slice(0, revealed))
+    markViewportDirty()
+  }
+  if (revealed < play.tiles.length) return
+  const course = play.course
+  const wallId = play.wallId
+  masonryCoursePlayback = null
+  facade.clearLibraryPlacementGhost()
+  facade.setSelectionHighlightSuppressed(false)
+  svgView.setSelectionHighlightSuppressed(false)
+  commitState(updateWallCourseOverride(state, [wallId], course))
+  planStatus.textContent = 'Schicht gesetzt'
+}
+
+function handleMasonryCourseClick(event: PointerEvent): boolean {
+  if (!isMasonryCourseEditorArmed() || masonryCoursePlayback || !masonryCourseStaging) return false
+  const hit = pickWallAtClient(event.clientX, event.clientY)
+  if (!hit) {
+    masonryCourseStaging = rotateCourseStaging(masonryCourseStaging)
+    const sizes = stagingEffectiveSizes(masonryCourseStaging)
+    planStatus.textContent = `Stein gedreht → ${sizes.panelWidth}×${sizes.panelHeight} cm`
+    markViewportDirty()
+    return true
+  }
+  const wall = getWall(state, hit.wallId)
+  if (!wall || !isStudioWall(wall)) return false
+  if (!editor.selectedWallIds.includes(hit.wallId)) {
+    selectWall(hit.wallId, true)
+  }
+  const sizes = stagingEffectiveSizes(masonryCourseStaging)
+  const band = courseBandAtLocalY(wall, hit.localY, sizes.panelHeight, getAllWalls(state))
+  if (!band) return true
+  beginMasonryCourseFill(hit.wallId, band)
+  return true
 }
 
 function placeWallPresetFromLibrary(presetId: string, clientX?: number, clientY?: number) {
@@ -7977,6 +8166,9 @@ const studioJointInput = document.querySelector<HTMLInputElement>('#studio-joint
 const studioPanelWidthInput = document.querySelector<HTMLInputElement>('#studio-panel-width')!
 const studioPanelWidthRow = document.querySelector<HTMLDivElement>('#studio-panel-width-row')!
 const studioPanelHeightInput = document.querySelector<HTMLInputElement>('#studio-panel-height')!
+const studioCourseEditorEnabled = document.querySelector<HTMLInputElement>('#studio-course-editor-enabled')!
+const studioCourseEditorOptions = document.querySelector<HTMLDivElement>('#studio-course-editor-options')!
+const studioCourseColorStage = document.querySelector<HTMLInputElement>('#studio-course-color-stage')!
 const studioCladdingTwoBands = document.querySelector<HTMLInputElement>('#studio-cladding-two-bands')!
 const studioCladdingTwoBandsOptions = document.querySelector<HTMLDivElement>('#studio-cladding-two-bands-options')!
 const studioCladdingSplitY = document.querySelector<HTMLInputElement>('#studio-cladding-split-y')!
@@ -10342,6 +10534,7 @@ function syncStudioPanelVisibility(
   studioTileColorSection.hidden = !panelsOn
   studioTileVarietyRow.hidden = !panelsOn || (panel.tileColorVariance ?? 0) <= 0
   studioPanelWidthRow.hidden = !panelsOn
+  syncMasonryCourseEditorUi()
 }
 
 function syncStudioToolbar(wall: Wall) {
@@ -11998,6 +12191,10 @@ function initOpeningLibrary() {
       card.addEventListener('click', () => {
         if (card.dataset.didDrag === '1') {
           delete card.dataset.didDrag
+          return
+        }
+        if (masonryCourseEditorOn) {
+          armMasonryCourseFromLibrary(pattern)
           return
         }
         applyPanelPresetFromLibrary(pattern)
@@ -24517,6 +24714,17 @@ document.querySelector('#opening-library-items')?.addEventListener(
 )
 
 window.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && (masonryCourseEditorOn || masonryCourseStaging || masonryCoursePlayback)) {
+    if (masonryCoursePlayback) {
+      masonryCoursePlayback = null
+      facade.clearLibraryPlacementGhost()
+      facade.setSelectionHighlightSuppressed(false)
+      svgView.setSelectionHighlightSuppressed(false)
+    }
+    disarmMasonryCourseEditor()
+    event.preventDefault()
+    return
+  }
   if (event.key === 'Escape' && libraryEditFocusSections) {
     if (pedimentCatalogDepth !== 'root') {
       setPedimentCatalogDepth('root')
@@ -26688,6 +26896,11 @@ canvas.addEventListener('pointermove', (event) => {
     !orbitLite
   ) {
     updateLeafWindFromClient(event.clientX, event.clientY)
+  }
+
+  if (updateMasonryCourseHover(event.clientX, event.clientY)) {
+    // Schicht-Hover kann parallel zu anderen Previews laufen; nicht early-return,
+    // außer wir sind bewaffnet und wollen keine konkurrierenden Library-Ghosts.
   }
 
   if (leafPaintActive && leafEditMode) {
@@ -30268,6 +30481,7 @@ function animate() {
     if (openingMotionPlayback) tickOpeningMotionPlayback(nowMs)
     if (rollerShutterPlayback) tickRollerShutterPlayback(nowMs)
     if (isAwningPlaybackActive()) tickAwningPlayback(nowMs)
+    if (masonryCoursePlayback) tickMasonryCoursePlayback(nowMs)
   }
 
   const pathMoved = tickSunPathAnimation(nowMs, dayDt)
@@ -30309,6 +30523,7 @@ function animate() {
     (!paused && Boolean(openingMotionPlayback)) ||
     (!paused && Boolean(rollerShutterPlayback)) ||
     (!paused && isAwningPlaybackActive()) ||
+    (!paused && Boolean(masonryCoursePlayback)) ||
     sceneLightLive ||
     leafMoved
 
@@ -30899,12 +31114,36 @@ studioPanelWidthInput.addEventListener('change', () => {
   const panelWidth = clampStudioPanelSize(Number(studioPanelWidthInput.value))
   studioPanelWidthInput.value = String(panelWidth)
   commitStudioPanelPatch({ panelWidth })
+  if (masonryCourseStaging && !masonryCourseStaging.rotated90) {
+    masonryCourseStaging = { ...masonryCourseStaging, panelWidth }
+  }
 })
 
 studioPanelHeightInput.addEventListener('change', () => {
   const panelHeight = clampStudioPanelSize(Number(studioPanelHeightInput.value))
   studioPanelHeightInput.value = String(panelHeight)
   commitStudioPanelPatch({ panelHeight })
+  if (masonryCourseStaging && !masonryCourseStaging.rotated90) {
+    masonryCourseStaging = { ...masonryCourseStaging, panelHeight }
+  }
+})
+
+studioCourseEditorEnabled.addEventListener('change', () => {
+  masonryCourseEditorOn = studioCourseEditorEnabled.checked
+  if (!masonryCourseEditorOn) {
+    disarmMasonryCourseEditor()
+    planStatus.textContent = 'Schicht-Editor aus — Bibliothek gilt wieder für die ganze Wand'
+  } else {
+    studioCourseEditorOptions.hidden = false
+    planStatus.textContent = 'Schicht-Editor an — Muster in der Bibliothek wählen'
+  }
+  syncMasonryCourseEditorUi()
+})
+
+studioCourseColorStage.addEventListener('change', () => {
+  const stage = Math.max(0, Math.min(7, Math.round(Number(studioCourseColorStage.value) || 0)))
+  studioCourseColorStage.value = String(stage)
+  if (masonryCourseStaging) masonryCourseStaging = { ...masonryCourseStaging, colorStage: stage }
 })
 
 function commitTwoHorizontalBands(options: {
@@ -31750,12 +31989,23 @@ viewport.addEventListener('drop', (event) => {
     ((PANEL_KIND_PATTERNS as readonly string[]).includes(panelPattern) ||
       (MASONRY_KIND_PATTERNS as readonly string[]).includes(panelPattern))
   ) {
-    const wallId = pickWallAtClient(event.clientX, event.clientY)?.wallId ?? null
-    if (!wallId) {
+    const hit = pickWallAtClient(event.clientX, event.clientY)
+    if (!hit) {
       planStatus.textContent = 'Paneel: auf eine Wand ablegen'
       return
     }
-    applyPanelPresetFromLibrary(panelPattern as StudioPanelPattern, { wallId })
+    if (masonryCourseEditorOn) {
+      armMasonryCourseFromLibrary(panelPattern as StudioPanelPattern)
+      if (!isMasonryCourseEditorArmed() || !masonryCourseStaging) return
+      const wall = getWall(state, hit.wallId)
+      if (!wall || !isStudioWall(wall)) return
+      selectWall(hit.wallId, true)
+      const sizes = stagingEffectiveSizes(masonryCourseStaging)
+      const band = courseBandAtLocalY(wall, hit.localY, sizes.panelHeight, getAllWalls(state))
+      if (band) beginMasonryCourseFill(hit.wallId, band)
+      return
+    }
+    applyPanelPresetFromLibrary(panelPattern as StudioPanelPattern, { wallId: hit.wallId })
     return
   }
   const wallPresetId =

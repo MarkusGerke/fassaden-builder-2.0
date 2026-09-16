@@ -1185,6 +1185,23 @@ export interface CladdingZone {
   panel?: Partial<StudioPanelConfig>
 }
 
+/**
+ * Eine manuell gesetzte Mauerwerks-Schicht (Schicht-Editor).
+ * Ersetzt im Y-Band die Tiles des globalen `wall.panel`-Musters.
+ * Siehe docs/masonry-course-editor.md.
+ */
+export interface MasonryCourseOverride {
+  /** Unterkante der Schicht vom Wandfuß (cm). */
+  y: number
+  /** Schichthöhe (cm), typisch = Modulhöhe. */
+  height: number
+  pattern: StudioPanelPattern
+  panelWidth: number
+  panelHeight: number
+  /** 0…7 Farbstufe der Kontrast-Palette; fehlt → Zufall wie bisher. */
+  colorStage?: number
+}
+
 export interface StudioPanelConfig {
   /** Läufer-Sichtlänge (cm), 8-cm-Raster. Binder sind die Hälfte. */
   panelWidth: number
@@ -1341,6 +1358,11 @@ export interface Wall extends WallDimensions {
    * (`claddingZonesForWall` in `facadeLayers.ts`). Siehe docs/facade-layers.md.
    */
   claddingZones?: CladdingZone[]
+  /**
+   * Schicht-Editor: Y-Bänder mit eigenem Muster/Maßen/Farbstufe.
+   * Ersetzen die Basis-Tiles im Band; Öffnungs-Clip bleibt die Standard-Pipeline.
+   */
+  courseOverrides?: MasonryCourseOverride[]
   id: string
   moduleName?: string
   x: number
@@ -1626,6 +1648,7 @@ export function cloneWall(wall: Wall): Wall {
       rect: zone.rect ? { ...zone.rect } : undefined,
       panel: zone.panel ? { ...zone.panel } : undefined,
     })),
+    courseOverrides: wall.courseOverrides?.map((course) => ({ ...course })),
     cornice: wall.cornice ? { ...wall.cornice } : undefined,
     trimBands: wall.trimBands?.map((band) => ({ ...band })),
     labels: wall.labels?.map((item) => ({ ...item })),

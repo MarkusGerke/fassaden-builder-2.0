@@ -146,6 +146,8 @@ interface Rect {
   /** Dock 0,5+0,5: Chamfer der Dock-Innenseite auf 0. */
   flattenDockStart?: boolean
   flattenDockEnd?: boolean
+  /** Feste Farbstufe 0…7 (Schicht-Editor). */
+  colorStage?: number
 }
 
 /** Rückseite an der Wandfläche, Vorderseite um `depth` nach außen. */
@@ -2728,17 +2730,20 @@ export function createStudioPanelGeometriesByColorIndex(
 
 /** Farbstufe eines Steins aus dem Ursprungsfeld (`sourceX/Y`, vor dem Öffnungs-Clip). */
 function tileColorBucketIndex(
-  part: { x: number; y: number; sourceX?: number; sourceY?: number },
+  part: { x: number; y: number; sourceX?: number; sourceY?: number; colorStage?: number },
   seedKey: string,
   stageCount: number,
 ): number {
+  if (typeof part.colorStage === 'number' && Number.isFinite(part.colorStage)) {
+    return Math.max(0, Math.min(stageCount - 1, Math.round(part.colorStage)))
+  }
   const x = part.sourceX ?? part.x
   const y = part.sourceY ?? part.y
   const stableIdx = Math.round((x + 1) * 128 + (y + 1) * 0.5)
   return pickTileColorIndex(seedKey, stableIdx, stageCount)
 }
 
-function bucketPartsByColorIndex<T extends { x: number; y: number; sourceX?: number; sourceY?: number }>(
+function bucketPartsByColorIndex<T extends { x: number; y: number; sourceX?: number; sourceY?: number; colorStage?: number }>(
   parts: T[],
   seedKey: string,
   stageCount: number,
