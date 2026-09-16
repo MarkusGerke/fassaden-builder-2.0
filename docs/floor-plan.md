@@ -192,7 +192,7 @@ const walls = floors.flatMap((plan, i) =>
 
 ### Etage hinzufügen / duplizieren
 
-**`duplicateStorey` / `insertStoreyAbove` (v0.7.240 / v2.0.237):** Klont Wände einer Etage mit `y = source.y + source.height`. Setzt explizites `Wall.storeyIndex` (Quelle+1, höhere +1), damit `floorIndex` nicht mehr allein von `round(y / wallHeight)` abhängt. Dialog `#storey-copy-dialog`: Checkboxen, **Auswahl speichern** oder **Nur Grundriss übernehmen**. Hilfslinien beim Zeichnen: `collectPlanDrawGuides` (orangene Linien bei bündigem Cursor). Erker-Drop der Quelle wird an Klonen gestrippt.
+**`duplicateStorey` / `insertStoreyAbove` (v0.7.240 / v2.0.237):** Klont Wände einer Etage mit `y = source.y + source.height`. Setzt explizites `Wall.storeyIndex` (Quelle+1, höhere +1), damit `floorIndex` nicht mehr allein von `round(y / wallHeight)` abhängt. Dialog `#storey-copy-dialog`: Checkboxen, **Auswahl speichern** oder **Nur Grundriss übernehmen**. Hilfslinien beim Zeichnen: `collectPlanDrawGuides` (orangene Linien bei bündigem Cursor). Erker-Drop der Quelle wird an Klonen gestrippt. Obergeschoss-Klone: `depthForUpperStoreyWall` → 24 cm. **v2.0.480:** UI ruft danach `finalizeStudioGeometry` auf (nicht nur `finalizeWallLayout`) — sonst bleiben die kopierten EG-Gehrungen (±EG-Tiefe) auf 24-cm-Wänden und kreuzen sich an den Ecken.
 
 ### Etage löschen (`removeStorey`, v2.0.236)
 

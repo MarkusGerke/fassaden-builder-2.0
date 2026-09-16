@@ -2,6 +2,215 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Geschosskante — Wandkörper kürzen (2026-09-16) — v2.0.494
+
+**Symptom:** Nach v2.0.493 noch minimal sichtbare Geschosskante unter der Traufe.
+
+**Runtime (post-fix6):** `omitTopCap: true`, `corniceDropCm: 8`, `facadeOut: 0` — Deckel weg, Gesims abgesenkt; Kante blieb (Wandfläche ging weiter bis `height/2`).
+
+**Nicht geholfen:** Nur Deckel weglassen (493).
+
+**Lösung:** `ROOF_WALL_TOP_TRIM_CM` (6): Wandkörper (Außen-/Innenfläche + Seiten + Deckel) der Dach-Etage um 6 cm kürzen. Füllwand startet `trim + seal` unter `wallTop`. Gesims-Drop ≥ `trim + 2`.
+
+Dateien: `src/studio/panelGeometry.ts`, `src/FacadeController.ts`, `src/studio/roofForms.ts`, `src/utils/profilePaths.ts`. Docs: [roof.md](roof.md).
+
+### Geschosskante durchs Dach — Wanddeckel + Gesims-Y (2026-09-16) — v2.0.493
+
+**Symptom:** Nach v2.0.492 war die Geschosskante kleiner, aber noch leicht durchs Dach sichtbar.
+
+**Runtime:** `facadeOut: 0` → extra Clearance greift nicht. `soffitMinusWall: 8`. Kein `cornice drop`-Log: Gesims-Check verglich `wall.y + height/2` (Mitte) mit `storeyTopY` (`wall.y + height`) → Absenkung nie. Deckel-Outset 20 cm bei 40° durchstößt die Soffit (`20·tan40° ≈ 17 cm` > 0,8 cm).
+
+**Nicht geholfen:** Clearance allein; Deckel nach außen (v2.0.492).
+
+**Lösung:** Obere Wandkappe unter dem Dach weglassen (`omitTopCap`). Gesims-Y gegen echte Wandoberkante. Deckel nur nach innen. Füllwand 0,8 cm vor der Fassade.
+
+Dateien: `src/studio/panelGeometry.ts`, `src/FacadeController.ts`, `src/utils/profilePaths.ts`, `src/studio/roofForms.ts`. Docs: [roof.md](roof.md).
+
+### Geschosskante unter Traufe — Clearance × Vorstand (2026-09-16) — v2.0.492
+
+**Symptom:** Nach v2.0.491 war die Geschosskante kleiner, aber noch leicht durchs Dach sichtbar.
+
+**Hypothese:** Paneel-/Gesims-Vorstand vor der Planlinie; geneigte Soffit sinkt dort unter die Oberkante. Deckel gingen nur nach innen.
+
+**Lösung:** `roofWallClearanceCm(facadeOut, pitch)` ≥ Paneel×tan(Neigung)+4; Deckel mit `ROOF_WALL_CAP_OUTSET_CM` (20) nach außen; Deckel-Y knapp unter Soffit; Gesims-Absenkung folgt derselben Clearance.
+
+Dateien: `src/studio/roofForms.ts`, `src/studio/roof.ts`, `src/utils/profilePaths.ts`. Docs: [roof.md](roof.md).
+
+### Wandkrone unter Traufe — Deckel + Gesims-Absenkung (2026-09-16) — v2.0.491
+
+**Symptom:** Nach Lift/Clearance/Embed/polygonOffset schien Wandkante/Gesims weiter unter dem Dach durch.
+
+**Runtime:** polygonOffset aktiv (`roofWinsDepth: true`, −24 vs Gesims −16) — Bug blieb. Soffit und Wandoberkante koplanar (`soffitMinusWall: 0`). Gesims-Krone bei `wallTop`.
+
+**Nicht geholfen (zurückgenommen):** Clearance allein (488); Embed (489); Dach-`polygonOffset` (490).
+
+**Ursache:** Unter dem Überstand bleibt die **horizontale** Wand-/Gesims-Oberseite sichtbar; vertikal Füllen reicht nicht.
+
+**Lösung:** Clearance 8 cm + horizontale Wandkronen-Deckel (`ROOF_WALL_CAP_INSET_CM` 48) auf der Giebel-Geometrie; Gesims-Pfad auf dem obersten Geschoss um Clearance abgesenkt.
+
+Dateien: `src/studio/roofForms.ts`, `src/studio/roof.ts`, `src/utils/profilePaths.ts`. Docs: [roof.md](roof.md).
+
+### Gesims durchs Dach — polygonOffset (2026-09-16) — v2.0.490
+
+**Symptom:** Nach Lift/Clearance/Embed schien Gesims bzw. obere Wandkante weiter durch die Dachhaut.
+
+**Runtime:** Embed aktiv — Bug blieb. Gesims `polygonOffset −16`, Dach ohne Offset.
+
+**Versuch (zurückgenommen in v2.0.491):** Dachhaut `polygonOffset −1/−24`. Runtime: `roofWinsDepth: true` — Bug blieb trotzdem.
+
+### Wandkante durchs Dach — Embed statt Clearance (2026-09-16) — v2.0.489
+
+**Symptom:** Nach v2.0.488 (3 cm Clearance) schien die Wandkante/das Gesims weiter unter der Traufe durch.
+
+**Runtime (post-fix v2.0.488):** `gapSoffitMinusWall: 3`, `coplanar: false`, Gesims-Krone bei `wallTop` (896), `soffitY` 899 — Clearance **wirkte**, Bug blieb. Positiver Luftspalt ließ die horizontale Kante unter der Soffit sichtbar.
+
+**Nicht geholfen:** Nur Lift (v2.0.487, Soffit=wallTop → Z-Fight); nur Clearance darüber (v2.0.488).
+
+**Lösung:** `ROOF_SOFFIT_EMBED_CM` (2 cm): `eaveY = wallTop + tv − embed` → Soffit **unter** der Wandoberkante, Kante im Plattenvolumen. Füllwände ab `wallTop − ROOF_FILL_SEAL_CM`.
+
+Dateien: `src/studio/roofForms.ts`, `src/studio/roof.ts`, `src/studio/roofOpenings.ts`. Docs: [roof.md](roof.md).
+
+### Wandkante durchs Dach (Z-Fight) (2026-09-16) — v2.0.488
+
+**Symptom:** Obere Wandkante / Gesims schien weiter durch die Dachhaut an der Traufe.
+
+**Runtime:** `eaveY = wallTop + tv` setzte die Soffit **exakt** auf `wallTop` (`soffitVsWall: 0`, `wallMeshYMax === wallTop`). Coplanar → Z-Fight. Gesims-Krone ebenfalls bei Wandoberkante.
+
+**Lösung (später ersetzt in v2.0.489):** `ROOF_WALL_CLEARANCE_CM` (3 cm) zusätzlich: Soffit = wallTop + Clearance. Füllwände weiter ab echter Wandoberkante — Spalt blieb sichtbar.
+
+Dateien: `src/studio/roofForms.ts`, `src/studio/roof.ts`, `src/studio/roofOpenings.ts`. Docs: [roof.md](roof.md).
+
+### Dach durchscheinend / Gauben-Auswahl am Boden / XYZ (2026-09-16) — v2.0.487
+
+**Symptom:** (1) Gesims bzw. obere Wandkante schien unter/durch das Dach. (2) Gaube auswählen → oranger Kasten am Boden neben der XYZ-Markierung. (3) XYZ-Achsen am Boden unerwünscht.
+
+**Ursache:** (1) Dachhaut bei `storeyTopY`, Platte `tv` nach unten → Wand/Gesims stecken in der Plattendicke. (2) Gaubenfenster-Auswahl nutzte virtuelle Wand `__rdw:…` mit `x/y=0` → Overlay am Ursprung. (3) `AxesHelper(80)` in `FacadeController`.
+
+**Lösung:** Trauf-Ebene = Wandoberkante + `roofSlabVerticalCm` (Unterseite auf der Wand); Füllwände ab `eaveY − tv`. Auswahl-Overlay für Gauben-Wand-IDs überspringen. AxesHelper entfernt.
+
+Dateien: `src/studio/roof.ts`, `src/studio/roofForms.ts`, `src/studio/roofOpenings.ts`, `src/FacadeController.ts`. Docs: [roof.md](roof.md).
+
+### Gauben: stumpfe Rückwand / Dach durchs Fenster (2026-09-15) — v2.0.486
+
+**Symptom:** Alle Gauben endeten hinten stumpf; durchs Fenster sah man die Dachziegel. Spitz- und Trapezgaube wirkten beschädigt; Spitzfenster kaputt, Fledermaus ohne Fenster.
+
+**Ursache:** Kehlen-Suche stoppte an `depthCm`. Bibliothek/Platzieren setzte **120 cm** → `hasBackWall` bei fast allen Formen; Loch und Körper endeten vor der echten Kehle. Spitz/Fledermaus: Fensterrechteck ragte aus dem Dreieck-/Wellenprofil → `ExtrudeGeometry` brach das Frontloch.
+
+**Nicht geholfen / vermeiden:** Tiefe in der UI für Kehlen-Formen wieder „festnageln“ — Tiefe bleibt Kappe nur wenn die Haut die Haupthaut nie trifft (steile Schleppgaube).
+
+**Lösung:** Kehle bis First/Limit suchen, unabhängig von `depthCm`; Rückwand nur wenn nie Treffen. Fenster-Fit schrumpft unter Profilhaut; Loch-Polyline an `topAt` geklemmt. Presets `depthCm` 400 (Fledermaus Auslauf).
+
+Dateien: `src/studio/roofOpenings.ts`, `src/main.ts`, `index.html`, Tests. Docs: [roof.md](roof.md).
+
+### Gauben-Hilfslinien seitlich versetzt (2026-09-15) — v2.0.485
+
+**Symptom:** Beim Ziehen einer Gaube in 3D wirkten die Hilfslinien (besonders nach links) versetzt.
+
+**Ursache:** (1) U-Linien fielen an der **Traufe** senkrecht zum Boden ab — der Boden-Fuß lag hangab vor der Gaube und wirkte in der Schrägansicht seitlich verschoben. (2) `frame.u` steht oft **entgegengesetzt** zur Traufkante a→b; Querlinien/Abstände ohne Vorzeichen-Korrektur.
+
+**Lösung:** Boden-Segment senkrecht unter der **Gaubenkante** (gleiche XZ wie Front); Schrägsegment Traufe→First separat. Trauf-along → lokales u mit `sign(frame.u·eaveDir)`.
+
+Dateien: `src/studio/roofFixtureGuides.ts`, Tests. Docs: [roof.md](roof.md).
+
+### Gaubenfenster: Laibung (2026-09-15) — v2.0.484
+
+**Symptom:** Gaubenfenster hatten nur den Rahmen im Loch der Frontwand — keine sichtbare Leibung durch die Wandstärke.
+
+**Ursache:** `rebuildRoof` baute nur `createGruenderzeitWindowMesh`; `rebuildReveals` läuft nur über `Wall.openings`.
+
+**Lösung:** Beim Gauben-Fenster zusätzlich `createStudioOpeningRevealGeometry` auf der virtuellen Frontwand, transformiert auf die Gaubenbasis (`addDormerWindowReveal`). Farbe Außen/Innen wie Fassaden-Laibung.
+
+Dateien: `src/FacadeController.ts`, Pick `roofDormerReveal`. Docs: [roof.md](roof.md).
+
+### Gauben: Hilfslinien verlängert, Pfeile, Fenster-UI (2026-09-15) — v2.0.483
+
+**Verhalten:** Hilfslinien beim Gauben-/Dachfenster-Zug reichen **bis zum Boden** (senkrecht ab Traufe) und **links/rechts bis zum Dachende** (volle Traufkante). Pfeiltasten links/rechts in Blickrichtung korrigiert. Gaube mit Fenster ausgewählt → volle **Fenster-Toolbar** (Teilung, Glas, Bank, Profil, …) parallel zu den Gauben-Maßen; An/Aus bleibt unter Dach.
+
+**Technik:** `roofFixtureGuides` spannt U-Linien Boden→First, V-Linien über `edgeLengthCm`. Virtuelle Wand `__rdw:{buildingId}:{dormerId}` (`roofDormerOpeningRef.ts`) speist `getWall` / `updateOpening*` für Gaubenfenster. `selectRoof` setzt `selectedOpenings` auf dieses Fenster.
+
+Dateien: `src/studio/roofFixtureGuides.ts`, `src/studio/roofDormerOpeningRef.ts`, `src/utils/buildings.ts`, `src/utils/openings.ts`, `src/main.ts`, `src/FacadeController.ts`. Docs: [roof.md](roof.md), [ux.md](ux.md).
+
+### Gauben-Drag: 8 cm + Hilfslinien (2026-09-15) — v2.0.482
+
+**Verhalten:** Beim Ziehen von Gaube/Dachfenster rastet die Position auf **8 cm** in Trauf-Koordinaten (Lauf entlang der Traufe + Abstand hangaufwärts), analog zum Fenster-Raster auf der Wand. Während des Ziehens: eigene Kanten/Mitten, Ausrichtung an Nachbarn auf derselben Traufkante, Abstandslabels (Traufe, nächster Nachbar). Platzieren und Pfeiltasten ebenfalls 8 cm.
+
+**Technik:** `snapRoofFixturePlacement` / `computeRoofFixtureGuides` in `src/studio/roofFixtureGuides.ts`; Anzeige über `FacadeController.setRoofFixtureGuides` (Weltlinien auf der Dachhaut). Zahlenfelder Abstand/Seitlich ebenfalls 8‑cm-Snap.
+
+**Vorbemerkung (Debug v2.0.481):** Auswahl brach ab, weil `EdgesGeometry` auf der Gaubenfenster-**Group** (ohne `geometry`) warf — nur echte Meshes highlighten. Platzier-Modus (`armedRoofPreset`) schluckt bestehende Fixtures nicht mehr; Kontextmenü vor `selectRoof`, kein sofortiges Schließen per `document.click`.
+
+Dateien: `src/studio/roofFixtureGuides.ts`, `src/FacadeController.ts`, `src/main.ts`. Docs: [roof.md](roof.md).
+
+### Gauben: Auswahl, Traufüberstand, Rechtsklick (2026-09-15) — v2.0.481
+
+**Symptom 1:** Hinzugefügte Gauben ließen sich nicht verschieben; rechts fehlten die Maße.
+
+**Ursache:** Pick filterte Dach-Hits hinter der Fassaden-**Ebene** (`front.t + 6`). Gauben auf der Dachschräge liegen oft hinter dieser Ebene, obwohl kein Wand-Mesh im Weg ist. Zusätzlich verlor die Gaubenfront an der Traufe gegen die Wand (`roofBeatsFacadeMesh`).
+
+**Versuch:** Nur `roofBeatsFacadeMesh` für Fixtures überspringen — reichte nicht, solange der Plane-Filter blieb.
+
+**Fix:** Fixtures (Gaube/Dachfenster) ignorieren den Plane-Filter; Ablehnung nur bei näherem Fassaden-**Mesh** (keine Auswahl durch die Wand). Auswahl öffnet den Maße-Tab (`roof-fixture`).
+
+**Symptom 2:** Traufüberstand größer → Dach hebt sich mit, Traufe wird länger.
+
+**Ursache:** Dachebenen wurden am **Traufpolygon** (inkl. Überstand) verankert → größere Spannweite → höherer First.
+
+**Fix:** Ebenen am **Außenwand-Ring**; Clip/Rinne am Traufpolygon. Traufkante = flach und niedrigste Kante (Pult-Hochseite zählt nicht). Firsthöhe nur über Samples am Outer. Rinne an der Überstands-Spitze.
+
+**Symptom 3:** Rechtsklick auf Gauben tat nichts.
+
+**Ursache:** `showElementContextMenu` hatte keinen `hit.roof`-Zweig.
+
+**Fix:** Kontextmenü wie bei Fenstern: Ein-/Ausblenden (`hidden` an Fixture), Duplizieren links/rechts entlang Traufe/`u`, Traufdurchbruch, Fenster an/aus, Löschen. Dachhaut ohne Fixture → Dach-Menü.
+
+Dateien: `src/main.ts`, `src/studio/roofForms.ts`, `src/studio/roofOpenings.ts`, `src/studio/roof.ts`, `src/FacadeController.ts`, `src/types/facade.ts`. Docs: [roof.md](roof.md).
+
+### Gehrung nach Etage duplizieren (2026-09-15) — v2.0.480
+
+**Symptom:** Nach „Etage duplizieren“ am Erdgeschoss liefen die Wand-Gehrungen im neuen Geschoss über Kreuz.
+
+**Ursache:** OG-Klone bekommen `UPPER_STOREY_WALL_DEPTH` (24 cm), behielten aber die kopierten EG-Gehrungen (z. B. ±40 bei EG-Tiefe 40). `duplicateStoreyAtFloor` rief nur `finalizeWallLayout` auf — ohne `recomputeStudioWallMiters`.
+
+**Fix:** Nach dem Duplizieren `finalizeStudioGeometry` (setzt Miters aus Nachbar-Geometrie mit der neuen Wandstärke). EG bleibt unverändert.
+
+**Fehlersuche:** Runtime-Log vor Finalize: `depthMiterMismatch` auf allen OG-Wänden (`mS/mE` > `depth`); Vergleich mit `recomputeStudioWallMiters` → korrekt ±24.
+
+Datei: `src/main.ts` (`duplicateStoreyAtFloor`).
+
+### Gauben realistisch: Maße, Position, Traufdurchbruch (2026-09-15) — v2.0.479
+
+**Symptom (Nutzer):** Die Gauben aus v2.0.478 wirkten „extrem simpel und null realistisch“: Kasten auf der Dachhaut, keine einstellbaren Maße, kein echtes Fenster, keine Position außer Ziehen.
+
+**Verhalten:** Gaube = Frontwand (echte Wandstärke) + Wangen + Gaubendach mit Überstand, Traufblende und Untersicht; das Gaubendach schneidet die Haupthaut in der **Kehle**, die Tiefe ergibt sich aus Fronthöhe, Gauben- und Hauptdachneigung. Rechte Leiste: **Maße** (Breite, Front, Tiefe nur wenn wirksam, Überstand, Wandstärke), **Form** (10 Formen, Neigung, Bogenstich bei Tonne, Wangenneigung bei Trapez), **Position** (Abstand Traufe, seitlicher Lauf auf der Traufkante, Traufdurchbruch), **Fenster** (an/aus, Breite, Höhe, Brüstung, seitlich).
+
+**Fenster:** entsteht über `createOpening` — gleicher Feldkatalog wie eine Wandöffnung (Gründerzeit-Teilung, Glas, Laibung, Bank) und erbt per `donorWalls` den Stil der vorhandenen Hausfenster. `hidden: true` = keine Öffnung in der Frontwand. Gebaut wird es in `FacadeController.rebuildRoof` mit `createGruenderzeitWindowMesh`, also derselben Pipeline wie an der Wand.
+
+**Technik:** Gauben-Engine in `src/studio/roofOpenings.ts`: lokales System an der Frontwand-Mitte (`u` quer, `v` hangauf), Gaubenhaut = Minimum der Flächen-Ebenen, Löcher = Innenrechteck ∩ ⋂{Ebene ≥ Hauptdach + Rand}. Formen `gable | hip | hipNoRidge | shedStraight | shedSkew | shedTrapez | pointed | barrel | bat | turret`. Traufposition über `dormerEavePlacement` / `dormerAnchorForEavePlacement` (Strahl gegen `v` auf das Traufpolygon).
+
+**Fehlersuche — was nicht ging:**
+- **Z-Fighting-Streifen** auf Gaubendach und Wangen: Wandoberkanten lagen exakt auf der **Oberseite** der Dachhaut (bei Giebel/Spitz/Tonne ist die Ebene in `v` konstant, die Wandscheibe reicht über ihre Dicke bis unter die Dachfläche). Kein Offset-/Bias-Trick, sondern: Front, Rückwand, Wangen und die Dachreiter-Wände enden an der **Unterseite** (`topAt − DORMER_ROOF_THICKNESS_CM`). Die 8 cm Dachstärke sind dann als Ortgang/Traufblende sichtbar — nicht wieder auf `topAt` hochziehen.
+- **Fledermausgaube als Rampe:** mit dem generischen Default `depthCm = 400` lief die Welle über 4 m aus und war kaum zu erkennen; Auslauf hängt jetzt an der Breite (`0,9 × Breite`).
+- Sichtprüfung lief **nicht** über den IDE-Browser (erreicht `127.0.0.1` nicht) — stattdessen Offline-Raster der Geometrie (three + pngjs, Z-Buffer) je Form.
+
+**Alt-Daten:** Gauben aus den unveröffentlichten Ständen 477/478 behalten ihren Anker (damals Fußabdruck-Mitte, jetzt Frontwand-Mitte) und sitzen dadurch ~ halbe Tiefe weiter hangaufwärts — einmal verschieben genügt, kein Schema-Schritt. Fenster ohne vollen Feldkatalog werden beim Auflösen mit den Defaults aufgefüllt (`dormerWindowWithDefaults`).
+
+Dateien: `src/studio/roofOpenings.ts`, `src/studio/roof.ts`, `src/types/facade.ts`, `src/main.ts`, `index.html`, `src/FacadeController.ts`. Docs: [roof.md](roof.md), [ux.md](ux.md), [migration.md](migration.md).
+
+### Acht Gaubenformen (2026-09-14) — v2.0.478
+
+**Verhalten:** Bibliothek **Gauben** enthält die üblichen Wikipedia-Formen: Giebelgaube, Walmgaube, Schleppgaube gerade / schräg / liegend (Trapez), Fledermausgaube, Spitzgaube, Dachreiter. Form einer gesetzten Gaube über Select **Form** wechseln. Zwerchgiebel bleibt die Traufkanten-Variante.
+
+**Technik:** `RoofDormerKind` um `hip | shedStraight | shedSkew | shedTrapez | bat | pointed | turret` erweitert. Alt `shed` → `shedStraight` in `normalizeRoofDormerKind` (kein Schema-Schritt). Meshes in `buildDormerMeshes`. Trapez/Schräg/Fledermaus mit eigenem Fußabdruck-Loch.
+
+Docs: [roof.md](roof.md), [ux.md](ux.md).
+
+### Dachwahl, Dachfenster und Gauben (2026-09-14) — v2.0.477
+
+**Verhalten:** Dach in der 3D-Ansicht direkt anklicken (Dachhaut / Giebel / Rinne). Bei Dachwahl Bibliothek **Dachfenster** und **Gauben**; Platzierung per Klick oder Drag auf die Dachhaut. Maße, Verschieben, Löschen. Ziegel bleiben aus.
+
+**Technik:** `pickFromEvent` raycastet `roofGroup` + `roofBeatsFacadeMesh`. `RoofConfig.skylights` / `dormers`, Schema 22. Löcher in Envelope/Mansarde; Fixture-Meshes in `rebuildRoof`. Modul `src/studio/roofOpenings.ts`.
+
+Docs: [roof.md](roof.md), [migration.md](migration.md), [ux.md](ux.md).
+
 ### Lichtpfad wie 473, Dach-only Toggle (2026-09-14) — v2.0.476
 
 **A/B (Nutzer):** Dieselbe JSON aus 475 in **v2.0.473** importiert → dort flüssig. Die Szene ist also nicht das Problem.

@@ -35,7 +35,7 @@ import {
 } from '../studio/baySegment'
 
 /** Aktuelle Persistenz-Schema-Version (steigt nur bei Datenmodell-Änderungen). */
-export const FACADE_SCHEMA_VERSION = 21
+export const FACADE_SCHEMA_VERSION = 22
 
 /** Unterste Version, die Hash-/Datei-Imports ohne gespeicherte schemaVersion annehmen. */
 export const FACADE_SCHEMA_IMPORT_BASE = 7
@@ -324,6 +324,25 @@ export const SCHEMA_MIGRATIONS: SchemaMigration[] = [
     to: 21,
     id: 'bay-opening-sill-128',
     apply: migrateBayOpeningSillTo128,
+  },
+  {
+    from: 21,
+    to: 22,
+    id: 'roof-openings',
+    apply: (state) => ({
+      ...state,
+      buildings: state.buildings.map((building) => {
+        if (!building.roof) return building
+        return {
+          ...building,
+          roof: {
+            ...building.roof,
+            skylights: building.roof.skylights ?? [],
+            dormers: building.roof.dormers ?? [],
+          },
+        }
+      }),
+    }),
   },
 ]
 

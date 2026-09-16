@@ -47,6 +47,12 @@ import { isSillOuterProfile, isWindowTrimProfile } from '../profiles/windowTrim'
 import { findBuildingForWall, findWall, getAllWalls, mapAllWalls, updateBuilding } from './buildings'
 import { snapToGrid } from './grid'
 import { clampOuterSillDepth, defaultOuterSillDepth, hydrateOpening } from './hydrate'
+import {
+  partitionOpeningRefs,
+  parseRoofDormerWallId,
+  syntheticRoofDormerWall,
+} from '../studio/roofDormerOpeningRef'
+import { normalizeRoof } from '../studio/roof'
 
 export { defaultOuterSillDepth, clampOuterSillDepth }
 import { normalizeOpeningMotion } from './openingMotion'
@@ -210,6 +216,8 @@ function mapWall(
   wallId: string,
   updater: (wall: Wall) => Wall,
 ): FacadeState {
+  const dormerMapped = mapRoofDormerWall(state, wallId, updater)
+  if (dormerMapped !== null) return dormerMapped
   const building = findBuildingForWall(state, wallId)
   if (!building) return state
   return updateBuilding(state, building.id, (b) => ({
@@ -218,6 +226,67 @@ function mapWall(
       wall.id === wallId ? updater(wall) : cloneWall(wall),
     ),
   }))
+}
+
+/** Gaubenfenster über virtuelle Frontwand schreiben. */
+function mapRoofDormerWall(
+  state: FacadeState,
+  wallId: string,
+  updater: (wall: Wall) => Wall,
+): FacadeState | null {
+  const parsed = parseRoofDormerWallId(wallId)
+  if (!parsed) return null
+  const building = state.buildings.find((b) => b.id === parsed.buildingId)
+  if (!building) return state
+  const roof = normalizeRoof(building.roof)
+  const dormer = roof.dormers?.find((d) => d.id === parsed.dormerId)
+  if (!dormer || !dormer.window || dormer.window.hidden) return state
+  const synth = syntheticRoofDormerWall(building, dormer, dormer.window)
+  const updated = updater(synth)
+  const nextWin = updated.openings.find((o) => o.id === dormer.window!.id) ?? updated.openings[0]
+  if (!nextWin) return state
+  const dormers = (roof.dormers ?? []).map((d) =>
+    d.id === dormer.id ? { ...d, window: nextWin } : d,
+  )
+  return updateBuilding(state, building.id, {
+    roof: normalizeRoof({ ...roof, dormers }),
+  })
+}
+
+/** Refs auf Wand- und Gaubenfenster mappen. */
+function mapOpeningsByRefs(
+  state: FacadeState,
+  refs: OpeningRef[],
+  mutate: (opening: Opening, wall: Wall) => Opening,
+): FacadeState {
+  const { wallRefs, dormerRefs } = partitionOpeningRefs(refs)
+  let next = state
+  for (const ref of dormerRefs) {
+    const mapped = mapRoofDormerWall(next, ref.wallId, (wall) => ({
+      ...wall,
+      openings: wall.openings.map((o) =>
+        o.id === ref.openingId ? mutate(o, wall) : o,
+      ),
+    }))
+    if (mapped !== null) next = mapped
+  }
+  if (wallRefs.length === 0) return next
+  const byWall = new Map<string, Set<string>>()
+  for (const ref of wallRefs) {
+    const set = byWall.get(ref.wallId) ?? new Set<string>()
+    set.add(ref.openingId)
+    byWall.set(ref.wallId, set)
+  }
+  return mapAllWalls(next, (wall) => {
+    const openingIds = byWall.get(wall.id)
+    if (!openingIds) return cloneWall(wall)
+    return {
+      ...cloneWall(wall),
+      openings: wall.openings.map((opening) =>
+        openingIds.has(opening.id) ? mutate(opening, wall) : opening,
+      ),
+    }
+  })
 }
 
 export function ensureWindowSills(opening: Opening): Opening {
@@ -933,23 +1002,7 @@ export function updateOpeningFrameColors(
   color: string,
 ): FacadeState {
   if (refs.length === 0) return state
-  const byWall = new Map<string, Set<string>>()
-  for (const ref of refs) {
-    const set = byWall.get(ref.wallId) ?? new Set<string>()
-    set.add(ref.openingId)
-    byWall.set(ref.wallId, set)
-  }
-
-  return mapAllWalls(state, (wall) => {
-    const openingIds = byWall.get(wall.id)
-    if (!openingIds) return cloneWall(wall)
-    return {
-      ...cloneWall(wall),
-      openings: wall.openings.map((opening) =>
-        openingIds.has(opening.id) ? { ...opening, frameColor: color } : opening,
-      ),
-    }
-  })
+  return mapOpeningsByRefs(state, refs, (opening) => ({ ...opening, frameColor: color }))
 }
 
 export function updateOpeningRevealColors(
@@ -959,28 +1012,11 @@ export function updateOpeningRevealColors(
 ): FacadeState {
   if (refs.length === 0) return state
   if (patch.exterior == null && patch.interior == null) return state
-  const byWall = new Map<string, Set<string>>()
-  for (const ref of refs) {
-    const set = byWall.get(ref.wallId) ?? new Set<string>()
-    set.add(ref.openingId)
-    byWall.set(ref.wallId, set)
-  }
-
-  return mapAllWalls(state, (wall) => {
-    const openingIds = byWall.get(wall.id)
-    if (!openingIds) return cloneWall(wall)
-    return {
-      ...cloneWall(wall),
-      openings: wall.openings.map((opening) => {
-        if (!openingIds.has(opening.id)) return opening
-        return {
-          ...opening,
-          ...(patch.exterior != null ? { revealExteriorColor: patch.exterior } : {}),
-          ...(patch.interior != null ? { revealInteriorColor: patch.interior } : {}),
-        }
-      }),
-    }
-  })
+  return mapOpeningsByRefs(state, refs, (opening) => ({
+    ...opening,
+    ...(patch.exterior != null ? { revealExteriorColor: patch.exterior } : {}),
+    ...(patch.interior != null ? { revealInteriorColor: patch.interior } : {}),
+  }))
 }
 
 export function updateOpeningFrameFinishes(
@@ -989,23 +1025,7 @@ export function updateOpeningFrameFinishes(
   finish: SurfaceFinish,
 ): FacadeState {
   if (refs.length === 0) return state
-  const byWall = new Map<string, Set<string>>()
-  for (const ref of refs) {
-    const set = byWall.get(ref.wallId) ?? new Set<string>()
-    set.add(ref.openingId)
-    byWall.set(ref.wallId, set)
-  }
-
-  return mapAllWalls(state, (wall) => {
-    const openingIds = byWall.get(wall.id)
-    if (!openingIds) return cloneWall(wall)
-    return {
-      ...cloneWall(wall),
-      openings: wall.openings.map((opening) =>
-        openingIds.has(opening.id) ? { ...opening, frameFinish: finish } : opening,
-      ),
-    }
-  })
+  return mapOpeningsByRefs(state, refs, (opening) => ({ ...opening, frameFinish: finish }))
 }
 
 /** Rahmenfarbe für alle Fenster der gewählten Wände. */
@@ -1038,23 +1058,7 @@ export function updateOpeningGlassSettings(
   >,
 ): FacadeState {
   if (refs.length === 0) return state
-  const byWall = new Map<string, Set<string>>()
-  for (const ref of refs) {
-    const set = byWall.get(ref.wallId) ?? new Set<string>()
-    set.add(ref.openingId)
-    byWall.set(ref.wallId, set)
-  }
-
-  return mapAllWalls(state, (wall) => {
-    const openingIds = byWall.get(wall.id)
-    if (!openingIds) return cloneWall(wall)
-    return {
-      ...cloneWall(wall),
-      openings: wall.openings.map((opening) =>
-        openingIds.has(opening.id) ? { ...opening, ...patch } : opening,
-      ),
-    }
-  })
+  return mapOpeningsByRefs(state, refs, (opening) => ({ ...opening, ...patch }))
 }
 
 export function updateOpeningGlassColors(
@@ -1063,23 +1067,7 @@ export function updateOpeningGlassColors(
   color: string,
 ): FacadeState {
   if (refs.length === 0) return state
-  const byWall = new Map<string, Set<string>>()
-  for (const ref of refs) {
-    const set = byWall.get(ref.wallId) ?? new Set<string>()
-    set.add(ref.openingId)
-    byWall.set(ref.wallId, set)
-  }
-
-  return mapAllWalls(state, (wall) => {
-    const openingIds = byWall.get(wall.id)
-    if (!openingIds) return cloneWall(wall)
-    return {
-      ...cloneWall(wall),
-      openings: wall.openings.map((opening) =>
-        openingIds.has(opening.id) ? { ...opening, glassColor: color } : opening,
-      ),
-    }
-  })
+  return mapOpeningsByRefs(state, refs, (opening) => ({ ...opening, glassColor: color }))
 }
 
 export function updateWindowGlassColorsForWalls(
@@ -1165,28 +1153,10 @@ export function updateOpeningTrim(
   patch: Partial<OpeningTrimConfig>,
 ): FacadeState {
   if (targets.length === 0) return state
-
-  const byWall = new Map<string, string[]>()
-  for (const target of targets) {
-    const list = byWall.get(target.wallId) ?? []
-    list.push(target.openingId)
-    byWall.set(target.wallId, list)
-  }
-
-  return mapAllWalls(state, (wall) => {
-    const openingIds = byWall.get(wall.id)
-    if (!openingIds) return cloneWall(wall)
-    return {
-      ...cloneWall(wall),
-      openings: wall.openings.map((opening) => {
-        if (!openingIds.includes(opening.id)) return opening
-        return {
-          ...opening,
-          trim: { ...DEFAULT_OPENING_TRIM, ...opening.trim, ...patch },
-        }
-      }),
-    }
-  })
+  return mapOpeningsByRefs(state, targets, (opening) => ({
+    ...opening,
+    trim: { ...DEFAULT_OPENING_TRIM, ...opening.trim, ...patch },
+  }))
 }
 
 export function updateOpeningSills(
@@ -1195,47 +1165,31 @@ export function updateOpeningSills(
   patch: { inner?: Partial<OpeningSillInner>; outer?: Partial<OpeningSillOuter> },
 ): FacadeState {
   if (targets.length === 0) return state
-  const byWall = new Map<string, Set<string>>()
-  for (const target of targets) {
-    const set = byWall.get(target.wallId) ?? new Set<string>()
-    set.add(target.openingId)
-    byWall.set(target.wallId, set)
-  }
-  return mapAllWalls(state, (wall) => {
-    const ids = byWall.get(wall.id)
-    if (!ids) return cloneWall(wall)
-    return {
-      ...cloneWall(wall),
-      openings: wall.openings.map((opening) => {
-        if (!ids.has(opening.id)) return opening
-        return {
-          ...opening,
-          sillInner: patch.inner
-            ? {
-                enabled: true,
-                depth: 16,
-                thickness: 4,
-                ...opening.sillInner,
-                ...patch.inner,
-                color: '#ffffff',
-              }
-            : opening.sillInner,
-          sillOuter: patch.outer
-            ? {
-                enabled: true,
-                profileId: 'fensterprofil32x120',
-                scale: 1,
-                rotationDeg: 0,
-                flipOutward: false,
-                flipForward: false,
-                ...opening.sillOuter,
-                ...patch.outer,
-              }
-            : opening.sillOuter,
+  return mapOpeningsByRefs(state, targets, (opening) => ({
+    ...opening,
+    sillInner: patch.inner
+      ? {
+          enabled: true,
+          depth: 16,
+          thickness: 4,
+          ...opening.sillInner,
+          ...patch.inner,
+          color: '#ffffff',
         }
-      }),
-    }
-  })
+      : opening.sillInner,
+    sillOuter: patch.outer
+      ? {
+          enabled: true,
+          profileId: 'fensterprofil32x120',
+          scale: 1,
+          rotationDeg: 0,
+          flipOutward: false,
+          flipForward: false,
+          ...opening.sillOuter,
+          ...patch.outer,
+        }
+      : opening.sillOuter,
+  }))
 }
 
 export function updateOpeningStairs(
@@ -1244,29 +1198,13 @@ export function updateOpeningStairs(
   patch: Partial<OpeningStairs>,
 ): FacadeState {
   if (targets.length === 0) return state
-  const byWall = new Map<string, Set<string>>()
-  for (const target of targets) {
-    const set = byWall.get(target.wallId) ?? new Set<string>()
-    set.add(target.openingId)
-    byWall.set(target.wallId, set)
-  }
-  return mapAllWalls(state, (wall) => {
-    const ids = byWall.get(wall.id)
-    if (!ids) return cloneWall(wall)
-    return {
-      ...cloneWall(wall),
-      openings: wall.openings.map((opening) => {
-        if (!ids.has(opening.id) || opening.type !== 'door') return opening
-        const merged = { ...defaultOpeningStairs(opening), ...opening.stairs, ...patch }
-        const stairs = normalizeOpeningStairs(merged, opening)
-        const nextY = stairs.enabled ? stairTopY(stairs) : 0
-        const clamped = clampOpeningToWall({ ...opening, y: nextY }, wall, openingGridForWall(wall))
-        return {
-          ...clamped,
-          stairs,
-        }
-      }),
-    }
+  return mapOpeningsByRefs(state, targets, (opening, wall) => {
+    if (opening.type !== 'door') return opening
+    const merged = { ...defaultOpeningStairs(opening), ...opening.stairs, ...patch }
+    const stairs = normalizeOpeningStairs(merged, opening)
+    const nextY = stairs.enabled ? stairTopY(stairs) : 0
+    const clamped = clampOpeningToWall({ ...opening, y: nextY }, wall, openingGridForWall(wall))
+    return { ...clamped, stairs }
   })
 }
 
@@ -1278,35 +1216,21 @@ export function updateOpeningRollerShutter(
   },
 ): FacadeState {
   if (targets.length === 0) return state
-  const byWall = new Map<string, Set<string>>()
-  for (const target of targets) {
-    const set = byWall.get(target.wallId) ?? new Set<string>()
-    set.add(target.openingId)
-    byWall.set(target.wallId, set)
-  }
-  return mapAllWalls(state, (wall) => {
-    const ids = byWall.get(wall.id)
-    if (!ids) return cloneWall(wall)
-    return {
-      ...cloneWall(wall),
-      openings: wall.openings.map((opening) => {
-        if (!ids.has(opening.id)) return opening
-        if (opening.type !== 'window' && opening.type !== 'door') return opening
-        const prev = normalizeOpeningRollerShutter(opening.rollerShutter)
-        const motion = patch.motion
-          ? {
-              raise: patch.motion.raise ?? prev.motion!.raise,
-              lower: patch.motion.lower ?? prev.motion!.lower,
-            }
-          : prev.motion
-        return {
-          ...opening,
-          rollerShutter: normalizeOpeningRollerShutter({
-            ...prev,
-            ...patch,
-            motion,
-          }),
+  return mapOpeningsByRefs(state, targets, (opening) => {
+    if (opening.type !== 'window' && opening.type !== 'door') return opening
+    const prev = normalizeOpeningRollerShutter(opening.rollerShutter)
+    const motion = patch.motion
+      ? {
+          raise: patch.motion.raise ?? prev.motion!.raise,
+          lower: patch.motion.lower ?? prev.motion!.lower,
         }
+      : prev.motion
+    return {
+      ...opening,
+      rollerShutter: normalizeOpeningRollerShutter({
+        ...prev,
+        ...patch,
+        motion,
       }),
     }
   })
@@ -1320,37 +1244,19 @@ export function updateOpeningPediment(
   },
 ): FacadeState {
   if (targets.length === 0) return state
-  const byWall = new Map<string, Set<string>>()
-  for (const target of targets) {
-    const set = byWall.get(target.wallId) ?? new Set<string>()
-    set.add(target.openingId)
-    byWall.set(target.wallId, set)
-  }
-  return mapAllWalls(state, (wall) => {
-    const ids = byWall.get(wall.id)
-    if (!ids) return cloneWall(wall)
+  return mapOpeningsByRefs(state, targets, (opening) => {
+    if (opening.type !== 'window' && opening.type !== 'door') return opening
+    const { consoles: consolePatch, ...rest } = patch
+    const merged = {
+      ...opening.pediment,
+      ...rest,
+      consoles: consolePatch
+        ? { ...opening.pediment?.consoles, ...consolePatch }
+        : opening.pediment?.consoles,
+    }
     return {
-      ...cloneWall(wall),
-      openings: wall.openings.map((opening) => {
-        if (
-          !ids.has(opening.id) ||
-          (opening.type !== 'window' && opening.type !== 'door')
-        ) {
-          return opening
-        }
-        const { consoles: consolePatch, ...rest } = patch
-        const merged = {
-          ...opening.pediment,
-          ...rest,
-          consoles: consolePatch
-            ? { ...opening.pediment?.consoles, ...consolePatch }
-            : opening.pediment?.consoles,
-        }
-        return {
-          ...opening,
-          pediment: normalizeOpeningPediment(merged),
-        }
-      }),
+      ...opening,
+      pediment: normalizeOpeningPediment(merged),
     }
   })
 }
@@ -1361,33 +1267,19 @@ export function updateOpeningTaperedField(
   patch: Partial<OpeningTaperedField>,
 ): FacadeState {
   if (targets.length === 0) return state
-  const byWall = new Map<string, Set<string>>()
-  for (const target of targets) {
-    const set = byWall.get(target.wallId) ?? new Set<string>()
-    set.add(target.openingId)
-    byWall.set(target.wallId, set)
-  }
-  return mapAllWalls(state, (wall) => {
-    const ids = byWall.get(wall.id)
-    if (!ids) return cloneWall(wall)
+  return mapOpeningsByRefs(state, targets, (opening) => {
+    if (
+      opening.type !== 'window' &&
+      opening.type !== 'door' &&
+      opening.type !== 'conch'
+    ) {
+      return opening
+    }
     return {
-      ...cloneWall(wall),
-      openings: wall.openings.map((opening) => {
-        if (
-          !ids.has(opening.id) ||
-          (opening.type !== 'window' &&
-            opening.type !== 'door' &&
-            opening.type !== 'conch')
-        ) {
-          return opening
-        }
-        return {
-          ...opening,
-          taperedField: normalizeOpeningTaperedField({
-            ...opening.taperedField,
-            ...patch,
-          }),
-        }
+      ...opening,
+      taperedField: normalizeOpeningTaperedField({
+        ...opening.taperedField,
+        ...patch,
       }),
     }
   })
@@ -1399,38 +1291,18 @@ export function updateOpeningGruenderzeit(
   patch: Partial<GruenderzeitWindowConfig>,
 ): FacadeState {
   if (targets.length === 0) return state
-
-  const byWall = new Map<string, string[]>()
-  for (const target of targets) {
-    const list = byWall.get(target.wallId) ?? []
-    list.push(target.openingId)
-    byWall.set(target.wallId, list)
-  }
-
-  return mapAllWalls(state, (wall) => {
-    const openingIds = byWall.get(wall.id)
-    if (!openingIds) return cloneWall(wall)
-    return {
-      ...cloneWall(wall),
-      openings: wall.openings.map((opening) => {
-        if (!openingIds.includes(opening.id) || (opening.type !== 'window' && opening.type !== 'door')) {
-          return opening
-        }
-        let gruenderzeit = normalizeGruenderzeitConfig(
-          { ...opening.gruenderzeit, ...patch },
-          opening.width,
-          opening.height,
-          opening.type,
-        )
-        if (basementWindowEnabled(opening)) {
-          gruenderzeit = clampGruenderzeitForBasement(gruenderzeit)
-        }
-        return {
-          ...opening,
-          gruenderzeit,
-        }
-      }),
+  return mapOpeningsByRefs(state, targets, (opening) => {
+    if (opening.type !== 'window' && opening.type !== 'door') return opening
+    let gruenderzeit = normalizeGruenderzeitConfig(
+      { ...opening.gruenderzeit, ...patch },
+      opening.width,
+      opening.height,
+      opening.type,
+    )
+    if (basementWindowEnabled(opening)) {
+      gruenderzeit = clampGruenderzeitForBasement(gruenderzeit)
     }
+    return { ...opening, gruenderzeit }
   })
 }
 
@@ -1440,28 +1312,11 @@ export function updateOpeningMotion(
   motion: OpeningMotion,
 ): FacadeState {
   if (targets.length === 0) return state
-
-  const byWall = new Map<string, string[]>()
-  for (const target of targets) {
-    const list = byWall.get(target.wallId) ?? []
-    list.push(target.openingId)
-    byWall.set(target.wallId, list)
-  }
-
-  return mapAllWalls(state, (wall) => {
-    const openingIds = byWall.get(wall.id)
-    if (!openingIds) return cloneWall(wall)
+  return mapOpeningsByRefs(state, targets, (opening) => {
+    if (opening.type !== 'window' && opening.type !== 'door') return opening
     return {
-      ...cloneWall(wall),
-      openings: wall.openings.map((opening) => {
-        if (!openingIds.includes(opening.id) || (opening.type !== 'window' && opening.type !== 'door')) {
-          return opening
-        }
-        return {
-          ...opening,
-          motion: normalizeOpeningMotion(motion, opening.type),
-        }
-      }),
+      ...opening,
+      motion: normalizeOpeningMotion(motion, opening.type),
     }
   })
 }
@@ -1474,17 +1329,27 @@ export function assignProfilesToOpenings(
 ): FacadeState {
   if (targets.length === 0 || edges.length === 0) return state
 
-  const skipDownpipe = downpipeLinkedOpeningIds(state)
+  const { wallRefs, dormerRefs } = partitionOpeningRefs(targets)
+  let next = state
+  // Gaubenfenster speichern Profil nur als Trim am Opening (keine Wand-profiles).
+  if (dormerRefs.length > 0 && isWindowTrimProfile(profileId)) {
+    next = mapOpeningsByRefs(next, dormerRefs, (opening) => ({
+      ...opening,
+      trim: mergeOpeningTrimForProfile(profileId, opening.trim),
+    }))
+  }
+
+  const skipDownpipe = downpipeLinkedOpeningIds(next)
   const byWall = new Map<string, string[]>()
-  for (const target of targets) {
+  for (const target of wallRefs) {
     if (skipDownpipe.has(target.openingId)) continue
     const list = byWall.get(target.wallId) ?? []
     list.push(target.openingId)
     byWall.set(target.wallId, list)
   }
-  if (byWall.size === 0) return state
+  if (byWall.size === 0) return next
 
-  return mapAllWalls(state, (wall) => {
+  return mapAllWalls(next, (wall) => {
     const openingIds = byWall.get(wall.id)
     if (!openingIds) return cloneWall(wall)
 

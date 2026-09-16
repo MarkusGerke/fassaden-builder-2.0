@@ -31,7 +31,7 @@
 | [roller-shutter.md](roller-shutter.md) | Rollläden: Lamellen, Höhe, Stapel, Animation (Ein Zug / Kabelzug), Uhrzeiten |
 | [awnings.md](awnings.md) | Markisen: Gelenkarm/Fallarm/Markisolette, Volant, Neigung, Live-Schatten |
 | [wind.md](wind.md) | Bühnen-Wind: Intensität windstill→stürmisch, Stoff-Registry |
-| [roof.md](roof.md) | Dachkonfigurator: Formen, Traufe an Geschosshöhe, Zwerchgiebel, Kanten, Ziegel vorerst aus |
+| [roof.md](roof.md) | Dachkonfigurator: Formen, Traufe ohne First-Anhebung, Zwerchgiebel, Dachfenster/Gauben (Maße, Traufdurchbruch, Rechtsklick, 8 cm + Hilfslinien ausgerichtet), Ziegel vorerst aus |
 | [downpipes.md](downpipes.md) | Fallrohre (mehrgeschossig), Nische/Schmuck-Durchbruch, Schellen, Regenrinne |
 | [gallery.md](gallery.md) | QA-Galerie: alle Standards im Raster, Abstand, Zufall, Projekt-Schutz |
 | [deploy-allinkl.md](deploy-allinkl.md) | Auto-Deploy auf All-Inkl (GitHub Actions, FTPS, Passwortschutz) |
@@ -79,6 +79,7 @@
 | Studio-Wand erstellen/normalisieren | `src/studio/walls.ts` |
 | Three.js Szene, Innenboden/Zwischendecke, Dach | `src/FacadeController.ts` |
 | Dach (Mansarde, Sattel, Walm, Krüppelwalm, Pult) | `src/studio/roof.ts`, `src/studio/roofForms.ts` |
+| Dachfenster und Gauben (Kehle, Löcher, Traufdurchbruch, Gaubenfenster, Snap/Guides) | `src/studio/roofOpenings.ts`, `src/studio/roofFixtureGuides.ts` |
 | Sonne und 3D-Schatten | `src/utils/sunLighting.ts`, `src/utils/solar.ts` |
 | Gebäude drehen (`siteYawDeg`) | `src/studio/rotateBuilding.ts`, `src/main.ts` |
 | SVG-Bearbeitungsansicht | `src/FacadeSvgView.ts` |

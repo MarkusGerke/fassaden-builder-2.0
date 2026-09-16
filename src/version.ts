@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.476'
+export const APP_VERSION = '2.0.494'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,169 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.494',
+    date: '2026-09-16',
+    title: 'Wand unter Dach gekürzt',
+    changes: [
+      'Oberste Wand unter dem Dach um 6 cm gekürzt — Geschosskante verschwindet vollständig unter der Traufe',
+    ],
+  },
+  {
+    version: '2.0.493',
+    date: '2026-09-16',
+    title: 'Geschosskante unter dem Dach unsichtbar',
+    changes: [
+      'Wand-Oberseite unter dem Dach entfällt; Gesims sitzt wirklich unter der Traufe — keine durchscheinende Geschosskante mehr',
+    ],
+  },
+  {
+    version: '2.0.492',
+    date: '2026-09-16',
+    title: 'Geschosskante unter Traufe vollständig abgedeckt',
+    changes: [
+      'Dach-Clearance folgt dem Paneel-Vorstand; Wandkronen-Deckel greifen nach außen bis unter die Verkleidung',
+    ],
+  },
+  {
+    version: '2.0.491',
+    date: '2026-09-16',
+    title: 'Wandkrone unter dem Dach abgedeckt',
+    changes: [
+      'Unter der Traufe decken Platten die Wandoberkante ab; Gesims sitzt unter dem Dachabschluss — kein Durchscheinen mehr',
+    ],
+  },
+  {
+    version: '2.0.490',
+    date: '2026-09-16',
+    title: 'Gesims nicht mehr durchs Dach',
+    changes: [
+      'Dachhaut liegt im Tiefenpuffer vor dem Gesims — Wandkante und Gesims scheinen nicht mehr durch die Traufe',
+    ],
+  },
+  {
+    version: '2.0.489',
+    date: '2026-09-16',
+    title: 'Dachunterseite versiegelt die Wandkante',
+    changes: [
+      'Dachplatte greift leicht in die Wandoberkante — Gesims und Wandkante scheinen nicht mehr unter der Traufe durch',
+    ],
+  },
+  {
+    version: '2.0.488',
+    date: '2026-09-16',
+    title: 'Wandkante nicht mehr durchs Dach',
+    changes: [
+      'Dachunterseite liegt klar über Wandoberkante und Gesims — kein Durchscheinen mehr an der Traufe',
+    ],
+  },
+  {
+    version: '2.0.487',
+    date: '2026-09-16',
+    title: 'Dach auf der Wand, Gauben-Auswahl, keine XYZ-Achsen',
+    changes: [
+      'Gesims und obere Wandkante scheinen nicht mehr durch das Dach — die Dachplatte sitzt auf der Wandoberkante',
+      'Gauben-Auswahl erscheint wieder an der Gaube, nicht am Boden',
+      'XYZ-Achsenmarkierung am Boden entfernt',
+    ],
+  },
+  {
+    version: '2.0.486',
+    date: '2026-09-15',
+    title: 'Gauben bis in die Kehle, Fenster repariert',
+    changes: [
+      'Gauben enden wieder in der Kehle und öffnen die Dachhaut — keine stumpfe Rückwand mehr; durchs Fenster sieht man nicht mehr die Ziegel',
+      'Spitz- und Trapezgaube: Geometrie und Fenster sitzen sauber unter dem Frontprofil',
+      'Fledermausgaube: Fenster wieder sichtbar unter dem Scheitel',
+    ],
+  },
+  {
+    version: '2.0.485',
+    date: '2026-09-15',
+    title: 'Gauben-Hilfslinien ausgerichtet',
+    changes: [
+      'Hilfslinien beim Gauben-Verschieben sitzen wieder an der Gaubenkante — nicht mehr seitlich versetzt',
+    ],
+  },
+  {
+    version: '2.0.484',
+    date: '2026-09-15',
+    title: 'Laibung an Gaubenfenstern',
+    changes: [
+      'Gaubenfenster haben wieder eine echte Laibung durch die Frontwand — wie Fassadenfenster',
+    ],
+  },
+  {
+    version: '2.0.483',
+    date: '2026-09-15',
+    title: 'Gauben: Hilfslinien, Pfeile, Fenster-UI',
+    changes: [
+      'Hilfslinien auf der Dachschräge reichen bis zum Boden und links/rechts bis zum Dachende',
+      'Pfeiltasten links/rechts bewegen Gaube/Dachfenster in die erwartete Richtung',
+      'Gaube anklicken öffnet die volle Fenster-Einstellung (Teilung, Glas, Bank, …) wie bei einem Fassadenfenster',
+    ],
+  },
+  {
+    version: '2.0.482',
+    date: '2026-09-15',
+    title: 'Gauben verschieben wie Fenster',
+    changes: [
+      'Gauben und Dachfenster rasten beim Ziehen und Platzieren auf 8 cm (Traufe entlang / hangaufwärts)',
+      'Hilfslinien und Abstandsangaben auf der Dachschräge — Ausrichtung an Nachbarn, Abstand zur Traufe',
+      'Pfeiltasten bewegen Gaube/Dachfenster in 8‑cm-Schritten auf der Schräge',
+    ],
+  },
+  {
+    version: '2.0.481',
+    date: '2026-09-15',
+    title: 'Gauben wählen, Traufüberstand, Rechtsklick',
+    changes: [
+      'Gauben und Dachfenster lassen sich wieder anklicken, verschieben und rechts einstellen (nicht mehr durch die Fassaden-Ebene blockiert)',
+      'Traufüberstand verlängert nur die Traufe — das Dach hebt sich nicht mehr mit',
+      'Rechtsklick auf Gaube/Dachfenster: Ein-/Ausblenden, Duplizieren links/rechts, Traufdurchbruch, Fenster, Löschen',
+    ],
+  },
+  {
+    version: '2.0.480',
+    date: '2026-09-15',
+    title: 'Gehrung nach Etage duplizieren',
+    changes: [
+      'Erdgeschoss duplizieren: Wandecken im neuen Geschoss gehren wieder sauber (nicht mehr über Kreuz)',
+    ],
+  },
+  {
+    version: '2.0.479',
+    date: '2026-09-15',
+    title: 'Gauben wie gebaut: Maße, Position, Traufdurchbruch',
+    changes: [
+      'Gauben sitzen echt im Dach: Frontwand, Wangen, Gaubendach mit Überstand und Blenden, Kehle schneidet die Dachhaut',
+      'Alle Maße einstellbar: Breite, Fronthöhe, Tiefe, Überstand, Wandstärke, Dachneigung, Bogenstich, Wangenneigung',
+      'Position über Abstand zur Traufe und seitlichen Lauf — oder weiter per Ziehen',
+      'Traufdurchbruch: Gaube reicht bis zur Traufe, Dachhaut und Rinne sind dort unterbrochen',
+      'Gaubenfenster ist ein normales Fenster (Teilung, Glas, Laibung, Bank) und erbt den Stil der Hausfenster; abschaltbar',
+      'Zehn Formen: Giebel, Walm mit/ohne Firstgrat, Schlepp gerade/schräg, Trapez, Spitz, Tonnendach, Fledermaus, Dachreiter',
+    ],
+  },
+  {
+    version: '2.0.478',
+    date: '2026-09-14',
+    title: 'Acht Gaubenformen',
+    changes: [
+      'Bibliothek Gauben: Giebel, Walm, Schlepp gerade/schräg/liegend, Fledermaus, Spitz, Dachreiter',
+      'Form einer gesetzten Gaube in der rechten Leiste wechseln',
+      'Alte Schleppgaube (shed) wird zur geraden Schleppgaube',
+    ],
+  },
+  {
+    version: '2.0.477',
+    date: '2026-09-14',
+    title: 'Dach anklicken, Dachfenster und Gauben',
+    changes: [
+      'Dach in der 3D-Ansicht direkt auswählen (nicht nur über Ebenen)',
+      'Bibliothek Dachfenster und Gauben: auf die Dachhaut setzen, verschieben und löschen',
+      'Sattelgaube und Schleppgaube; Zwerchgiebel bleibt die Traufkanten-Variante',
+    ],
+  },
   {
     version: '2.0.476',
     date: '2026-09-14',

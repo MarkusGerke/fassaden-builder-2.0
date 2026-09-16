@@ -12,6 +12,7 @@ import {
   plinthProfileForwardBoost,
   plinthMiterEnds,
   corniceMiterEnds,
+  studioFacadeOutwardDepth,
   wallEndPoint,
   wallHasPanels,
   wallStartPoint,
@@ -49,7 +50,9 @@ import {
 import { isWindowTrimProfile } from '../profiles/windowTrim'
 import { trimSectionScales, profileSectionNativeExtents } from './profileSectionExtents'
 import { basementWindowEnabled } from '../studio/basementWindow'
-import { getAllWalls, getVisibleWalls } from './buildings'
+import { findBuildingForWall, getAllWalls, getVisibleWalls } from './buildings'
+import { storeyTopY } from './layers'
+import { roofWallClearanceCm, ROOF_WALL_TOP_TRIM_CM } from '../studio/roofForms'
 import { normalizeFacadeDecor } from '../studio/facadeDecor'
 
 export interface Vec2 {
@@ -848,13 +851,32 @@ function buildCornicePaths(state: FacadeState): ProfilePath[] {
     if (!profile?.projecting || !profile.section) continue
 
     const studio = isStudioWall(wall)
-    const edgeY = studio
+    let edgeY = studio
       ? cornice.edge === 'bottom'
         ? -wall.height / 2
         : wall.height / 2
       : cornice.edge === 'bottom'
         ? wall.y
         : wall.y + wall.height
+    // Unter Dach: Gesims-Pfad unter die Wandoberkante, sonst koplanar mit Soffit/Deckel.
+    let corniceDropCm = 0
+    if (cornice.edge === 'top') {
+      const building = findBuildingForWall(state, wall.id)
+      const floors = building?.floors
+      if (building?.roof?.enabled && floors && floors.length > 0) {
+        const topY = storeyTopY(building, floors.length - 1)
+        const wallTopWorld = wall.y + wall.height
+        if (Math.abs(wallTopWorld - topY) < 1.5) {
+          const pitch =
+            building.roof.kind === 'mansard' ? building.roof.pitchLower : building.roof.pitch
+          corniceDropCm = Math.max(
+            roofWallClearanceCm(studioFacadeOutwardDepth(wall), pitch ?? 40),
+            ROOF_WALL_TOP_TRIM_CM + 2,
+          )
+          edgeY = studio ? wall.height / 2 - corniceDropCm : wall.y + wall.height - corniceDropCm
+        }
+      }
+    }
     const x0 = studio ? -wall.width / 2 : wall.x
     const x1 = studio ? wall.width / 2 : wall.x + wall.width
     const start = corniceEndJoin(wall, 'start', allWalls)

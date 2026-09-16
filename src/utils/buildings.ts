@@ -1,6 +1,10 @@
 import { DEFAULT_WINDOW_DEPTH_OFFSET, WALL_DEPTH, WALL_HEIGHT } from '../constants/presets'
 import { PLAN_GRID } from '../studio/constants'
 import { createEmptyFloorPlan, type FloorPlan } from '../studio/floorPlan'
+import {
+  findBuildingForRoofDormerWall,
+  findRoofDormerWall,
+} from '../studio/roofDormerOpeningRef'
 import { isStudioWall } from '../studio/walls'
 import type { Building, FacadeState, RoofConfig, Wall, WallGroup } from '../types/facade'
 import { cloneBuilding, cloneWall, emptyNeighbors } from '../types/facade'
@@ -41,6 +45,8 @@ function cloneRoof(roof: RoofConfig | undefined): RoofConfig | undefined {
     ...roof,
     edgeModes: roof.edgeModes ? { ...roof.edgeModes } : undefined,
     crossGables: roof.crossGables?.map((c) => ({ ...c })),
+    skylights: roof.skylights?.map((s) => ({ ...s })),
+    dormers: roof.dormers?.map((d) => ({ ...d })),
   }
 }
 
@@ -360,6 +366,8 @@ export function removeBuilding(state: FacadeState, id: string): FacadeState {
 
 export function findWall(state: FacadeState, id: string | null | undefined): Wall | undefined {
   if (!id) return undefined
+  const dormerWall = findRoofDormerWall(state, id)
+  if (dormerWall) return dormerWall
   for (const building of state.buildings) {
     const wall = building.walls.find((w) => w.id === id)
     if (wall) return wall
@@ -368,6 +376,8 @@ export function findWall(state: FacadeState, id: string | null | undefined): Wal
 }
 
 export function findBuildingForWall(state: FacadeState, wallId: string): Building | undefined {
+  const dormerBuilding = findBuildingForRoofDormerWall(state, wallId)
+  if (dormerBuilding) return dormerBuilding
   return state.buildings.find((b) => b.walls.some((w) => w.id === wallId))
 }
 

@@ -97,7 +97,7 @@ Checkliste für den nächsten Fix:
 
 ## Aktuelle Schema-Version
 
-Siehe `FACADE_SCHEMA_VERSION` in `schemaMigrations.ts` (aktuell **21**).
+Siehe `FACADE_SCHEMA_VERSION` in `schemaMigrations.ts` (aktuell **22**).
 
 | Step | id | Wirkung |
 |---|---|---|
@@ -114,6 +114,9 @@ Siehe `FACADE_SCHEMA_VERSION` in `schemaMigrations.ts` (aktuell **21**).
 | 18 → 19 | `bay-outer-origin` | **v2.0.305.** Erker (rect/45°) mit **Innen-Origin** (`panelFlip: false` auf Front/Schenkel) werden via `swapBayPreset` mit demselben Preset neu aufgebaut → Planlinie = Außenkante, `panelFlip: true`. Vorher war die sichtbare Front an den 90°-Ecken um 2×Wandstärke breiter als `wall.width` (384 → 432 cm). Mund, Optik, Fenster-Stil bleiben; Fensterpositionen aus dem Preset. Balkon/Loggia/rund unberührt. |
 | 19 → 20 | `bay-panel-depth` | **v2.0.307.** Erker-Paneele (`bayRole`) mit `projectDepth` 0 **und** `taperDepth` 0 (Zwang aus v2.0.304 / Schema 18) → Vorstand/Bosse des Muster-Defaults (Läufer 4 / 1). Steine ohne Dicke lagen 0,15 cm vor der Wandschale → Z-Fight-Streifen. Breite/Höhe/Farbe/Fugen unverändert; idempotent. |
 | 20 → 21 | `bay-opening-sill-128` | **v2.0.309.** Erker-Fenster (`bayRole` front/side/arc) auf Brüstung `WINDOW_SILL_Y` + Rock (`bayWallSkirtDropCm`) setzen. Symptom: Front übernahm oft Spender-Y (64/72), Schenkel lagen schon auf 128. Stil unverändert; idempotent. |
+| 21 → 22 | `roof-openings` | **v2.0.477.** `RoofConfig.skylights` / `dormers` anlegen (leere Arrays). Keine Geometrie-Umbauten. **v2.0.478:** `dormers[].kind` `shed` → `shedStraight` nur in `normalizeRoof` / `normalizeRoofDormerKind`, kein neuer Schema-Schritt. **v2.0.479:** neue Gaubenfelder (`roofPitchDeg`, `overhangCm`, `wallThicknessCm`, `riseCm`, `cheekTiltDeg`, `eaveBreak`, `window`, Farben) sind optional und werden in `normalizeDormers` geclampt — ebenfalls kein neuer Schema-Schritt. |
+
+**Gauben aus 477/478 (unveröffentlichte Dev-Stände):** `x`/`z` meinten dort die Fußabdruck-Mitte, seit v2.0.479 die Frontwand-Mitte. Solche Gauben sitzen ~ halbe Tiefe weiter hangaufwärts — einmal verschieben genügt; kein Schema-Schritt, weil die Stände nie released wurden. Gaubenfenster ohne vollen Feldkatalog (nur `x/y/width/height`) werden beim Auflösen mit den Defaults aufgefüllt (`dormerWindowWithDefaults`), damit sie dieselben Felder haben wie Bibliothek-Fenster.
 
 **Hydrate ohne Schema-Step (v0.7.247):**
 
@@ -132,6 +135,10 @@ Alte `hdri*`-Felder in `PersistedAppState.scene` werden ignoriert (HDRI entfernt
 ### Hydrate ohne Schema-Step (v2.0.150) — Fade / DaySchedule
 
 - `SceneLight.fadeInMs` / `fadeOutMs` / `schedule`, `Opening.schedule`, `OpeningRollerShutter.schedule`: Defaults beim Normalize/Hydrate (leere Zeiten, Fade 800/1200 ms). Kein `FACADE_SCHEMA_VERSION`-Bump.
+
+### Hydrate ohne Schema-Step (v2.0.478) — Gaubenform
+
+- `RoofDormer.kind`: `shed` → `shedStraight`; unbekannte Werte → `gable`. Siehe `normalizeRoofDormerKind`.
 
 ### Hydrate ohne Schema-Step (v2.0.266) — Oberflächen-Mix
 

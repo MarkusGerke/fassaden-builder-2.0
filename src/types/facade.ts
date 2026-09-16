@@ -28,8 +28,9 @@ export type RoofCovering = 'tiles' | 'smooth'
 export type RoofEdgeMode = 'auto' | 'free' | 'flush'
 
 /**
- * Zwerchgiebel (Quergiebel) auf einer Traufkante — Formen-MVP ohne Gauben/Dachfenster.
+ * Zwerchgiebel (Quergiebel) auf einer Traufkante.
  * Sitzt auf der Fassaden-/Traufkante, schneidet in die Dachhaut, eigenes Satteldach nach innen.
+ * Nicht zu verwechseln mit Gauben (auf der Schräge).
  */
 export interface RoofCrossGable {
   /** Kante (`roofEdgeKey` am Plan-Outer). */
@@ -38,6 +39,135 @@ export interface RoofCrossGable {
   widthCm: number
   /** Tiefe nach innen vom Traufpolygon (cm). */
   depthCm: number
+}
+
+/**
+ * Gaubenformen (Wikipedia „Formen von Dachgauben“, v2.0.479 realistisch):
+ * - `gable` Giebelgaube (Sattel + Stirngiebel), `hip` Walmgaube mit Firstgrat,
+ *   `hipNoRidge` Walmgaube ohne Firstgrat (Walmspitze liegt auf der Hauptdachhaut),
+ * - `shedStraight` Schleppgaube, `shedSkew` schräge Schleppgaube, `shedTrapez` Trapezgaube
+ *   (geneigte Wangen ≥ 15°), `pointed` Spitz-/Dreiecksgaube, `barrel` Tonnendach-/Rundgaube,
+ * - `bat` Fledermausgaube, `turret` Dachreiter.
+ * Alt: `shed` → `shedStraight` beim Normalize. Zwerchgiebel („Dachgiebel“) bleibt `crossGables`.
+ */
+export const ROOF_DORMER_KINDS = [
+  'gable',
+  'hip',
+  'hipNoRidge',
+  'shedStraight',
+  'shedSkew',
+  'shedTrapez',
+  'pointed',
+  'barrel',
+  'bat',
+  'turret',
+] as const
+
+export type RoofDormerKind = (typeof ROOF_DORMER_KINDS)[number]
+
+export const ROOF_DORMER_LABELS: Record<RoofDormerKind, string> = {
+  gable: 'Giebelgaube',
+  hip: 'Walmdachgaube (mit Firstgrat)',
+  hipNoRidge: 'Walmdachgaube (ohne Firstgrat)',
+  shedStraight: 'Schleppgaube',
+  shedSkew: 'Schleppgaube (schräg)',
+  shedTrapez: 'Trapezgaube',
+  pointed: 'Spitzgaube',
+  barrel: 'Tonnendach-Giebelgaube',
+  bat: 'Fledermausgaube',
+  turret: 'Dachreiter',
+}
+
+export function isRoofDormerKind(value: unknown): value is RoofDormerKind {
+  return typeof value === 'string' && (ROOF_DORMER_KINDS as readonly string[]).includes(value)
+}
+
+export function normalizeRoofDormerKind(raw: unknown): RoofDormerKind {
+  if (raw === 'shed') return 'shedStraight'
+  if (isRoofDormerKind(raw)) return raw
+  return 'gable'
+}
+
+/** Formen mit senkrechten Wangen (Dreieck-/Trapezwange). */
+export function roofDormerHasVerticalCheeks(kind: RoofDormerKind): boolean {
+  return kind !== 'pointed' && kind !== 'shedTrapez' && kind !== 'bat'
+}
+
+/** Formen mit eigener Gaubendach-Neigung (Sattel/Walm: Seitenflächen, Schlepp/Trapez: Pult). */
+export function roofDormerUsesPitch(kind: RoofDormerKind): boolean {
+  return kind !== 'pointed' && kind !== 'barrel' && kind !== 'bat'
+}
+
+/** Formen, bei denen `depthCm` die Gaube wirklich begrenzt (sonst nur Kappe). */
+export function roofDormerUsesDepth(kind: RoofDormerKind): boolean {
+  return kind === 'bat' || kind === 'turret'
+}
+
+/** Dachfenster (flach in der Dachhaut). */
+export interface RoofSkylight {
+  id: string
+  /** Welt-XZ Mittelpunkt. */
+  x: number
+  z: number
+  /** Breite quer zum Gefälle (cm, waagerecht auf der Ebene). */
+  widthCm: number
+  /** Höhe hangaufwärts (cm). */
+  heightCm: number
+  /** Ausgeblendet: Mesh und Loch entfallen, Daten bleiben. */
+  hidden?: boolean
+}
+
+/**
+ * Gaube auf der Dachschräge (nicht Zwerchgiebel).
+ *
+ * Seit v2.0.479 realistische Konstruktion: Frontwand steht auf der Dachhaut, Wangen als
+ * rechtwinklige Dreiecke bis zur Dachhaut, Gaubendach schneidet die Haupthaut in Kehlen
+ * (Tiefe ergibt sich aus Höhe, Neigung und Hauptdachneigung). Fenster = normale `Opening`
+ * (Gründerzeit-Fensterlogik), Koordinaten relativ zur Frontwand (links außen / Unterkante).
+ */
+export interface RoofDormer {
+  id: string
+  kind: RoofDormerKind
+  /** Welt-XZ: Mitte der Frontwand-Außenkante auf der Dachhaut (v2.0.479; vorher Fußabdruck-Mitte). */
+  x: number
+  z: number
+  /** Außenbreite Wange zu Wange, quer zum Gefälle (cm). */
+  widthCm: number
+  /**
+   * Fledermaus: Auslauf hangaufwärts; Dachreiter: Tiefe. Sonst nur Kappe —
+   * die Gaube endet vorher, wo ihr Dach auf die Haupthaut trifft (Rückwand nur bei Flachdach).
+   */
+  depthCm: number
+  /**
+   * Frontwandhöhe über der Dachhaut an der Front (cm). Spitzgaube: Spitzenhöhe;
+   * Fledermaus: Scheitelhöhe der Welle.
+   */
+  heightCm: number
+  /** Gaubendach-Neigung (°). Sattel/Walm: Seitenflächen; Schlepp/Trapez: Pult. Fehlt → Form-Default. */
+  roofPitchDeg?: number
+  /** Dachüberstand der Gaube vorn/seitlich (cm). Default 16. */
+  overhangCm?: number
+  /** Wandstärke Front/Wangen (cm). Default 20. */
+  wallThicknessCm?: number
+  /** Tonnendach: Bogenstich (cm). Fehlt → Breite/4 (Segmentbogen); = Breite/2 → Halbkreis. */
+  riseCm?: number
+  /** Trapezgaube: Wangenneigung gegen die Senkrechte (°). Default 20, min 15. */
+  cheekTiltDeg?: number
+  /**
+   * Traufdurchbruch: Front steht auf der Außenwandlinie und reicht bis zur Traufhöhe
+   * (Zwerchhaus-artig); Dachhaut, Stirn, Rinne und Füllwand sind im Gaubenbereich unterbrochen.
+   */
+  eaveBreak?: boolean
+  /** Ausgeblendet: Mesh und Loch entfallen, Daten bleiben. */
+  hidden?: boolean
+  /** Fenster in der Front (normale Öffnung). `hidden: true` = kein Fenster. Fehlt → Default-Fenster. */
+  window?: Opening
+  /** Farbe Front/Wangen. Fehlt → `roof.gableColor`. */
+  wallColor?: string
+  /** Farbe Gaubendach. Fehlt → `roof.tileColor`. */
+  roofColor?: string
+  /** Farbe Blenden (Ortgang/Traufbrett, Fensterbank-Blech). Fehlt → `roof.gutterColor`. */
+  trimColor?: string
 }
 
 /** Dach auf dem obersten Grundriss-Ring (Mansarde, Sattel, Walm, Krüppelwalm, Pult). */
@@ -62,6 +192,10 @@ export interface RoofConfig {
   gableColor?: string
   /** Zwerchgiebel (0…n); MVP-UI steuert den ersten Eintrag. */
   crossGables?: RoofCrossGable[]
+  /** Dachfenster auf der Dachhaut. */
+  skylights?: RoofSkylight[]
+  /** Gauben auf der Dachschräge. */
+  dormers?: RoofDormer[]
   /** Untere Mansarden-Neigung (Grad zur Horizontalen), steil. */
   pitchLower: number
   /** Obere Mansarden-Neigung (Grad), flacher. */
@@ -1385,6 +1519,8 @@ export interface EditorState {
   selectedRoofBuildingId?: string
   /** Fokus auf Dach-Teil (Toolbar). */
   selectedRoofPart?: 'group' | 'shell' | 'tiles' | 'gutter'
+  /** Gewähltes Dachfenster oder Gaube auf dem Dach. */
+  selectedRoofFixture?: { kind: 'skylight' | 'dormer'; id: string }
   /** Gewählte Decke (Etage). */
   selectedCeiling?: { buildingId: string; floorIndex: number }
   /** Haus-Gruppe für Verschieben im Grundriss. */
@@ -1443,7 +1579,18 @@ export function cloneBuilding(building: Building): Building {
       ...group,
       memberWallIds: [...group.memberWallIds],
     })) ?? [],
-    roof: building.roof ? { ...building.roof } : undefined,
+    roof: building.roof
+      ? {
+          ...building.roof,
+          edgeModes: building.roof.edgeModes ? { ...building.roof.edgeModes } : undefined,
+          crossGables: building.roof.crossGables?.map((c) => ({ ...c })),
+          skylights: building.roof.skylights?.map((s) => ({ ...s })),
+          dormers: building.roof.dormers?.map((d) => ({
+            ...d,
+            ...(d.window ? { window: cloneOpening(d.window) } : {}),
+          })),
+        }
+      : undefined,
     downpipes: building.downpipes?.map((dp) => ({
       ...dp,
       nicheOpeningIds: dp.nicheOpeningIds ? { ...dp.nicheOpeningIds } : undefined,
@@ -1460,6 +1607,7 @@ export function createDefaultEditorState(): EditorState {
     selectedAwningId: undefined,
     selectedRoofBuildingId: undefined,
     selectedRoofPart: undefined,
+    selectedRoofFixture: undefined,
     selectedCeiling: undefined,
     selectedBuildingId: undefined,
     selectedDownpipe: undefined,
@@ -1470,7 +1618,46 @@ export function cloneWall(wall: Wall): Wall {
   return {
     ...wall,
     neighbors: { ...wall.neighbors },
-    openings: wall.openings.map((opening) => {
+    openings: wall.openings.map(cloneOpening),
+    profiles: wall.profiles.map((profile) => ({ ...profile })),
+    panel: wall.panel ? { ...wall.panel } : undefined,
+    claddingZones: wall.claddingZones?.map((zone) => ({
+      ...zone,
+      rect: zone.rect ? { ...zone.rect } : undefined,
+      panel: zone.panel ? { ...zone.panel } : undefined,
+    })),
+    cornice: wall.cornice ? { ...wall.cornice } : undefined,
+    trimBands: wall.trimBands?.map((band) => ({ ...band })),
+    labels: wall.labels?.map((item) => ({ ...item })),
+    label: wall.label ? { ...wall.label } : undefined,
+    awnings: wall.awnings?.map((item) => ({
+      ...item,
+      motion: item.motion
+        ? {
+            extend: {
+              durationMs: item.motion.extend?.durationMs ?? 2200,
+              holdMs: item.motion.extend?.holdMs,
+              keys: (item.motion.extend?.keys ?? []).map((k) => ({ ...k })),
+            },
+            retract: {
+              durationMs: item.motion.retract?.durationMs ?? 2000,
+              holdMs: item.motion.retract?.holdMs,
+              keys: (item.motion.retract?.keys ?? []).map((k) => ({ ...k })),
+            },
+          }
+        : undefined,
+      schedule: item.schedule
+        ? {
+            onTimes: [...(item.schedule.onTimes ?? [])],
+            offTimes: [...(item.schedule.offTimes ?? [])],
+          }
+        : undefined,
+    })),
+  }
+}
+
+/** Tiefe Kopie einer Öffnung (Wand-Öffnungen und Gauben-Fenster). */
+export function cloneOpening(opening: Opening): Opening {
       const migrated = migrateOpeningPanelFan(opening)
       return {
         ...migrated,
@@ -1566,42 +1753,6 @@ export function cloneWall(wall: Wall): Wall {
         arch: migrated.arch ? { ...migrated.arch } : undefined,
         glazingArch: migrated.glazingArch,
       }
-    }),
-    profiles: wall.profiles.map((profile) => ({ ...profile })),
-    panel: wall.panel ? { ...wall.panel } : undefined,
-    claddingZones: wall.claddingZones?.map((zone) => ({
-      ...zone,
-      rect: zone.rect ? { ...zone.rect } : undefined,
-      panel: zone.panel ? { ...zone.panel } : undefined,
-    })),
-    cornice: wall.cornice ? { ...wall.cornice } : undefined,
-    trimBands: wall.trimBands?.map((band) => ({ ...band })),
-    labels: wall.labels?.map((item) => ({ ...item })),
-    label: wall.label ? { ...wall.label } : undefined,
-    awnings: wall.awnings?.map((item) => ({
-      ...item,
-      motion: item.motion
-        ? {
-            extend: {
-              durationMs: item.motion.extend?.durationMs ?? 2200,
-              holdMs: item.motion.extend?.holdMs,
-              keys: (item.motion.extend?.keys ?? []).map((k) => ({ ...k })),
-            },
-            retract: {
-              durationMs: item.motion.retract?.durationMs ?? 2000,
-              holdMs: item.motion.retract?.holdMs,
-              keys: (item.motion.retract?.keys ?? []).map((k) => ({ ...k })),
-            },
-          }
-        : undefined,
-      schedule: item.schedule
-        ? {
-            onTimes: [...(item.schedule.onTimes ?? [])],
-            offTimes: [...(item.schedule.offTimes ?? [])],
-          }
-        : undefined,
-    })),
-  }
 }
 
 export function cloneFacadeState(state: FacadeState): FacadeState {

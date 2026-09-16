@@ -2,15 +2,19 @@ import * as THREE from 'three'
 import type {
   Building,
   FacadeState,
+  Opening,
   RoofConfig,
   RoofCrossGable,
+  RoofDormer,
   RoofEdgeMode,
   RoofKind,
+  RoofSkylight,
   RoofTileProfile,
   StudioPanelConfig,
   StudioPanelPattern,
   Wall,
 } from '../types/facade'
+import { normalizeRoofDormerKind } from '../types/facade'
 import { DEFAULT_WALL_COLOR } from '../constants/colorPalettes'
 import { getActiveBuilding } from '../utils/buildings'
 import { floorIndex, storeyTopY } from '../utils/layers'
@@ -26,14 +30,20 @@ import { MASONRY_KIND_PATTERNS, PANEL_KIND_PATTERNS } from './constants'
 import {
   buildRoofEnvelope,
   buildRoofEnvelopeGeometry,
+  complementIntervals,
   edgeCompassLabel,
+  intersectConvexPolygons,
   isRoofKind,
   orientRingCcw,
   roofEdgeKey,
+  roofSlabVerticalCm,
+  roofWallClearanceCm,
+  ROOF_WALL_CLEARANCE_CM,
+  type RoofEaveCut,
   type RoofEnvelope,
   type XZ,
 } from './roofForms'
-import { isStudioWall, wallEndPoint, wallHasPanels, wallStartPoint } from './walls'
+import { isStudioWall, studioFacadeOutwardDepth, wallEndPoint, wallHasPanels, wallStartPoint } from './walls'
 
 export type { RoofConfig, RoofTileProfile }
 export { ROOF_KIND_LABELS, ROOF_KINDS, roofKindUsesPitch, roofKindUsesRidgeDir } from './roofForms'
@@ -59,6 +69,8 @@ export const DEFAULT_ROOF: RoofConfig = {
   /** MVP Formen: immer glatt — Ziegel kommen in einer späteren Stufe. */
   covering: 'smooth',
   crossGables: [],
+  skylights: [],
+  dormers: [],
   pitchLower: 70,
   pitchUpper: 30,
   overhang: 40,
@@ -92,6 +104,8 @@ export function normalizeRoof(raw?: Partial<RoofConfig> | null): RoofConfig {
       : null
   const edgeModes = normalizeEdgeModes(base.edgeModes)
   const crossGables = normalizeCrossGables(base.crossGables)
+  const skylights = normalizeSkylights(base.skylights)
+  const dormers = normalizeDormers(base.dormers)
   return {
     enabled: Boolean(base.enabled),
     hidden: Boolean(base.hidden),
@@ -102,6 +116,8 @@ export function normalizeRoof(raw?: Partial<RoofConfig> | null): RoofConfig {
     covering,
     ...(edgeModes ? { edgeModes } : {}),
     ...(crossGables.length > 0 ? { crossGables } : {}),
+    ...(skylights.length > 0 ? { skylights } : {}),
+    ...(dormers.length > 0 ? { dormers } : {}),
     ...(typeof base.gableColor === 'string' && base.gableColor ? { gableColor: base.gableColor } : {}),
     pitchLower: clamp(base.pitchLower, 45, 80),
     pitchUpper: clamp(base.pitchUpper, 10, 45),
@@ -166,6 +182,93 @@ function normalizeCrossGables(raw: unknown): RoofCrossGable[] {
     })
   }
   return out
+}
+
+function normalizeSkylights(raw: unknown): RoofSkylight[] {
+  if (!Array.isArray(raw)) return []
+  const out: RoofSkylight[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const id = typeof (item as RoofSkylight).id === 'string' ? (item as RoofSkylight).id : ''
+    if (!id) continue
+    const x = Number((item as RoofSkylight).x)
+    const z = Number((item as RoofSkylight).z)
+    if (!Number.isFinite(x) || !Number.isFinite(z)) continue
+    out.push({
+      id,
+      x,
+      z,
+      widthCm: snap8(clamp(Number((item as RoofSkylight).widthCm) || 80, 40, 400)),
+      heightCm: snap8(clamp(Number((item as RoofSkylight).heightCm) || 120, 40, 400)),
+      ...((item as RoofSkylight).hidden ? { hidden: true } : {}),
+    })
+  }
+  return out
+}
+
+function normalizeDormers(raw: unknown): RoofDormer[] {
+  if (!Array.isArray(raw)) return []
+  const out: RoofDormer[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const id = typeof (item as RoofDormer).id === 'string' ? (item as RoofDormer).id : ''
+    if (!id) continue
+    const x = Number((item as RoofDormer).x)
+    const z = Number((item as RoofDormer).z)
+    if (!Number.isFinite(x) || !Number.isFinite(z)) continue
+    const kind = normalizeRoofDormerKind((item as RoofDormer).kind)
+    const raw = item as Partial<RoofDormer>
+    const optNum = (v: unknown, min: number, max: number, snap = false): number | undefined => {
+      const n = Number(v)
+      if (!Number.isFinite(n)) return undefined
+      const c = clamp(n, min, max)
+      return snap ? snap8(c) : Math.round(c)
+    }
+    const optColor = (v: unknown): string | undefined =>
+      typeof v === 'string' && v.trim() ? v : undefined
+    const window = normalizeDormerWindow(raw.window)
+    out.push({
+      id,
+      kind,
+      x,
+      z,
+      widthCm: snap8(clamp(Number(raw.widthCm) || 160, 80, 1200)),
+      depthCm: snap8(clamp(Number(raw.depthCm) || 400, 40, 1200)),
+      heightCm: snap8(clamp(Number(raw.heightCm) || 140, 24, 400)),
+      ...(optNum(raw.roofPitchDeg, 3, 75) !== undefined ? { roofPitchDeg: optNum(raw.roofPitchDeg, 3, 75) } : {}),
+      ...(optNum(raw.overhangCm, 0, 64) !== undefined ? { overhangCm: optNum(raw.overhangCm, 0, 64) } : {}),
+      ...(optNum(raw.wallThicknessCm, 8, 40) !== undefined
+        ? { wallThicknessCm: optNum(raw.wallThicknessCm, 8, 40) }
+        : {}),
+      ...(optNum(raw.riseCm, 8, 600) !== undefined ? { riseCm: optNum(raw.riseCm, 8, 600) } : {}),
+      ...(optNum(raw.cheekTiltDeg, 15, 45) !== undefined ? { cheekTiltDeg: optNum(raw.cheekTiltDeg, 15, 45) } : {}),
+      ...(raw.eaveBreak ? { eaveBreak: true } : {}),
+      ...(raw.hidden ? { hidden: true } : {}),
+      ...(window ? { window } : {}),
+      ...(optColor(raw.wallColor) ? { wallColor: optColor(raw.wallColor) } : {}),
+      ...(optColor(raw.roofColor) ? { roofColor: optColor(raw.roofColor) } : {}),
+      ...(optColor(raw.trimColor) ? { trimColor: optColor(raw.trimColor) } : {}),
+    })
+  }
+  return out
+}
+
+/** Gauben-Fenster: nur Plausibilität (Typ, Maße); Feldkatalog wie Wand-Öffnungen. */
+function normalizeDormerWindow(raw: unknown): Opening | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const o = raw as Partial<Opening>
+  const width = Number(o.width)
+  const height = Number(o.height)
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width < 8 || height < 8) return undefined
+  return {
+    ...(o as Opening),
+    id: typeof o.id === 'string' && o.id ? o.id : 'dormer-window',
+    type: o.type === 'door' ? 'door' : 'window',
+    x: Number.isFinite(Number(o.x)) ? Number(o.x) : 0,
+    y: Number.isFinite(Number(o.y)) ? Math.max(0, Number(o.y)) : 0,
+    width: Math.round(width),
+    height: Math.round(height),
+  }
 }
 
 function snap8(n: number): number {
@@ -441,7 +544,7 @@ function listRoofEdgesForRing(building: Building, roof: RoofConfig, outer: XZ[])
   return edges
 }
 
-function overhangPerEdge(edges: RoofEdgeInfo[], overhang: number): number[] {
+export function overhangPerEdge(edges: RoofEdgeInfo[], overhang: number): number[] {
   return edges.map((edge) => (edge.flush ? 0 : overhang))
 }
 
@@ -530,22 +633,45 @@ function buildGutterGeometry(
   eave: Array<{ x: number; z: number }>,
   eaveY: number,
   edgeActive: boolean[],
+  gaps: Array<Array<[number, number]>> = [],
 ): THREE.BufferGeometry | null {
   const n = eave.length
   if (n < 2) return null
   const segments: Array<Array<{ x: number; z: number }>> = []
   let current: Array<{ x: number; z: number }> = []
+  const hasGaps = gaps.some((g) => g && g.length > 0)
+  const flush = () => {
+    if (current.length >= 2) segments.push(current)
+    current = []
+  }
   for (let i = 0; i < n; i += 1) {
     if (!edgeActive[i]) {
-      if (current.length >= 2) segments.push(current)
-      current = []
+      flush()
       continue
     }
-    if (current.length === 0) current.push({ ...eave[i] })
-    current.push({ ...eave[(i + 1) % n] })
+    const a = eave[i]
+    const b = eave[(i + 1) % n]
+    const edgeGaps = gaps[i] ?? []
+    if (edgeGaps.length === 0) {
+      if (current.length === 0) current.push({ ...a })
+      current.push({ ...b })
+      continue
+    }
+    // Traufdurchbruch: Rinne nur in den Reststücken, Kette dort unterbrechen.
+    const at = (t: number) => ({ x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t })
+    for (const [t0, t1] of complementIntervals(edgeGaps)) {
+      if (t0 > 1e-6) {
+        flush()
+        current.push(at(t0))
+      } else if (current.length === 0) {
+        current.push({ ...a })
+      }
+      current.push(t1 < 1 - 1e-6 ? at(t1) : { ...b })
+      if (t1 < 1 - 1e-6) flush()
+    }
   }
   // Geschlossener Ring: alle Kanten aktiv → ein Polygon
-  if (edgeActive.every(Boolean)) {
+  if (edgeActive.every(Boolean) && !hasGaps) {
     segments.length = 0
     segments.push(eave.map((p) => ({ ...p })))
   } else if (current.length >= 2) {
@@ -555,7 +681,7 @@ function buildGutterGeometry(
   if (
     edgeActive[0] &&
     edgeActive[n - 1] &&
-    !edgeActive.every(Boolean) &&
+    !(edgeActive.every(Boolean) && !hasGaps) &&
     segments.length >= 2
   ) {
     const first = segments[0]
@@ -935,6 +1061,7 @@ function buildTiledBands(
   y1: number,
   roof: RoofConfig,
   smooth = false,
+  openingHoles: XZ[][] = [],
 ) {
   const n = Math.min(lower.length, upper.length)
   if (n < 3) return
@@ -944,8 +1071,73 @@ function buildTiledBands(
     const L1 = new THREE.Vector3(lower[j].x, y0, lower[j].z)
     const U1 = new THREE.Vector3(upper[j].x, y1, upper[j].z)
     const U0 = new THREE.Vector3(upper[i].x, y1, upper[i].z)
-    if (smooth) appendQuad(positions, normals, uvs, indices, L0, L1, U1, U0)
-    else addTiledFacet(positions, normals, uvs, indices, L0, L1, U1, U0, roof)
+    if (smooth) {
+      const poly: XZ[] = [lower[i], lower[j], upper[j], upper[i]]
+      const holes: XZ[][] = []
+      for (const foot of openingHoles) {
+        if (foot.length < 3) continue
+        const hit = intersectConvexPolygons(poly, foot)
+        if (hit.length >= 3) holes.push(hit)
+      }
+      if (holes.length === 0) {
+        appendQuad(positions, normals, uvs, indices, L0, L1, U1, U0)
+      } else {
+        // Bilineare Höhe über dem Facetten-Quad in XZ
+        const heightAt = (p: XZ) => {
+          // Projektion auf Facette: u entlang lower, v lower→upper
+          const abx = lower[j].x - lower[i].x
+          const abz = lower[j].z - lower[i].z
+          const len2 = abx * abx + abz * abz || 1
+          let u = ((p.x - lower[i].x) * abx + (p.z - lower[i].z) * abz) / len2
+          u = Math.max(0, Math.min(1, u))
+          const lo = { x: lower[i].x + abx * u, z: lower[i].z + abz * u }
+          const hi = {
+            x: upper[i].x + (upper[j].x - upper[i].x) * u,
+            z: upper[i].z + (upper[j].z - upper[i].z) * u,
+          }
+          const run = Math.hypot(hi.x - lo.x, hi.z - lo.z) || 1
+          let v = ((p.x - lo.x) * (hi.x - lo.x) + (p.z - lo.z) * (hi.z - lo.z)) / (run * run)
+          v = Math.max(0, Math.min(1, v))
+          return y0 + (y1 - y0) * v
+        }
+        appendLiftedPolygonWithHoles(positions, normals, uvs, indices, poly, heightAt, holes)
+      }
+    } else {
+      addTiledFacet(positions, normals, uvs, indices, L0, L1, U1, U0, roof)
+    }
+  }
+}
+
+function appendLiftedPolygonWithHoles(
+  positions: number[],
+  normals: number[],
+  uvs: number[],
+  indices: number[],
+  poly: XZ[],
+  heightAt: (p: XZ) => number,
+  holes: XZ[][],
+) {
+  if (poly.length < 3) return
+  const contour = poly.map((p) => new THREE.Vector2(p.x, p.z))
+  const holeContours = holes
+    .filter((h) => h.length >= 3)
+    .map((h) => h.map((p) => new THREE.Vector2(p.x, p.z)))
+  let tris: number[][]
+  try {
+    tris = THREE.ShapeUtils.triangulateShape(contour, holeContours)
+  } catch {
+    tris = THREE.ShapeUtils.triangulateShape(contour, [])
+  }
+  const flat = [...poly, ...holes.filter((h) => h.length >= 3).flat()]
+  for (const tri of tris) {
+    const pa = flat[tri[0]]
+    const pb = flat[tri[1]]
+    const pc = flat[tri[2]]
+    if (!pa || !pb || !pc) continue
+    const a = new THREE.Vector3(pa.x, heightAt(pa), pa.z)
+    const b = new THREE.Vector3(pb.x, heightAt(pb), pb.z)
+    const c = new THREE.Vector3(pc.x, heightAt(pc), pc.z)
+    appendTri(positions, normals, uvs, indices, a, b, c)
   }
 }
 
@@ -1029,12 +1221,29 @@ interface RoofSinks {
   gableIndices: number[]
 }
 
+/** Max. Fassaden-Vorstand (Paneel+Bosse) der obersten Etage — für Trauf-Clearance. */
+function topFloorFacadeOutwardCm(building: Building): number {
+  const floors = building.floors
+  if (!floors?.length) return 0
+  const topY = storeyTopY(building, floors.length - 1)
+  let maxOut = 0
+  for (const wall of building.walls ?? []) {
+    if (!isStudioWall(wall)) continue
+    const wallTop = wall.y + wall.height / 2
+    if (Math.abs(wallTop - topY) > 1.5) continue
+    maxOut = Math.max(maxOut, studioFacadeOutwardDepth(wall))
+  }
+  return maxOut
+}
+
 /** Gemeinsame Vorbereitung: Traufhöhe, Ring, Kanten, Überstand. */
 function roofBase(building: Building, roof: RoofConfig): {
   outer: XZ[]
   holes: XZ[][]
   eave: XZ[]
   eaveY: number
+  wallTopY: number
+  clearanceCm: number
   edges: RoofEdgeInfo[]
   edgeOverhang: number[]
 } | null {
@@ -1045,15 +1254,21 @@ function roofBase(building: Building, roof: RoofConfig): {
   const outer = orientRingCcw(face.outer)
   const edges = listRoofEdgesForRing(building, roof, outer)
   const edgeOverhang = overhangPerEdge(edges, roof.overhang)
-  // Traufe = echte Geschossoberkante der obersten Etage (storeyTopY), nicht
-  // floors.length × wallHeight — obere Etagen können kürzer sein (z. B. 352 statt 448)
-  // und würden sonst ein „leeres Geschoss“ zwischen Fassade und Dach erzeugen.
+  // Traufe = Wandoberkante + Dachstärke + Clearance (inkl. Paneel-Vorstand × tan Neigung).
   const topFloor = floors.length - 1
+  const wallTopY = storeyTopY(building, topFloor)
+  const pitchForSlab = roof.kind === 'mansard' ? roof.pitchLower : roof.pitch
+  const slabLift = roofSlabVerticalCm(pitchForSlab)
+  const facadeOut = topFloorFacadeOutwardCm(building)
+  const clearanceCm = roofWallClearanceCm(facadeOut, pitchForSlab)
+  const eaveY = wallTopY + slabLift + clearanceCm
   return {
     outer,
     holes: face.holes,
     eave: offsetPolygonPerEdge(outer, edgeOverhang),
-    eaveY: storeyTopY(building, topFloor),
+    eaveY,
+    wallTopY,
+    clearanceCm,
     edges,
     edgeOverhang,
   }
@@ -1073,6 +1288,7 @@ export function roofEnvelopeForBuilding(building: Building, rawRoof?: Partial<Ro
     outer: base.outer,
     eave: base.eave,
     eaveY: base.eaveY,
+    wallTopY: base.wallTopY,
     flush: base.edges.map((e) => e.flush),
     roof,
   })
@@ -1094,6 +1310,7 @@ function buildMansardRoofForBuilding(
   building: Building,
   roof: RoofConfig,
   sinks: RoofSinks,
+  openingHoles: XZ[][] = [],
 ): boolean {
   const base = roofBase(building, roof)
   if (!base) return false
@@ -1104,11 +1321,14 @@ function buildMansardRoofForBuilding(
   const upperRise = roof.ridgeHeight - breakRise
   const breakPoly = insetByPitch(eave, breakRise, roof.pitchLower)
   const ridgePoly = insetByPitch(breakPoly, upperRise, roof.pitchUpper)
-  const ridgeHoles = holes
-    .map((hole) =>
-      insetByPitch(hole, breakRise + upperRise, (roof.pitchLower + roof.pitchUpper) * 0.5),
-    )
-    .filter((h) => h.length >= 3)
+  const ridgeHoles = [
+    ...holes
+      .map((hole) =>
+        insetByPitch(hole, breakRise + upperRise, (roof.pitchLower + roof.pitchUpper) * 0.5),
+      )
+      .filter((h) => h.length >= 3),
+    ...openingHoles,
+  ]
 
   buildTiledBands(
     positions,
@@ -1121,6 +1341,7 @@ function buildMansardRoofForBuilding(
     eaveY + breakRise,
     roof,
     smooth,
+    openingHoles,
   )
   buildTiledBands(
     positions,
@@ -1133,6 +1354,7 @@ function buildMansardRoofForBuilding(
     eaveY + roof.ridgeHeight,
     roof,
     smooth,
+    openingHoles,
   )
   buildCap(positions, normals, uvs, indices, ridgePoly, eaveY + roof.ridgeHeight, ridgeHoles)
   if (!smooth) {
@@ -1149,6 +1371,8 @@ function buildEnvelopeRoofForBuilding(
   building: Building,
   roof: RoofConfig,
   sinks: RoofSinks,
+  extraHoles: XZ[][] = [],
+  eaveCuts: RoofEaveCut[] = [],
 ): boolean {
   const base = roofBase(building, roof)
   if (!base) return false
@@ -1157,11 +1381,12 @@ function buildEnvelopeRoofForBuilding(
     outer: base.outer,
     eave: base.eave,
     eaveY: base.eaveY,
+    wallTopY: base.wallTopY,
     flush: base.edges.map((e) => e.flush),
     roof,
   })
   if (!env) return false
-  const built = buildRoofEnvelopeGeometry(env, roof.crossGables ?? [], roof.pitch)
+  const built = buildRoofEnvelopeGeometry(env, roof.crossGables ?? [], roof.pitch, extraHoles, eaveCuts)
   appendBufferGeometry(built.roof, sinks.positions, sinks.normals, sinks.uvs, sinks.indices)
   built.roof.dispose()
   if (built.gable) {
@@ -1174,7 +1399,7 @@ function buildEnvelopeRoofForBuilding(
     )
     built.gable.dispose()
   }
-  appendGutter(sinks, roof, env.eave, built.gutterEaveY, built.gutterEdgeActive)
+  appendGutter(sinks, roof, env.eave, built.gutterEaveY, built.gutterEdgeActive, built.gutterGaps)
   return true
 }
 
@@ -1184,9 +1409,10 @@ function appendGutter(
   eave: XZ[],
   eaveY: number,
   edgeActive: boolean[],
+  gaps: Array<Array<[number, number]>> = [],
 ) {
   if (!roof.gutter || !edgeActive.some(Boolean)) return
-  const gutterGeo = buildGutterGeometry(eave, eaveY, edgeActive)
+  const gutterGeo = buildGutterGeometry(eave, eaveY, edgeActive, gaps)
   if (!gutterGeo) return
   appendBufferGeometry(
     gutterGeo,
@@ -1198,10 +1424,17 @@ function appendGutter(
   gutterGeo.dispose()
 }
 
-function buildRoofForBuilding(building: Building, roof: RoofConfig, sinks: RoofSinks): boolean {
+function buildRoofForBuilding(
+  building: Building,
+  roof: RoofConfig,
+  sinks: RoofSinks,
+  openingHoles: XZ[][] = [],
+  eaveCuts: RoofEaveCut[] = [],
+): boolean {
   if (!roof.enabled) return false
-  if (roof.kind === 'mansard') return buildMansardRoofForBuilding(building, roof, sinks)
-  return buildEnvelopeRoofForBuilding(building, roof, sinks)
+  // Mansarde: nur Löcher (Traufschnitte betreffen die Envelope-Formen; Rinne/Stirn der Mansarde bleiben).
+  if (roof.kind === 'mansard') return buildMansardRoofForBuilding(building, roof, sinks, openingHoles)
+  return buildEnvelopeRoofForBuilding(building, roof, sinks, openingHoles, eaveCuts)
 }
 
 function appendBufferGeometry(
@@ -1228,7 +1461,12 @@ function appendBufferGeometry(
   }
 }
 
-export function buildMansardRoof(state: FacadeState, raw?: Partial<RoofConfig> | null): RoofBuildResult | null {
+export function buildMansardRoof(
+  state: FacadeState,
+  raw?: Partial<RoofConfig> | null,
+  openingHoles: XZ[][] = [],
+  eaveCuts: RoofEaveCut[] = [],
+): RoofBuildResult | null {
   const visibleBuildings = state.buildings.filter((building) => !building.hidden)
   if (visibleBuildings.length === 0) return null
 
@@ -1254,7 +1492,7 @@ export function buildMansardRoof(state: FacadeState, raw?: Partial<RoofConfig> |
 
   for (const building of visibleBuildings) {
     const roof = normalizeRoof(raw ?? building.roof)
-    if (buildRoofForBuilding(building, roof, sinks)) {
+    if (buildRoofForBuilding(building, roof, sinks, openingHoles, eaveCuts)) {
       anyBuilt = true
       tileColor = roof.tileColor
       gutterColor = roof.gutterColor ?? gutterColor

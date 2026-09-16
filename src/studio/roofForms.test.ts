@@ -73,11 +73,11 @@ describe('roofForms – Hilfsfunktionen', () => {
 })
 
 describe('roofForms – Satteldach', () => {
-  it('First über der langen Achse, Höhe = halbe Traufbreite × tan(Neigung)', () => {
+  it('First über der langen Achse, Höhe = halbe Gebäudebreite × tan(Neigung)', () => {
     const env = envelopeFor('gable', rect())
-    // Traufpolygon: 960+80 × 480+80 → halbe Tiefe 280
+    // Außenring 960×480 → halbe Tiefe 240 (Überstand hebt den First nicht)
     expect(env.faces.length).toBe(2)
-    expect(env.ridgeY - env.eaveY).toBeCloseTo(280 * TAN45, 3)
+    expect(env.ridgeY - env.eaveY).toBeCloseTo(240 * TAN45, 3)
     // Zwei Traufkanten (lang), zwei Giebelkanten (kurz)
     expect(env.isEave.filter(Boolean).length).toBe(2)
   })
@@ -92,8 +92,8 @@ describe('roofForms – Satteldach', () => {
 
   it('Firstrichtung manuell (N–S) dreht den First auf die kurze Achse', () => {
     const env = envelopeFor('gable', rect(), { ridgeDeg: 0 })
-    // First entlang Z → Spannweite in X: 1040 / 2 = 520
-    expect(env.ridgeY - env.eaveY).toBeCloseTo(520, 3)
+    // First entlang Z → Spannweite in X: 960 / 2 = 480
+    expect(env.ridgeY - env.eaveY).toBeCloseTo(480, 3)
   })
 
   it('Bündige Giebelkante: kein Überstand, Kante bleibt ohne Rinne', () => {
@@ -111,13 +111,20 @@ describe('roofForms – Satteldach', () => {
     const geo = buildRoofEnvelopeGeometry(env)
     expect(geo.gutterEdgeActive[eastIdx]).toBe(false)
   })
+
+  it('Traufüberstand verlängert die Traufe, Firsthöhe bleibt', () => {
+    const low = envelopeFor('gable', rect(), { overhang: 10 })
+    const high = envelopeFor('gable', rect(), { overhang: 80 })
+    expect(high.ridgeY).toBeCloseTo(low.ridgeY, 3)
+    expect(high.eave[0]!.x).not.toBeCloseTo(low.eave[0]!.x, 0)
+  })
 })
 
 describe('roofForms – Walmdach', () => {
-  it('Rechteck: vier Flächen, First = halbe Traufbreite', () => {
+  it('Rechteck: vier Flächen, First = halbe Gebäudebreite', () => {
     const env = envelopeFor('hip', rect())
     expect(env.faces.length).toBe(4)
-    expect(env.ridgeY - env.eaveY).toBeCloseTo(280, 3)
+    expect(env.ridgeY - env.eaveY).toBeCloseTo(240, 3)
     expect(env.isEave.every(Boolean)).toBe(true)
   })
 
@@ -150,18 +157,18 @@ describe('roofForms – Krüppelwalm und Pult', () => {
     const half = envelopeFor('halfHip', rect(), { halfHipHeight: 120 })
     expect(half.faces.length).toBe(4)
     expect(half.ridgeY).toBeCloseTo(gable.ridgeY, 3)
-    // An der Giebelkante (Traufpolygon x = -40) maximal 120 über Traufe
+    // An der Giebel-Überstandsspitze: Krüppelwalm-Ebene setzt sich fort (−Überstand·tan)
     const yAtGable = roofEnvelopeHeightAt(half, { x: -40, z: 240 })
-    expect(yAtGable - half.eaveY).toBeCloseTo(120, 3)
-    // Sattel hätte dort den vollen First
-    expect(roofEnvelopeHeightAt(gable, { x: -40, z: 240 }) - gable.eaveY).toBeCloseTo(280, 3)
+    expect(yAtGable - half.eaveY).toBeCloseTo(120 - 40 * TAN45, 3)
+    // Sattel: Höhe nur aus Querschnitt (z), Überstand in x ändert nichts
+    expect(roofEnvelopeHeightAt(gable, { x: -40, z: 240 }) - gable.eaveY).toBeCloseTo(240, 3)
   })
 
   it('Pult: eine Fläche, Hochseite gegenüber der längsten Traufkante', () => {
     const env = envelopeFor('shed', rect())
     expect(env.faces.length).toBe(1)
     expect(env.isEave.filter(Boolean).length).toBe(1)
-    expect(env.ridgeY - env.eaveY).toBeCloseTo(560, 3) // volle Trauftiefe 480+80
+    expect(env.ridgeY - env.eaveY).toBeCloseTo(480, 3) // volle Gebäudebreite 480
   })
 })
 
@@ -215,5 +222,11 @@ describe('roof eaveY – echte Geschossoberkante', () => {
     expect(storeyTopY(building, 4)).toBe(1856)
     expect(building.floors.length * building.wallHeight).toBe(2240)
     expect(building.floors.length * building.wallHeight - storeyTopY(building, 4)).toBe(384)
+  })
+
+  it('Dachhaut liegt um Plattendicke über der Wandoberkante (kein Durchscheinen)', async () => {
+    const { roofSlabVerticalCm, ROOF_SLAB_THICKNESS_CM } = await import('./roofForms')
+    expect(roofSlabVerticalCm(45)).toBeCloseTo(ROOF_SLAB_THICKNESS_CM * Math.SQRT2, 5)
+    expect(roofSlabVerticalCm(0.5)).toBeGreaterThan(ROOF_SLAB_THICKNESS_CM * 0.9)
   })
 })

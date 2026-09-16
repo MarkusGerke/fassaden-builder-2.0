@@ -52,6 +52,7 @@ import { BAY_WINDOW_PRESETS, BAY_LIBRARY_FRONTS_CM, BAY_WALL_DEPTH_CM, buildBayW
 import {
   ceilingBeatsFacadeMesh,
   isSelectableCeilingKind,
+  roofBeatsFacadeMesh,
 } from './studio/facadePick'
 import {
   DEFAULT_CEILING_COLOR,
@@ -619,7 +620,42 @@ import {
   roofRidgeHeightCm,
   type RoofConfig,
 } from './studio/roof'
-import type { RoofEdgeMode, RoofKind } from './types/facade'
+import {
+  ROOF_DORMER_KINDS,
+  ROOF_DORMER_LABELS,
+  roofDormerUsesDepth,
+  roofDormerUsesPitch,
+  type RoofDormer,
+  type RoofEdgeMode,
+  type RoofKind,
+  type RoofDormerKind,
+} from './types/facade'
+import {
+  clampRoofPlacement,
+  createDormerFixture,
+  createSkylightFixture,
+  dormerAnchorForEavePlacement,
+  dormerDefaultPitchDeg,
+  dormerDefaultRiseCm,
+  dormerEavePlacement,
+  dormerFootprint,
+  defaultDormerWindow,
+  DORMER_DEFAULT_CHEEK_TILT_DEG,
+  DORMER_DEFAULT_OVERHANG_CM,
+  DORMER_DEFAULT_WALL_THICKNESS_CM,
+  resolveDormerModel,
+  roofHasOverlappingOpening,
+  roofSurfaceFrameAt,
+  skylightFootprint,
+} from './studio/roofOpenings'
+import {
+  computeRoofFixtureGuides,
+  snapRoofFixturePlacement,
+} from './studio/roofFixtureGuides'
+import {
+  isRoofDormerWallId,
+  roofDormerWallId,
+} from './studio/roofDormerOpeningRef'
 import {
   addDownpipeToFacade,
   createDownpipeFixture,
@@ -1369,6 +1405,8 @@ function handle3dCameraArrowKeys(event: KeyboardEvent): boolean {
 
   const mod = event.metaKey || event.ctrlKey
   if (!mod && !event.shiftKey && editor.selectedOpenings.length > 0) return false
+  if (!mod && !event.shiftKey && editor.selectedRoofFixture) return false
+  if (!mod && !event.shiftKey && editor.selectedDownpipe) return false
 
   event.preventDefault()
   event.stopImmediatePropagation()
@@ -1806,6 +1844,8 @@ type LibraryTab =
   | 'pediment'
   | 'rollerShutters'
   | 'lights'
+  | 'roofWindows'
+  | 'dormers'
   | 'sceneView'
   | 'sceneSun'
   | 'sceneBloom'
@@ -1904,7 +1944,7 @@ function allowedLibraryTabs(): Set<LibraryTab> {
   }
 
   if (editor.selectedRoofBuildingId || editor.selectedRoofPart) {
-    return new Set<LibraryTab>(['farbe'])
+    return new Set<LibraryTab>(['roofWindows', 'dormers', 'farbe'])
   }
 
   // Keine Auswahl: Touch zeigt nur Szene-Kacheln (keine Register, kein Fenster+).
@@ -6737,6 +6777,16 @@ type LibraryAsset =
 let activeLibraryAssetDrag: LibraryAsset | null = null
 /** Öffnungs-Preset aus der Bibliothek (Fenster/Tür) — Live-Platzhalter beim Ziehen. */
 let activeLibraryOpeningPresetId: string | null = null
+/** Bewaffnetes Dachfenster-/Gauben-Preset (Klick → nächster Dachklick setzt). */
+let armedRoofPreset: {
+  kind: 'skylight' | 'dormer'
+  dormerKind?: RoofDormerKind
+  widthCm: number
+  heightCm: number
+  depthCm?: number
+  frontCm?: number
+} | null = null
+let activeLibraryRoofPresetId: string | null = null
 /** Öffnungs-Vorlage aus der Bibliothek — Live-Platzhalter beim Ziehen. */
 let activeLibraryOpeningTemplateId: string | null = null
 /** Schriftart aus der Bibliothek — Live-Platzhalter beim Ziehen. */
@@ -7765,6 +7815,43 @@ const roofCrossGableDepth = document.querySelector<HTMLInputElement>('#roof-cros
 const roofGableColorRow = document.querySelector<HTMLDivElement>('#roof-gable-color-row')!
 const roofGableWallColorRow = document.querySelector<HTMLDivElement>('#roof-gable-wall-color-row')!
 const roofGableColorSwatches = document.querySelector<HTMLDivElement>('#roof-gable-color-swatches')!
+const roofFixtureOptions = document.querySelector<HTMLDivElement>('#roof-fixture-options')!
+const roofSkylightDims = document.querySelector<HTMLDivElement>('#roof-skylight-dims')!
+const roofDormerDims = document.querySelector<HTMLDivElement>('#roof-dormer-dims')!
+const roofSkylightWidth = document.querySelector<HTMLInputElement>('#roof-skylight-width')!
+const roofSkylightHeight = document.querySelector<HTMLInputElement>('#roof-skylight-height')!
+const roofDormerKind = document.querySelector<HTMLSelectElement>('#roof-dormer-kind')!
+const roofDormerWidth = document.querySelector<HTMLInputElement>('#roof-dormer-width')!
+const roofDormerDepth = document.querySelector<HTMLInputElement>('#roof-dormer-depth')!
+const roofDormerHeight = document.querySelector<HTMLInputElement>('#roof-dormer-height')!
+const roofDormerDepthRow = document.querySelector<HTMLDivElement>('#roof-dormer-depth-row')!
+const roofDormerOverhang = document.querySelector<HTMLInputElement>('#roof-dormer-overhang')!
+const roofDormerWall = document.querySelector<HTMLInputElement>('#roof-dormer-wall')!
+const roofDormerPitch = document.querySelector<HTMLInputElement>('#roof-dormer-pitch')!
+const roofDormerPitchRow = document.querySelector<HTMLDivElement>('#roof-dormer-pitch-row')!
+const roofDormerRise = document.querySelector<HTMLInputElement>('#roof-dormer-rise')!
+const roofDormerRiseRow = document.querySelector<HTMLDivElement>('#roof-dormer-rise-row')!
+const roofDormerTilt = document.querySelector<HTMLInputElement>('#roof-dormer-tilt')!
+const roofDormerTiltRow = document.querySelector<HTMLDivElement>('#roof-dormer-tilt-row')!
+const roofDormerEaveDistance = document.querySelector<HTMLInputElement>('#roof-dormer-eave-distance')!
+const roofDormerEaveDistanceRow = document.querySelector<HTMLDivElement>('#roof-dormer-eave-distance-row')!
+const roofDormerEaveAlong = document.querySelector<HTMLInputElement>('#roof-dormer-eave-along')!
+const roofDormerEaveBreak = document.querySelector<HTMLInputElement>('#roof-dormer-eave-break')!
+const roofDormerEaveBreakRow = document.querySelector<HTMLDivElement>('#roof-dormer-eave-break-row')!
+const roofDormerWindowOn = document.querySelector<HTMLInputElement>('#roof-dormer-window-on')!
+const roofDormerWindowFields = document.querySelector<HTMLDivElement>('#roof-dormer-window-fields')!
+const roofDormerWindowWidth = document.querySelector<HTMLInputElement>('#roof-dormer-window-width')!
+const roofDormerWindowHeight = document.querySelector<HTMLInputElement>('#roof-dormer-window-height')!
+const roofDormerWindowSill = document.querySelector<HTMLInputElement>('#roof-dormer-window-sill')!
+const roofDormerWindowX = document.querySelector<HTMLInputElement>('#roof-dormer-window-x')!
+const roofFixtureDelete = document.querySelector<HTMLButtonElement>('#roof-fixture-delete')!
+
+for (const kind of ROOF_DORMER_KINDS) {
+  const option = document.createElement('option')
+  option.value = kind
+  option.textContent = ROOF_DORMER_LABELS[kind]
+  roofDormerKind.append(option)
+}
 const toolbarDownpipe = document.querySelector<HTMLDivElement>('#toolbar-downpipe')!
 const downpipeX = document.querySelector<HTMLInputElement>('#downpipe-x')!
 const downpipeDiameter = document.querySelector<HTMLInputElement>('#downpipe-diameter')!
@@ -9462,15 +9549,83 @@ function syncRoofUI() {
   }
 
   const part = editor.selectedRoofPart ?? 'group'
-  const showAll = part === 'group'
+  const fixture = editor.selectedRoofFixture
+  const showAll = part === 'group' && !fixture
   // MVP: Ziegel deaktiviert (ROOF_TILES_ENABLED) — Sektion bleibt im DOM, aber hidden.
   roofShellOptions.hidden = !showAll && part !== 'shell'
   roofTilesOptions.hidden = true
   roofGutterOptions.hidden = !showAll && part !== 'gutter'
-  if (part !== 'group') {
+  roofFixtureOptions.hidden = !fixture
+  roofSkylightDims.hidden = fixture?.kind !== 'skylight'
+  roofDormerDims.hidden = fixture?.kind !== 'dormer'
+  if (fixture?.kind === 'skylight') {
+    const s = roof.skylights?.find((item) => item.id === fixture.id)
+    if (s) {
+      roofSkylightWidth.value = String(s.widthCm)
+      roofSkylightHeight.value = String(s.heightCm)
+    }
+  }
+  if (fixture?.kind === 'dormer') {
+    const d = roof.dormers?.find((item) => item.id === fixture.id)
+    const building = state.buildings.find((b) => b.id === editor.selectedRoofBuildingId)
+    if (d && building) syncDormerUI(building, roof, d)
+  }
+  if (part !== 'group' || fixture) {
     roofEnabled.closest('.toolbar-group')?.classList.add('hidden')
   } else {
     roofEnabled.closest('.toolbar-group')?.classList.remove('hidden')
+  }
+}
+
+/**
+ * Rechte Leiste für die gewählte Gaube: Maße, Form, Traufposition und Fenster.
+ * Zeilen, die die Form nicht nutzt (Tiefe, Neigung, Bogenstich, Wangenneigung,
+ * Traufdurchbruch), werden ausgeblendet statt nur deaktiviert.
+ */
+function syncDormerUI(building: Building, roof: RoofConfig, d: RoofDormer) {
+  const kind = d.kind
+  const model = resolveDormerModel(building, roof, d)
+  roofDormerKind.value = kind
+  roofDormerWidth.value = String(d.widthCm)
+  roofDormerHeight.value = String(d.heightCm)
+  roofDormerDepth.value = String(d.depthCm)
+  // Bei Sattel/Walm/Schlepp ergibt sich die Tiefe aus der Kehle — Feld nur zeigen,
+  // wenn die Form sie nutzt oder das Gaubendach die Haupthaut gar nicht mehr erreicht.
+  roofDormerDepthRow.hidden = !roofDormerUsesDepth(kind) && !model?.hasBackWall
+  roofDormerOverhang.value = String(d.overhangCm ?? DORMER_DEFAULT_OVERHANG_CM)
+  roofDormerWall.value = String(d.wallThicknessCm ?? DORMER_DEFAULT_WALL_THICKNESS_CM)
+
+  const mainPitch = roof.kind === 'mansard' ? roof.pitchLower : roof.pitch
+  roofDormerPitchRow.hidden = !roofDormerUsesPitch(kind)
+  roofDormerPitch.value = String(d.roofPitchDeg ?? dormerDefaultPitchDeg(kind, mainPitch))
+  roofDormerRiseRow.hidden = kind !== 'barrel'
+  roofDormerRise.value = String(d.riseCm ?? dormerDefaultRiseCm(d.widthCm))
+  roofDormerTiltRow.hidden = kind !== 'shedTrapez'
+  roofDormerTilt.value = String(d.cheekTiltDeg ?? DORMER_DEFAULT_CHEEK_TILT_DEG)
+
+  const supportsEaveBreak = kind !== 'turret' && kind !== 'bat'
+  roofDormerEaveBreakRow.hidden = !supportsEaveBreak
+  roofDormerEaveBreak.checked = Boolean(d.eaveBreak) && supportsEaveBreak
+  // Beim Traufdurchbruch steht die Front auf der Wandlinie — der Abstand wirkt dann nicht.
+  roofDormerEaveDistanceRow.hidden = roofDormerEaveBreak.checked
+  const placement = dormerEavePlacement(building, roof, d)
+  if (placement) {
+    roofDormerEaveDistance.value = String(Math.round(placement.distanceCm))
+    roofDormerEaveAlong.value = String(Math.round(placement.alongCm))
+    roofDormerEaveAlong.max = String(Math.round(placement.edgeLengthCm))
+  }
+
+  const showWindow = !d.window?.hidden
+  roofDormerWindowOn.checked = showWindow
+  // Maße/Stil laufen über die normale Fenster-Toolbar; hier nur An/Aus.
+  roofDormerWindowFields.hidden = true
+  const win = model?.window ?? d.window ?? null
+  if (win) {
+    roofDormerWindowWidth.value = String(win.width)
+    roofDormerWindowHeight.value = String(win.height)
+    roofDormerWindowSill.value = String(win.y)
+    roofDormerWindowX.value = String(win.x)
+    roofDormerWindowX.max = String(Math.max(0, d.widthCm - win.width))
   }
 }
 
@@ -9496,6 +9651,312 @@ function commitRoofPatch(patch: Partial<RoofConfig>) {
   commitState(updateActiveBuilding(state, { roof: next }), editor, {
     forceRoofOnlyIds: [building.id],
   })
+}
+
+type RoofLibraryPreset = {
+  id: string
+  label: string
+  kind: 'skylight' | 'dormer'
+  dormerKind?: RoofDormerKind
+  widthCm: number
+  heightCm: number
+  depthCm?: number
+  frontCm?: number
+}
+
+const ROOF_SKYLIGHT_PRESETS: RoofLibraryPreset[] = [
+  { id: 'skylight-80-120', label: '80×120', kind: 'skylight', widthCm: 80, heightCm: 120 },
+  { id: 'skylight-114-140', label: '114×140', kind: 'skylight', widthCm: 112, heightCm: 144 },
+]
+
+const ROOF_DORMER_PRESETS: RoofLibraryPreset[] = ROOF_DORMER_KINDS.map((kind) => ({
+  id: `dormer-${kind}`,
+  label: ROOF_DORMER_LABELS[kind],
+  kind: 'dormer' as const,
+  dormerKind: kind,
+  widthCm: kind === 'turret' ? 120 : kind === 'bat' ? 240 : 160,
+  heightCm: kind === 'turret' ? 160 : 140,
+  depthCm: kind === 'turret' ? 120 : kind === 'bat' ? 288 : 400,
+  frontCm: kind === 'turret' ? 160 : 140,
+}))
+
+function appendRoofLibraryCards(host: HTMLElement) {
+  const presets = libraryTab === 'dormers' ? ROOF_DORMER_PRESETS : ROOF_SKYLIGHT_PRESETS
+  for (const preset of presets) {
+    const card = document.createElement('button')
+    card.type = 'button'
+    card.className = 'opening-library-card'
+    card.draggable = true
+    card.dataset.roofPresetId = preset.id
+    card.title = `${preset.label} — auf das Dach ziehen oder klicken`
+    const thumb = document.createElement('div')
+    thumb.className = 'opening-library-thumb'
+    thumb.textContent = preset.kind === 'skylight' ? '▭' : '⌂'
+    const label = document.createElement('span')
+    label.textContent = preset.label
+    card.append(thumb, label)
+    card.addEventListener('click', () => {
+      if (card.dataset.didDrag === '1') {
+        delete card.dataset.didDrag
+        return
+      }
+      if (!editor.selectedRoofBuildingId) {
+        planStatus.textContent = 'Zuerst das Dach auswählen'
+        return
+      }
+      armedRoofPreset = {
+        kind: preset.kind,
+        dormerKind: preset.dormerKind,
+        widthCm: preset.widthCm,
+        heightCm: preset.heightCm,
+        depthCm: preset.depthCm,
+        frontCm: preset.frontCm,
+      }
+      planStatus.textContent =
+        preset.kind === 'skylight'
+          ? 'Dachfenster: auf die Dachhaut klicken'
+          : 'Gaube: auf die Dachhaut klicken'
+    })
+    card.addEventListener('dragstart', (event) => {
+      card.dataset.didDrag = '1'
+      card.classList.add('is-dragging')
+      activeLibraryRoofPresetId = preset.id
+      event.dataTransfer?.setData('application/x-roof-preset', preset.id)
+      event.dataTransfer!.effectAllowed = 'copy'
+      hideNativeDragImage(event)
+    })
+    card.addEventListener('dragend', () => {
+      card.classList.remove('is-dragging')
+      activeLibraryRoofPresetId = null
+      viewport.classList.remove('library-drop-target')
+    })
+    host.appendChild(card)
+  }
+}
+
+function resolveRoofLibraryPreset(id: string): RoofLibraryPreset | null {
+  return (
+    ROOF_SKYLIGHT_PRESETS.find((p) => p.id === id) ??
+    ROOF_DORMER_PRESETS.find((p) => p.id === id) ??
+    null
+  )
+}
+
+function placeRoofPresetAt(
+  preset: RoofLibraryPreset,
+  buildingId: string,
+  x: number,
+  z: number,
+): boolean {
+  const building = state.buildings.find((b) => b.id === buildingId)
+  if (!building) return false
+  const roof = normalizeRoof(building.roof)
+  if (!roof.enabled) return false
+  // Wie Fenster: 8‑cm-Raster (Trauf-along + distance) beim Setzen.
+  const clamped = snapRoofFixturePlacement(building, roof, x, z)
+  if (!clamped) {
+    planStatus.textContent = 'Außerhalb der Dachhaut'
+    return false
+  }
+  const frame = roofSurfaceFrameAt(building, roof, clamped)
+  if (!frame) return false
+
+  if (preset.kind === 'skylight') {
+    const draft = createSkylightFixture(clamped.x, clamped.z, preset.widthCm, preset.heightCm)
+    const foot = skylightFootprint(building, roof, draft)
+    if (!foot || roofHasOverlappingOpening(building, roof, foot)) {
+      planStatus.textContent = 'Dachfenster überlappt'
+      return false
+    }
+    const skylights = [...(roof.skylights ?? []), draft]
+    commitState(
+      updateBuilding(state, buildingId, { roof: normalizeRoof({ ...roof, skylights }) }),
+      {
+        ...editor,
+        selectedRoofBuildingId: buildingId,
+        selectedRoofPart: 'group',
+        selectedRoofFixture: { kind: 'skylight', id: draft.id },
+      },
+      { forceRoofOnlyIds: [buildingId] },
+    )
+    planStatus.textContent = 'Dachfenster platziert'
+    return true
+  }
+
+  const draft = createDormerFixture(
+    preset.dormerKind ?? 'gable',
+    clamped.x,
+    clamped.z,
+    preset.widthCm,
+    preset.depthCm ?? 400,
+    preset.frontCm ?? preset.heightCm,
+    // Gaubenfenster erbt den Stil der vorhandenen Hausfenster.
+    building.walls,
+  )
+  const foot = dormerFootprint(building, roof, draft)
+  if (!foot || roofHasOverlappingOpening(building, roof, foot)) {
+    planStatus.textContent = 'Gaube überlappt'
+    return false
+  }
+  const dormers = [...(roof.dormers ?? []), draft]
+  commitState(
+    updateBuilding(state, buildingId, { roof: normalizeRoof({ ...roof, dormers }) }),
+    {
+      ...editor,
+      selectedRoofBuildingId: buildingId,
+      selectedRoofPart: 'group',
+      selectedRoofFixture: { kind: 'dormer', id: draft.id },
+    },
+    { forceRoofOnlyIds: [buildingId] },
+  )
+  planStatus.textContent = 'Gaube platziert'
+  return true
+}
+
+function tryPlaceArmedRoofPreset(event: { clientX: number; clientY: number }): boolean {
+  if (!armedRoofPreset) return false
+  const hit = pickFromEvent(event)
+  if (!hit?.roof) {
+    planStatus.textContent = 'Auf die Dachhaut klicken'
+    return true
+  }
+  // Bestehende Gaube/Dachfenster: Platzier-Modus nicht schlucken — wählen/ziehen.
+  if (hit.roof.fixture) {
+    return false
+  }
+  const preset: RoofLibraryPreset = {
+    id: 'armed',
+    label: '',
+    kind: armedRoofPreset.kind,
+    dormerKind: armedRoofPreset.dormerKind,
+    widthCm: armedRoofPreset.widthCm,
+    heightCm: armedRoofPreset.heightCm,
+    depthCm: armedRoofPreset.depthCm,
+    frontCm: armedRoofPreset.frontCm,
+  }
+  // Trefferpunkt auf Dach: Raycast erneut auf roofGroup
+  const rect = canvas.getBoundingClientRect()
+  pointerNdc.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
+  pointerNdc.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
+  raycaster.setFromCamera(pointerNdc, getActiveCamera())
+  const hits = raycaster.intersectObject(facade.roofGroup, true)
+  const point = hits[0]?.point
+  if (!point) return true
+  const ok = placeRoofPresetAt(preset, hit.roof.buildingId, point.x, point.z)
+  if (ok) armedRoofPreset = null
+  return true
+}
+
+function deleteSelectedRoofFixture() {
+  const buildingId = editor.selectedRoofBuildingId
+  const fixture = editor.selectedRoofFixture
+  if (!buildingId || !fixture) return
+  const building = state.buildings.find((b) => b.id === buildingId)
+  if (!building) return
+  const roof = normalizeRoof(building.roof)
+  const next =
+    fixture.kind === 'skylight'
+      ? { ...roof, skylights: (roof.skylights ?? []).filter((s) => s.id !== fixture.id) }
+      : { ...roof, dormers: (roof.dormers ?? []).filter((d) => d.id !== fixture.id) }
+  commitState(
+    updateBuilding(state, buildingId, { roof: normalizeRoof(next) }),
+    {
+      ...editor,
+      selectedRoofFixture: undefined,
+      selectedRoofPart: 'group',
+    },
+    { forceRoofOnlyIds: [buildingId] },
+  )
+  planStatus.textContent = fixture.kind === 'skylight' ? 'Dachfenster gelöscht' : 'Gaube gelöscht'
+}
+
+function patchSelectedRoofFixture(patch: {
+  widthCm?: number
+  heightCm?: number
+  depthCm?: number
+  kind?: RoofDormerKind
+}) {
+  const buildingId = editor.selectedRoofBuildingId
+  const fixture = editor.selectedRoofFixture
+  if (!buildingId || !fixture) return
+  const building = state.buildings.find((b) => b.id === buildingId)
+  if (!building) return
+  const roof = normalizeRoof(building.roof)
+  if (fixture.kind === 'skylight') {
+    const skylights = (roof.skylights ?? []).map((s) =>
+      s.id === fixture.id
+        ? {
+            ...s,
+            widthCm: patch.widthCm ?? s.widthCm,
+            heightCm: patch.heightCm ?? s.heightCm,
+          }
+        : s,
+    )
+    commitState(
+      updateBuilding(state, buildingId, { roof: normalizeRoof({ ...roof, skylights }) }),
+      editor,
+      { forceRoofOnlyIds: [buildingId] },
+    )
+    return
+  }
+  patchSelectedDormer({
+    ...(patch.kind !== undefined ? { kind: patch.kind } : {}),
+    ...(patch.widthCm !== undefined ? { widthCm: patch.widthCm } : {}),
+    ...(patch.depthCm !== undefined ? { depthCm: patch.depthCm } : {}),
+    ...(patch.heightCm !== undefined ? { heightCm: patch.heightCm } : {}),
+  })
+}
+
+/** Gewählte Gaube ändern; `window` wird als Teil-Patch auf die Öffnung gelegt. */
+function patchSelectedDormer(patch: Partial<Omit<RoofDormer, 'id' | 'window'>> & { window?: Partial<Opening> }) {
+  const buildingId = editor.selectedRoofBuildingId
+  const fixture = editor.selectedRoofFixture
+  if (!buildingId || !fixture || fixture.kind !== 'dormer') return
+  const building = state.buildings.find((b) => b.id === buildingId)
+  if (!building) return
+  const roof = normalizeRoof(building.roof)
+  const dormers = (roof.dormers ?? []).map((d) => {
+    if (d.id !== fixture.id) return d
+    const { window: windowPatch, ...rest } = patch
+    const next: RoofDormer = { ...d, ...rest }
+    if (windowPatch) {
+      const base = d.window ?? defaultDormerWindow(next, building.walls)
+      next.window = { ...base, ...windowPatch }
+    }
+    return next
+  })
+  commitState(
+    updateBuilding(state, buildingId, { roof: normalizeRoof({ ...roof, dormers }) }),
+    editor,
+    { forceRoofOnlyIds: [buildingId] },
+  )
+}
+
+/** Gaube entlang der Traufe (`alongCm`) bzw. hangaufwärts (`distanceCm`) setzen. */
+function moveSelectedDormerOnEave(next: { distanceCm?: number; alongCm?: number }) {
+  const buildingId = editor.selectedRoofBuildingId
+  const fixture = editor.selectedRoofFixture
+  if (!buildingId || !fixture || fixture.kind !== 'dormer') return
+  const building = state.buildings.find((b) => b.id === buildingId)
+  if (!building) return
+  const roof = normalizeRoof(building.roof)
+  const dormer = roof.dormers?.find((d) => d.id === fixture.id)
+  if (!dormer) return
+  const snapped = {
+    ...(next.distanceCm !== undefined
+      ? { distanceCm: Math.max(0, snapToGrid(next.distanceCm, STUDIO_MASONRY)) }
+      : {}),
+    ...(next.alongCm !== undefined
+      ? { alongCm: Math.max(0, snapToGrid(next.alongCm, STUDIO_MASONRY)) }
+      : {}),
+  }
+  const anchor = dormerAnchorForEavePlacement(building, roof, dormer, snapped)
+  if (!anchor) {
+    planStatus.textContent = 'Außerhalb der Dachhaut'
+    syncRoofUI()
+    return
+  }
+  patchSelectedDormer({ x: anchor.x, z: anchor.z })
 }
 
 /** Firstrichtung (Sattel/Krüppelwalm: Achse) bzw. Hochseite (Pult): Optionen je Form. */
@@ -11058,6 +11519,12 @@ function initOpeningLibrary() {
     return
   }
 
+  if (libraryTab === 'roofWindows' || libraryTab === 'dormers') {
+    appendRoofLibraryCards(host)
+    syncLibraryAppliedOutline()
+    return
+  }
+
   const appendOpeningPresetCard = (preset: (typeof WALL_OPENING_PRESETS)[number]) => {
     const card = document.createElement('button')
     card.type = 'button'
@@ -12593,6 +13060,9 @@ function normalizeEditor(nextState: FacadeState, nextEditor: EditorState): Edito
     selectedRoofBuildingId: nextEditor.selectedRoofBuildingId,
     selectedRoofPart: nextEditor.selectedRoofBuildingId
       ? nextEditor.selectedRoofPart ?? 'group'
+      : undefined,
+    selectedRoofFixture: nextEditor.selectedRoofBuildingId
+      ? nextEditor.selectedRoofFixture
       : undefined,
     selectedCeiling: nextEditor.selectedCeiling,
     selectedBuildingId: nextEditor.selectedBuildingId,
@@ -14179,7 +14649,7 @@ function editorLayerSelectionKey(ed: EditorState): string {
     ? `${ed.selectedCeiling.buildingId}:${ed.selectedCeiling.floorIndex}`
     : ''
   const roof = ed.selectedRoofBuildingId
-    ? `${ed.selectedRoofBuildingId}:${ed.selectedRoofPart ?? 'group'}`
+    ? `${ed.selectedRoofBuildingId}:${ed.selectedRoofPart ?? 'group'}:${ed.selectedRoofFixture?.kind ?? ''}:${ed.selectedRoofFixture?.id ?? ''}`
     : ''
   const downpipe = ed.selectedDownpipe
     ? `${ed.selectedDownpipe.buildingId}:${ed.selectedDownpipe.downpipeId}`
@@ -14658,7 +15128,13 @@ function syncLibraryTabForOpeningSelection() {
   if (armedInteriorWallDepthCm != null || armedLibraryWallPresetId) {
     return
   }
-  if (allowed.has('farbe') && libraryTab !== 'farbe') {
+  if (roofKey && allowed.has('roofWindows')) {
+    if (libraryTab !== 'roofWindows' && libraryTab !== 'dormers' && libraryTab !== 'farbe') {
+      setLibraryTab('roofWindows')
+    } else {
+      initOpeningLibrary()
+    }
+  } else if (allowed.has('farbe') && libraryTab !== 'farbe') {
     setLibraryTab('farbe')
   } else if (libraryTab === 'farbe') {
     initOpeningLibrary()
@@ -14680,7 +15156,8 @@ function renderUi(opts?: { skipLayerList?: boolean }) {
 
   const wall = anchorWall()
   const hasOpening = editor.selectedOpenings.length > 0
-  const hasWall = Boolean(wall)
+  const dormerWindowSel = editor.selectedOpenings.some((r) => isRoofDormerWallId(r.wallId))
+  const hasWall = Boolean(wall) && !dormerWindowSel
   const hasRoof = Boolean(editor.selectedRoofBuildingId)
   const hasCeiling = Boolean(editor.selectedCeiling)
   const hasSceneLight = Boolean(editor.selectedSceneLightId)
@@ -14709,7 +15186,9 @@ function renderUi(opts?: { skipLayerList?: boolean }) {
   toolbarStudio.hidden =
     !hasWall || hasOpening || !studioWall || hasRoof || hasCeiling || hasSceneLight || hasDownpipe
   toolbarOpening.hidden = !hasOpening
-  toolbarRoof.hidden = !hasRoof || hasOpening || hasCeiling || hasSceneLight || hasDownpipe
+  // Gaube + Fenster: Dach-Maße und Fenster-Toolbar gleichzeitig.
+  toolbarRoof.hidden =
+    !hasRoof || (hasOpening && !dormerWindowSel) || hasCeiling || hasSceneLight || hasDownpipe
   toolbarCeiling.hidden = !hasCeiling || hasOpening || hasRoof || hasSceneLight || hasDownpipe
   toolbarSceneLight.hidden = !hasSceneLight
   toolbarDownpipe.hidden = !hasDownpipe
@@ -14899,7 +15378,8 @@ function renderUi(opts?: { skipLayerList?: boolean }) {
   finishRenderUi()
 }
 
-document.addEventListener('click', () => closeContextMenu())
+// Kontextmenü schließen: nur über outsideHandler in showContextMenu (pointerdown),
+// nicht per document-click — sonst schließt Rechtsklick das Menü in derselben Geste.
 
 function openingReplaceItems(wallId: string, openingId: string): MenuItem[] {
   return WALL_OPENING_PRESETS.filter(
@@ -16354,6 +16834,11 @@ function showElementContextMenu(
     awningId?: string
     ceiling?: { buildingId: string; floorIndex: number }
     sceneLightId?: string
+    roof?: {
+      buildingId: string
+      part: 'group' | 'shell' | 'tiles' | 'gutter'
+      fixture?: { kind: 'skylight' | 'dormer'; id: string }
+    }
   },
 ) {
   if (hit.sceneLightId) {
@@ -16364,6 +16849,17 @@ function showElementContextMenu(
   if (hit.ceiling) {
     selectCeiling(hit.ceiling.buildingId, hit.ceiling.floorIndex)
     showContextMenu(clientX, clientY, ceilingContextItems(hit.ceiling.buildingId, hit.ceiling.floorIndex))
+    return
+  }
+  if (hit.roof?.fixture) {
+    const items = roofFixtureContextItems(hit.roof.buildingId, hit.roof.fixture.kind, hit.roof.fixture.id)
+    showContextMenu(clientX, clientY, items)
+    selectRoof(hit.roof.buildingId, hit.roof.part, hit.roof.fixture)
+    return
+  }
+  if (hit.roof) {
+    selectRoof(hit.roof.buildingId, hit.roof.part)
+    showContextMenu(clientX, clientY, roofContextItems(hit.roof.buildingId))
     return
   }
   if (hit.wallId && hit.openingId && hit.openingPart === 'awning') {
@@ -17106,10 +17602,186 @@ function roofContextItems(buildingId: string): MenuItem[] {
   ]
 }
 
+const ROOF_FIXTURE_DUP_GAP_CM = 48
+
+function roofFixtureContextItems(
+  buildingId: string,
+  kind: 'skylight' | 'dormer',
+  id: string,
+): MenuItem[] {
+  const building = state.buildings.find((b) => b.id === buildingId)
+  const roof = normalizeRoof(building?.roof)
+  const dormer = kind === 'dormer' ? roof.dormers?.find((d) => d.id === id) : undefined
+  const skylight = kind === 'skylight' ? roof.skylights?.find((s) => s.id === id) : undefined
+  const hidden = Boolean(kind === 'dormer' ? dormer?.hidden : skylight?.hidden)
+  const items: MenuItem[] = [
+    {
+      label: visibilityMenuLabel(hidden),
+      action: () => toggleRoofFixtureHidden(buildingId, kind, id),
+    },
+    {
+      label: 'Duplizieren nach links',
+      action: () => duplicateRoofFixtureAlong(buildingId, kind, id, 'left'),
+    },
+    {
+      label: 'Duplizieren nach rechts',
+      action: () => duplicateRoofFixtureAlong(buildingId, kind, id, 'right'),
+    },
+  ]
+  if (kind === 'dormer' && dormer && dormer.kind !== 'turret' && dormer.kind !== 'bat') {
+    items.push({
+      label: dormer.eaveBreak ? 'Traufdurchbruch aus' : 'Traufdurchbruch an',
+      action: () => {
+        selectRoof(buildingId, 'group', { kind: 'dormer', id })
+        patchSelectedDormer({ eaveBreak: !dormer.eaveBreak })
+      },
+    })
+  }
+  if (kind === 'dormer' && dormer) {
+    const winHidden = Boolean(dormer.window?.hidden)
+    items.push({
+      label: winHidden ? 'Fenster einblenden' : 'Fenster ausblenden',
+      action: () => {
+        selectRoof(buildingId, 'group', { kind: 'dormer', id })
+        patchSelectedDormer({ window: { hidden: !winHidden } })
+      },
+    })
+  }
+  items.push({
+    label: 'Löschen',
+    danger: true,
+    action: () => {
+      selectRoof(buildingId, 'group', { kind, id })
+      deleteSelectedRoofFixture()
+    },
+  })
+  return items
+}
+
+function toggleRoofFixtureHidden(
+  buildingId: string,
+  kind: 'skylight' | 'dormer',
+  id: string,
+) {
+  const building = state.buildings.find((b) => b.id === buildingId)
+  if (!building) return
+  const roof = normalizeRoof(building.roof)
+  if (kind === 'skylight') {
+    const skylights = (roof.skylights ?? []).map((s) =>
+      s.id === id ? { ...s, hidden: !s.hidden } : s,
+    )
+    commitState(updateBuilding(state, buildingId, { roof: { ...roof, skylights } }), {
+      ...editor,
+      selectedRoofBuildingId: buildingId,
+      selectedRoofPart: 'group',
+      selectedRoofFixture: { kind, id },
+    }, { forceRoofOnlyIds: [buildingId] })
+  } else {
+    const dormers = (roof.dormers ?? []).map((d) =>
+      d.id === id ? { ...d, hidden: !d.hidden } : d,
+    )
+    commitState(updateBuilding(state, buildingId, { roof: { ...roof, dormers } }), {
+      ...editor,
+      selectedRoofBuildingId: buildingId,
+      selectedRoofPart: 'group',
+      selectedRoofFixture: { kind, id },
+    }, { forceRoofOnlyIds: [buildingId] })
+  }
+  planStatus.textContent = 'Sichtbarkeit geändert'
+}
+
+function duplicateRoofFixtureAlong(
+  buildingId: string,
+  kind: 'skylight' | 'dormer',
+  id: string,
+  side: 'left' | 'right',
+) {
+  const building = state.buildings.find((b) => b.id === buildingId)
+  if (!building) return
+  const roof = normalizeRoof(building.roof)
+  const dir = side === 'right' ? 1 : -1
+  if (kind === 'dormer') {
+    const src = roof.dormers?.find((d) => d.id === id)
+    if (!src) return
+    const placement = dormerEavePlacement(building, roof, src)
+    if (!placement) {
+      planStatus.textContent = 'Gaube lässt sich hier nicht duplizieren'
+      return
+    }
+    const along = Math.max(
+      0,
+      Math.min(
+        placement.edgeLengthCm,
+        placement.alongCm + dir * (src.widthCm + ROOF_FIXTURE_DUP_GAP_CM),
+      ),
+    )
+    const anchor = dormerAnchorForEavePlacement(building, roof, src, { alongCm: along })
+    if (!anchor) {
+      planStatus.textContent = 'Kein Platz zum Duplizieren'
+      return
+    }
+    const copy: RoofDormer = {
+      ...structuredClone(src),
+      id: createId(),
+      x: anchor.x,
+      z: anchor.z,
+      hidden: false,
+    }
+    if (copy.window) copy.window = { ...copy.window, id: createId() }
+    const foot = dormerFootprint(building, roof, copy)
+    if (foot && roofHasOverlappingOpening(building, roof, foot)) {
+      planStatus.textContent = 'Duplikat überlappt eine andere Öffnung'
+      return
+    }
+    const dormers = [...(roof.dormers ?? []), copy]
+    commitState(updateBuilding(state, buildingId, { roof: { ...roof, dormers } }), {
+      ...editor,
+      selectedRoofBuildingId: buildingId,
+      selectedRoofPart: 'group',
+      selectedRoofFixture: { kind: 'dormer', id: copy.id },
+    }, { forceRoofOnlyIds: [buildingId] })
+    planStatus.textContent = 'Gaube dupliziert'
+    return
+  }
+  const src = roof.skylights?.find((s) => s.id === id)
+  if (!src) return
+  const frame = roofSurfaceFrameAt(building, roof, { x: src.x, z: src.z })
+  if (!frame) {
+    planStatus.textContent = 'Dachfenster lässt sich hier nicht duplizieren'
+    return
+  }
+  const step = src.widthCm + ROOF_FIXTURE_DUP_GAP_CM
+  const x = src.x + frame.u.x * dir * step
+  const z = src.z + frame.u.z * dir * step
+  const clamped = clampRoofPlacement(building, roof, x, z)
+  if (!clamped) {
+    planStatus.textContent = 'Kein Platz zum Duplizieren'
+    return
+  }
+  const copy = { ...structuredClone(src), id: createId(), x: clamped.x, z: clamped.z, hidden: false }
+  const foot = skylightFootprint(building, roof, copy)
+  if (foot && roofHasOverlappingOpening(building, roof, foot)) {
+    planStatus.textContent = 'Duplikat überlappt eine andere Öffnung'
+    return
+  }
+  const skylights = [...(roof.skylights ?? []), copy]
+  commitState(updateBuilding(state, buildingId, { roof: { ...roof, skylights } }), {
+    ...editor,
+    selectedRoofBuildingId: buildingId,
+    selectedRoofPart: 'group',
+    selectedRoofFixture: { kind: 'skylight', id: copy.id },
+  }, { forceRoofOnlyIds: [buildingId] })
+  planStatus.textContent = 'Dachfenster dupliziert'
+}
+
 async function duplicateStoreyAtFloor(floor: number) {
   const copy = await askStoreyCopyOptions('Etage duplizieren')
   if (!copy) return
-  const next = finalizeWallLayout(duplicateStorey(state, floor, { copyOpenings: copy.openings, copy }))
+  // OG-Klone bekommen depth 24, behalten sonst die EG-Gehrung — finalizeStudioGeometry
+  // setzt Miters aus Nachbar-Geometrie neu (sonst kreuzen sich die Schnitte).
+  const next = finalizeStudioGeometry(
+    duplicateStorey(state, floor, { copyOpenings: copy.openings, copy }),
+  )
   currentFloor = Math.max(0, getActiveBuilding(next).floors.length - 1)
   commitState(next)
   syncFloorUI()
@@ -17940,20 +18612,50 @@ function commitBuildingFacadeDecor(
   commitState(next)
 }
 
-function selectRoof(buildingId: string, part: 'group' | 'shell' | 'tiles' | 'gutter' = 'group') {
+function selectRoof(
+  buildingId: string,
+  part: 'group' | 'shell' | 'tiles' | 'gutter' = 'group',
+  fixture?: { kind: 'skylight' | 'dormer'; id: string },
+) {
   if (state.activeBuildingId !== buildingId) {
     commitState(setActiveBuildingId(state, buildingId))
   }
+  // Gaube mit Fenster → auch Opening-Toolbar (wie normales Fenster); sonst Gauben-Maße.
+  let selectedOpenings: OpeningRef[] = []
+  let selectedOpeningPart: OpeningPart | undefined
+  let selectedWallIds: string[] = []
+  if (fixture?.kind === 'dormer') {
+    const building = state.buildings.find((b) => b.id === buildingId)
+    const dormer = normalizeRoof(building?.roof).dormers?.find((d) => d.id === fixture.id)
+    if (dormer && !dormer.window?.hidden && dormer.window) {
+      const wallId = roofDormerWallId(buildingId, dormer.id)
+      selectedOpenings = [{ wallId, openingId: dormer.window.id }]
+      selectedOpeningPart = 'group'
+      selectedWallIds = [wallId]
+    }
+  }
+  pendingSelectionToolbarTab = fixture
+    ? selectedOpenings.length > 0
+      ? 'all'
+      : 'roof-fixture'
+    : part === 'group'
+      ? 'all'
+      : part === 'shell'
+        ? 'roof-shell'
+        : part === 'gutter'
+          ? 'roof-gutter'
+          : 'all'
   applyState(state, {
-    selectedWallIds: [],
-    selectedOpenings: [],
+    selectedWallIds,
+    selectedOpenings,
     selectedEdges: [],
-    selectedOpeningPart: undefined,
+    selectedOpeningPart,
     selectedWallPart: undefined,
     selectedCeiling: undefined,
     selectedBuildingId: undefined,
     selectedRoofBuildingId: buildingId,
     selectedRoofPart: part,
+    selectedRoofFixture: fixture,
     selectedDownpipe: undefined,
     selectedSceneLightId: undefined,
     selectedSceneLightIds: [],
@@ -24933,6 +25635,16 @@ let drag3dMoved = false
 
 // 3D-Drag-State für Öffnungen
 let drag3dOpening: { wallId: string; openingId: string } | null = null
+let drag3dRoofFixture: {
+  buildingId: string
+  kind: 'skylight' | 'dormer'
+  id: string
+  startX: number
+  startZ: number
+  /** Anker − Trefferpunkt beim Pointerdown: Ziehen ohne Sprung (v2.0.479). */
+  offX: number
+  offZ: number
+} | null = null
 let drag3dStartOpeningX = 0
 let drag3dStartOpeningY = 0
 /** Client-Start für Öffnungs-Drag — Schwelle 6 px, damit Doppelklick nicht als Zug gilt. */
@@ -25076,6 +25788,11 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
   ceiling?: { buildingId: string; floorIndex: number }
   sceneLightId?: string
   downpipe?: { buildingId: string; downpipeId: string }
+  roof?: {
+    buildingId: string
+    part: 'group' | 'shell' | 'tiles' | 'gutter'
+    fixture?: { kind: 'skylight' | 'dormer'; id: string }
+  }
 } | null {
   const remapDownpipeOpening = <
     T extends {
@@ -25126,6 +25843,7 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
       facade.windowGroup,
       facade.casingGroup,
       facade.wallGroup,
+      facade.roofGroup,
     ],
     true,
   )
@@ -25145,6 +25863,48 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
         if (buildingId && floorIndex !== undefined) {
           return { ceiling: { buildingId, floorIndex } }
         }
+      }
+      current = current.parent
+    }
+    return null
+  }
+
+  const resolveRoofHit = (
+    object: THREE.Object3D,
+  ): {
+    roof: {
+      buildingId: string
+      part: 'group' | 'shell' | 'tiles' | 'gutter'
+      fixture?: { kind: 'skylight' | 'dormer'; id: string }
+    }
+  } | null => {
+    let current: THREE.Object3D | null = object
+    while (current) {
+      const buildingId = current.userData.buildingId as string | undefined
+      const kind = current.userData.kind as string | undefined
+      const fixtureId = current.userData.fixtureId as string | undefined
+      const fixtureKind = current.userData.fixtureKind as 'skylight' | 'dormer' | undefined
+      const roofPart = current.userData.roofPart as 'shell' | 'tiles' | 'gutter' | undefined
+      if (
+        buildingId &&
+        (kind === 'roof' ||
+          kind === 'roofSkylight' ||
+          kind === 'roofDormer' ||
+          kind === 'roofDormerReveal')
+      ) {
+        if (fixtureId && (fixtureKind === 'skylight' || fixtureKind === 'dormer')) {
+          return {
+            roof: {
+              buildingId,
+              part: 'group',
+              fixture: { kind: fixtureKind, id: fixtureId },
+            },
+          }
+        }
+        if (roofPart === 'shell') return { roof: { buildingId, part: 'shell' } }
+        if (roofPart === 'gutter') return { roof: { buildingId, part: 'gutter' } }
+        // Dachhaut → group (volle Toolbar)
+        return { roof: { buildingId, part: 'group' } }
       }
       current = current.parent
     }
@@ -25206,6 +25966,37 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
     if (isBehindFrontFacade(hit.distance, resolved.wallId)) continue
     nearestFacadeMeshDist = Math.min(nearestFacadeMeshDist, hit.distance)
   }
+
+  // Dach vor Decke. Gauben/Dachfenster liegen oft hinter der Fassaden-Ebene (Dach
+  // über der Traufe) — Plane-Filter würde sie sonst nie treffen. Mesh-Occlusion
+  // bleibt: keine Auswahl durch eine näher liegende Wand hindurch.
+  let bestRoof: { distance: number; roof: NonNullable<ReturnType<typeof resolveRoofHit>>['roof'] } | null =
+    null
+  for (const hit of hits) {
+    const resolved = resolveRoofHit(hit.object)
+    if (!resolved) continue
+    const isFixture = Boolean(resolved.roof.fixture)
+    if (isFixture) {
+      if (
+        Number.isFinite(nearestFacadeMeshDist) &&
+        hit.distance > nearestFacadeMeshDist + behindSlack
+      ) {
+        continue
+      }
+    } else {
+      if (front && hit.distance > front.t + behindSlack) continue
+      if (!roofBeatsFacadeMesh(hit.distance, nearestFacadeMeshDist)) continue
+    }
+    // Fixture bevorzugt vor bloßer Dachhaut bei gleichem Abstand.
+    const better =
+      !bestRoof ||
+      hit.distance < bestRoof.distance - 0.5 ||
+      (isFixture && !bestRoof.roof.fixture && hit.distance <= bestRoof.distance + 6)
+    if (better) {
+      bestRoof = { distance: hit.distance, roof: resolved.roof }
+    }
+  }
+  if (bestRoof) return { roof: bestRoof.roof }
 
   for (const hit of hits) {
     const ceiling = resolveCeilingHit(hit.object)
@@ -25313,7 +26104,9 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
 
 function isSelectablePickHit(hit: ReturnType<typeof pickFromEvent>): boolean {
   if (!hit) return false
-  return Boolean(hit.wallId || hit.openingId || hit.ceiling || hit.sceneLightId || hit.downpipe)
+  return Boolean(
+    hit.wallId || hit.openingId || hit.ceiling || hit.sceneLightId || hit.downpipe || hit.roof,
+  )
 }
 
 function offsetStudioWallsByGrid(
@@ -25664,6 +26457,45 @@ canvas.addEventListener('pointerdown', (event) => {
   }
   if (hit?.ceiling) {
     selectCeiling(hit.ceiling.buildingId, hit.ceiling.floorIndex)
+    return
+  }
+  if (hit?.roof) {
+    // Bestehende Gaube/Dachfenster: nie über armed place schlucken.
+    if (!hit.roof.fixture && tryPlaceArmedRoofPreset(event)) {
+      if (currentView === '3d') controls.enabled = true
+      return
+    }
+    if (hit.roof.fixture && armedRoofPreset) armedRoofPreset = null
+    // Drag vor selectRoof — Auswahl-Highlight darf den Drag-Start nicht abbrechen.
+    if (hit.roof.fixture && canEditActiveBuildingNow()) {
+      const building = state.buildings.find((b) => b.id === hit.roof!.buildingId)
+      const roof = normalizeRoof(building?.roof)
+      const fixture =
+        hit.roof.fixture.kind === 'skylight'
+          ? roof.skylights?.find((s) => s.id === hit.roof!.fixture!.id)
+          : roof.dormers?.find((d) => d.id === hit.roof!.fixture!.id)
+      if (fixture) {
+        const rect = canvas.getBoundingClientRect()
+        pointerNdc.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
+        pointerNdc.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
+        raycaster.setFromCamera(pointerNdc, getActiveCamera())
+        const grab = raycaster.intersectObject(facade.roofGroup, true)[0]?.point
+        drag3dRoofFixture = {
+          buildingId: hit.roof.buildingId,
+          kind: hit.roof.fixture.kind,
+          id: hit.roof.fixture.id,
+          startX: fixture.x,
+          startZ: fixture.z,
+          offX: grab ? fixture.x - grab.x : 0,
+          offZ: grab ? fixture.z - grab.z : 0,
+        }
+        drag3dOpeningStartClientX = event.clientX
+        drag3dOpeningStartClientY = event.clientY
+        drag3dMoved = false
+        canvas.setPointerCapture(event.pointerId)
+      }
+    }
+    selectRoof(hit.roof.buildingId, hit.roof.part, hit.roof.fixture)
     return
   }
   if (hit?.downpipe) {
@@ -26214,6 +27046,55 @@ canvas.addEventListener('pointermove', (event) => {
     return
   }
 
+  if (isSceneEditView() && drag3dRoofFixture) {
+    const dist2 =
+      (event.clientX - drag3dOpeningStartClientX) ** 2 +
+      (event.clientY - drag3dOpeningStartClientY) ** 2
+    if (!drag3dMoved && dist2 < 36) return
+    drag3dMoved = true
+    const rect = canvas.getBoundingClientRect()
+    pointerNdc.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
+    pointerNdc.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
+    raycaster.setFromCamera(pointerNdc, getActiveCamera())
+    const hits = raycaster.intersectObject(facade.roofGroup, true)
+    const point = hits.find((h) => !h.object.userData.fixtureId)?.point ?? hits[0]?.point
+    if (!point) return
+    const building = state.buildings.find((b) => b.id === drag3dRoofFixture!.buildingId)
+    if (!building) return
+    const roof = normalizeRoof(building.roof)
+    // 8-cm-Raster auf der Schräge (Trauf-along + distance), wie Fenster auf der Wand.
+    const snapped = snapRoofFixturePlacement(
+      building,
+      roof,
+      point.x + drag3dRoofFixture.offX,
+      point.z + drag3dRoofFixture.offZ,
+    )
+    if (!snapped) return
+    if (drag3dRoofFixture.kind === 'skylight') {
+      const skylights = (roof.skylights ?? []).map((s) =>
+        s.id === drag3dRoofFixture!.id ? { ...s, x: snapped.x, z: snapped.z } : s,
+      )
+      state = clampFacadeState(updateBuilding(state, building.id, { roof: { ...roof, skylights } }))
+    } else {
+      const dormers = (roof.dormers ?? []).map((d) =>
+        d.id === drag3dRoofFixture!.id ? { ...d, x: snapped.x, z: snapped.z } : d,
+      )
+      state = clampFacadeState(updateBuilding(state, building.id, { roof: { ...roof, dormers } }))
+    }
+    facade.setState(state, { rebuildBuildingIds: [] })
+    facade.rebuildRoof(building.id)
+    facade.setEditor(editor)
+    const nextBuilding = state.buildings.find((b) => b.id === building.id) ?? building
+    const nextRoof = normalizeRoof(nextBuilding.roof)
+    const guides = computeRoofFixtureGuides(nextBuilding, nextRoof, {
+      kind: drag3dRoofFixture.kind,
+      id: drag3dRoofFixture.id,
+    })
+    facade.setRoofFixtureGuides(guides)
+    markViewportDirty()
+    return
+  }
+
   if (isSceneEditView() && drag3dOpening) {
     const dist2 =
       (event.clientX - drag3dOpeningStartClientX) ** 2 +
@@ -26465,6 +27346,20 @@ canvas.addEventListener('pointerup', (event) => {
     return
   }
 
+  if (isSceneEditView() && drag3dRoofFixture) {
+    if (drag3dMoved) {
+      commitState(state, editor, { forceRoofOnlyIds: [drag3dRoofFixture.buildingId] })
+      planStatus.textContent =
+        drag3dRoofFixture.kind === 'skylight' ? 'Dachfenster verschoben' : 'Gaube verschoben'
+    }
+    drag3dRoofFixture = null
+    drag3dMoved = false
+    facade.clearOpeningGuides()
+    if (currentView === '3d') controls.enabled = true
+    if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId)
+    return
+  }
+
   if (isSceneEditView() && drag3dOpening) {
     const focusPrefer = { wallId: drag3dOpening.wallId, openingId: drag3dOpening.openingId }
     if (!drag3dMoved) {
@@ -26547,6 +27442,13 @@ canvas.addEventListener('pointerup', (event) => {
   }
   if (hit.ceiling) {
     selectCeiling(hit.ceiling.buildingId, hit.ceiling.floorIndex)
+    return
+  }
+  if (hit.roof) {
+    try {
+      selectRoof(hit.roof.buildingId, hit.roof.part, hit.roof.fixture)
+    } catch (err) {
+    }
     return
   }
   if (hit.openingId && hit.wallId) {
@@ -29035,6 +29937,60 @@ window.addEventListener('keydown', (event) => {
 
   if (handle3dCameraArrowKeys(event)) return
 
+  // Pfeiltasten: Gaube/Dachfenster in 8-cm-Schritten auf der Schräge (along / distance)
+  if (!mod && !event.shiftKey && isSceneEditView() && editor.selectedRoofFixture) {
+    const MOVE = heldNudgeStepCm()
+    let dAlong = 0
+    let dDist = 0
+    if (event.key === 'ArrowLeft') dAlong = MOVE
+    else if (event.key === 'ArrowRight') dAlong = -MOVE
+    else if (event.key === 'ArrowUp') dDist = MOVE
+    else if (event.key === 'ArrowDown') dDist = -MOVE
+    else {
+      /* kein Pfeil */
+    }
+    if (dAlong !== 0 || dDist !== 0) {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      const buildingId = editor.selectedRoofBuildingId
+      const fixture = editor.selectedRoofFixture
+      if (!buildingId || !fixture) return
+      const building = state.buildings.find((b) => b.id === buildingId)
+      if (!building) return
+      const roof = normalizeRoof(building.roof)
+      const item =
+        fixture.kind === 'skylight'
+          ? roof.skylights?.find((s) => s.id === fixture.id)
+          : roof.dormers?.find((d) => d.id === fixture.id)
+      if (!item) return
+      const placement = dormerEavePlacement(building, roof, item)
+      if (!placement) return
+      const alongCm = Math.max(
+        0,
+        Math.min(placement.edgeLengthCm, snapToGrid(placement.alongCm + dAlong, STUDIO_MASONRY)),
+      )
+      const distanceCm = Math.max(0, snapToGrid(placement.distanceCm + dDist, STUDIO_MASONRY))
+      const anchor = dormerAnchorForEavePlacement(building, roof, item, { alongCm, distanceCm })
+      if (!anchor) {
+        planStatus.textContent = 'Außerhalb der Dachhaut'
+        return
+      }
+      if (fixture.kind === 'skylight') {
+        const skylights = (roof.skylights ?? []).map((s) =>
+          s.id === fixture.id ? { ...s, x: anchor.x, z: anchor.z } : s,
+        )
+        commitState(
+          updateBuilding(state, buildingId, { roof: normalizeRoof({ ...roof, skylights }) }),
+          editor,
+          { forceRoofOnlyIds: [buildingId] },
+        )
+      } else {
+        patchSelectedDormer({ x: anchor.x, z: anchor.z })
+      }
+      return
+    }
+  }
+
   // Pfeiltasten: Fallrohr horizontal in 8-cm-Schritten
   if (!mod && !event.shiftKey && isSceneEditView() && editor.selectedDownpipe) {
     const MOVE = heldNudgeStepCm()
@@ -29240,7 +30196,8 @@ canvas.addEventListener(
 
 canvas.addEventListener('contextmenu', (event) => {
   event.preventDefault()
-  if (event.metaKey || event.ctrlKey) return
+  // Cmd/Ctrl + echte rechte Taste = Pan; Ctrl+Klick (macOS) darf Menü öffnen.
+  if ((event.metaKey || event.ctrlKey) && event.button === 2) return
   if (!isSceneEditView()) return
   let hit = pickFromEvent(event)
   // Innenwände verlieren sonst oft gegen Decke — Löschen/Ausblenden unerreichbar.
@@ -30672,10 +31629,12 @@ viewport.addEventListener('dragover', (event) => {
     !activeLibraryOpeningTemplateId &&
     !activeLibraryLabelFontId &&
     !activeLibraryDownpipe &&
+    !activeLibraryRoofPresetId &&
     !types.some(
       (t) =>
         t === 'application/x-library-asset' ||
         t === 'application/x-opening-preset' ||
+        t === 'application/x-roof-preset' ||
         t === 'application/x-downpipe-preset' ||
         t === 'application/x-opening-template' ||
         t === 'application/x-label-font' ||
@@ -30855,6 +31814,28 @@ viewport.addEventListener('drop', (event) => {
     const hit = pickWallAtClient(event.clientX, event.clientY)
     if (!hit) return
     placeDownpipeOnWall(hit.wallId, hit.localX)
+    return
+  }
+  const roofPresetId =
+    event.dataTransfer?.getData('application/x-roof-preset') || activeLibraryRoofPresetId || ''
+  if (roofPresetId) {
+    clearLibraryPlacementPreview()
+    activeLibraryRoofPresetId = null
+    const preset = resolveRoofLibraryPreset(roofPresetId)
+    if (!preset) return
+    const hit = pickFromEvent(event)
+    if (!hit?.roof) {
+      planStatus.textContent = 'Dachfenster/Gaube auf die Dachhaut legen'
+      return
+    }
+    const rect = canvas.getBoundingClientRect()
+    pointerNdc.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
+    pointerNdc.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
+    raycaster.setFromCamera(pointerNdc, getActiveCamera())
+    const hits = raycaster.intersectObject(facade.roofGroup, true)
+    const point = hits[0]?.point
+    if (!point) return
+    placeRoofPresetAt(preset, hit.roof.buildingId, point.x, point.z)
     return
   }
   const presetId =
@@ -31356,6 +32337,71 @@ viewAllSceneLights?.addEventListener('change', () => {
 
 roofEnabled.addEventListener('change', () => {
   commitRoofPatch({ enabled: roofEnabled.checked })
+})
+roofSkylightWidth.addEventListener('change', () => {
+  patchSelectedRoofFixture({ widthCm: Number(roofSkylightWidth.value) })
+})
+roofSkylightHeight.addEventListener('change', () => {
+  patchSelectedRoofFixture({ heightCm: Number(roofSkylightHeight.value) })
+})
+roofDormerWidth.addEventListener('change', () => {
+  patchSelectedRoofFixture({ widthCm: Number(roofDormerWidth.value) })
+})
+roofDormerDepth.addEventListener('change', () => {
+  patchSelectedRoofFixture({ depthCm: Number(roofDormerDepth.value) })
+})
+roofDormerHeight.addEventListener('change', () => {
+  patchSelectedRoofFixture({ heightCm: Number(roofDormerHeight.value) })
+})
+roofDormerKind.addEventListener('change', () => {
+  patchSelectedRoofFixture({ kind: roofDormerKind.value as RoofDormerKind })
+})
+roofDormerOverhang.addEventListener('change', () => {
+  patchSelectedDormer({ overhangCm: Number(roofDormerOverhang.value) })
+})
+roofDormerWall.addEventListener('change', () => {
+  patchSelectedDormer({ wallThicknessCm: Number(roofDormerWall.value) })
+})
+roofDormerPitch.addEventListener('change', () => {
+  patchSelectedDormer({ roofPitchDeg: Number(roofDormerPitch.value) })
+})
+roofDormerRise.addEventListener('change', () => {
+  patchSelectedDormer({ riseCm: Number(roofDormerRise.value) })
+})
+roofDormerTilt.addEventListener('change', () => {
+  patchSelectedDormer({ cheekTiltDeg: Number(roofDormerTilt.value) })
+})
+roofDormerEaveDistance.addEventListener('change', () => {
+  moveSelectedDormerOnEave({ distanceCm: Number(roofDormerEaveDistance.value) })
+})
+roofDormerEaveAlong.addEventListener('change', () => {
+  moveSelectedDormerOnEave({ alongCm: Number(roofDormerEaveAlong.value) })
+})
+roofDormerEaveBreak.addEventListener('change', () => {
+  patchSelectedDormer({ eaveBreak: roofDormerEaveBreak.checked })
+})
+roofDormerWindowOn.addEventListener('change', () => {
+  patchSelectedDormer({ window: { hidden: !roofDormerWindowOn.checked } })
+  const buildingId = editor.selectedRoofBuildingId
+  const fixture = editor.selectedRoofFixture
+  if (buildingId && fixture?.kind === 'dormer') {
+    selectRoof(buildingId, 'group', fixture)
+  }
+})
+roofDormerWindowWidth.addEventListener('change', () => {
+  patchSelectedDormer({ window: { width: Number(roofDormerWindowWidth.value) } })
+})
+roofDormerWindowHeight.addEventListener('change', () => {
+  patchSelectedDormer({ window: { height: Number(roofDormerWindowHeight.value) } })
+})
+roofDormerWindowSill.addEventListener('change', () => {
+  patchSelectedDormer({ window: { y: Number(roofDormerWindowSill.value) } })
+})
+roofDormerWindowX.addEventListener('change', () => {
+  patchSelectedDormer({ window: { x: Number(roofDormerWindowX.value) } })
+})
+roofFixtureDelete.addEventListener('click', () => {
+  deleteSelectedRoofFixture()
 })
 roofPitchLower.addEventListener('change', () => {
   commitRoofPatch({ pitchLower: Number(roofPitchLower.value) })

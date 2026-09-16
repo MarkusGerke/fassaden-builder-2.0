@@ -384,6 +384,8 @@
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="pediment" id="library-tab-pediment" data-library-when="opening">Verdachung</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="rollerShutters" id="library-tab-roller-shutters" data-library-when="opening">Rollläden</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="lights" id="library-tab-lights" data-library-when="always">Licht</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="roofWindows" id="library-tab-roof-windows" data-library-when="roof" hidden>Dachfenster</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="dormers" id="library-tab-dormers" data-library-when="roof" hidden>Gauben</button>
             </div>
           <div class="library-chrome">
           <div id="opening-library" aria-label="Bibliothek">
@@ -815,6 +817,105 @@
                   <span class="toolbar-label">Rinnen-Farbe</span>
                   <div id="roof-gutter-color-swatches" class="color-swatches"></div>
                 </div>
+                </div>
+                <div id="roof-fixture-options" class="settings-section ui-stack" data-settings-section="roof-fixture" data-settings-label="Maße" data-settings-order="5" hidden>
+                  <p class="settings-subheading settings-subheading-nested">Maße</p>
+                  <div id="roof-skylight-dims" class="ui-stack" hidden>
+                    <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                      <span class="toolbar-label">Breite (cm)</span>
+                      <input id="roof-skylight-width" type="number" min="40" max="400" step="8" value="80" />
+                    </div>
+                    <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                      <span class="toolbar-label">Höhe (cm)</span>
+                      <input id="roof-skylight-height" type="number" min="40" max="400" step="8" value="120" />
+                    </div>
+                  </div>
+                  <div id="roof-dormer-dims" class="ui-stack" hidden>
+                    <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                      <span class="toolbar-label">Breite (cm)</span>
+                      <input id="roof-dormer-width" type="number" min="80" max="1200" step="8" value="160" />
+                    </div>
+                    <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                      <span class="toolbar-label">Front (cm)</span>
+                      <input id="roof-dormer-height" type="number" min="24" max="400" step="8" value="140" />
+                    </div>
+                    <div id="roof-dormer-depth-row" class="toolbar-group toolbar-inline-value ui-field-inline">
+                      <span class="toolbar-label">Tiefe (cm)</span>
+                      <input id="roof-dormer-depth" type="number" min="40" max="1200" step="8" value="400" />
+                    </div>
+                    <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                      <span class="toolbar-label">Überstand (cm)</span>
+                      <input id="roof-dormer-overhang" type="number" min="0" max="64" step="1" value="15" />
+                    </div>
+                    <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                      <span class="toolbar-label">Wandstärke (cm)</span>
+                      <input id="roof-dormer-wall" type="number" min="8" max="40" step="1" value="20" />
+                    </div>
+
+                    <p class="settings-subheading settings-subheading-nested">Form</p>
+                    <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                      <span class="toolbar-label">Gaubenform</span>
+                      <!-- Optionen aus ROOF_DORMER_LABELS (src/main.ts) — eine Quelle für Label und Wert. -->
+                      <select id="roof-dormer-kind" aria-label="Gaubenform"></select>
+                    </div>
+                    <div id="roof-dormer-pitch-row" class="toolbar-group toolbar-inline-value ui-field-inline">
+                      <span class="toolbar-label">Neigung (°)</span>
+                      <input id="roof-dormer-pitch" type="number" min="3" max="75" step="1" value="40" />
+                    </div>
+                    <div id="roof-dormer-rise-row" class="toolbar-group toolbar-inline-value ui-field-inline" hidden>
+                      <span class="toolbar-label">Bogenstich (cm)</span>
+                      <input id="roof-dormer-rise" type="number" min="8" max="600" step="2" value="40" />
+                    </div>
+                    <div id="roof-dormer-tilt-row" class="toolbar-group toolbar-inline-value ui-field-inline" hidden>
+                      <span class="toolbar-label">Wangenneigung (°)</span>
+                      <input id="roof-dormer-tilt" type="number" min="15" max="45" step="1" value="20" />
+                    </div>
+
+                    <p class="settings-subheading settings-subheading-nested">Position</p>
+                    <div id="roof-dormer-eave-distance-row" class="toolbar-group toolbar-inline-value ui-field-inline">
+                      <span class="toolbar-label">Abstand Traufe (cm)</span>
+                      <input id="roof-dormer-eave-distance" type="number" min="0" max="2000" step="8" value="120" />
+                    </div>
+                    <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                      <span class="toolbar-label">Seitlich (cm)</span>
+                      <input id="roof-dormer-eave-along" type="number" min="0" max="10000" step="8" value="0" />
+                    </div>
+                    <div id="roof-dormer-eave-break-row" class="toolbar-group">
+                      <label class="toolbar-check">
+                        <input id="roof-dormer-eave-break" type="checkbox" />
+                        Traufdurchbruch
+                      </label>
+                    </div>
+
+                    <p class="settings-subheading settings-subheading-nested">Fenster</p>
+                    <div class="toolbar-group">
+                      <label class="toolbar-check">
+                        <input id="roof-dormer-window-on" type="checkbox" checked />
+                        Fenster
+                      </label>
+                    </div>
+                    <div id="roof-dormer-window-fields" class="ui-stack">
+                      <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                        <span class="toolbar-label">Breite (cm)</span>
+                        <input id="roof-dormer-window-width" type="number" min="24" max="600" step="2" value="90" />
+                      </div>
+                      <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                        <span class="toolbar-label">Höhe (cm)</span>
+                        <input id="roof-dormer-window-height" type="number" min="24" max="400" step="2" value="100" />
+                      </div>
+                      <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                        <span class="toolbar-label">Brüstung (cm)</span>
+                        <input id="roof-dormer-window-sill" type="number" min="8" max="300" step="2" value="20" />
+                      </div>
+                      <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                        <span class="toolbar-label">Seitlich (cm)</span>
+                        <input id="roof-dormer-window-x" type="number" min="0" max="1200" step="2" value="35" />
+                      </div>
+                    </div>
+                  </div>
+                  <div class="toolbar-group">
+                    <button id="roof-fixture-delete" type="button" class="preset-btn toolbar-danger">Löschen</button>
+                  </div>
                 </div>
               </div>
               <p id="roof-hint" class="toolbar-hint compact-hint is-error">Benötigt einen geschlossenen Grundriss auf der obersten Etage.</p>

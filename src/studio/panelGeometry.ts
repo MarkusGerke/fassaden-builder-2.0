@@ -3658,9 +3658,9 @@ function appendOpeningContour(
   // ShapeUtils schließt den Pfad — kein zweites lineTo zum Startpunkt.
 }
 
-function studioWallFaceShape(wall: Wall, z: number): THREE.Shape {
+function studioWallFaceShape(wall: Wall, z: number, topTrimCm = 0): THREE.Shape {
   const y0 = localY(0, wall)
-  const y1 = localY(wall.height, wall)
+  const y1 = localY(Math.max(0, wall.height - Math.max(0, topTrimCm)), wall)
   const x0 = wallLocalX(wall, 0, z)
   const x1 = wallLocalX(wall, wall.width, z)
   const shape = new THREE.Shape()
@@ -3875,7 +3875,7 @@ function createArcBayWallGeometry(wall: Wall): THREE.BufferGeometry {
 export function createStudioWallGeometry(
   wall: Wall,
   allWalls: Wall[] = [],
-  opts?: { treatAsBareWall?: boolean; treatPlinthInactive?: boolean },
+  opts?: { treatAsBareWall?: boolean; treatPlinthInactive?: boolean; topTrimCm?: number },
 ): THREE.BufferGeometry {
   if (wallHasArcBay(wall)) {
     return createArcBayWallGeometry(wall)
@@ -3884,6 +3884,7 @@ export function createStudioWallGeometry(
   const normals: number[] = []
   const indices: number[] = []
   const halfH = wall.height / 2
+  const topTrim = Math.max(0, opts?.topTrimCm ?? 0)
   const outerZ = studioWallOuterLocalZ(wall)
   const innerZ = studioWallInnerLocalZ(wall)
   const panelsOn = wallHasPanels(wall) && !opts?.treatAsBareWall
@@ -3908,10 +3909,19 @@ export function createStudioWallGeometry(
   // Freistreifen oben / Erker-Rock / Sockelzone / Decor-Paneele-aus: volle Tiefe.
   const outerFaceZ =
     panelsOn && !bareTop && !bareSkirt && !barePlinth ? insetFaceZ : outerZ
-  appendShapeFace(studioWallFaceShape(wall, outerFaceZ), outerFaceZ, faceReverse(outerFaceZ), positions, normals, indices)
+  appendShapeFace(
+    studioWallFaceShape(wall, outerFaceZ, topTrim),
+    outerFaceZ,
+    faceReverse(outerFaceZ),
+    positions,
+    normals,
+    indices,
+  )
 
   const yBottom = -halfH
-  const yTop = halfH
+  // Unter dem Dach: Wandkörper kürzen (nicht nur Deckel weglassen) — sonst bleibt die
+  // Geschosskante als Linie sichtbar (v2.0.494).
+  const yTop = halfH - topTrim
   const startOuter = wallLocalX(wall, 0, outerZ)
   const startInner = wallLocalX(wall, 0, innerZ)
   const endOuter = wallLocalX(wall, wall.width, outerZ)
@@ -3994,7 +4004,14 @@ export function createStudioWallGeometry(
   // Bei Bodentüren kein Querschnitt unter der Schwelle — vermeidet Stör-Linie.
 
   const exteriorIndexCount = indices.length
-  appendShapeFace(studioWallFaceShape(wall, innerZ), innerZ, faceReverse(innerZ), positions, normals, indices)
+  appendShapeFace(
+    studioWallFaceShape(wall, innerZ, topTrim),
+    innerZ,
+    faceReverse(innerZ),
+    positions,
+    normals,
+    indices,
+  )
   return wallBodyGeometryWithGroups(positions, normals, indices, exteriorIndexCount)
 }
 

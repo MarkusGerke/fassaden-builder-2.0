@@ -43,3 +43,17 @@ export function ceilingBeatsFacadeMesh(
   if (!Number.isFinite(nearestFacadeMeshDistance)) return true
   return ceilingDistance < nearestFacadeMeshDistance - eps
 }
+
+/**
+ * Dach nur wählen, wenn es klar näher ist als Wand/Paneel/Öffnung.
+ * Kleinerer Slack als Decke (6 cm): Überstand vor der Traufe gewinnt, die
+ * Wandfläche darunter behält die Wandwahl (keine Auswahl durch Fassaden).
+ */
+export function roofBeatsFacadeMesh(
+  roofDistance: number,
+  nearestFacadeMeshDistance: number,
+  eps = 6,
+): boolean {
+  if (!Number.isFinite(nearestFacadeMeshDistance)) return true
+  return roofDistance < nearestFacadeMeshDistance - eps
+}

@@ -12,7 +12,7 @@ import {
   defaultOpeningFrameColor,
   wallDecorFallbackColor,
 } from './constants/colorPalettes'
-import type { EditorState, FacadeState, Opening, OpeningRef, Wall, Building, StudioPanelConfig } from './types/facade'
+import type { EditorState, FacadeState, Opening, OpeningRef, Wall, Building, StudioPanelConfig, RoofDormer } from './types/facade'
 import { cloneFacadeState, createDefaultEditorState } from './types/facade'
 import {
   buildingShowsBareWalls,
@@ -58,7 +58,7 @@ import {
 } from './utils/openingGeometry'
 import { resolveCladding, windowModelKey } from './meshes/catalog'
 import { loadCladdingTemplates, loadWindowProfileTemplates } from './meshes/loadMeshes'
-import { createGruenderzeitWindowMesh, gruenderzeitConfigForOpening, isLeafMotionTag, windowAssemblyDepth, type LeafMotionTag } from './windows/gruenderzeit'
+import { LEAF_OPEN_INWARD, createGruenderzeitWindowMesh, gruenderzeitConfigForOpening, isLeafMotionTag, windowAssemblyDepth, type LeafMotionTag } from './windows/gruenderzeit'
 import {
   createInteriorShadeMesh,
   createOpeningGuardMesh,
@@ -144,9 +144,18 @@ import {
 import { planFacesWithHoles } from './studio/floorPlan'
 import { notchSlabRingAtOpenings } from './studio/slabNotches'
 import { floorIndex, storeyFloorSurfaceY, storeyTopY } from './utils/layers'
+import { ROOF_WALL_TOP_TRIM_CM } from './studio/roofForms'
 import { isStudioWall, leafOpenSignForWall, outerSillBoardPose, studioFacadeOutwardLocalZ, studioFacadeSelectionLocalZ, studioPanelFaceLocalZ, studioProfileAnchorLocalZ, studioWallTransform, studioWindowOriginZ, wallEndPoint, wallHasPanels, wallStartPoint, windowDepthForwardSign } from './studio/walls'
 import { bayWallSkirtDropCm } from './studio/bayWindow'
-import { buildMansardRoof } from './studio/roof'
+import { buildMansardRoof, normalizeRoof } from './studio/roof'
+import {
+  buildDormerMeshes,
+  buildSkylightMeshes,
+  roofEaveCuts,
+  roofOpeningHoles,
+  type DormerWindowPlacement,
+} from './studio/roofOpenings'
+import { syntheticRoofDormerWall, isRoofDormerWallId } from './studio/roofDormerOpeningRef'
 import {
   buildDownpipeGeometry,
   DEFAULT_DOWNPIPE_COLOR,
@@ -235,7 +244,6 @@ export class FacadeController {
   private readonly guideSelfMaterial: THREE.LineBasicMaterial
   private readonly guideDistanceMaterial: THREE.LineBasicMaterial
   private readonly profileMaterial: THREE.MeshStandardMaterial
-  private readonly axes: THREE.AxesHelper
   private readonly profileMeshes: THREE.Mesh[] = []
   private readonly innerSillMeshes: THREE.Mesh[] = []
   private readonly outerSillMeshes: THREE.Mesh[] = []
@@ -408,10 +416,6 @@ export class FacadeController {
       polygonOffsetUnits: -16,
     })
 
-    this.axes = new THREE.AxesHelper(80)
-    this.axes.position.set(0, 0, 0)
-    scene.add(this.axes)
-
     scene.add(this.wallGroup)
     scene.add(this.profileGroup)
     scene.add(this.windowGroup)
@@ -467,10 +471,20 @@ export class FacadeController {
   }
 
   private createStudioWallBodyGeometry(wall: Wall, neighborWalls: Wall[]): THREE.BufferGeometry {
+    const building = findBuildingForWall(this.state, wall.id)
+    const floors = building?.floors
+    const underRoof = Boolean(
+      building?.roof?.enabled &&
+        floors &&
+        floors.length > 0 &&
+        Math.abs(wall.y + wall.height - storeyTopY(building, floors.length - 1)) < 1.5,
+    )
+    const topTrimCm = underRoof ? ROOF_WALL_TOP_TRIM_CM : 0
     return createStudioWallGeometry(wall, neighborWalls, {
       treatAsBareWall: this.wallTreatAsBare(wall),
       // Sockel-Decor aus: kein barePlinth (sonst Wandband statt Paneele in der Sockelzone).
       treatPlinthInactive: this.wallPlinthDecorHidden(wall),
+      topTrimCm,
     })
   }
 
@@ -1552,6 +1566,55 @@ export class FacadeController {
   }
 
   /**
+   * Hilfs-/Abstandslinien für Gaube/Dachfenster in Weltkoordinaten (Dachschräge).
+   * Nutzt dieselben Materialien wie Öffnungs-Guides.
+   */
+  setRoofFixtureGuides(guides: {
+    lines: Array<{ a: THREE.Vector3; b: THREE.Vector3; style: 'self' | 'align' | 'mid' }>
+    distances: Array<{ a: THREE.Vector3; b: THREE.Vector3; mid: THREE.Vector3; distanceCm: number }>
+  }) {
+    this.clearOpeningGuides()
+    for (const guide of guides.lines) {
+      const material =
+        guide.style === 'self'
+          ? this.guideSelfMaterial
+          : guide.style === 'mid'
+            ? this.guideMidMaterial
+            : this.guideEdgeMaterial
+      const geom = new THREE.BufferGeometry().setFromPoints([guide.a, guide.b])
+      const line = new THREE.Line(geom, material)
+      line.renderOrder = guide.style === 'self' ? 9 : 10
+      this.guideGroup.add(line)
+      this.guideLines.push(line)
+    }
+    const cap = 6
+    const addSeg = (a: THREE.Vector3, b: THREE.Vector3) => {
+      const geom = new THREE.BufferGeometry().setFromPoints([a, b])
+      const line = new THREE.Line(geom, this.guideDistanceMaterial)
+      line.renderOrder = 11
+      this.guideGroup.add(line)
+      this.guideDistanceLines.push(line)
+    }
+    for (const dist of guides.distances) {
+      addSeg(dist.a, dist.b)
+      const dir = new THREE.Vector3().subVectors(dist.b, dist.a)
+      const len = dir.length() || 1
+      dir.multiplyScalar(1 / len)
+      // Kappen senkrecht zur Strecke, in der Dachebene grob über Welt-Y-Kreuz.
+      const side = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 1, 0))
+      if (side.lengthSq() < 1e-6) side.set(1, 0, 0)
+      else side.normalize()
+      const ca = side.clone().multiplyScalar(cap)
+      addSeg(dist.a.clone().sub(ca), dist.a.clone().add(ca))
+      addSeg(dist.b.clone().sub(ca), dist.b.clone().add(ca))
+      const sprite = this.createDistanceLabelSprite(`${dist.distanceCm} cm`)
+      sprite.position.copy(dist.mid)
+      this.guideGroup.add(sprite)
+      this.guideDistanceLabels.push(sprite)
+    }
+  }
+
+  /**
    * Plan-Achsen-Hilfslinien in 3D/Front (X=const / Z=const), z. B. bündige
    * unverbundene Wandenden beim Strecken oder Abzweigen.
    */
@@ -2218,22 +2281,27 @@ export class FacadeController {
   }
 
   rebuildRoof(buildingId?: string) {
+    const disposeRoofChild = (child: THREE.Object3D) => {
+      this.roofGroup.remove(child)
+      // Gauben-Fenster sind Gruppen (Gründerzeit-Mesh) — rekursiv entsorgen.
+      if (!(child instanceof THREE.Mesh)) {
+        this.disposeObject3D(child)
+        return
+      }
+      child.geometry?.dispose()
+      if (Array.isArray(child.material)) child.material.forEach((m) => m.dispose())
+      else child.material?.dispose()
+    }
+    this.disposeDormerReveals(buildingId)
     if (!buildingId) {
       while (this.roofGroup.children.length > 0) {
-        const child = this.roofGroup.children[0] as THREE.Mesh
-        this.roofGroup.remove(child)
-        child.geometry?.dispose()
-        if (Array.isArray(child.material)) child.material.forEach((m) => m.dispose())
-        else child.material?.dispose()
+        disposeRoofChild(this.roofGroup.children[0])
       }
     } else {
       for (let i = this.roofGroup.children.length - 1; i >= 0; i -= 1) {
-        const child = this.roofGroup.children[i] as THREE.Mesh
+        const child = this.roofGroup.children[i]
         if (child.userData.buildingId !== buildingId) continue
-        this.roofGroup.remove(child)
-        child.geometry?.dispose()
-        if (Array.isArray(child.material)) child.material.forEach((m) => m.dispose())
-        else child.material?.dispose()
+        disposeRoofChild(child)
       }
     }
 
@@ -2242,8 +2310,12 @@ export class FacadeController {
       if (building.hidden) continue
       if (buildingShowsBareWalls(building)) continue
       if (building.roof?.hidden) continue
+      const roof = normalizeRoof(building.roof)
+      if (!roof.enabled) continue
       const roofState = buildingRoofState(this.state, building)
-      const built = buildMansardRoof(roofState, building.roof)
+      const openingHoles = roofOpeningHoles(building, roof)
+      const eaveCuts = roofEaveCuts(building, roof)
+      const built = buildMansardRoof(roofState, roof, openingHoles, eaveCuts)
       if (!built) continue
 
       const tileMat = new THREE.MeshStandardMaterial({
@@ -2256,8 +2328,10 @@ export class FacadeController {
       const roofMesh = new THREE.Mesh(built.roof, tileMat)
       roofMesh.castShadow = true
       roofMesh.receiveShadow = true
+      roofMesh.userData.kind = 'roof'
       roofMesh.userData.roofPart = 'tiles'
       roofMesh.userData.buildingId = building.id
+      roofMesh.userData.originalMaterial = tileMat
       this.roofGroup.add(roofMesh)
 
       if (built.gable) {
@@ -2272,8 +2346,10 @@ export class FacadeController {
         const gableMesh = new THREE.Mesh(built.gable, gableMat)
         gableMesh.castShadow = true
         gableMesh.receiveShadow = true
+        gableMesh.userData.kind = 'roof'
         gableMesh.userData.roofPart = 'shell'
         gableMesh.userData.buildingId = building.id
+        gableMesh.userData.originalMaterial = gableMat
         this.roofGroup.add(gableMesh)
       }
 
@@ -2294,11 +2370,240 @@ export class FacadeController {
         const gutterMesh = new THREE.Mesh(built.gutter, gutterMat)
         gutterMesh.castShadow = true
         gutterMesh.receiveShadow = true
+        gutterMesh.userData.kind = 'roof'
         gutterMesh.userData.roofPart = 'gutter'
         gutterMesh.userData.buildingId = building.id
+        gutterMesh.userData.originalMaterial = gutterMat
         this.roofGroup.add(gutterMesh)
       }
+
+      const frameMat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(roof.gutterColor ?? '#8E8A88'),
+        roughness: 0.45,
+        metalness: 0.55,
+        side: THREE.DoubleSide,
+      })
+      const glassMat = new THREE.MeshPhysicalMaterial({
+        color: 0xb8d4e8,
+        roughness: 0.12,
+        metalness: 0,
+        transmission: 0.85,
+        thickness: 2,
+        transparent: true,
+        opacity: 0.9,
+        side: THREE.DoubleSide,
+      })
+      for (const skylight of roof.skylights ?? []) {
+        if (skylight.hidden) continue
+        const mesh = buildSkylightMeshes(building, roof, skylight)
+        if (!mesh) continue
+        const frame = new THREE.Mesh(mesh.frame, frameMat.clone())
+        frame.castShadow = true
+        frame.receiveShadow = true
+        frame.userData.kind = 'roofSkylight'
+        frame.userData.roofPart = 'tiles'
+        frame.userData.buildingId = building.id
+        frame.userData.fixtureId = skylight.id
+        frame.userData.fixtureKind = 'skylight'
+        frame.userData.originalMaterial = frame.material
+        this.roofGroup.add(frame)
+        const glass = new THREE.Mesh(mesh.glass, glassMat.clone())
+        glass.castShadow = false
+        glass.receiveShadow = true
+        glass.userData.kind = 'roofSkylight'
+        glass.userData.roofPart = 'tiles'
+        glass.userData.buildingId = building.id
+        glass.userData.fixtureId = skylight.id
+        glass.userData.fixtureKind = 'skylight'
+        glass.userData.originalMaterial = glass.material
+        this.roofGroup.add(glass)
+      }
+
+      for (const dormer of roof.dormers ?? []) {
+        if (dormer.hidden) continue
+        const mesh = buildDormerMeshes(building, roof, dormer)
+        if (!mesh) continue
+        const tagDormerMesh = (m: THREE.Object3D, roofPart: 'shell' | 'tiles' | 'trim') => {
+          m.userData.kind = 'roofDormer'
+          m.userData.roofPart = roofPart
+          m.userData.buildingId = building.id
+          m.userData.fixtureId = dormer.id
+          m.userData.fixtureKind = 'dormer'
+        }
+        // Wände: Gaubenfarbe, sonst Giebel-/Wandfarbe des Dachs.
+        const shellMat = new THREE.MeshStandardMaterial({
+          color: new THREE.Color(dormer.wallColor ?? roof.gableColor ?? DEFAULT_WALL_COLOR),
+          roughness: 0.92,
+          metalness: 0,
+          side: THREE.FrontSide,
+          shadowSide: THREE.DoubleSide,
+        })
+        if (!this.isPerfPresentation()) this.finishExteriorMaterial(shellMat)
+        const shell = new THREE.Mesh(mesh.shell, shellMat)
+        shell.castShadow = true
+        shell.receiveShadow = true
+        tagDormerMesh(shell, 'shell')
+        shell.userData.originalMaterial = shellMat
+        this.roofGroup.add(shell)
+
+        // Dachflächen: Gaubendach-Farbe, sonst Ziegelfarbe des Hauptdachs.
+        const roofMat = new THREE.MeshStandardMaterial({
+          color: new THREE.Color(dormer.roofColor ?? built.tileColor),
+          roughness: 0.88,
+          metalness: 0.02,
+          side: THREE.FrontSide,
+          shadowSide: THREE.DoubleSide,
+        })
+        const dRoof = new THREE.Mesh(mesh.roof, roofMat)
+        dRoof.castShadow = true
+        dRoof.receiveShadow = true
+        tagDormerMesh(dRoof, 'tiles')
+        dRoof.userData.originalMaterial = roofMat
+        this.roofGroup.add(dRoof)
+
+        // Blenden / Untersichten / Fensterbank: Blendenfarbe, sonst Fensterrahmen-Weiß.
+        const trimColor =
+          dormer.trimColor ?? mesh.window?.opening.frameColor ?? defaultOpeningFrameColor('window')
+        const trimMat = new THREE.MeshStandardMaterial({
+          color: new THREE.Color(trimColor),
+          roughness: 0.6,
+          metalness: 0.02,
+          side: THREE.FrontSide,
+          shadowSide: THREE.DoubleSide,
+        })
+        if (!this.isPerfPresentation()) this.finishExteriorMaterial(trimMat)
+        const trim = new THREE.Mesh(mesh.trim, trimMat)
+        trim.castShadow = true
+        trim.receiveShadow = true
+        tagDormerMesh(trim, 'trim')
+        trim.userData.originalMaterial = trimMat
+        this.roofGroup.add(trim)
+
+        // Fenster: dieselbe Gründerzeit-Pipeline wie Wandöffnungen.
+        const placement = mesh.window
+        if (placement) {
+          const opening = placement.opening
+          const config = gruenderzeitConfigForOpening(opening)
+          const frameDepth = windowAssemblyDepth(config)
+          const frameColor = opening.frameColor ?? defaultOpeningFrameColor(opening.type)
+          const glassConfig = openingGlassConfig(opening)
+          const glazingForm = openingGlazingArchForm(opening)
+          const archRiseCm = normalizeOpeningArch(opening.arch).riseCm
+          const instance = createGruenderzeitWindowMesh(
+            opening.width,
+            opening.height,
+            config,
+            frameColor,
+            glassConfig,
+            glazingForm,
+            opening.frameFinish,
+            LEAF_OPEN_INWARD,
+            archRiseCm,
+            opening.type === 'door' ? normalizeOpeningDoor(opening.door) : null,
+          )
+          // Mesh-+Z zeigt nach außen; Rahmenfront liegt bei lokal z = boxMaxZ.
+          const basis = new THREE.Matrix4().makeBasis(placement.right, placement.up, placement.outward)
+          instance.quaternion.setFromRotationMatrix(basis)
+          instance.position
+            .copy(placement.center)
+            .addScaledVector(placement.outward, -(placement.recessCm + frameDepth))
+          instance.userData.lodTier = 'high'
+          tagDormerMesh(instance, 'shell')
+          instance.traverse((child) => {
+            child.userData.kind = 'roofDormer'
+            child.userData.buildingId = building.id
+            child.userData.fixtureId = dormer.id
+            child.userData.fixtureKind = 'dormer'
+            child.userData.openingId = opening.id
+            child.userData.openingPart = 'group'
+          })
+          this.finishOpeningFrameTree(instance)
+          this.roofGroup.add(instance)
+          this.addDormerWindowReveal(building, dormer, placement)
+        }
+      }
     }
+    this.applySelection()
+  }
+
+  /** Gauben-Laibungen (Reveal) entsorgen — vor Dach-Rebuild. */
+  private disposeDormerReveals(buildingId?: string) {
+    for (let i = this.revealMeshes.length - 1; i >= 0; i -= 1) {
+      const mesh = this.revealMeshes[i]!
+      if (mesh.userData.kind !== 'roofDormerReveal') continue
+      if (buildingId && mesh.userData.buildingId !== buildingId) continue
+      this.profileGroup.remove(mesh)
+      mesh.geometry.dispose()
+      if (Array.isArray(mesh.material)) mesh.material.forEach((m) => m.dispose())
+      else (mesh.material as THREE.Material | undefined)?.dispose?.()
+      this.revealMeshes.splice(i, 1)
+    }
+  }
+
+  /**
+   * Laibung für Gaubenfenster — dieselbe Geometrie-Pipeline wie Fassadenfenster,
+   * transformiert auf die Gaubenfront (Weltbasis right/up/outward).
+   */
+  private addDormerWindowReveal(
+    building: Building,
+    dormer: RoofDormer,
+    placement: DormerWindowPlacement,
+  ) {
+    if (this.isDraftPresentation()) return
+    const opening = placement.opening
+    const synth = syntheticRoofDormerWall(building, dormer, opening)
+    synth.panelFlip = true
+    const geometry = createStudioOpeningRevealGeometry(synth, opening, { treatAsBareWall: true })
+    if (!geometry) return
+
+    // Wandlokaler Ursprung = Frontwand-Mitte auf der Außenfläche.
+    const wallFaceCenter = placement.center
+      .clone()
+      .addScaledVector(placement.right, -(opening.x + opening.width / 2 - synth.width / 2))
+      .addScaledVector(placement.up, -(opening.y + opening.height / 2 - synth.height / 2))
+    // Wandlokal: −Z = außen (panelFlip); World-outward zeigt nach außen → Z spiegeln.
+    const basis = new THREE.Matrix4().makeBasis(placement.right, placement.up, placement.outward)
+    const flipZ = new THREE.Matrix4().makeScale(1, 1, -1)
+    const matrix = new THREE.Matrix4().multiplyMatrices(basis, flipZ)
+    matrix.setPosition(wallFaceCenter)
+    geometry.applyMatrix4(matrix)
+
+    const exteriorColor =
+      opening.revealExteriorColor ?? dormer.wallColor ?? DEFAULT_WALL_COLOR
+    const interiorColor = opening.revealInteriorColor ?? DEFAULT_INTERIOR_COLOR
+    const exteriorMaterial = createTintedMaterial(this.material, exteriorColor)
+    const interiorMaterial = createTintedMaterial(this.material, interiorColor)
+    exteriorMaterial.shadowSide = THREE.FrontSide
+    interiorMaterial.shadowSide = THREE.FrontSide
+    interiorMaterial.userData.skipFacadeShade = true
+    this.finishExteriorMaterial(exteriorMaterial)
+    this.finishInteriorMaterial(interiorMaterial)
+    exteriorMaterial.polygonOffset = true
+    exteriorMaterial.polygonOffsetFactor = 1
+    exteriorMaterial.polygonOffsetUnits = REVEAL_DEPTH_UNITS
+    interiorMaterial.polygonOffset = true
+    interiorMaterial.polygonOffsetFactor = 1
+    interiorMaterial.polygonOffsetUnits = REVEAL_DEPTH_UNITS
+    ensureShadowDepthMaterial(exteriorMaterial)
+    ensureShadowDepthMaterial(interiorMaterial)
+
+    const materials: THREE.Material | THREE.Material[] =
+      geometry.groups.length >= 2 ? [exteriorMaterial, interiorMaterial] : exteriorMaterial
+    const mesh = new THREE.Mesh(geometry, materials)
+    mesh.castShadow = true
+    mesh.receiveShadow = this.revealShouldReceiveShadow(mesh)
+    mesh.renderOrder = 2
+    mesh.userData.originalMaterial = materials
+    mesh.userData.kind = 'roofDormerReveal'
+    mesh.userData.buildingId = building.id
+    mesh.userData.fixtureId = dormer.id
+    mesh.userData.fixtureKind = 'dormer'
+    mesh.userData.openingId = opening.id
+    mesh.userData.openingPart = 'group'
+    mesh.userData.skipLineEdges = true
+    this.syncWallMeshLightLayers(mesh)
+    this.profileGroup.add(mesh)
+    this.revealMeshes.push(mesh)
   }
 
   rebuildDownpipes(buildingId?: string) {
@@ -2662,6 +2967,9 @@ export class FacadeController {
       selectedTrimBandId: editor.selectedTrimBandId,
       selectedRoofBuildingId: editor.selectedRoofBuildingId,
       selectedRoofPart: editor.selectedRoofPart,
+      selectedRoofFixture: editor.selectedRoofFixture
+        ? { ...editor.selectedRoofFixture }
+        : undefined,
       selectedCeiling: editor.selectedCeiling ? { ...editor.selectedCeiling } : undefined,
       selectedBuildingId: editor.selectedBuildingId,
       selectedDownpipe: editor.selectedDownpipe
@@ -6071,6 +6379,7 @@ export class FacadeController {
 
     if (highlightWalls || (wallPart === 'cladding' && this.editor.selectedOpenings.length === 0)) {
       for (const wallId of this.editor.selectedWallIds) {
+        if (isRoofDormerWallId(wallId)) continue
         const wall = findWall(this.state, wallId)
         if (!wall) continue
         addOverlay(wall, wall.width, wall.height, 0, 0, 3)
@@ -6079,6 +6388,9 @@ export class FacadeController {
 
     for (const ref of this.editor.selectedOpenings) {
       if (this.openingDragOmitVisible(ref.wallId, ref.openingId)) continue
+      // Gaubenfenster: virtuelle Wand liegt bei Ursprung — Overlay würde am Boden
+      // neben den Achsen erscheinen. Gaube selbst wird über roofFixture markiert.
+      if (isRoofDormerWallId(ref.wallId)) continue
       const wall = findWall(this.state, ref.wallId)
       const opening = wall?.openings.find((item) => item.id === ref.openingId)
       if (!wall || !opening) continue
@@ -6162,6 +6474,44 @@ export class FacadeController {
           fill.position.copy(mesh.position)
           fill.rotation.copy(mesh.rotation)
           fill.scale.copy(mesh.scale)
+          fill.renderOrder = 9
+          this.selectionGroup.add(fill)
+        } else {
+          edgesGeo.dispose()
+        }
+      }
+    }
+
+    const selRoofId = this.editor.selectedRoofBuildingId
+    const selFixture = this.editor.selectedRoofFixture
+    if (selRoofId && !this.suppressSelectionHighlight) {
+      for (const child of this.roofGroup.children) {
+        const mesh = child as THREE.Mesh
+        if (mesh.userData.buildingId !== selRoofId || !mesh.visible) continue
+        // Gaubenfenster ist eine Group ohne geometry — EdgesGeometry würde werfen und
+        // selectRoof/Drag/Kontextmenü abbrechen (v2.0.481).
+        if (!mesh.isMesh || !mesh.geometry) continue
+        if (selFixture) {
+          if (
+            mesh.userData.fixtureKind !== selFixture.kind ||
+            mesh.userData.fixtureId !== selFixture.id
+          ) {
+            continue
+          }
+        } else {
+          // Ganzes Dach: nur Haut/Giebel/Rinne, nicht jedes Fixture doppelt
+          if (mesh.userData.fixtureId) continue
+          const part = this.editor.selectedRoofPart ?? 'group'
+          if (part !== 'group' && mesh.userData.roofPart !== part) continue
+        }
+        const edgesGeo = new THREE.EdgesGeometry(mesh.geometry, 20)
+        const lines = isLine
+          ? this.createFatLineSegments(edgesGeo)
+          : new THREE.LineSegments(edgesGeo, overlayMat)
+        lines.renderOrder = 10
+        this.selectionGroup.add(lines)
+        if (fillMat) {
+          const fill = new THREE.Mesh(mesh.geometry.clone(), fillMat)
           fill.renderOrder = 9
           this.selectionGroup.add(fill)
         } else {
