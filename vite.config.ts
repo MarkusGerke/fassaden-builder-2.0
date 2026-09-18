@@ -1,6 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { defineConfig, type Plugin, type ViteDevServer } from 'vite'
+import solid from 'vite-plugin-solid'
+import tailwindcss from '@tailwindcss/vite'
 
 const PUBLIC_MIME: Record<string, string> = {
   '.ttf': 'font/ttf',
@@ -74,11 +76,11 @@ function freshSourceOnRequest(): Plugin {
 
   async function invalidateIfStale(server: ViteDevServer, urlPath: string) {
     const clean = urlPath.split('?')[0] ?? ''
-    if (!clean.startsWith('/src/') && clean !== '/index.html' && clean !== '/') return
+    if (!clean.startsWith('/src/') && !clean.startsWith('/packages/') && clean !== '/index.html' && clean !== '/ui-sandbox.html' && clean !== '/') return
 
     const rel = clean === '/' ? 'index.html' : clean.replace(/^\//, '')
     const file = path.resolve(server.config.root, rel)
-    if (!file.startsWith(server.config.root) || !fs.existsSync(file)) return
+    if ((!file.startsWith(server.config.root + path.sep) && file !== server.config.root) || !fs.existsSync(file)) return
 
     let mtime: number
     try {
@@ -121,7 +123,55 @@ function freshSourceOnRequest(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [servePublicFromDisk(), freshSourceOnRequest()],
+  plugins: [
+    servePublicFromDisk(),
+    freshSourceOnRequest(),
+    // packages/ui + @ark-ui/solid (liefert .jsx unter condition "solid")
+    solid({
+      include: [
+        /\/packages\/ui\//,
+        /node_modules\/\.vite\/deps\/@ark-ui/,
+        /node_modules\/@ark-ui/,
+        /node_modules\/lucide-solid/,
+      ],
+      extensions: ['.tsx', '.jsx'],
+    }),
+    tailwindcss(),
+  ],
+  resolve: {
+    // Ark UI: "solid" → .jsx; ohne Condition greift Vite falsch auf React-JSX.
+    conditions: ['solid', 'module', 'browser', 'development', 'import'],
+    dedupe: ['solid-js'],
+    alias: [
+      {
+        find: /^@\/(.*)$/,
+        replacement: path.resolve(__dirname, 'packages/ui/src/$1'),
+      },
+      {
+        find: /^styled-system\/(.*)$/,
+        replacement: path.resolve(__dirname, 'styled-system/$1'),
+      },
+      {
+        find: '@fassaden/ui/styles.css',
+        replacement: path.resolve(__dirname, 'packages/ui/src/styles/ui.css'),
+      },
+      {
+        find: '@fassaden/ui/park.css',
+        replacement: path.resolve(__dirname, 'packages/ui/src/styles/park.css'),
+      },
+      {
+        find: '@fassaden/ui',
+        replacement: path.resolve(__dirname, 'packages/ui/src'),
+      },
+    ],
+  },
+  css: {
+    postcss: './postcss.config.cjs',
+  },
+  optimizeDeps: {
+    include: ['solid-js', 'solid-js/web'],
+    exclude: ['lucide-solid'],
+  },
   // IPv4, damit Browser/Cursor `http://127.0.0.1:5173` und `localhost` → 127.0.0.1
   // nicht mit ERR_CONNECTION_REFUSED scheitern (Vite-Default lauscht sonst oft nur auf [::1]).
   server: {
@@ -137,6 +187,7 @@ export default defineConfig({
   build: {
     chunkSizeWarningLimit: 800,
     rolldownOptions: {
+      // Nur die Haupt-App — UI-Sandbox bleibt Dev (`ui-sandbox.html` / npm run dev:ui).
       output: {
         codeSplitting: {
           groups: [

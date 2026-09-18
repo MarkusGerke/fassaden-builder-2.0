@@ -412,6 +412,590 @@ body {
   border-right: 1px solid #ddd;
 }
 
+/* Park Hard-Cutover: Vanilla-Hosts bleiben für IDs, sind visuell weg */
+.vanilla-legacy-park {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+  pointer-events: none !important;
+}
+
+/* Eine Park-Splitter-Welt: #app ist kein 3-Spalten-Grid mehr. */
+html.park-shell #app {
+  display: block !important;
+  position: relative;
+  height: 100vh;
+  overflow: hidden;
+}
+html.park-shell #park-live-shell,
+html.park-shell .park-live-shell-host {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+}
+html.park-shell #viewport {
+  grid-column: auto;
+  grid-row: auto;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+}
+html.park-shell .park-stage-host {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+html.park-shell #app.stage-view [data-park-viewport-chrome],
+html.park-shell #app.stage-view [data-park-chrome-extras],
+html.park-shell #app.showcase-view [data-park-viewport-chrome],
+html.park-shell #app.showcase-view [data-park-chrome-extras] {
+  display: none !important;
+}
+html.park-shell #nav-help-btn,
+html.park-shell #scope-bar-slot,
+html.park-shell #view-line-stroke-row,
+html.park-shell #park-live-left,
+html.park-shell #park-live-viewport,
+html.park-shell #park-live-chrome-extras,
+html.park-shell #park-live-library,
+html.park-shell #park-live-selection,
+html.park-shell #park-live-scene {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  pointer-events: none !important;
+}
+
+html.park-shell #ui {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+html.park-shell #park-live-left {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+html.park-shell #park-live-viewport {
+  pointer-events: auto;
+}
+
+html.park-shell #scene-toolbar {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+html.park-shell #park-live-scene {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.75rem 1rem 1.25rem;
+}
+
+html.park-shell .park-layers-slot .layer-mode-toggle .preset-btn,
+html.park-shell .park-layers-slot .layer-mode-toggle .view-mode-btn {
+  /* Ebenen-Tree-Slice (Grill 8B) — bis dahin Park-ähnliche Chips */
+  border-radius: 0.375rem;
+  border: 1px solid var(--colors-border-default, #d4d4d8);
+  background: var(--colors-bg-subtle, #f4f4f5);
+  color: inherit;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+}
+
+html.park-shell #selection-toolbar {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+html.park-shell #park-live-selection {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+html.park-shell #library-dock {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-height: 0;
+}
+
+/* Park-Shell: sichtbare Bibliothek ist LibraryDockApp, nicht das Vanilla-Dock im Viewport. */
+html.park-shell #viewport > #library-dock {
+  display: none !important;
+}
+
+/* Desktop: Overlay, nur Transform — kein Höhen-Resize der Bühne (das hat den Canvas geleert / geblitzt). */
+html.park-shell:not(.ui-touch-chrome) .park-library-slide {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 6;
+  height: calc(2.75rem + 2.75rem + 6.5rem + 0.75rem);
+  max-height: none;
+  opacity: 1;
+  transform: translateY(100%);
+  pointer-events: none;
+  transition: transform 0.22s ease;
+  will-change: transform;
+}
+
+html.park-shell:not(.ui-touch-chrome) .park-library-slide[data-open='true'] {
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+/* Kompass über dem Bibliothek-Overlay (Bühne schrumpft nicht mehr). */
+html.park-shell:not(.ui-touch-chrome) #app.has-selection #view-compass {
+  bottom: calc(12px + 2.75rem + 2.75rem + 6.5rem + 0.75rem);
+  transition: bottom 0.22s ease;
+}
+
+html.park-shell .layer-more-btn {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  pointer-events: none !important;
+}
+
+html.ui-touch-chrome.park-shell .park-library-slide {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 6;
+  max-height: none;
+  min-height: 0;
+  height: auto;
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+  transition: transform 0.22s ease;
+}
+
+html.ui-touch-chrome.park-shell.ui-library-edit-focus .park-library-slide {
+  transform: translateY(100%);
+  pointer-events: none;
+}
+
+html.ui-touch-chrome.park-shell #app:not(.has-selection) .park-library-tabs-scroll {
+  display: none !important;
+}
+
+html.ui-touch-chrome.park-shell #library-filter-row {
+  position: static !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
+}
+
+html.ui-touch-chrome.park-shell #library-mode {
+  padding-top: 0 !important;
+}
+
+html.ui-touch-chrome.park-shell .park-library-filter-slot {
+  min-height: 0;
+  height: auto;
+}
+
+html.ui-touch-chrome.park-shell .park-library-filter-slot:has(#library-filter-row[hidden]) {
+  display: none;
+}
+
+html.ui-touch-chrome.park-shell .park-library-items-scroll,
+html.ui-touch-chrome.park-shell .park-library-items-slot .opening-library-items {
+  height: auto !important;
+  max-height: none !important;
+  min-height: 0 !important;
+  overflow-y: visible;
+}
+
+/* Touch-Kacheln: höhe für max. zwei Textzeilen (Szene + Katalog). */
+html.ui-touch-chrome.park-shell [data-park-library-dock] .opening-library-card {
+  height: auto !important;
+}
+
+html.ui-touch-chrome.park-shell [data-park-library-dock] .scene-library-tile .opening-library-thumb,
+html.ui-touch-chrome.park-shell [data-park-library-dock] .opening-library-card:not(:has(.opening-library-thumb svg)) .opening-library-thumb {
+  aspect-ratio: unset !important;
+  min-height: calc(0.75rem * 1.25 * 2 + 0.5rem);
+  max-height: calc(0.75rem * 1.25 * 2 + 0.5rem);
+  padding: 0.25rem;
+  box-sizing: border-box;
+  display: -webkit-box !important;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  text-align: center;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  line-height: 1.25;
+}
+
+html.ui-touch-chrome.park-shell [data-park-library-dock] .opening-library-card > span:not(.library-card-edit) {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  text-align: center;
+}
+
+html.park-shell .park-drawer-backdrop,
+html.park-shell [data-scope='drawer'][data-part='backdrop'] {
+  background: transparent !important;
+  pointer-events: none !important;
+}
+
+html.park-shell .park-library-filter-slot {
+  min-height: 2.75rem;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+html.park-shell .park-library-filter-slot:has(#library-filter-row[hidden]),
+html.park-shell .park-library-filter-slot:not(:has(#library-filter-row)) {
+  min-height: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+html.park-shell #park-live-library {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0.35rem 0.75rem 0.5rem;
+}
+
+/* Park: scrollen ohne sichtbare Scrollleisten (überall in der Shell) */
+html.park-shell,
+html.park-shell * {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+html.park-shell *::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+html.park-shell .park-scroll-frame [data-part='viewport'],
+html.park-shell .park-no-scrollbar,
+html.park-shell .park-library-tabs-scroll,
+html.park-shell .park-library-items-scroll,
+html.park-shell .park-library-items-slot .opening-library-items {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+html.park-shell [data-scope='scroll-area'][data-part='scrollbar'],
+html.park-shell [data-scope='scroll-area'][data-part='thumb'] {
+  display: none !important;
+}
+
+/* Mobil: links und unten Luft; rechts weiter scrollen. */
+html.ui-touch-chrome.park-shell [data-park-library-dock] {
+  padding-left: 0.75rem !important;
+  padding-right: 0 !important;
+  padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px)) !important;
+  padding-top: 0.5rem !important;
+  gap: var(--space-2, 0.5rem) !important;
+}
+
+html.ui-touch-chrome.park-shell [data-park-library-dock] [data-scope='tabs'][data-part='list'] {
+  padding-inline: 0 !important;
+}
+
+/* Park-Bibliothek: Kacheln wie Sandbox ToggleGroup tile */
+html.park-shell [data-park-library-dock] .opening-library-items {
+  scrollbar-gutter: auto;
+  gap: 0.5rem;
+}
+
+html.park-shell [data-park-library-dock] .opening-library-card {
+  width: 6.5rem !important;
+  min-width: 6.5rem !important;
+  max-width: 6.5rem !important;
+  flex: 0 0 6.5rem !important;
+  padding: 0.5rem !important;
+  align-items: stretch !important;
+  flex-direction: column !important;
+  gap: 0.25rem !important;
+  border-radius: var(--radii-l2, 0.25rem) !important;
+  border-color: var(--colors-border-default, #e4e4e7) !important;
+  background: #fff !important;
+  cursor: grab;
+}
+
+html.park-shell [data-park-library-dock] .opening-library-card[data-state='on'] {
+  border-color: var(--colors-color-palette-solid-bg, #0090ff) !important;
+  outline: 1px solid var(--colors-color-palette-solid-bg, #0090ff);
+  box-shadow: none !important;
+}
+
+html.park-shell [data-park-library-dock] .opening-library-card:hover {
+  background: #fff !important;
+}
+
+html.park-shell [data-park-library-dock] .opening-library-card.active,
+html.park-shell [data-park-library-dock] .opening-library-card.library-card-applied {
+  border-color: var(--colors-color-palette-solid-bg, #0090ff) !important;
+  box-shadow: none !important;
+  outline: 1px solid var(--colors-color-palette-solid-bg, #0090ff);
+}
+
+html.park-shell [data-park-library-dock] .opening-library-thumb {
+  width: 100% !important;
+  height: auto !important;
+  min-height: 0 !important;
+  aspect-ratio: 4 / 3;
+  background: var(--colors-gray-3, #f4f4f5) !important;
+  border-radius: var(--radii-l1, 0.125rem);
+}
+
+html.park-shell [data-park-library-dock] .opening-library-card span {
+  font-size: 0.75rem;
+  line-height: 1.25;
+  color: var(--colors-fg-default, #111);
+}
+
+html.park-shell .park-library-items .opening-library-items,
+html.park-shell .park-library-items-slot .opening-library-items {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 0.5rem;
+  overflow-x: auto;
+  align-items: stretch;
+}
+
+html.park-shell #ui-left-collapse,
+html.park-shell #ui-right-collapse,
+html.park-shell #nav-help-btn,
+html.park-shell #scope-bar-slot,
+html.park-shell #view-line-stroke-row {
+  /* durch Park ChromeExtras ersetzt — IDs bleiben */
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  pointer-events: none !important;
+}
+
+html.park-shell #park-live-chrome-extras {
+  width: 100%;
+  margin-top: 0.35rem;
+}
+
+/* Park-Surfaces: Vanilla-Label-Layout (#ui-right label space-between) nicht erben */
+html.park-shell [data-park-scene-toolbar],
+html.park-shell [data-park-selection-toolbar],
+html.park-shell [data-park-library-dock],
+html.park-shell [data-park-left-chrome],
+html.park-shell [data-park-viewport-chrome],
+html.park-shell [data-park-chrome-extras] {
+  text-align: start;
+}
+
+/* Nur Root — Control/Label teilen data-scope=checkbox; fit-content auf Control → ~2px Breite */
+html.park-shell [data-scope='checkbox'][data-part='root'] {
+  display: inline-flex !important;
+  width: fit-content !important;
+  max-width: 100% !important;
+  justify-content: flex-start !important;
+  align-items: center !important;
+  text-align: start !important;
+  gap: 0.5rem !important;
+  overflow: visible !important;
+  min-width: 0 !important;
+}
+
+html.park-shell [data-scope='checkbox'][data-part='control'] {
+  flex-shrink: 0 !important;
+  box-sizing: border-box !important;
+  width: var(--sizes-5, 1.25rem) !important;
+  height: var(--sizes-5, 1.25rem) !important;
+  min-width: var(--sizes-5, 1.25rem) !important;
+  background: #fff !important;
+  border: 1px solid #b0b0b8 !important;
+  border-radius: 2px !important;
+}
+
+html.park-shell [data-scope='checkbox'][data-part='control'][data-state='checked'],
+html.park-shell [data-scope='checkbox'][data-part='control'][data-state='indeterminate'] {
+  background: var(--colors-color-palette-solid-bg, #0090ff) !important;
+  border-color: var(--colors-color-palette-solid-bg, #0090ff) !important;
+}
+
+html.park-shell [data-scope='checkbox'][data-part='label'] {
+  text-align: start !important;
+  flex: 0 1 auto !important;
+  width: auto !important;
+  margin-inline-start: 0 !important;
+  overflow-wrap: anywhere !important;
+}
+
+html.park-shell .accordion__itemBody {
+  padding-inline: var(--accordion-padding-x, 1rem) !important;
+  box-sizing: border-box;
+}
+
+html.park-shell .accordion__itemContent {
+  /* overflow-x:visible wird bei overflow-y:hidden zu auto — Padding statt Clip-Trick */
+  padding-inline: 0;
+}
+
+/* FormMirror: kein Horizontal-Clip an Accordion/Scroll */
+html.park-shell [data-park-selection-toolbar],
+html.park-shell [data-park-scene-toolbar] {
+  overflow-x: visible;
+  max-width: 100%;
+  min-width: 0;
+}
+
+html.park-shell [data-scope='scroll-area'][data-part='content'] {
+  max-width: 100%;
+  min-width: 0;
+}
+
+html.park-shell [data-scope='number-input'][data-part='root'] {
+  min-width: 5.5rem;
+  flex-shrink: 0;
+}
+
+html.park-shell [data-scope='select'][data-part='root'] {
+  max-width: 14rem;
+  min-width: 0;
+}
+
+html.park-shell [data-park-left-chrome] .card__root,
+html.park-shell [data-park-left-chrome] .card__body {
+  overflow: visible !important;
+}
+
+html.park-shell [data-scope='splitter'][data-part='resize-trigger'] {
+  position: relative !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  pointer-events: auto !important;
+  z-index: 40;
+  padding: 0 !important;
+  margin: 0;
+  border: 0;
+  box-sizing: border-box;
+}
+
+html.park-shell [data-scope='splitter'][data-part='resize-trigger'][data-orientation='horizontal'] {
+  width: 8px !important;
+  min-width: 8px !important;
+  align-self: stretch !important;
+}
+
+html.park-shell [data-scope='splitter'][data-part='resize-trigger'][data-orientation='horizontal'] > [data-part='resize-trigger-indicator'] {
+  position: relative !important;
+  left: auto !important;
+  top: auto !important;
+  transform: none !important;
+  display: block !important;
+  width: 6px;
+  height: 2.75rem;
+  min-height: 2.75rem;
+  margin: 0 !important;
+  box-sizing: border-box;
+  background: #fff !important;
+  border: 1px solid #d4d4d8 !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+  border-radius: 999px;
+  pointer-events: none;
+}
+
+html.park-shell [data-park-library-dock] .library-filter-tabs {
+  display: inline-flex !important;
+  flex-wrap: nowrap !important;
+  gap: 0.25rem !important;
+  border: 1px solid var(--colors-border-default, #e4e4e7);
+  border-radius: var(--radii-l3, 0.375rem);
+  padding: 0.25rem;
+  background: #fff;
+}
+
+html.park-shell [data-park-library-dock] .library-filter-tab {
+  appearance: none;
+  border: 1px solid transparent !important;
+  border-radius: var(--radii-l2, 0.25rem) !important;
+  background: transparent !important;
+  color: var(--colors-fg-muted, #52525b) !important;
+  font-size: 0.75rem;
+  font-weight: 600;
+  height: 2rem;
+  padding: 0 0.625rem !important;
+  cursor: pointer;
+  box-shadow: none !important;
+}
+
+html.park-shell [data-park-library-dock] .library-filter-tab[data-state='on'],
+html.park-shell [data-park-library-dock] .library-filter-tab.active {
+  background: var(--colors-color-palette-subtle-bg, #e6f4fe) !important;
+  border-color: var(--colors-color-palette-outline-border, #8ec8f6) !important;
+  color: var(--colors-color-palette-subtle-fg, #0d74ce) !important;
+}
+
+/* Vanilla-Kontextmenü unsichtbar, wenn Park die Einträge erntet */
+html.fb-harvest-menu .os-menu {
+  display: none !important;
+}
+
+html.park-shell .park-library-items-slot .opening-library-items {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 0.5rem;
+  overflow-x: auto;
+  align-items: stretch;
+}
+
+html.park-shell .park-library-items-slot .opening-library-thumb {
+  aspect-ratio: 4 / 3;
+  width: 100%;
+  border-radius: 0.125rem;
+  background: var(--colors-gray-3, #f4f4f5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+html.park-shell .park-library-items-slot .opening-library-thumb svg {
+  max-width: 90%;
+  max-height: 90%;
+}
+
 #viewport {
   grid-column: 2;
   grid-row: 1;
@@ -1359,13 +1943,23 @@ body {
   cursor: progress;
 }
 
-.light-mode-loading-spinner {
-  width: 2rem;
-  height: 2rem;
-  border-radius: 50%;
-  border: 3px solid rgba(255, 255, 255, 0.22);
-  border-top-color: #ffc76d;
-  animation: light-mode-loading-spin 0.9s linear infinite;
+.light-mode-loading .ui-progress-linear {
+  width: min(12rem, 70vw);
+  height: 0.35rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  overflow: hidden;
+  position: relative;
+}
+
+.light-mode-loading .ui-progress-linear__range {
+  position: absolute;
+  inset-block: 0;
+  width: 50%;
+  min-width: 50%;
+  border-radius: inherit;
+  background: linear-gradient(to right, transparent 0%, #ffc76d 50%, transparent 100%);
+  animation: ui-progress-linear-slide 1s ease infinite;
 }
 
 .light-mode-loading-text {
@@ -1374,10 +1968,21 @@ body {
   letter-spacing: 0.01em;
 }
 
-@keyframes light-mode-loading-spin {
-  to {
-    transform: rotate(360deg);
+@keyframes ui-progress-linear-slide {
+  from {
+    left: -40%;
   }
+  to {
+    left: 100%;
+  }
+}
+
+html.park-shell [data-scope='drawer'][data-part='backdrop'][data-state='open'] {
+  background: rgba(0, 0, 0, 0.45);
+}
+
+html.park-shell [data-scope='drawer'][data-part='content'] {
+  background: #fff;
 }
 
 .selection-toolbar-panels .settings-section {
@@ -2876,21 +3481,30 @@ input[type='range']::-moz-range-thumb {
   box-shadow: none;
 }
 
-button {
-  font: inherit;
-  font-size: var(--fs-body);
-  padding: var(--btn-pad-y) var(--btn-pad-x);
-  border-radius: var(--btn-radius);
-  border: 1px solid var(--c-border);
-  background: #fff;
-  color: var(--c-text);
-  cursor: pointer;
-  box-sizing: border-box;
-}
+/* In @layer base, damit Park @layer recipes gewinnen (unlayered button{} schlägt sonst Recipes). */
+@layer base {
+  /* Park/Ark-Parts ([data-scope]) und Park-Recipes (.button) nicht mit Vanilla-Chrome überschreiben */
+  button:not(.button):not([class*='button--']):not([data-scope]) {
+    font: inherit;
+    font-size: var(--fs-body);
+    padding: var(--btn-pad-y) var(--btn-pad-x);
+    border-radius: var(--btn-radius);
+    border: 1px solid var(--c-border);
+    background: #fff;
+    color: var(--c-text);
+    cursor: pointer;
+    box-sizing: border-box;
+  }
 
-button:hover {
-  border-color: #999;
-  background: #f3f3f3;
+  button:not(.button):not([class*='button--']):not([data-scope]):hover {
+    border-color: #999;
+    background: #f3f3f3;
+  }
+
+  button:not(.button):not([class*='button--']):not([data-scope]):disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
 }
 
 .hint {
@@ -2971,6 +3585,7 @@ button:hover {
   z-index: 40;
   left: 12px;
   bottom: 12px;
+  transition: bottom 0.22s ease;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -3193,11 +3808,6 @@ button:hover {
 
 .wall-rect:active {
   cursor: grabbing;
-}
-
-button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
 }
 
 .view-toggle {
@@ -5474,6 +6084,42 @@ html.ui-touch-chrome #viewport {
 
 html.ui-touch-chrome #scope-bar-slot {
   display: flex !important;
+}
+
+/* Park-Shell: Touch blendet Spalten und Bühnen-Chrome aus — nur Bibliothek + Undo/Redo. */
+html.ui-touch-chrome.park-shell [data-scope='splitter'][data-id='left'],
+html.ui-touch-chrome.park-shell [data-scope='splitter'][data-id='right'],
+html.ui-touch-chrome.park-shell [data-scope='splitter'][data-part='resize-trigger'] {
+  display: none !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  flex: 0 0 0 !important;
+}
+
+html.ui-touch-chrome.park-shell [data-scope='splitter'][data-id='main'] {
+  flex: 1 1 100% !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+html.ui-touch-chrome.park-shell [data-park-viewport-chrome],
+html.ui-touch-chrome.park-shell [data-park-chrome-extras],
+html.ui-touch-chrome.park-shell #view-compass,
+html.ui-touch-chrome.park-shell #nav-help-btn,
+html.ui-touch-chrome.park-shell #scope-bar-slot,
+html.ui-touch-chrome.park-shell #view-line-stroke-row,
+html.ui-touch-chrome.park-shell #wall-library-gizmos,
+html.ui-touch-chrome.park-shell #wall-resize-gizmos {
+  display: none !important;
+}
+
+html.ui-touch-chrome.park-shell #history-toolbar {
+  display: flex !important;
+  z-index: 40;
+}
+
+html.park-shell #library-edit-sheet {
+  display: none !important;
 }
 
 html.ui-touch-chrome #scope-propagate-offer {

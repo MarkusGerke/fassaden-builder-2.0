@@ -75,6 +75,10 @@ Richtung **links/rechts** folgt der **Blickrichtung** (Kamera): „links“ ist 
 
 Haken: Canvas 3D/2D (`pickFromEvent`), SVG (`FacadeSvgView` `contextmenu`), Layer-Zeilen, ⋯-Buttons (dieselbe Item-Liste).
 
+**Ebenen-Baum (v2.0.540):** Ein Haus — Park-Tree ohne Wurzel „Haus“ (Etagen/Inhalt direkt; Lichter bleiben eigene Sektion). Aktionen nur per **Rechtsklick** (Ark Context Menu), kein ⋯. Vanilla-`.layer-more-btn` bleibt für Harvest unsichtbar.
+
+**Ebenen-Baum (v2.0.527):** Park-Tree ohne Vanilla-⋯. Pro Zeile Ark `NavigationMenu` (`orientation="vertical"`): **⋯** oder **Rechtsklick** öffnet Löschen / Duplizieren / Ausblenden / … (dieselben Einträge wie `.layer-more-btn`). Vanilla-Menü wird nur intern ausgelöst, nicht eingeblendet.
+
 ---
 
 ## URL-Hash live (`src/utils/share.ts`)
@@ -267,7 +271,9 @@ Persistiert als `editScope` / `editFacadeYawFilter` in localStorage (`PersistedA
 
 ## Touch-Chrome (v2.0.451 / v2.0.456 / v2.0.457 / v2.0.458 / v2.0.459 / v2.0.469 / v2.0.470 / v2.0.471)
 
-Layout-Schalter: `html.ui-touch-chrome`, **nur** wenn **`(pointer: coarse)` ODER Viewport ≤ 900 px**. **Nicht** allein wegen Ansicht Fassade (`present`) auf großem Desktop — dort bleibt das klassische Layout (2D/3D/Fassade/Export, Himmel/Neutral, Licht, Ebenen, Kompass, Nav-Hilfe, Gültig für, rechte Inspector-Leiste).
+Layout-Schalter: `html.ui-touch-chrome`, **nur** wenn **`(pointer: coarse)` ODER Viewport ≤ 900 px**. **v2.0.533:** Park-Shell blendet dann linke und rechte Splitter-Spalte, Greifer und Bühnen-Chrome aus. Sichtbar: Bühne, **Rückgängig/Wiederholen**, untere Bibliothek. **Bearbeiten** → Drawer von unten (**v2.0.535:** Griff → Höhe 25 % / 50 % / 75 % / 100 %). **v2.0.542 / v2.0.543:** Backdrop nur transparent (Bühne hell, Sheet ziehbar). Touch-Bibliothek overlay unten; Teil-Auswahl (Gesims, Profile, …) schaltet den passenden Tab. Beim Öffnen fährt die Bibliothek nach unten raus und das Sheet von unten rein (0,22 s), beim Schließen umgekehrt. Ansicht im Sheet: **2D**, **Fassade**, **3D**. Sichtbarer Name **Schein** statt Bloom (Shader unverändert). Sheet zeigt nur die Sektionen der Kachel (`libraryEditFocusSections`).
+
+**Desktop Park-Shell (v2.0.539 / v2.0.540):** untere Bibliothek **nur bei Auswahl**. Slide-in als Overlay (`translateY` only, 280 ms) — die Bühne ändert die Höhe nicht, sonst blitzt der Canvas. Kompass (`#view-compass`) rückt bei Auswahl um die Dock-Höhe nach oben. Ohne Auswahl volle Bühne. Stage/Showcase und `ui-bottom-collapsed` blenden das Dock weiter aus. Splitter-Greifer sitzt im 8px-Trigger auf der jeweiligen Trennlinie (nicht Bildschirmmitte). Farbkategorien (Tab Farben): Optik `ToggleGroup` outline/sm, weiterhin **eine** Kategorie. App-Start: Park `Progress` indeterminate in `#app-loading-root`.
 
 | Verhalten | Details |
 |---|---|
@@ -285,7 +291,7 @@ Layout-Schalter: `html.ui-touch-chrome`, **nur** wenn **`(pointer: coarse)` ODER
 | Farben-Filter | Kategorie als horizontale **Filter-Chips** nur im Tab Farben — Idle ausgeblendet |
 | Wand-Geometrie | kein Place/DnD/Resize/Move/Innenwand/Erker-Platzieren (`wallGeomLockedByTouchChrome`); Styling (Farben, Paneele, Gesims, Öffnungen) bleibt |
 | 3D-Orbit (v2.0.469) | Ein-Finger-Ziehen orbitiert ohne Cmd/Ctrl (`shouldTouchChromeBeginOrbit3d` → `beginNav3d`). Tippen wählt weiter; Öffnung/Licht/Fallrohr bleiben ziehbar |
-| Bearbeiten | Nur Touch-Chrome: aktive Karte → **Bearbeiten**; Bottom-Sheet am `document.body` mit **Ziehgriff** und Rasten **100 / 75 / 50 / 25 %**. Öffnen: Inhalts-Default 25 oder 50 (nicht zuletzt 75) |
+| Bearbeiten | Touch: aktive Karte → **Bearbeiten** öffnet Ark **Drawer** von unten (`LiveShellApp`, Klasse `ui-library-edit-focus`). Vanilla `#library-edit-sheet` bleibt verdrahtet, in Park nicht sichtbar. Desktop: rechte Parameter |
 | Bibliothek-Cursor | Touch-Chrome: **kein** grab/grabbing, kein DnD (`draggable=false`); Tippen wendet an / Bearbeiten öffnet Sheet. Desktop: klassisches Ziehen bleibt |
 | Verdachung | Summary-Kacheln Form/Profil/Konsole → Galerie → Profil-Maße eine Ebene tiefer (im Sheet) |
 
@@ -575,9 +581,17 @@ Button `#ui-left-collapse` als **Fixed-Overlay** am linken Viewport-Rand (`grid-
 
 **v2.0.375 — Rechte Spalte:** analog `#ui-right-collapse` / `ui-right-collapsed` / `fassaden-builder-ui-right-collapsed`. Griff „›“ (einklappen) bzw. „‹“ (ausklappen) am rechten Rand. Beide Spalten können gleichzeitig eingeklappt sein. **v2.0.401:** Griff ist **Geschwister** von `#ui-right` (nicht Kind) — sonst clippt `overflow: hidden` / `pointer-events: none` der eingeklappten Spalte den Aufklapp-Button. Links eingeklappt: `#viewport-chrome` um ~1,5 rem nach rechts, damit der Ebenen-Griff „2D“ nicht überdeckt.
 
-### Inaktive Einstellungen ausblenden (v0.7.133)
+### Inaktive Einstellungen ausblenden (v0.7.133 / Park v2.0.528)
 
-Checkbox oder Aktion aus → zugehörige Felder, Hinweise und Vorschauen `hidden`, nicht nur disabled. Steuerndes Element bleibt. Beispiel: Keilstein-Ring aus → SVG-Vorschau, Anzahl, Bogenstärke, Schenkel weg (`#opening-arch-voussoir-opts`).
+Checkbox oder Aktion aus → zugehörige Felder, Hinweise und Vorschauen `hidden` / `ConditionalReveal`, nicht nur disabled. **Steuerndes Element bleibt sichtbar** (Park-Checkbox-Kasten auch im Aus-Zustand). Beispiel: Bloom aus → Schwelle/Stärke weg, Schalter „Bloom an“ bleibt; Keilstein-Ring aus → SVG-Vorschau weg.
+
+### Viewport-Chrome Menüs (v2.0.528)
+
+Oben links: Ark `Menu`-Dropdowns für **Ansicht** (2D/Fassade/3D/Export), **Darstellung**, **Präsentation**, **Umgebung**; Button **Licht** bleibt. Vanilla-IDs weiter gekoppelt.
+
+### Bibliothek-Dock (v2.0.528)
+
+Feste Höhe (`11.5rem`), **kein** Vertikal-Greifer. Links/rechts weiter Splitter. Horizontaler Scroll der Tabs/Kacheln über Ark `ScrollArea`.
 
 ### Info-Box unter Optionen (`.toolbar-infobox`, v2.0.285)
 
@@ -906,7 +920,7 @@ Swatch `transparent` (`TRANSPARENT_GLASS`) wird beim Hydrate zu `DEFAULT_GLASS_C
 - `FacadeState.buildings[]` + `activeBuildingId`; Legacy-Saves werden beim Laden in ein Gebäude „Haus 1“ migriert (`migrateToBuildings`).
 - Ebenen-Liste: **Lichter** (Szene, aufklappbar) → **Haus** → Segment **Ebenen | Fassadenschmuck** → (Ebenen:) **Dach** (aufgeklappt: Form, Rinne, **Gauben**, **Dachfenster**, v2.0.502) → **Geschosse** → Wände mit aufgeklappt **Fenster/Türen** und **Schrift** (wie Öffnungen wählbar) bzw. (Fassadenschmuck:) Toggles Alle / Paneele·Mauerwerk / Sockel / Gesimse / Zierbänder / Profile / **Fensterbänke·-bretter** / Schrift (`Building.facadeDecor`, nur Sichtbarkeit, Hydrate `normalizeFacadeDecor`). **v2.0.240:** Profile-Toggle blendet Rahmenprofile. **v2.0.244/245:** Sockel-Toggle aus → Paneele reichen bis zum Boden (kein braunes Wandband in der Sockelzone); Geometrie-Rebuild. Paneele-Toggle baut Laibung/Bank/Schatten-Tunnel an der Wandkante neu.
 - **Auswahl Sync (v2.0.192 / v2.0.477):** Klick in der Bühne (3D/2D) auf Wand, Öffnung, Treppe, Decke, **Dach**, Licht oder Haus markiert dieselbe Zeile links; Haus/Etage/Wand/Dach/Lichter-Gruppe werden bei Bedarf aufgeklappt, die Zeile gescrollt. Profile/Gesims/Sockel ohne eigene Zeile markieren die Parent-Wand bzw. -Öffnung. (Lichter schon seit v2.0.178.)
-- **Lichter:** Alle platzierten Punktlichter (`FacadeState.sceneLights`) als eigene Sektion oben im Ebenenbaum. Namen nach Art + Nummer (`Blaulicht 2`, `Laterne`, …). **Shift+Klick** Bereichsauswahl (v2.0.183); **Ctrl/Cmd+Klick** Mehrfachauswahl → Mehr-Menü **Gruppieren** (persistente `sceneLightGroups`). Gruppenzeile wählt alle Mitglieder; Mehr-Menü: ein-/ausblenden, umbenennen, auflösen. Pro Licht: Klick wählt (`selectedSceneLightId` / `selectedSceneLightIds`); ⋯ oder **Rechtsklick** (Mehrfachauswahl bleibt) → **Ein-/Ausblenden**, **Duplizieren**, **Entfernen** für alle Gewählten. Sektions-Mehr-Menü: **Punktlicht einfügen**, **Alle ein-/ausblenden**, **Alle löschen** — manuelles Alle ausblenden wird nicht sofort von „Lichter mit Sonne“ überschrieben (v2.0.183). Globaler Toggle auch unter Bibliothek → Licht und Szene → Licht. Ausgeschaltete Lichter gedimmt (`.layer-dimmed`). **v2.0.178 / v2.0.192:** Auswahl auf der Bühne markiert die passende Ebenen-Zeile und klappt die Lichter-Sektion auf.
+- **Lichter:** Alle platzierten Punktlichter (`FacadeState.sceneLights`) als eigene Sektion oben im Ebenenbaum. Namen nach Art + Nummer (`Blaulicht 2`, `Laterne`, …). **Shift+Klick** Bereichsauswahl (v2.0.183); **Ctrl/Cmd+Klick** Mehrfachauswahl → Mehr-Menü **Gruppieren** (persistente `sceneLightGroups`). Gruppenzeile wählt alle Mitglieder; Mehr-Menü: ein-/ausblenden, umbenennen, auflösen. Pro Licht: Klick wählt (`selectedSceneLightId` / `selectedSceneLightIds`); **⋯** oder **Rechtsklick** im Park-Tree (Navigation Menu, v2.0.527, Mehrfachauswahl bleibt) → **Ein-/Ausblenden**, **Duplizieren**, **Entfernen** für alle Gewählten. Sektions-Mehr-Menü: **Punktlicht einfügen**, **Alle ein-/ausblenden**, **Alle löschen** — manuelles Alle ausblenden wird nicht sofort von „Lichter mit Sonne“ überschrieben (v2.0.183). Globaler Toggle auch unter Bibliothek → Licht und Szene → Licht. Ausgeschaltete Lichter gedimmt (`.layer-dimmed`). **v2.0.178 / v2.0.192:** Auswahl auf der Bühne markiert die passende Ebenen-Zeile und klappt die Lichter-Sektion auf.
 - **Shift-Bereichsauswahl (v2.0.183):** Im Ebenenbaum wählt Shift+Klick alle sichtbaren Zeilen zwischen dem letzten Anker und der geklickten Zeile (Lichter, Wände, aufgeklappte Öffnungen, **Gauben/Dachfenster unter Dach**, v2.0.503). Ctrl/Cmd+Klick bleibt einzelnes Hinzufügen/Entfernen.
 - Zeilen-Labels: nur **Typ** (`Wand`, `Fenster`, `Tür`, `Treppe`, `Decke / Boden`, `Dach`, `Ziegel`, `Rinne`, `Gaube`, `Dachfenster`) + **Meta** (Breite in cm, bei Gaube Form; oder Stufenanzahl). Keine Himmelsrichtung, kein Fenstermodell-String, keine x/y-Position. **v2.0.140:** Wand-/Öffnungs-Maße in den Ebenen aktualisieren **live** beim Ziehen (`syncLiveLayerListMetrics`). **v2.0.502:** Gauben/Dachfenster unter Dach.
 - Haus-Zeile: Klick **aktiviert** das Haus und setzt `selectedBuildingId` (Grundriss-Umriss orange). Mehr-Menü: **Neues Haus**, **Nur weiße Wände** / **Fassade einblenden** (`Building.bareWalls`), Umbenennen, Ausblenden, **Duplizieren** (Ost/West/Nord/Süd), Löschen (mind. ein Haus). Bei `bareWalls` zeigt die Hauszeile „· nur Wände“; 3D/2D nur weiße Vollwände (keine Öffnungen/Mauerwerk/Profile/Dach/Decken), Projektdaten unverändert.

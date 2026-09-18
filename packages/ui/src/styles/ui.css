@@ -1,0 +1,39 @@
+@import "tailwindcss";
+@import "./tokens.css";
+
+@theme {
+  --color-fb-label: var(--c-label);
+  --color-fb-text: var(--c-text);
+  --color-fb-muted: var(--c-muted);
+  --color-fb-active: var(--c-active);
+  --color-fb-border: var(--c-border);
+  --color-fb-border-strong: var(--c-border-strong);
+  --color-fb-surface: var(--c-surface);
+  --color-fb-section: var(--c-section-head-bg);
+  --color-fb-danger: var(--c-danger);
+  --spacing-fb-1: var(--space-1);
+  --spacing-fb-2: var(--space-2);
+  --spacing-fb-3: var(--space-3);
+  --spacing-fb-4: var(--space-4);
+  --radius-fb-control: var(--radius-control);
+  --radius-fb-btn: var(--btn-radius);
+  --font-size-fb-tab: var(--fs-tab);
+  --font-size-fb-label: var(--fs-label);
+  --font-size-fb-body: var(--fs-body);
+  --font-size-fb-check: var(--fs-check);
+}
+
+/* Basis: Sandbox / Lib-Mount */
+.fb-ui {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--c-text);
+  font-size: var(--fs-body);
+  line-height: 1.35;
+  -webkit-font-smoothing: antialiased;
+}
+
+.fb-ui *,
+.fb-ui *::before,
+.fb-ui *::after {
+  box-sizing: border-box;
+}

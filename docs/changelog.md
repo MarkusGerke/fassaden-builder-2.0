@@ -2,6 +2,313 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Mobil: Sheet, Bibliothek, Gesims (2026-09-18) — v2.0.543
+
+**Sheet:** Transparenter Ark-`Backdrop` (`pointer-events: none`) — Griff/Snap wieder nutzbar, Bühne hell.
+
+**Bibliothek:** Touch-Dock `position: absolute` unten (Bühne springt bei Auswahl nicht). Kein festes 6,5-rem-Band; Kacheltext max. zwei Zeilen.
+
+**Tabs:** `primaryLibraryTabForSelection` — Gesims/Profile/Sockel … statt Auto-Farben.
+
+### Mobil: Bibliothek, Sheet, Ansicht (2026-09-18) — v2.0.542
+
+**Bibliothek:** Touch-Dock `padding-left` 0,75 rem und `padding-bottom` inkl. Safe Area. `#library-filter-row` im Park-Shell wieder im Fluss (`position: static`), kein reserviertes Band über den Kacheln. Tabs nur ohne Auswahl aus. Kachelzeile `height: auto`. Dock-`min-height` hält die Bühnenhöhe, wenn die Tabs kommen — kein Resize-Blitz.
+
+**Sheet:** `Drawer.Backdrop` entfernt. `html.ui-library-edit-focus` schiebt `.park-library-slide` mit `translateY(100%)` in 0,22 s; Ark-Drawer kommt von unten. Snap ändert die Höhe nicht per `resize`.
+
+**Ansicht:** `#scene-view-mode-front` (2D) neben Fassade und 3D. Start bleibt Fassade.
+
+**Schein:** sichtbare Texte (Kachel, Tab, Sektion). IDs `sceneBloom` / `bloom-enabled` und der Shader bleiben.
+
+**Bearbeiten:** Szene-Kachel → nur `#scene-toolbar-panels` (FormMirror, `library-edit-filtered-out` aus). Objekt → nur Auswahl-Toolbar. Nicht mehr beide Leisten gleichzeitig.
+
+### Menü, Bibliothek, Mobil (2026-09-18) — v2.0.541
+
+**Rechtsklick:** Unterpunkte als Ark-Nested-Menü (`TriggerItem`), keine `ItemGroupLabel`.
+
+**Bibliothek:** Kacheln fest 6,5 rem; Dock ohne Padding. „Alle Lichter an“ / „Lichtpunkte anzeigen“ nicht mehr in der Kachelzeile (bleiben in der Szene-Leiste).
+
+**Ebenen:** Etagen und Lichter starten zugeklappt. Zeilentext `textStyle sm` wie Ark Tree View.
+
+**Kompass:** dieselbe 0,22 s wie das Bibliothek-Slide.
+
+**Mobil:** Ladebalken schon im HTML (bevor Park-JS). Start immer Fassade. Ohne Auswahl keine Tabs, nur Ansicht-Kacheln. Klick ohne Treffer hebt die ganze Auswahl auf.
+
+### Greifer, Ebenen, Kompass (2026-09-18) — v2.0.540
+
+**Greifer:** Pill war `left/top: 50%` relativ zum ganzen Splitter (Bildschirmmitte). Jetzt relativ im 8px-Trigger (`position: relative`, Flex-Zentrierung). Linie bleibt am Trigger-`::after`.
+
+**Ebenen:** Ein Haus — Park-Tree ohne Wurzel „Haus“ (`scanLayerList` hebt Kinder). Lichter-Sektion bleibt. ⋯ entfernt; nur Ark `ContextTrigger`. `.layer-more-btn` unsichtbar, Harvest per Klick bleibt.
+
+**Kompass:** Bei Desktop-Auswahl `bottom` um Dock-Höhe, damit er nicht unter dem Bibliothek-Overlay liegt.
+
+### Greifer zentriert, Bibliothek ohne Blitz (2026-09-18) — v2.0.539
+
+**Symptom:** Splitter-Pill sitzt neben der Trennlinie. Beim Ein-/Ausblenden der Bibliothek blitzt die Bühne.
+
+**Ursache:** Indicator im Flex-Fluss, Linie per `::after` bei 50 %. Slide animierte `max-height` + Opacity und feuerte danach `resize` — Canvas-Clear.
+
+**Fix:** Indicator `position: absolute` + `translate(-50%, -50%)` (Recipe + Park-CSS), Trigger ohne Padding. Desktop-Dock als Overlay, nur `translateY`, kein Resize.
+
+### Bibliothek Slide-in, Splitter, Filter, Loader (2026-09-18) — v2.0.538
+
+**Nutzerwunsch:** Desktop-Bibliothek erst bei Auswahl (reinsliden); Splitter-Greifer sichtbar; Bibliothek nicht gequetscht; Farbkategorien wie Sandbox ToggleGroup outline (eine aktiv); Loader wie Sandbox „Laden“.
+
+**Ursache Bibliothek:** Park-Dock `11.5rem` plus Vanilla-`#library-dock` noch im Viewport (Tabs ohne Kacheln, Doppelhöhe).
+
+**Fix:** `showLibrary` = Touch oder Auswahl; CSS `max-height`/`translateY` am `.park-library-slide`, `transitionend` → Resize. Dock-Höhe Tabs+Filterband+6,5 rem. `#viewport > #library-dock` in `html.park-shell` ausgeblendet (IDs bleiben). Splitter: `RootProvider` (kein zweites `Root` — das startet eine Machine ohne `panels` und leert die Shell) + Indicator-Fallback-CSS. Filter: `paintLibraryFilterChips` (outline/sm). Overlay: `AppLoadingIsland` (`Progress` indeterminate) früh gemountet; `dismissAppLoading` unverändert.
+
+Docs: [ux.md](ux.md), [ui-component-library.md](ui-component-library.md), [agent-smoke-check.md](agent-smoke-check.md).
+
+### Bibliothek Scrollbars, Mobil-Padding, Splitter-Greifer (2026-09-18) — v2.0.537
+
+**Nutzerwunsch:** Keine Scrollleisten; mobil Tabs/Kacheln randlos; Kacheln wie UI-Sandbox; Splitter-Greifer wie [Ark Splitter](https://ark-ui.com/docs/components/splitter).
+
+**Fix:** ScrollArea-Frames ohne Scrollbar-Slots; Bibliothek horizontal per Overflow + versteckte native Bars. Touch: `padding-inline: 0` am Dock. Park-CSS + Tile-Recipe (`white`) für Vanilla-Karten. Greifer: leerer `ResizeTriggerIndicator`, Linie + weißer Pill (Recipe).
+
+Docs: [ui-component-library.md](ui-component-library.md), [ux.md](ux.md).
+
+### Drawer-Panel transparent (2026-09-18) — v2.0.536
+
+**Symptom:** Bottom-Sheet wirkte „ohne Hintergrund“ — Bühne schien durch den Inhalt.
+
+**Ursache (Runtime):** Backdrop ok (`rgba(0,0,0,0.45)`); `drawer__content` hatte `background: transparent` — Recipe nutzte `bg.default`, Token existiert im Panda-Theme nicht.
+
+**Fix:** `drawer` content `background: white` + CSS-Fallback. Nicht `bg.default` in Recipes ohne Token.
+
+Docs: [ui-component-library.md](ui-component-library.md).
+
+### Drawer Snap-Points, Backdrop, Linear-Progress (2026-09-18) — v2.0.535
+
+**Nutzerwunsch:** Bottom-Sheet mit dimmbarem Hintergrund; Höhe per Griff (nicht nur zu/zu); überall Linear-Progress beim Laden.
+
+**Fix:** Park-`Drawer` mit `snapPoints` 1 / 0,75 / 0,5 / 0,25 (Session-Key wie Vanilla). Nur Grabber zieht (`draggable={false}` am Content). Backdrop-Recipe + CSS-Fallback. `LinearIndeterminate` (Ark Progress) in Loader, Toast, App-Start, Licht-Modus-Overlay.
+
+Docs: [ux.md](ux.md), [ui-component-library.md](ui-component-library.md).
+
+### ScrollArea-Crash, leere App (2026-09-18) — v2.0.534
+
+**Symptom:** Seite lädt nicht korrekt / Solid-UI weg. Vite: `useScrollAreaScrollbarContext returned undefined`.
+
+**Versuche (verworfen):** Nur `ScrollbarWithThumb` mit den Park-`withContext`-Wrappern (`Scrollbar` + `Thumb`) — Thumb landet trotzdem außerhalb von `ScrollAreaScrollbarProvider`, weil Panda `styled()`/`Dynamic` die Kinder nicht zuverlässig an Ark `Scrollbar` durchreicht.
+
+**Lösung:** `ScrollbarWithThumb` nutzt **ungestyltes** `@ark-ui/solid` `Scrollbar` → Kind `Thumb`, Klassen nur per Recipe-String. Nicht rückgängig: kein `defaultProps` auf Thumb, keine gestylten Scrollbar/Thumb-Wrapper nesten.
+
+**Agent:** Nach Park/Bridge-Änderungen Smoke-Check (`docs/agent-smoke-check.md`, Rule `agent-smoke-check.mdc`).
+
+Docs: [ui-component-library.md](ui-component-library.md), [agent-smoke-check.md](agent-smoke-check.md).
+
+### Mobil: Bibliothek + Drawer (2026-09-18) — v2.0.533
+
+**Symptom:** Nach Park-Shell blieben links/rechts und Bühnen-Chrome auf schmalem Viewport sichtbar. Das alte Bottom-Sheet traf die Vanilla-IDs, nicht die Splitter-Panels.
+
+**Soll:** Touch/≤900px: keine linke/rechte Spalte, auf der Bühne nur Rückgängig/Wiederholen, Bibliothek bleibt. **Bearbeiten** öffnet Ark Drawer von unten.
+
+**Fix:** `html.ui-touch-chrome.park-shell` blendet Splitter-Seiten, Greifer und Viewport-Chrome aus (`#history-toolbar` bleibt). `LiveShellApp` hält die Bibliothek offen und zeigt Auswahl/Szene im `Drawer` (`placement="bottom"`), gesteuert über `ui-library-edit-focus`. Vanilla `#library-edit-sheet` bleibt im DOM, in Park visuell aus.
+
+Docs: [ux.md](ux.md), [ui-component-library.md](ui-component-library.md).
+
+### Linke Leiste & leere Akkordeons (2026-09-18) — v2.0.532
+
+**Nutzerwunsch:** Datei neben Titel; Ebenen ohne Card/Titel; Segment Ebenen|Fassadenschmuck weg; leere rechte Akkordeons ausblenden.
+
+**Fix:**
+- `LeftChromeApp`: Titelzeile mit `FileMenuIsland`; Tree ohne `Card`.
+- `LayersTreeApp` / `main.ts`: kein Mode-Segment; Schmuck-Toggles + Geschosse immer gemeinsam (Vanilla-Toggle `hidden`, bleibt im DOM).
+- `FormMirror.scanSections`: Sektionen ohne sichtbare Controls nicht spiegeln.
+
+Docs: [ui-component-library.md](ui-component-library.md), [ux.md](ux.md).
+
+### Akkordeon / Bibliothek-Tabs / Ebenen-Menüs (2026-09-18) — v2.0.531
+
+**Symptom:** Maße ließ sich nicht schließen; andere Sektionen (Zierbänder, Fassade, …) öffneten nicht. Ebenen-⋯-Menüs in der Card abgeschnitten. Bibliothek-Register als SegmentGroup.
+
+**Ursache:** FormMirror setzte `defaultValue` bei jedem MutationObserver-Tick neu → Accordion-Zustand sprang zurück. NavigationMenu-Viewport lag in `Card` mit `overflow: hidden`.
+
+**Fix:** Accordion controlled (`value`/`onValueChange`), Reset nur bei neuem Sektions-Set. Bibliothek → Ark `Tabs` (line). Ebenen-Aktionen → Ark `Menu` + `Portal`. Viewport-Chrome/`ChromeExtras`: `variant="surface"` + `bg="white"`. Library-Tiles: Recipe auf Vanilla-Karten (DnD), kein doppeltes ToggleGroup-Root.
+
+Docs: [ui-component-library.md](ui-component-library.md).
+
+### Maße-Felder / FormMirror-Clip (2026-09-18) — v2.0.530
+
+**Symptom:** In der rechten Auswahl-Leiste (Maße) nur Stepper-Pfeile ohne Wert; Checkboxen links abgeschnitten; Selects/Toggles wirkten kaputt (volle Breite, leere Kästen).
+
+**Ursache:**
+1. `BoundNumberField` ohne `NumberInput.Input` → nur absolute Stepper-Pfeile.
+2. `html.park-shell [data-scope='checkbox'] { width: fit-content !important }` traf auch `[data-part=control]` (gleicher Scope) → Box ~2 px.
+3. Accordion-`itemContent` `overflow:hidden` + `border-radius` ohne Body-Padding; `ItemBody` hat kein `data-part` (nur Klasse `.accordion__itemBody`).
+4. FormMirror spiegelte Vanilla-Stepper (±) und Scope-Toggles als volle Stretch-Buttons.
+
+**Fix:** Input+Stepper; Checkbox-CSS nur Root + feste Control-Größe/Hintergrund; `.accordion__itemBody` Padding; Stepper-Buttons überspringen; Scope-Toggles als `toggleRow`/`HStack`.
+
+**Nicht rückgängig:** `overflow-x: visible` am Accordion-Content hilft nicht (CSS: wird zu `auto`, wenn `overflow-y` hidden ist).
+
+Docs: [ui-component-library.md](ui-component-library.md).
+
+### Chrome-Menüs, feste Bibliothek, ScrollArea (2026-09-18) — v2.0.528
+
+**Nutzerwunsch:** Viewport-SegmentGroups → Ark Menu; Bibliothek fix ohne Dock-Greifer; Scrollbars wie Ark Scroll Area; Checkbox-Steuerung sichtbar, abhängige Felder bei aus weiterhin ausgeblendet.
+
+**Fix:** `ViewportChromeApp` mit Menu-Dropdowns (wie Datei-Menü). Live-Shell ohne vertikalen Stage|Dock-Splitter — Dock `11.5rem` fest. Park `ScrollArea` (+ Recipe) für links/rechts/Bibliothek-Scroll. Checkbox-Recipe: `solid.control` war fehlerhaft verschachtelt → Kasten unsichtbar wenn aus.
+
+Docs: [ui-component-library.md](ui-component-library.md), [ux.md](ux.md).
+
+### Splitter-Greifer, Bibliothek-Park, Ebenen-Navigation (2026-09-18) — v2.0.527
+
+**Symptom:** Splitter ohne sichtbare Greifer, linke/rechte Spalte nicht greifbar. Bibliothek-Register/Kacheln nicht wie Sandbox SegmentGroup/ToggleGroup. Ebenen-Rechtsklick/⋯ nach Tree-View weg.
+
+**Versuche (verworfen):** Kacheln nur per Vanilla-CSS „wie Tiles“ nachbauen (Recipe-Klassen verloren gegen `@layer base button`). Greifer `1px` + `display:none` am Indicator (Ark-Doku hat `ResizeTriggerIndicator`).
+
+**Ursache:** Vanilla `button:not(.button)` stylte alle Ark-Parts (Splitter-Trigger, SegmentGroup-Items, Toggle-Kacheln) mit Padding/Border. Tree-View zeigte `.layer-more-btn` nicht.
+
+**Fix:** `button:not([data-scope])` lässt Park-Anatomie in Ruhe. Splitter-Trigger 8px + sichtbarer Indicator/Grip. Bibliothek: SegmentGroup `sm` + ToggleGroup-`tile`-Recipe auf `#opening-library-items`. Ebenen: Ark `NavigationMenu` `orientation="vertical"` (⋯ + Rechtsklick), Aktionen via Vanilla-⋯ (ohne sichtbares OS-Menü, Klasse `fb-harvest-menu`).
+
+**Freeze (nachgeliefert):** MutationObserver auf Bibliothek-`class` + `paintLibraryTiles` bzw. Tree-Sync `setExpandedValue` → Vanilla-Expand-Klick → DOM-Mutation → Endlosschleife. Guard: nur mutieren wenn nötig, `syncingFromDom` ohne Click-Through, Debounce.
+
+**ScrollArea-Crash (v2.0.528):** `Scrollbar` mit `defaultProps: { children: <Thumb /> }` rendert Thumb außerhalb des Scrollbar-Providers → `useScrollAreaScrollbarContext` undefined → UI weg. Fix: Thumb explizit als Kind (`ScrollbarWithThumb`).
+
+**Nicht rückgängig:** Vanilla-IDs (`#opening-library-items`, `#layer-list`, `.layer-more-btn`) bleiben Click-Through.
+
+Docs: [ui-component-library.md](ui-component-library.md), [ux.md](ux.md).
+
+### Park Splitter-Shell (2026-09-18) — v2.0.526
+
+**Symptom:** Zwei UI-Welten (Park-Inseln auf Vanilla-CSS-Grid). Optik wirkte beschädigt (Label-/Button-Overrides). Neues Ark wie Splitter war nicht einbaubar.
+
+**Versuch (verworfen):** Weiter Park in Grid-Zellen + Isolation-CSS (`park-hard-cutover`, `button:not(.button)` als Dauerzustand) — erzeugt immer neue Überschreibungen.
+
+**Fix:** Eine sichtbare Shell: Ark `Splitter` in `#park-live-shell` (links | Bühne/Dock | rechts). `#viewport` wird in die Bühnen-Panel gehängt; `#ui` / `#ui-right` / Collapse-Buttons / Bibliothek-Host sind `.vanilla-legacy-park` (IDs bleiben, kein Layout). Klasse `park-shell` statt Grid-Cutover.
+
+**Fallstricke:** Canvas-Größe hängt an `#viewport-stage` (ResizeObserver) — nach Splitter-Drag `resize` dispatchen. Collapse bleibt an Vanilla-Buttons + localStorage gekoppelt, Splitter folgt der `#app`-Klasse. FormMirror/Tree scannen weiter Vanilla-DOM, liegen aber nicht mehr unter `#ui-right` (kein Label-Leak).
+
+Docs: [ui-component-library.md](ui-component-library.md).
+
+### Ebenen Ark Tree View (2026-09-18) — v2.0.525
+
+**Grill:** 1A TreeView sichtbar + Vanilla-Click-Through; 2A SegmentGroup Ebenen|Fassadenschmuck; 3A Label links + Meta rechts.
+
+**Fix:** Park `TreeView` (+ Recipe) in linker Card; `LayersTreeApp` scannt `#layer-list` (MutationObserver), Klicks/Expand → Vanilla-Buttons; `#layer-list` bleibt `.vanilla-legacy-park` (nicht mehr in die Card gehängt).
+
+**Fallstricke:** Collapse-State kommt aus Vanilla-DOM (`▸`/`▾`); leere `children: []` = Branch (eingeklappt). Mehr-Menü (⋯) noch nicht im Tree — Rechtsklick/Vanilla später.
+
+Docs: [ui-component-library.md](ui-component-library.md).
+
+### Park-Optik-Fixes (2026-09-18) — v2.0.524
+
+**Symptom:** Checkbox-Titel rechtsbündig; Bibliothek nicht wie Sandbox (Tabs/Kacheln/Hintergrund); Button-/Dropdown-Radii anders; Vorlagengröße ohne Dropdown (war SegmentGroup bei ≤4 Optionen).
+
+**Ursache:** Vanilla `#ui-right label { justify-content: space-between }` traf Park-Labels; `@layer base button` setzte `--btn-radius` auch auf Park-`.button`; Library nutzte Tabs statt SegmentGroup; FormMirror mapte kurze Selects auf SegmentGroup.
+
+**Fix:** Park-Surface-CSS-Isolation; `button:not(.button)`; Library = SegmentGroup + Tile-CSS; Selects immer Park-Dropdown.
+
+Docs: [ui-component-library.md](ui-component-library.md).
+
+### Hard-Cutover Bibliothek + Auswahl (2026-09-18) — v2.0.523
+
+**Grill:** Dock+Selection parallel; Park sichtbar / Vanilla hidden; alle `#toolbar-*` via FormMirror; Library-Tabs scrollbar; Tiles im Park-Slot; Scope/Collapse/Stroke Park; Sheet = dieselbe Selection-Surface; DoD = kein sichtbares `.preset-btn` außerhalb Legacy + Sandbox-Checkliste.
+
+**Fix:** `#park-live-library`, `#park-live-selection`, `#park-live-chrome-extras`; `FormMirror` scannt Vanilla-Sections; Surface-Busse `fb:selection-toolbar-sync` / `fb:library-dock-sync` / `fb:chrome-extras-sync`.
+
+**Noch offen (geplant):** Export/Plan; Domain-Dialoge; Tree Mehr-Menü.
+
+Docs: [ui-component-library.md](ui-component-library.md).
+
+### Hard-Cutover Park Live-Shell (2026-09-18) — v2.0.522
+
+**Symptom:** Nutzer: gesamtes UI soll Ark/Park wie Sandbox sein — Insel-Ansatz (~1 % Ark) unzureichend.
+
+**Fix:** `#park-live-left` / `#park-live-viewport` / `#park-live-scene` mit Solid Live-Shell; Vanilla-Chrome unter `.vanilla-legacy-park` (IDs bleiben). Szene-Leiste komplett Park-Accordion (Sonne, Lampen, Bloom, Animation, Szene, Debug). Objekt-Toolbars noch Vanilla.
+
+**Nicht rückgängig:** Hard-Cutover-Klasse `park-hard-cutover`; Vanilla nicht wieder sichtbar machen ohne neuen Auftrag.
+
+Docs: [ui-component-library.md](ui-component-library.md).
+
+### Licht & Schatten Park-Slider (2026-09-18) — v2.0.521
+
+**Symptom:** `#scene-toolbar-panels` war 0 % Ark (`arkNodeCount: 0`, nur Vanilla range/checkbox).
+
+**Fix:** Sonne/Schatten/Farbtemperatur als Park `Slider` + `FieldRow` in `#ui-island-scene-sun`; Legacy-Ranges unter `#scene-sun-legacy-ranges` hidden, IDs + `input`-Events bleiben.
+
+Docs: [ui-component-library.md](ui-component-library.md).
+
+### Sichtbare Park-Chrome (2026-09-18) — v2.0.520
+
+**Symptom:** Nutzer sah „keine Veränderung“ — Live-App blieb Vanilla trotz Bridge.
+
+**Runtime:** `hasParkMenu: false`, `hasParkSegment: false`, nur `#ui-island-release`.
+
+**Fix:** Park `Menu` (Datei) + `SegmentGroup` (2D/Fassade/3D/Export) gemountet; Vanilla `details.file-menu` / Ansicht-Toggle `hidden`, IDs bleiben für Listener.
+
+Docs: [ui-component-library.md](ui-component-library.md).
+
+### Release-Notes-Dialog Park-Anatomie (2026-09-18) — v2.0.519
+
+**Symptom:** Live-Insel wirkte „grauenhaft“ vs. Sandbox; Quellen-Link als weiße Button-Box.
+
+**Ursache (Logs):** Unstyled `Dialog.ActionTrigger` ohne `.button` → Vanilla-Button-Chrome; `button:not(...)` hatte höhere Spezifität als `.app-credits-btn`; Content ohne Header/Body → `padding: 24px 0`.
+
+**Fix:** Vanilla-`button` in `@layer base`; ActionTrigger = Park `Button`; Insel mit `Dialog.Header`/`Body`/`Footer`.
+
+Docs: [ui-component-library.md](ui-component-library.md).
+
+### Park-Insel Styles (2026-09-18) — v2.0.518
+
+**Symptom:** Live-App wirkte nach Bridge unverändert; Park-Dialog ohne Rundungen.
+
+**Ursache:** (1) Nur der Versions-Badge war umgestellt — Rest absichtlich Vanilla. (2) Park-Recipes nutzen `radii.l1/l2/l3`, Tokens fehlten. (3) Unlayered `button {}` in `style.css` schlägt Panda `@layer recipes`.
+
+**Fix:** Radii-Tokens; Vanilla-Button-Selektoren schließen `.button` / `[data-scope]` aus.
+
+Docs: [ui-component-library.md](ui-component-library.md).
+
+### UI-Bridge: Release-Notes-Insel (2026-09-18) — v2.0.517
+
+**Erste Live-Insel:** Version-Badge + Release-Notes als Solid/Park (`mountReleaseNotesIsland`). View-Model `ReleaseNotesModel` ohne Domain-Typen; Adapter in `src/ui/releaseNotes.ts`. Vanilla `#app-version-btn` / `#release-notes-dialog` bleiben `hidden` im DOM (`keine-ui-loeschen`). Host: `#ui-island-release`.
+
+Docs: [ui-component-library.md](ui-component-library.md).
+
+### ColorPicker + Menu-Trigger (2026-09-18) — v2.0.516
+
+**Symptom:** ColorPicker nur Hex-Input ohne Swatch/Popover; Menu-Trigger volle Stack-Breite.
+
+**Fix:** ColorPicker-Recipe um `channelInput`/`trigger`/`eyeDropperTrigger` ergänzt; Sandbox-Anatomie wie [Ark Color Picker](https://ark-ui.com/docs/components/color-picker) (Control + Portal Content mit Area/Hue/Pipette/SwatchGroup). Menu-/Dialog-/Popover-Trigger via `asChild` + `Button`; Trigger-Recipe `width: fit-content`.
+
+Docs: [ui-component-library.md](ui-component-library.md).
+
+### Park-only Sandbox / Grill-Cutover-Spez (2026-09-18) — v2.0.515
+
+Entscheidungen (Grill): Sandbox = Cutover-Spez; Recipes erweiterbar; Alt-Composites/`primitives` entfernt. `NumberInput`, `SegmentGroup`/`ToggleGroup` (+ Item-/`tile`-Recipe), dünner `FieldRow`, `ConditionalReveal`. Mapping Datei→Menu, Summary→Card, Farben→SwatchGroup.
+
+Docs: [ui-component-library.md](ui-component-library.md).
+
+### Sandbox: alle App-UI-Muster (2026-09-18) — v2.0.514
+
+Sandbox-Tabs decken die Live-App-Controls ab: Chrome (Segment/Toggle/Icon/Action), Formulare (Input/Number/Select/Combobox/Date/Time/File/Tags/Radio/Checkbox/Switch), Slider & ColorPicker, Chips/Kacheln/Card, FieldRow/SettingsSection/Stepper, Tabs/Accordion/Collapsible, Dialog/Menu/Popover/Tooltip/HoverCard, Alert/Badge/Spinner/Progress/Clipboard/Toast. Park-Komponenten erweitert (slider, radio-group, accordion, …).
+
+Docs: [ui-component-library.md](ui-component-library.md).
+
+### Park UI in der Sandbox (2026-09-18) — v2.0.513
+
+**Entscheidung:** Optik wie Ark-/Park-Doku → Park UI (Panda) statt nur headless Ark + eigene Tokens.
+
+**Umsetzung:** `npx @park-ui/cli add` (Theme `__init`/blue/slate + Button, Select, Dialog, …), Panda `jsxFramework: solid`, Sandbox auf Park-Komponenten umgestellt. Slot-Recipes-Index manuell korrigiert.
+
+Docs: [ui-component-library.md](ui-component-library.md).
+
+### UI-Sandbox Beispiele (2026-09-18) — v2.0.512
+
+Sandbox-Galerie mit Tabs (Toolbar, Buttons, Felder, Select/Menü, Bibliothek, Overlays). Neue Primitives/Composites: `UiSelect`, `UiMenu`, `UiTile` / `UiTileGrid`.
+
+Docs: [ui-component-library.md](ui-component-library.md).
+
+### UI-Lib Ark + Solid (2026-09-18) — v2.0.511
+
+**Ziel:** Wiederverwendbare Komponentenbibliothek mit Ark UI (kein Park), Solid (Performance), Tailwind + Tokens aus dem bestehenden UI-Kit.
+
+**Umsetzung:** `packages/ui` (`@fassaden/ui`), Primitives (Button, Checkbox, Dialog, Tabs) + Composites (FieldRow, NumberStepper, SettingsSection, ChipGroup, ConditionalReveal). Dev-Sandbox: `ui-sandbox.html` / `npm run dev:ui`. Live-Chrome (`index.html`, Toolbar-Wiring) unverändert.
+
+Docs: [ui-component-library.md](ui-component-library.md), [ui-kit.md](ui-kit.md).
+
 ### Giebel bis Dachhaut (2026-09-18) — v2.0.510
 
 **Symptom:** Giebelansicht: Dach sitzt als Stufe auf dem Dreieck (dunkle Kante), dünne Linie ragt über die Giebelwand. Unverändert über mehrere Iterationen.

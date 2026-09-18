@@ -22,6 +22,8 @@
 | [camera.md](camera.md) | 3D-Kamera, Orbit-Ziel, ⌘/Ctrl-Gesten, Geschwindigkeiten |
 | [ux.md](ux.md) | Bedienung: Navigation, Kontextmenü, Farben, Scope; **rechte Einstellungs-Tabs** (Übersicht → Maße → Farben → Formen → Dekor oben→unten) |
 | [ui-kit.md](ui-kit.md) | Design-Tokens, UI-Primitives (`.ui-*`), Stepper, Abstände 4/8/16, Teilüberschriften |
+| [ui-component-library.md](ui-component-library.md) | **@fassaden/ui**: Park-Sandbox, Bridge-Inseln (Release Notes), Cutover |
+| [agent-smoke-check.md](agent-smoke-check.md) | Pflicht-Check nach Park/Bridge-Änderungen (Laden, ScrollArea-Crash, Shell-DOM) |
 | [wall-decor.md](wall-decor.md) | Gesims, Sockel, Zierbänder |
 | [opening-features.md](opening-features.md) | Bogen, Nischen/Konche, Freiraum, Paneel-Laibung, Bänke, Verdachung, Treppe, Kellerfenster |
 | [windows-doors.md](windows-doors.md) | Fenster/Türen: Ist-Bestand Gründerzeit-Teilung, Individualisierung, Altbau-Roadmap |

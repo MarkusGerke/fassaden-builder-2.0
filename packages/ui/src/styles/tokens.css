@@ -1,0 +1,54 @@
+/**
+ * Fassaden UI — Design-Tokens (Parität zu docs/ui-kit.md / src/style.css).
+ * Kein Look-Redesign: dieselben Werte wie die bestehende App-Chrome.
+ */
+:root {
+  /* Typografie */
+  --fs-tab: 0.68rem;
+  --fs-label: 0.72rem;
+  --fs-body: 0.78rem;
+  --fs-check: 0.8rem;
+  --fw-label: 600;
+  --fw-head: 700;
+
+  /* Farbe */
+  --c-label: #666;
+  --c-text: #333;
+  --c-muted: #888;
+  --c-active: #333;
+  --c-section-head-bg: #e4e4e4;
+  --c-border: #ccc;
+  --c-border-strong: #c8c8c8;
+  --c-surface: #fff;
+  --c-overlay: rgb(0 0 0 / 0.4);
+  --c-danger: #b42318;
+  --c-focus-ring: #333;
+
+  /* Abstände 4 / 8 / 16 / 32 */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 16px;
+  --space-4: 32px;
+
+  /* Controls */
+  --radius-control: 0.4rem;
+  --control-h: 1.75rem;
+  --input-narrow: 5ch;
+  --btn-pad-x: var(--space-2);
+  --btn-pad-y: 0.3rem;
+  --btn-radius: 0.45rem;
+
+  /* Tailwind v4 Theme-Bridge */
+  --color-label: var(--c-label);
+  --color-text: var(--c-text);
+  --color-muted: var(--c-muted);
+  --color-active: var(--c-active);
+  --color-border: var(--c-border);
+  --color-surface: var(--c-surface);
+  --spacing-1: var(--space-1);
+  --spacing-2: var(--space-2);
+  --spacing-3: var(--space-3);
+  --spacing-4: var(--space-4);
+  --radius-btn: var(--btn-radius);
+  --radius-control-token: var(--radius-control);
+}

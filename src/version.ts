@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.510'
+export const APP_VERSION = '2.0.543'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,315 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.543',
+    date: '2026-09-18',
+    title: 'Mobil: Sheet, Bibliothek, Gesims',
+    changes: [
+      'Bottom-Sheet wieder per Griff ziehbar (transparenter Backdrop, kein Abdunkeln)',
+      'Touch-Bibliothek als Overlay ohne Leerraum unter Szene-Kacheln; Kacheln max. zwei Zeilen hoch',
+      'Kein Bühnen-Blitz bei Auswahl: Dock nicht mehr im Flex-Layout',
+      'Gesims, Profile, Sockel … öffnen den passenden Bibliothek-Tab statt immer Farben',
+    ],
+  },
+  {
+    version: '2.0.542',
+    date: '2026-09-18',
+    title: 'Mobil: Bibliothek, Sheet, Ansicht',
+    changes: [
+      'Touch-Bibliothek mit Abstand links und unten; Farbfilter im Fluss, Tabs bei Auswahl, Kacheln nicht abgeschnitten',
+      'Bearbeiten-Sheet ohne Abdunklung; Bibliothek fährt raus, Sheet von unten rein',
+      'Ansicht: 2D, Fassade und 3D; Bloom heißt Schein',
+      'Sheet zeigt nur die Sektionen der gewählten Kachel, nicht immer dieselbe Leiste',
+    ],
+  },
+  {
+    version: '2.0.541',
+    date: '2026-09-18',
+    title: 'Menü, Bibliothek, Mobil',
+    changes: [
+      'Rechtsklick-Menü verschachtelt Untermenüs statt Trennüberschriften',
+      'Bibliothek-Kacheln gleich breit, ohne Padding; Licht-Schalter nicht mehr in der Kachelzeile',
+      'Ebenen starten zugeklappt; Schrift wie Ark Tree View',
+      'Kompass bewegt sich im gleichen Takt wie die Bibliothek',
+      'Mobil: Ladebalken sofort, Start in Fassade, Tabs bei Auswahl, Klick ins Leere hebt die Auswahl auf',
+    ],
+  },
+  {
+    version: '2.0.540',
+    date: '2026-09-18',
+    title: 'Greifer, Ebenen, Kompass',
+    changes: [
+      'Splitter-Greifer sitzt auf der Trennlinie links und rechts, nicht in der Bildschirmmitte',
+      'Ebenen ohne Hauptgruppe Haus; Aktionen nur per Rechtsklick',
+      'Kompass rückt über die Bibliothek, wenn etwas ausgewählt ist',
+    ],
+  },
+  {
+    version: '2.0.539',
+    date: '2026-09-18',
+    title: 'Greifer zentriert, Bibliothek ohne Blitz',
+    changes: [
+      'Splitter-Greifer sitzt mittig auf der Trennlinie',
+      'Bibliothek blendet als Overlay ein — die Bühne blitzt nicht mehr',
+    ],
+  },
+  {
+    version: '2.0.538',
+    date: '2026-09-18',
+    title: 'Bibliothek Slide-in, Splitter, Filter, Loader',
+    changes: [
+      'Desktop: untere Bibliothek nur bei Auswahl, Slide-in von unten',
+      'Bibliothek-Höhe für Tabs, Filterband und Kacheln; Vanilla-Dock im Viewport ausgeblendet',
+      'Splitter-Greifer (Ark Root + Indicator) wieder sichtbar',
+      'Farbkategorien wie ToggleGroup outline (eine Kategorie)',
+      'App-Start: Park Progress „Studio wird geladen …“',
+    ],
+  },
+  {
+    version: '2.0.537',
+    date: '2026-09-18',
+    title: 'Bibliothek & Splitter-Chrome',
+    changes: [
+      'Keine sichtbaren Scrollleisten in der Park-UI',
+      'Mobil: Bibliothek-Tabs und Kacheln ohne seitliches Padding',
+      'Kacheln wie Sandbox (Tile-Recipe); Splitter-Greifer wie Ark (ohne Icon)',
+    ],
+  },
+  {
+    version: '2.0.536',
+    date: '2026-09-18',
+    title: 'Drawer: weiße Sheet-Fläche',
+    changes: [
+      'Bearbeiten-Drawer wieder mit undurchsichtigem Panel (kein durchscheinender Inhalt)',
+    ],
+  },
+  {
+    version: '2.0.535',
+    date: '2026-09-18',
+    title: 'Drawer, Backdrop, Linear-Progress',
+    changes: [
+      'Bearbeiten-Drawer: Griff zieht zwischen 25 %, 50 %, 75 % und Vollbild (wie früher)',
+      'Drawer-Hintergrund (Backdrop) wieder sichtbar',
+      'Ladezustände nutzen durchgehend Ark Progress Linear',
+    ],
+  },
+  {
+    version: '2.0.534',
+    date: '2026-09-18',
+    title: 'UI startet wieder',
+    changes: [
+      'Leerer Bildschirm behoben: Scrollleisten-Griff sitzt wieder im Scrollbar-Kontext',
+    ],
+  },
+  {
+    version: '2.0.533',
+    date: '2026-09-18',
+    title: 'Mobil: Bibliothek und Drawer',
+    changes: [
+      'Mobil: linke und rechte Spalte sowie Bühnen-Chrome aus — nur Bibliothek, Rückgängig und Wiederholen',
+      'Bearbeiten öffnet einen Drawer von unten (Ark Drawer)',
+    ],
+  },
+  {
+    version: '2.0.532',
+    date: '2026-09-18',
+    title: 'Linke Leiste & leere Akkordeons',
+    changes: [
+      'Datei-Menü rechts neben dem App-Titel',
+      'Ebenen ohne Card-Box und ohne Überschrift „Ebenen“',
+      'Kein Segment „Ebenen | Fassadenschmuck“ — beides unter dem Haus',
+      'Leere Einstellungs-Akkordeons rechts ausgeblendet',
+    ],
+  },
+  {
+    version: '2.0.531',
+    date: '2026-09-18',
+    title: 'Akkordeon, Bibliothek-Tabs, Ebenen-Menüs',
+    changes: [
+      'Rechte Akkordeons lassen sich wieder öffnen und Maße schließen',
+      'Bibliothek-Register als Ark Tabs (statt SegmentGroup)',
+      'Ebenen-⋯-Menüs per Portal — nicht mehr in der Card abgeschnitten',
+      'Viewport-Chrome: helle surface/weiß-Buttons auf dunkler Bühne',
+    ],
+  },
+  {
+    version: '2.0.530',
+    date: '2026-09-18',
+    title: 'Maße-Felder wieder lesbar',
+    changes: [
+      'Zahlfelder zeigen wieder den Wert (fehlendes NumberInput)',
+      'Checkboxen nicht mehr links abgeschnitten (CSS traf fälschlich auch Control)',
+      'Selects in der rechten Leiste wieder mit begrenzter Breite',
+    ],
+  },
+  {
+    version: '2.0.529',
+    date: '2026-09-18',
+    title: 'ScrollArea-Crash behoben',
+    changes: [
+      'UI startet wieder: Scrollleisten-Thumb korrekt im Scrollbar-Kontext (kein leerer Bildschirm mehr)',
+    ],
+  },
+  {
+    version: '2.0.528',
+    date: '2026-09-18',
+    title: 'Chrome-Menüs, feste Bibliothek, ScrollArea',
+    changes: [
+      'Ansicht/Darstellung/Präsentation/Umgebung oben als Ark-Menü-Dropdowns',
+      'Bibliothek unten feste Höhe, ohne Vertikal-Greifer',
+      'Scrollleisten als Ark Scroll Area; Checkboxen im Aus-Zustand wieder sichtbar (Steuerfeld bleibt, abhängige Felder ausgeblendet)',
+    ],
+  },
+  {
+    version: '2.0.527',
+    date: '2026-09-18',
+    title: 'Splitter-Greifer, Bibliothek, Ebenen-Menü',
+    changes: [
+      'Linke/rechte Spalte und Bibliothek-Dock mit sichtbaren Splitter-Greifern ziehbar',
+      'Bibliothek-Register als SegmentGroup, Kacheln als ToggleGroup-Tiles',
+      'Ebenen: ⋯ und Rechtsklick öffnen ein senkrechtes Navigation-Menü (löschen, duplizieren, ausblenden, …)',
+    ],
+  },
+  {
+    version: '2.0.526',
+    date: '2026-09-18',
+    title: 'Eine UI-Welt: Ark Splitter',
+    changes: [
+      'Gesamtes App-Layout als Park/Ark-Splitter (links | Bühne | rechts, Bibliothek unten ziehbar)',
+      'Kein CSS-Grid-Overlay mehr: Vanilla-Leisten liegen außerhalb des sichtbaren Layouts',
+      'Spalten und Bibliothek-Dock per Ziehen in der Größe ändern, einklappbar wie bisher',
+    ],
+  },
+  {
+    version: '2.0.525',
+    date: '2026-09-18',
+    title: 'Ebenen: Ark Tree View',
+    changes: [
+      'Ebenen-Liste links als Park/Ark Tree View (Hierarchie, Auswahl, Ein-/Ausklappen)',
+      '„Ebenen | Fassadenschmuck“ als SegmentGroup im Haus-Zweig',
+      'Zeilen wie bisher: Bezeichnung links, Maße/Meta rechts; Vanilla-#layer-list bleibt gekoppelt',
+    ],
+  },
+  {
+    version: '2.0.524',
+    date: '2026-09-18',
+    title: 'Park-Optik: Checkboxen, Bibliothek, Selects',
+    changes: [
+      'Checkbox-Labels wieder links (wie Sandbox); Vanilla-Label-CSS greift nicht mehr in Park-Surfaces',
+      'Bibliothek-Register = SegmentGroup; Kacheln gestylt wie ToggleGroup tile',
+      'Alle gespiegelten Selects als Park-Dropdown (z. B. Vorlagengröße); Button-Radii nicht mehr von Vanilla überschrieben',
+    ],
+  },
+  {
+    version: '2.0.523',
+    date: '2026-09-18',
+    title: 'Hard-Cutover: Bibliothek + Auswahl + Chrome-Rest',
+    changes: [
+      'Bibliothek-Dock: Park-Tabs; Karten im Park-Slot (DnD bleibt)',
+      'Objekt-Toolbars: Park-FormMirror (Accordion + Slider/Checkbox/Number/Select/Buttons)',
+      'Scope, Strichstärke, Collapse, Nav-Hilfe als Park; Vanilla-IDs hidden gekoppelt',
+      'Library-Edit-Sheet zeigt dieselbe Park-Selection-Surface',
+    ],
+  },
+  {
+    version: '2.0.522',
+    date: '2026-09-18',
+    title: 'Hard-Cutover: Park Live-Shell',
+    changes: [
+      'Linke Spalte, Viewport-Chrome und komplette Szene-Leiste als Park/Ark (Sandbox-Spez) — Vanilla-IDs bleiben hidden gekoppelt',
+      'Objekt-Toolbars (Wand/Öffnung) folgen als nächster Cutover-Slice',
+    ],
+  },
+  {
+    version: '2.0.521',
+    date: '2026-09-18',
+    title: 'Licht & Schatten: Park-Slider',
+    changes: [
+      'Sonne/Schatten/Farbtemperatur in der rechten Szene-Leiste als Park/Ark Slider (Vanilla-Ranges bleiben hidden gekoppelt)',
+    ],
+  },
+  {
+    version: '2.0.520',
+    date: '2026-09-18',
+    title: 'Sichtbare Park-Chrome',
+    changes: [
+      'Datei-Menü als Park Menu; Ansicht 2D/Fassade/3D/Export als SegmentGroup — wie Sandbox-Tab Chrome (Vanilla-Hosts bleiben hidden)',
+    ],
+  },
+  {
+    version: '2.0.519',
+    date: '2026-09-18',
+    title: 'Release-Notes-Dialog = Park-Anatomie',
+    changes: [
+      'Vanilla-button in @layer base (Park-Recipes gewinnen); Dialog.Header/Body/Footer; ActionTrigger als Park-Button — Optik wie Sandbox',
+    ],
+  },
+  {
+    version: '2.0.518',
+    date: '2026-09-18',
+    title: 'Park-Insel: Styles sichtbar',
+    changes: [
+      'Radii-Tokens l1/l2/l3 für Park-Recipes; Vanilla-`button`-CSS schließt Park/Ark aus — Release-Notes-Dialog und Trigger sehen aus wie in der Sandbox',
+    ],
+  },
+  {
+    version: '2.0.517',
+    date: '2026-09-18',
+    title: 'UI-Bridge: Release-Notes-Insel',
+    changes: [
+      'Erste Solid/Park-Insel in der Live-App: Version-Badge öffnet Park-Dialog mit Release Notes',
+      'Bridge-API (`ReleaseNotesModel` + `mountReleaseNotesIsland`); Vanilla-IDs bleiben hidden im DOM',
+    ],
+  },
+  {
+    version: '2.0.516',
+    date: '2026-09-18',
+    title: 'UI-Sandbox: ColorPicker + Menu',
+    changes: [
+      'ColorPicker wie Ark-Doku (Hex + Swatch-Trigger, Area/Hue/Pipette/Swatches im Popover); Menu-Trigger als Button (kein Full-Width-Stretch)',
+    ],
+  },
+  {
+    version: '2.0.515',
+    date: '2026-09-18',
+    title: 'UI-Lib: Park-only Sandbox',
+    changes: [
+      'Sandbox = Cutover-Spez: nur Park UI; ToggleGroup-Items/Tiles gestylt; NumberInput statt Stepper; SegmentGroup für Single-Chips; Alt-Composites/primitives entfernt',
+    ],
+  },
+  {
+    version: '2.0.514',
+    date: '2026-09-18',
+    title: 'UI-Sandbox: alle App-Muster',
+    changes: [
+      'Sandbox zeigt alle Live-App-UI-Muster als Park-/Domain-Gegenstücke (Chrome, Formulare, Slider/Farbe, Chips/Kacheln, Einstellungen, Tabs/Akkordeon, Overlays, Feedback)',
+    ],
+  },
+  {
+    version: '2.0.513',
+    date: '2026-09-18',
+    title: 'UI-Lib: Park UI',
+    changes: [
+      'Sandbox nutzt Park UI (Ark + Panda) — Select/Dialog/Menü wie in der Park-/Ark-Doku; Theme blue/slate',
+    ],
+  },
+  {
+    version: '2.0.512',
+    date: '2026-09-18',
+    title: 'UI-Sandbox: mehr Beispiele',
+    changes: [
+      'Sandbox zeigt Tabs für Toolbar, Buttons, Felder, Select/Menü, Bibliothek-Kacheln und Dialoge; neu: UiSelect, UiMenu, UiTile',
+    ],
+  },
+  {
+    version: '2.0.511',
+    date: '2026-09-18',
+    title: 'UI-Lib: Ark + Solid (Sandbox)',
+    changes: [
+      'Neue Komponentenbibliothek @fassaden/ui (Ark UI + Solid + Tailwind) — Dev-Sandbox unter /ui-sandbox.html; Live-Toolbar unverändert',
+    ],
+  },
   {
     version: '2.0.510',
     date: '2026-09-18',

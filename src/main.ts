@@ -1,4 +1,8 @@
 import './style.css'
+import { initAppLoadingIsland } from './ui/liveShellBridge'
+
+initAppLoadingIsland()
+
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js'
@@ -900,6 +904,16 @@ import { closeContextMenu, showContextMenu, type MenuItem } from './ui/contextMe
 import { installFieldInfo } from './ui/fieldInfo'
 import { detachScrollableSettingsPanel, scrollToSettingsSection, syncScrollableSettingsPanel } from './ui/scrollableSettingsSections'
 import { initReleaseNotesUi } from './ui/releaseNotes'
+import { publishChromeView, subscribeChromeView } from './ui/chromeBridge'
+import { publishSceneSunSync } from './ui/sceneSunBridge'
+import {
+  initLiveShell,
+  publishSceneToolbarSync,
+  publishViewportChromeSync,
+  publishSelectionToolbarSync,
+  publishLibraryDockSync,
+  publishChromeExtrasSync,
+} from './ui/liveShellBridge'
 import { initCreditsUi } from './ui/creditsDialog'
 import {
   isPerfOverlayEnabled,
@@ -2168,6 +2182,7 @@ function syncLibraryTabs() {
     btn.classList.toggle('active', active)
     btn.setAttribute('aria-selected', active ? 'true' : 'false')
   }
+  publishLibraryDockSync()
 }
 
 function setLibraryTab(tab: LibraryTab) {
@@ -6347,6 +6362,7 @@ function openLibraryEdit(
   libraryEditFocusSections = [...sections]
   libraryEditFocusTitle = title || 'Bearbeiten'
   libraryEditPortalSource = portalSource
+  document.documentElement.dataset.editPortal = portalSource
   pedimentCatalogDepth = 'root'
   libraryEditSheetOpen = true
   document.documentElement.classList.toggle('ui-library-edit-focus', true)
@@ -6367,6 +6383,7 @@ function closeLibraryEdit() {
   libraryEditFocusSections = null
   libraryEditSheetOpen = false
   libraryEditPortalSource = 'selection'
+  delete document.documentElement.dataset.editPortal
   pedimentCatalogDepth = 'root'
   document.documentElement.classList.remove('ui-library-edit-focus')
   syncLibraryEditSheetChrome()
@@ -6463,6 +6480,9 @@ function syncPedimentCatalogChrome() {
   }
 }
 
+/** Mobil startet immer in Fassade, nicht in der gespeicherten 3D-Ansicht. */
+let touchBootViewDone = false
+
 function syncTouchChromeLayout() {
   const touch = isTouchChromeLayout(currentView)
   document.documentElement.classList.toggle('ui-touch-chrome', touch)
@@ -6472,11 +6492,11 @@ function syncTouchChromeLayout() {
   if (fileSection) fileSection.hidden = !touch
 
   if (touch) {
-    const pref = loadTouchViewPreference()
-    if (pref === '3d' && currentView !== '3d' && currentView !== 'export') {
-      setView('3d')
-    } else if (pref === 'present' && shouldForcePresentView(currentView)) {
+    if (currentView !== 'present' && currentView !== 'export' && !touchBootViewDone) {
+      touchBootViewDone = true
       setView('present')
+    } else {
+      touchBootViewDone = true
     }
   } else if (shouldForcePresentView(currentView)) {
     setView('present')
@@ -6952,6 +6972,7 @@ const collapsedBuildings = new Set<string>()
 const buildingLayersPanelMode = new Map<string, 'layers' | 'decor'>()
 const expandedRoofs = new Set<string>()
 let sceneLightsLayerCollapsed = false
+let layerCollapseBoot = false
 /** Eingeklappte Lichtgruppen im Ebenenbaum. */
 const collapsedSceneLightGroups = new Set<string>()
 const buildingAddBtn = document.querySelector<HTMLButtonElement>('#building-add')!
@@ -8280,6 +8301,8 @@ const creditsBody = document.querySelector<HTMLDivElement>('#credits-body')!
 const releaseNotesDialog = document.querySelector<HTMLDialogElement>('#release-notes-dialog')!
 const releaseNotesBody = document.querySelector<HTMLDivElement>('#release-notes-body')!
 const releaseNotesRepoLink = document.querySelector<HTMLParagraphElement>('#release-notes-repo-link')!
+/** Park/Solid-Insel — Vanilla-Button/Dialog bleiben als IDs im DOM (hidden). */
+const uiIslandRelease = document.querySelector<HTMLElement>('#ui-island-release')!
 const planSidebar = document.querySelector<HTMLDetailsElement>('#plan-sidebar')!
 const planStatus = document.querySelector<HTMLSpanElement>('#plan-status')!
 const planClearButton = document.querySelector<HTMLButtonElement>('#plan-clear')!
@@ -10002,12 +10025,15 @@ function setCompassYaw(yaw: number) {
 function syncSceneViewControls() {
   const presentBtn = document.querySelector<HTMLButtonElement>('#scene-view-mode-present')
   const mode3dBtn = document.querySelector<HTMLButtonElement>('#scene-view-mode-3d')
+  const mode2dBtn = document.querySelector<HTMLButtonElement>('#scene-view-mode-front')
   const facingBlock = document.querySelector<HTMLElement>('#scene-view-facing-block')
   const yaw = currentElevation.kind === 'yaw' ? snapYawTo45(currentElevation.yaw) : 0
   const isPresent = currentView === 'present'
   const is3d = currentView === '3d'
+  const is2d = currentView === 'front'
   presentBtn?.classList.toggle('active', isPresent)
   mode3dBtn?.classList.toggle('active', is3d)
+  mode2dBtn?.classList.toggle('active', is2d)
   if (facingBlock) facingBlock.hidden = !isPresent
   const matched = touchFacingFromYaw(touchFacingHomeYaw, yaw)
   if (matched) touchFacadeFacing = matched
@@ -10043,6 +10069,10 @@ function bindSceneViewControls() {
   }
   document.querySelector('#scene-view-mode-present')?.addEventListener('click', () => {
     setTouchViewMode('present')
+  })
+  document.querySelector('#scene-view-mode-front')?.addEventListener('click', () => {
+    setView('front')
+    syncSceneViewControls()
   })
   document.querySelector('#scene-view-mode-3d')?.addEventListener('click', () => {
     setTouchViewMode('3d')
@@ -12317,7 +12347,7 @@ function initOpeningLibrary() {
     const newBtn = document.createElement('button')
     newBtn.type = 'button'
     newBtn.id = 'opening-template-new'
-    newBtn.className = 'preset-btn opening-library-new'
+    newBtn.className = 'opening-library-card opening-library-new'
     newBtn.title = kind === 'door' ? 'Neue Tür-Vorlage' : 'Neue Fenster-Vorlage'
     newBtn.textContent = 'Neue Vorlage'
     host.appendChild(newBtn)
@@ -13339,28 +13369,6 @@ function initOpeningLibrary() {
       })
       host.appendChild(card)
     }
-    appendLibraryGroupLabel(host, 'Anzeige')
-    const allLightsToggle = document.createElement('label')
-    allLightsToggle.className = 'library-lights-option toolbar-check'
-    const allLightsCheckbox = document.createElement('input')
-    allLightsCheckbox.type = 'checkbox'
-    allLightsCheckbox.id = 'library-all-scene-lights'
-    allLightsCheckbox.addEventListener('change', () => {
-      commitAllSceneLightsEnabled(allLightsCheckbox.checked)
-    })
-    allLightsToggle.append(allLightsCheckbox, document.createTextNode(' Alle Lichter an'))
-    host.appendChild(allLightsToggle)
-    const markerToggle = document.createElement('label')
-    markerToggle.className = 'library-lights-option toolbar-check'
-    const markerCheckbox = document.createElement('input')
-    markerCheckbox.type = 'checkbox'
-    markerCheckbox.checked = state.viewOptions?.showLightMarkers !== false
-    markerCheckbox.addEventListener('change', () => {
-      commitViewOptions({ showLightMarkers: markerCheckbox.checked })
-      syncSceneLightRuntime()
-    })
-    markerToggle.append(markerCheckbox, document.createTextNode(' Lichtpunkte anzeigen'))
-    host.appendChild(markerToggle)
     syncAllSceneLightsEnabledControl()
     syncLibraryAppliedOutline()
     return
@@ -14269,6 +14277,8 @@ function syncSunUi() {
   if (windInput) windInput.value = String(wind)
   if (windValue) windValue.textContent = wind.toFixed(2)
   syncSunAnimUi()
+  publishSceneSunSync()
+  publishSceneToolbarSync()
 }
 
 function syncSunAnimUi() {
@@ -15877,7 +15887,43 @@ function finishRenderUi() {
   requestAnimationFrame(positionToolbar)
 }
 
-/** Bei neuer Auswahl Bibliothek auf Farben schalten (v2.0.434). */
+/** Tab passend zu Teil-Auswahl (Gesims → Gesimse, nicht immer Farben). */
+function primaryLibraryTabForSelection(): LibraryTab | null {
+  const allowed = allowedLibraryTabs()
+  if (editor.selectedOpenings.length > 0) {
+    const part = editor.selectedOpeningPart ?? 'group'
+    if (part === 'stairs' && allowed.has('stairs')) return 'stairs'
+    if (part === 'rollerShutter' && allowed.has('rollerShutters')) return 'rollerShutters'
+    if (part === 'awning' && allowed.has('awnings')) return 'awnings'
+    if ((part === 'pediment' || part === 'consoles') && allowed.has('pediment')) return 'pediment'
+    if (
+      (part === 'sillInner' || part === 'sillOuter' || part === 'trim') &&
+      allowed.has('profiles')
+    ) {
+      return 'profiles'
+    }
+    const opening = selectedWindowOpening()?.opening
+    if (opening?.type === 'door' && allowed.has('doors')) return 'doors'
+    if (
+      opening &&
+      (opening.type === 'cutout' || opening.type === 'conch' || openingLacksWindowChrome(opening)) &&
+      allowed.has('niches')
+    ) {
+      return 'niches'
+    }
+    if (allowed.has('windows')) return 'windows'
+  }
+  const wallPart = editor.selectedWallPart ?? 'group'
+  if (wallPart === 'cornice' && allowed.has('cornice')) return 'cornice'
+  if (wallPart === 'plinth' && allowed.has('plinth')) return 'plinth'
+  if (wallPart === 'trimBand' && allowed.has('trimBands')) return 'trimBands'
+  if (wallPart === 'label' && allowed.has('label')) return 'label'
+  if (wallPart === 'awning' && allowed.has('awnings')) return 'awnings'
+  if (wallPart === 'cladding' && allowed.has('panels')) return 'panels'
+  return null
+}
+
+/** Bei neuer Auswahl Bibliothek auf passenden Tab (v2.0.434 / v2.0.543). */
 let lastLibrarySelectionKey = ''
 function syncLibraryTabForOpeningSelection() {
   const part = editor.selectedOpeningPart ?? editor.selectedWallPart ?? 'group'
@@ -15907,10 +15953,15 @@ function syncLibraryTabForOpeningSelection() {
     } else {
       initOpeningLibrary()
     }
-  } else if (allowed.has('farbe') && libraryTab !== 'farbe') {
-    setLibraryTab('farbe')
-  } else if (libraryTab === 'farbe') {
-    initOpeningLibrary()
+  } else {
+    const primary = primaryLibraryTabForSelection()
+    if (primary && libraryTab !== primary) {
+      setLibraryTab(primary)
+    } else if (!primary && allowed.has('farbe') && libraryTab !== 'farbe') {
+      setLibraryTab('farbe')
+    } else if (libraryTab === 'farbe' || primary) {
+      initOpeningLibrary()
+    }
   }
 }
 
@@ -18790,6 +18841,15 @@ function renderSceneLightsLayerSection() {
 }
 
 function renderLayerList() {
+  if (!layerCollapseBoot && state.buildings.length > 0) {
+    layerCollapseBoot = true
+    sceneLightsLayerCollapsed = true
+    for (const building of state.buildings) {
+      for (const floor of sortedFloorIndicesForBuilding(building)) {
+        collapsedFloors.add(floor)
+      }
+    }
+  }
   layerList.replaceChildren()
   renderSceneLightsLayerSection()
   let layerIndex = 0
@@ -18861,9 +18921,11 @@ function renderLayerList() {
         return btn
       }
       modeToggle.append(mkModeBtn('layers', 'Ebenen'), mkModeBtn('decor', 'Fassadenschmuck'))
+      // Vanilla-Toggle bleibt im DOM (Legacy), in Park nicht gespiegelt — beide Listen immer sichtbar
+      modeToggle.hidden = true
       buildingItem.appendChild(modeToggle)
 
-      if (panelMode === 'decor') {
+      {
         const decorList = document.createElement('ul')
         decorList.className = 'layer-floor-body layer-decor-body'
         const decor = normalizeFacadeDecor(building.facadeDecor)
@@ -18897,7 +18959,9 @@ function renderLayerList() {
           })
         }
         buildingItem.appendChild(decorList)
-      } else {
+      }
+
+      {
       const buildingBody = document.createElement('ul')
       buildingBody.className = 'layer-floor-body'
 
@@ -22739,6 +22803,7 @@ function syncSettingsSectionStickyHeads(sections: HTMLElement[]) {
     head.hidden = false
   }
   syncScrollableSettingsPanel(panel, sections)
+  publishSelectionToolbarSync()
 }
 
 function syncStudioPanelColorControls(wall: Wall) {
@@ -28455,8 +28520,8 @@ canvas.addEventListener('pointerup', (event) => {
     else if (!additive) selectSceneLight(null)
     return
   }
-  if (!hit) {
-    selectWallFromViewport(null, { additive })
+  if (!hit || !isSelectablePickHit(hit)) {
+    if (!additive) applyEditorSelection(createDefaultEditorState())
     return
   }
   if (hit.sceneLightId) {
@@ -28737,6 +28802,9 @@ function syncViewChromeButtons() {
     .querySelector('#edit-presentation-btn')
     ?.closest('.view-mode-toggle')
   if (presentationGroup instanceof HTMLElement) presentationGroup.hidden = presentChrome
+  publishChromeView(currentView === 'top' ? 'front' : currentView)
+  publishViewportChromeSync()
+  publishChromeExtrasSync()
 }
 
 function applyLineStrokeScale() {
@@ -29180,12 +29248,15 @@ function lightModeLoadingOverlay(): HTMLElement {
   el.setAttribute('role', 'status')
   el.setAttribute('aria-live', 'polite')
   el.hidden = true
-  const spinner = document.createElement('span')
-  spinner.className = 'light-mode-loading-spinner'
-  spinner.setAttribute('aria-hidden', 'true')
+  const bar = document.createElement('div')
+  bar.className = 'ui-progress-linear'
+  bar.setAttribute('aria-hidden', 'true')
+  const range = document.createElement('span')
+  range.className = 'ui-progress-linear__range'
+  bar.appendChild(range)
   const text = document.createElement('p')
   text.className = 'light-mode-loading-text'
-  el.append(spinner, text)
+  el.append(bar, text)
   viewport.appendChild(el)
   return el
 }
@@ -29221,7 +29292,7 @@ function nextAnimationFrames(count: number): Promise<void> {
 /**
  * Licht-Modus ein/aus mit Ladescreen: Lichtanzahl und Sonnenschatten ändern die Shader-Programme
  * aller Materialien (~1–2 s Kompilierung). `compileAsync` nutzt KHR_parallel_shader_compile,
- * damit der Hauptthread frei bleibt und der Spinner läuft; erst danach der erste Frame.
+ * damit der Hauptthread frei bleibt und der Linear-Progress sichtbar bleibt; erst danach der erste Frame.
  */
 async function toggleLightEditMode(): Promise<void> {
   if (lightModeToggleBusy) return
@@ -29296,8 +29367,32 @@ navHelpButton.addEventListener('click', () => {
   navHelpDialog.showModal()
 })
 
-initReleaseNotesUi(appVersionBtn, releaseNotesDialog, releaseNotesBody, releaseNotesRepoLink)
+// Vanilla-Hosts behalten (keine-ui-loeschen); sichtbare UI = Park Live-Shell (Hard-Cutover).
+void appVersionBtn
+void releaseNotesDialog
+void releaseNotesBody
+void releaseNotesRepoLink
+initReleaseNotesUi(uiIslandRelease)
 initCreditsUi(appCreditsBtn, creditsDialog, creditsBody)
+
+const parkLiveShell = document.querySelector<HTMLElement>('#park-live-shell')!
+initLiveShell({
+  host: parkLiveShell,
+  getView: () => (currentView === 'top' ? 'front' : currentView),
+  setView: (v) => {
+    if (v === 'front' || v === 'present' || v === '3d' || v === 'export' || v === 'top') {
+      setView(v)
+    }
+  },
+  subscribeView: subscribeChromeView,
+})
+void document.querySelector('#ui-island-file-menu')
+void document.querySelector('#ui-island-view-mode')
+void document.querySelector('#ui-island-scene-sun')
+void publishSceneSunSync
+void publishLibraryDockSync
+void publishChromeExtrasSync
+void publishSelectionToolbarSync
 
 function setRenderStyle(style: 'color' | 'line') {
   currentRenderStyle = style

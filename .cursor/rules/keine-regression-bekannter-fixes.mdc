@@ -24,7 +24,8 @@ alwaysApply: true
 | Touch 3D kein Orbit | Nur Cmd/Ctrl-`beginNav3d` | `shouldTouchChromeBeginOrbit3d` | v2.0.469 |
 | Erker/Außenwand zu breit | `panelFlip: false` / Depth-Tweaks | `erker-aussenkante.mdc` | |
 | Schatten-Look „verbessern“ | Penumbra/Density ohne Auftrag | `schatten-qualitaet-soll.mdc` |
-| Idle ~10 fps mit Markisen | Wind → `liveMotion` jedes Frame; PCSS-Lite / DPR 1 | Wind erst nach Idle-Skip ticken; Stoffe im Stillstand stehen | v2.0.474, `docs/performance.md`, `docs/wind.md` | |
+| Idle ~10 fps mit Markisen | Wind → `liveMotion` jedes Frame; PCSS-Lite / DPR 1 | Wind erst nach Idle-Skip ticken; Stoffe im Stillstand stehen | v2.0.474, `docs/performance.md`, `docs/wind.md` |
+| Leere App / UI startet nicht | `ScrollArea.Thumb` per `defaultProps` oder gestylte Scrollbar+Thumb-Wrapper | ungestyltes Ark `Scrollbar` → Kind `Thumb` (`ScrollbarWithThumb`) | v2.0.534, `docs/agent-smoke-check.md` |
 
 ## Konflikt zweier Nutzerwünsche
 
