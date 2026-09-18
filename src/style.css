@@ -675,6 +675,17 @@ body {
   border-right: none;
 }
 
+#studio-course-mode-toggle {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
+#studio-course-mode-toggle .view-mode-btn {
+  padding: 0.28rem 0.55rem;
+  font-size: 0.75rem;
+}
+
 #wall-library-gizmos {
   position: absolute;
   inset: 0;

@@ -97,4 +97,12 @@ describe('buildingIdsNeedingRoofOnlyRebuild', () => {
     next.buildings[0]!.walls[0]!.x = 48
     expect(buildingIdsNeedingRoofOnlyRebuild(prev, next)).toBeNull()
   })
+
+  it('Dach ein/aus erzwingt Voll-Rebuild (Wandkürzung/Gesims)', () => {
+    const prev = stateWithBuildings('b1')
+    prev.buildings[0]!.roof = { enabled: true, hidden: false } as never
+    const next = structuredClone(prev)
+    next.buildings[0]!.roof = { ...next.buildings[0]!.roof!, enabled: false }
+    expect(buildingIdsNeedingRoofOnlyRebuild(prev, next)).toBeNull()
+  })
 })

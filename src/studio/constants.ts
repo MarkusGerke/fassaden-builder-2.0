@@ -129,6 +129,62 @@ export const PATTERN_LABELS: Record<StudioPanelPattern, string> = {
   runningBondDiagonal: 'Läuferverband (¼ versetzt, schräg)',
 }
 
+/**
+ * Anzahl unterschiedlicher Lagen eines Verbands (Schicht-Editor: Verband-Ebene).
+ * Streifen = 1; Läufer/Block/… = 2; ⅓ = 3; ¼/Kreuz/Holländisch = 4.
+ */
+export function patternCoursePhaseCount(pattern: StudioPanelPattern): number {
+  switch (pattern) {
+    case 'none':
+    case 'strip':
+      return 1
+    case 'runningBondThird':
+      return 3
+    case 'runningBondQuarter':
+    case 'runningBondDiagonal':
+    case 'englishCrossBond':
+    case 'dutchBond':
+      return 4
+    default:
+      return 2
+  }
+}
+
+/** Kurze Labels für Verband-Ebenen (1-basiert in der UI). */
+export function patternCoursePhaseLabels(pattern: StudioPanelPattern): string[] {
+  const n = patternCoursePhaseCount(pattern)
+  switch (pattern) {
+    case 'strip':
+      return ['Streifen']
+    case 'runningBond':
+      return ['Läufer gerade', 'Läufer versetzt']
+    case 'headerBond':
+      return ['Köpfe gerade', 'Köpfe versetzt']
+    case 'englishBond':
+      return ['Läuferlage', 'Binderlage']
+    case 'englishCrossBond':
+      return ['Läufer A', 'Binder', 'Läufer B (verschoben)', 'Binder']
+    case 'flemishBond':
+      return ['Läufer–Binder', 'Binder–Läufer']
+    case 'gothicBond':
+      return ['Binder–Läufer …', 'Läufer–Binder …']
+    case 'markishBond':
+    case 'silesianBond':
+      return ['Lage A', 'Lage B (versetzt)']
+    case 'dutchBond':
+      return ['Köpfe 1', 'Köpfe 2', 'Köpfe 3', 'Läufer–Binder']
+    case 'runningBondThird':
+      return ['Versatz 0', 'Versatz ⅓', 'Versatz ⅔']
+    case 'runningBondQuarter':
+    case 'runningBondDiagonal':
+      return ['Versatz 0', 'Versatz ¼', 'Versatz ½', 'Versatz ¾']
+    case 'wildBond':
+      return ['Lage A', 'Lage B']
+    default:
+      return Array.from({ length: n }, (_, i) => `Ebene ${i + 1}`)
+  }
+}
+
 
 export const DEFAULT_STUDIO_PANEL: StudioPanelConfig = {
   panelWidth: 64,

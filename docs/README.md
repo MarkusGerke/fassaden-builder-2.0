@@ -16,7 +16,7 @@
 | [ground-puddles.md](ground-puddles.md) | Steingrau-Boden, optionale Pfützen mit Fassaden-Spiegelung |
 | [ground-leaves.md](ground-leaves.md) | Herbstlaub: Platzieren, Cursor-Wind, Persistenz |
 | [panel-geometry.md](panel-geometry.md) | Gehrungsberechnung, `wallLocalX`, Paneelextrusion, 3D-Leibung, Rest-Bossen an Öffnungen (`remnantBoss.ts`) |
-| [masonry-course-editor.md](masonry-course-editor.md) | Schicht-Editor: Reihen befüllen, Domino, Farbstufe, `courseOverrides` |
+| [masonry-course-editor.md](masonry-course-editor.md) | Schicht-Editor: Setzen/Bearbeiten, Domino, Bossen/Keil, `courseOverrides` |
 | [floor-plan.md](floor-plan.md) | Grundriss-System, Ring-Erkennung, Miter, Etagen, Innenkante Decke/Boden |
 | [views-and-state.md](views-and-state.md) | Views, Persistenz, Undo/Redo, Navigation |
 | [camera.md](camera.md) | 3D-Kamera, Orbit-Ziel, ⌘/Ctrl-Gesten, Geschwindigkeiten |

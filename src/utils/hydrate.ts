@@ -436,7 +436,11 @@ export function hydrateWall(wall: Wall): Wall {
     profileFinish: normalizeSurfaceFinish(cloned.profileFinish),
     panel,
     courseOverrides: Array.isArray(cloned.courseOverrides)
-      ? cloned.courseOverrides.map((course) => ({ ...course }))
+      ? cloned.courseOverrides.map((course) => ({
+          ...course,
+          ...(typeof course.projectDepth === 'number' ? { projectDepth: course.projectDepth } : {}),
+          ...(typeof course.coursePhase === 'number' ? { coursePhase: course.coursePhase } : {}),
+        }))
       : [],
     cornice,
     trimBands: cloned.trimBands?.map((band) => normalizeWallTrimBand(band)),

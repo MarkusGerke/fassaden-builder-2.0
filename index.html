@@ -1211,16 +1211,60 @@
                 <p class="toolbar-hint compact-hint">Gerade und ungerade Streifen mit eigener Tiefe und Trapez.</p>
               </div>
               <p class="settings-subheading settings-subheading-nested">Maße</p>
-              <label class="toolbar-check">
-                <input id="studio-course-editor-enabled" type="checkbox" />
-                Schicht setzen
-              </label>
-              <p class="toolbar-hint compact-hint">An: Bibliothek-Muster wählt den Stein; Klick neben der Wand dreht 0°/90°; orangene Reihe auf der Wand bestätigen → Domino-Füllung. Aus: Muster gilt wieder für die ganze Wand.</p>
+              <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                <span class="toolbar-label">Schicht</span>
+                <div id="studio-course-mode-toggle" class="view-mode-toggle" role="group" aria-label="Schicht-Modus">
+                  <button type="button" class="preset-btn view-mode-btn active" id="studio-course-mode-off" data-course-mode="off">Aus</button>
+                  <button type="button" class="preset-btn view-mode-btn" id="studio-course-mode-place" data-course-mode="place">Setzen</button>
+                  <button type="button" class="preset-btn view-mode-btn" id="studio-course-mode-edit" data-course-mode="edit">Bearbeiten</button>
+                </div>
+              </div>
+              <input id="studio-course-editor-enabled" type="checkbox" hidden />
+              <p id="studio-course-mode-hint" class="toolbar-hint compact-hint">Aus: Bibliothek gilt wandweit. Setzen: Maße hier, dann Muster wählen und Reihe klicken. Bearbeiten: nur die gewählte Schicht.</p>
+              <div id="studio-course-pick-row" class="toolbar-group toolbar-inline-value ui-field-inline" hidden>
+                <span class="toolbar-label">Gesetzte Schicht</span>
+                <select id="studio-course-pick">
+                  <option value="">— wählen —</option>
+                </select>
+              </div>
               <div id="studio-course-editor-options" hidden>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Breite (cm)</span>
+                  <input id="studio-course-width" type="number" min="8" step="8" value="48" />
+                </div>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Höhe (cm)</span>
+                  <input id="studio-course-height" type="number" min="8" step="8" value="24" />
+                </div>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Tiefe (cm)</span>
+                  <input id="studio-course-depth" type="number" min="0" step="0.1" value="4" />
+                </div>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Bossen-Vorstand (cm)</span>
+                  <input id="studio-course-taper-depth" type="number" min="0" step="0.5" value="0" />
+                </div>
+                <div id="studio-course-taper-row" class="toolbar-group toolbar-inline-value ui-field-inline" hidden>
+                  <span class="toolbar-label">Bossenprofil (1=flach, 0=spitz)</span>
+                  <input id="studio-course-taper" type="number" min="0" max="1" step="0.05" value="0.8" />
+                </div>
+                <div id="studio-course-taper-sides-row" class="toolbar-group toolbar-inline-value ui-field-inline" hidden>
+                  <span class="toolbar-label">Bossenform</span>
+                  <select id="studio-course-taper-sides">
+                    <option value="all">Trapez (alle Seiten)</option>
+                    <option value="lr">Keil (nur links/rechts)</option>
+                  </select>
+                </div>
+                <div id="studio-course-phase-row" class="toolbar-group toolbar-inline-value ui-field-inline" hidden>
+                  <span class="toolbar-label">Verband-Ebene</span>
+                  <select id="studio-course-phase"></select>
+                </div>
                 <div class="toolbar-group toolbar-inline-value ui-field-inline">
                   <span class="toolbar-label">Farbstufe (0–7)</span>
                   <input id="studio-course-color-stage" type="number" min="0" max="7" step="1" value="0" />
                 </div>
+                <p id="studio-course-options-hint" class="toolbar-hint compact-hint">Beim Setzen: Klick neben der Wand dreht 0°/90°. Beim Bearbeiten gelten Änderungen nur für die gewählte Schicht.</p>
+                <button type="button" id="studio-course-delete" class="preset-btn toolbar-danger" hidden>Schicht löschen</button>
               </div>
               <div id="studio-standard-depth-row" class="toolbar-group">
                 <span class="toolbar-label">Vorstand / Steintiefe (cm)</span>

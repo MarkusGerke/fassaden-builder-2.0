@@ -147,7 +147,7 @@ import { floorIndex, storeyFloorSurfaceY, storeyTopY } from './utils/layers'
 import { ROOF_WALL_TOP_TRIM_CM } from './studio/roofForms'
 import { isStudioWall, leafOpenSignForWall, outerSillBoardPose, studioFacadeOutwardLocalZ, studioFacadeSelectionLocalZ, studioPanelFaceLocalZ, studioProfileAnchorLocalZ, studioWallTransform, studioWindowOriginZ, wallEndPoint, wallHasPanels, wallStartPoint, windowDepthForwardSign } from './studio/walls'
 import { bayWallSkirtDropCm } from './studio/bayWindow'
-import { buildMansardRoof, normalizeRoof } from './studio/roof'
+import { buildMansardRoof, listRoofEdges, normalizeRoof } from './studio/roof'
 import {
   buildDormerMeshes,
   buildSkylightMeshes,
@@ -479,7 +479,15 @@ export class FacadeController {
         floors.length > 0 &&
         Math.abs(wall.y + wall.height - storeyTopY(building, floors.length - 1)) < 1.5,
     )
-    const topTrimCm = underRoof ? ROOF_WALL_TOP_TRIM_CM : 0
+    // Giebel (bündig): Wand volle Geschosshöhe — sonst sitzt das Dreieck über einer 6-cm-Stufe.
+    let topTrimCm = 0
+    let gableFlush = false
+    if (underRoof && building) {
+      const edges = listRoofEdges(building, normalizeRoof(building.roof))
+      const wallEdges = edges.filter((e) => e.wallId === wall.id)
+      gableFlush = wallEdges.length > 0 && wallEdges.every((e) => e.flush)
+      topTrimCm = gableFlush ? 0 : ROOF_WALL_TOP_TRIM_CM
+    }
     return createStudioWallGeometry(wall, neighborWalls, {
       treatAsBareWall: this.wallTreatAsBare(wall),
       // Sockel-Decor aus: kein barePlinth (sonst Wandband statt Paneele in der Sockelzone).
@@ -3019,6 +3027,7 @@ export class FacadeController {
       selectedRoofFixture: editor.selectedRoofFixture
         ? { ...editor.selectedRoofFixture }
         : undefined,
+      selectedRoofFixtures: editor.selectedRoofFixtures?.map((f) => ({ ...f })),
       selectedCeiling: editor.selectedCeiling ? { ...editor.selectedCeiling } : undefined,
       selectedBuildingId: editor.selectedBuildingId,
       selectedDownpipe: editor.selectedDownpipe
@@ -6536,7 +6545,13 @@ export class FacadeController {
     }
 
     const selRoofId = this.editor.selectedRoofBuildingId
-    const selFixture = this.editor.selectedRoofFixture
+    const selFixtures =
+      this.editor.selectedRoofFixtures && this.editor.selectedRoofFixtures.length > 0
+        ? this.editor.selectedRoofFixtures
+        : this.editor.selectedRoofFixture
+          ? [this.editor.selectedRoofFixture]
+          : []
+    const selFixtureKeys = new Set(selFixtures.map((f) => `${f.kind}:${f.id}`))
     if (selRoofId && !this.suppressSelectionHighlight) {
       for (const child of this.roofGroup.children) {
         const mesh = child as THREE.Mesh
@@ -6544,13 +6559,12 @@ export class FacadeController {
         // Gaubenfenster ist eine Group ohne geometry — EdgesGeometry würde werfen und
         // selectRoof/Drag/Kontextmenü abbrechen (v2.0.481).
         if (!mesh.isMesh || !mesh.geometry) continue
-        if (selFixture) {
-          if (
-            mesh.userData.fixtureKind !== selFixture.kind ||
-            mesh.userData.fixtureId !== selFixture.id
-          ) {
-            continue
-          }
+        if (selFixtureKeys.size > 0) {
+          const key =
+            mesh.userData.fixtureKind && mesh.userData.fixtureId
+              ? `${mesh.userData.fixtureKind}:${mesh.userData.fixtureId}`
+              : ''
+          if (!selFixtureKeys.has(key)) continue
         } else {
           // Ganzes Dach: nur Haut/Giebel/Rinne, nicht jedes Fixture doppelt
           if (mesh.userData.fixtureId) continue

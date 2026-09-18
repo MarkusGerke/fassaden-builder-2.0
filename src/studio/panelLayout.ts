@@ -51,6 +51,8 @@ export interface PanelTile {
   taperDepth?: number
   /** Trapez-Faktor; überschreibt panel.taper. */
   taper?: number
+  /** Boss nur links/rechts (`lr`) oder alle Seiten (`all`). */
+  taperSides?: 'all' | 'lr'
   /** Zurückgesetzte Ebene (Z-Fighting polygonOffset). */
   recessed?: boolean
   /** Schräge Kante für diagonalen Läuferverband. */
@@ -1272,7 +1274,24 @@ export function visiblePanelRowRect(
   panel: StudioPanelConfig,
   allWalls: Wall[] = [],
 ): { x: number; y: number; width: number; height: number } | null {
-  if (!wall || panel.enabled === false || panel.pattern === 'none') return null
+  if (!wall || panel.enabled === false) return null
+  // `pattern: 'none'` + courseOverrides: Band aus gesetzten Schichten (ohne Relayout).
+  if (panel.pattern === 'none') {
+    const overrides = wall.courseOverrides
+    if (!Array.isArray(overrides) || overrides.length === 0) return null
+    let y0 = Infinity
+    let y1 = -Infinity
+    for (const o of overrides) {
+      if (!o || o.pattern === 'none') continue
+      const y = Number(o.y)
+      const h = Number(o.height)
+      if (!Number.isFinite(y) || !Number.isFinite(h) || h < MIN_TILE) continue
+      y0 = Math.min(y0, y)
+      y1 = Math.max(y1, y + h)
+    }
+    if (!(y1 > y0)) return null
+    return { x: 0, y: y0, width: wall.width, height: y1 - y0 }
+  }
   panel = normalizeStudioPanel(panel)
   const skirt = bayWallSkirtDropCm(wall, allWalls)
   const { firstVisibleRow, lastVisibleRow, rowCuts } = visiblePanelRowRange(wall.height, panel, skirt)
@@ -1334,13 +1353,36 @@ function normalizeCourseOverridesLocal(
       typeof item.colorStage === 'number' && Number.isFinite(item.colorStage)
         ? Math.max(0, Math.min(7, Math.round(item.colorStage)))
         : undefined
+    const projectDepth =
+      typeof item.projectDepth === 'number' && Number.isFinite(item.projectDepth)
+        ? Math.max(0, item.projectDepth)
+        : undefined
+    const coursePhase =
+      typeof item.coursePhase === 'number' && Number.isFinite(item.coursePhase)
+        ? Math.max(0, Math.round(item.coursePhase))
+        : undefined
+    const taperDepth =
+      typeof item.taperDepth === 'number' && Number.isFinite(item.taperDepth)
+        ? Math.max(0, item.taperDepth)
+        : undefined
+    const taper =
+      typeof item.taper === 'number' && Number.isFinite(item.taper)
+        ? Math.max(0, Math.min(1, item.taper))
+        : undefined
+    const taperSides =
+      item.taperSides === 'lr' || item.taperSides === 'all' ? item.taperSides : undefined
     out.push({
       y: Math.max(0, y),
       height,
       pattern: item.pattern,
       panelWidth,
       panelHeight,
+      ...(projectDepth !== undefined ? { projectDepth } : {}),
+      ...(coursePhase !== undefined ? { coursePhase } : {}),
       ...(colorStage !== undefined ? { colorStage } : {}),
+      ...(taperDepth !== undefined ? { taperDepth } : {}),
+      ...(taper !== undefined ? { taper } : {}),
+      ...(taperSides !== undefined ? { taperSides } : {}),
     })
   }
   out.sort((a, b) => a.y - b.y)
@@ -1365,16 +1407,112 @@ export function layoutTilesForCourseOverride(
     pattern: course.pattern,
     panelWidth: course.panelWidth,
     panelHeight: course.panelHeight,
+    ...(course.projectDepth !== undefined ? { projectDepth: course.projectDepth } : {}),
+    ...(course.taperDepth !== undefined ? { taperDepth: course.taperDepth } : {}),
+    ...(course.taper !== undefined ? { taper: course.taper } : {}),
     enabled: true,
     hideRowsBottom: 0,
     hideRowsTop: 0,
   })
-  const all = layoutPanelTilesForPanel(wall, coursePanel, allWalls)
-  let row = all.filter((tile) => tileOverlapsCourseY(tile, course.y, course.height))
+  // Verband-Ebene erzwingen: eine Lage an course.y mit rowIndex = coursePhase.
+  const phase = Math.max(0, Math.round(course.coursePhase ?? 0))
+  let row = layoutSingleCourseRow(wall, coursePanel, course.y, course.height, phase, allWalls)
+  const taperDepth = coursePanel.taperDepth ?? 0
+  const taper = coursePanel.taper ?? 1
+  const taperSides = course.taperSides === 'lr' ? 'lr' : 'all'
+  row = row.map((tile) => ({
+    ...tile,
+    taperDepth: taperDepth > 0 ? taperDepth : 0,
+    taper: taperDepth > 0 ? taper : 1,
+    taperSides: taperDepth > 0 ? taperSides : 'all',
+  }))
   if (course.colorStage !== undefined) {
     row = row.map((tile) => ({ ...tile, colorStage: course.colorStage }))
   }
   return row
+}
+
+/**
+ * Eine Schicht an fester Y-Lage; `rowIndex` steuert Versatz/Sequenz des Verbands
+ * (Schicht-Editor: Verband-Ebene), unabhängig von der Wandhöhe.
+ */
+function layoutSingleCourseRow(
+  wall: Wall,
+  panel: StudioPanelConfig,
+  bandY: number,
+  bandHeight: number,
+  rowIndex: number,
+  allWalls: Wall[],
+): PanelTile[] {
+  panel = normalizeStudioPanel(panel)
+  const { panelWidth, joint, pattern } = panel
+  if (panel.enabled === false || pattern === 'none') return []
+  const y = bandY + joint / 2
+  const yEnd = bandY + bandHeight - joint / 2
+  const height = yEnd - y
+  if (height <= MIN_TILE) return []
+
+  const tiles: PanelTile[] = []
+  const skirt = bayWallSkirtDropCm(wall, allWalls)
+  const projectDepth = panel.projectDepth ?? DEFAULT_STUDIO_PANEL.projectDepth
+  const bondCornerW = Math.max(STUDIO_MASONRY, Math.round(projectDepth / STUDIO_MASONRY) * STUDIO_MASONRY)
+  const header = headerSize(panelWidth)
+  const startAdj = findCollinearDockWall(wall, 'start', allWalls)
+  const endAdj = findCollinearDockWall(wall, 'end', allWalls)
+  const jambHoles = openingJambSealHoles(wall)
+  const rowHoles = rowJambBlockers(jambHoles, y, yEnd)
+
+  if (pattern === 'strip') {
+    const raised = panel.projectDepth ?? DEFAULT_STUDIO_PANEL.projectDepth
+    let x = 0
+    let width = wall.width
+    if (startAdj && isCollinearDock(wall, startAdj)) {
+      x -= joint
+      width += joint
+    }
+    if (endAdj && isCollinearDock(wall, endAdj)) {
+      width += joint
+    }
+    tiles.push({
+      x,
+      y,
+      width,
+      height,
+      depth: raised,
+      taperDepth: panel.taperDepth ?? 0,
+      taper: panel.taper,
+    })
+  } else if (pattern === 'wildBond') {
+    tiles.push(
+      ...layoutWildBondRow(wall.width, y, height, joint, panelWidth, header, rowIndex, wall.id),
+    )
+  } else {
+    const blockers: XSpan[] = rowHoles.map((h) => ({ x0: h.x, x1: h.x + h.width }))
+    const colCuts = computeRowColCuts(wall, panel, rowIndex, allWalls, bondCornerW, blockers)
+    const dockOpts = dockRowTileOpts(
+      wall,
+      panelWidth,
+      joint,
+      colCuts,
+      rowIndex,
+      allWalls,
+      bondCornerW,
+    )
+    const shearX =
+      pattern === 'runningBondDiagonal' ? panelWidth * 0.12 * (rowIndex % 2 === 0 ? 1 : -1) : 0
+    const rowTiles = tilesAlongRow(colCuts, y, height, joint, wall.width, shearX, dockOpts)
+    tiles.push(...rowTiles.filter((tile) => !tileOverlapsJambHoles(tile, rowHoles, y, yEnd)))
+  }
+
+  return clipTilesAbovePlinth(
+    sealTilesToOpeningJambs(
+      mergeNarrowPanelGaps(splitTilesAtOpenings(tiles, wall.openings), wall, panel),
+      jambHoles,
+      panelWidth,
+    ),
+    panel,
+    skirt,
+  )
 }
 
 /** Basis-Tiles behalten; Y-Bänder aus `courseOverrides` ersetzen. */

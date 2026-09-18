@@ -110,6 +110,8 @@ interface EditorState {
   selectedWallPart?: 'group' | 'cornice' | 'plinth' | 'cladding'
   selectedRoofBuildingId?: string
   selectedRoofPart?: 'group' | 'shell' | 'tiles' | 'gutter'
+  selectedRoofFixture?: { kind: 'skylight' | 'dormer'; id: string }
+  selectedRoofFixtures?: { kind: 'skylight' | 'dormer'; id: string }[]
   selectedCeiling?: { buildingId: string; floorIndex: number }
   selectedBuildingId?: string
 }

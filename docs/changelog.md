@@ -2,6 +2,142 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Giebel bis Dachhaut (2026-09-18) — v2.0.510
+
+**Symptom:** Giebelansicht: Dach sitzt als Stufe auf dem Dreieck (dunkle Kante), dünne Linie ragt über die Giebelwand. Unverändert über mehrere Iterationen.
+
+**Runtime:** `tv` 13,46 cm (Platte 10 / cos 42°). Füllung ging nur bis Soffit (`planeY − tv`); Stirn auf bündiger Giebelkante des Traufpolygons (über die Wand hinaus verlängert durch Traufüberstand).
+
+**Lösung:** Giebelfüllung bis Dachhaut (`planeY`). Keine Stirn auf `flush`-Kanten.
+
+Docs: [roof.md](roof.md).
+
+### Giebel auf der Geschosskante (2026-09-18) — v2.0.509
+
+**Symptom:** Giebeldreieck schwebte über einer horizontalen Naht — Dach schloss nicht mit der Oberkante/Traufkante des Dachgeschosses ab (Screenshot Giebelansicht). Über mehrere Iterationen unverändert.
+
+**Runtime:** Alle Dach-Wände `topTrimCm: 6` (`meshTopEst` 1786 vs. `wallTop` 1792); Giebelfüllung `fillBottomY` 1784; Deckel `capY` 1791,2 auf der Fassadenlinie.
+
+**Lösung:** Bündige Giebelwände nicht kürzen. Giebelfüllung ab `wallTopY` (nicht trim+seal darunter). Kein Wandkronen-Deckel auf Giebelkanten.
+
+Docs: [roof.md](roof.md).
+
+### Traufgesims unter Soffit, nicht ausgeblendet (2026-09-18) — v2.0.508
+
+**Symptom:** Nach v2.0.507 war das Traufgesims am Dachgeschoss komplett weg; die Traufe wirkte vorne von der Mauer abgehoben (6 cm Wandkürzung sichtbar), am Giebel nicht.
+
+**Runtime:** `skip: true` auf der Dach-Etage (`wallTopWorld === topY`); `meshTopEst` 1786 vs. Soffit 1792; `gapSoffitVsWall` an der Traufe 0.
+
+**Lösung:** Gesims wieder zeichnen. Absenkung `max(trim+2, Profil-Tiefe·tan+2)`, damit die Krone unter der geneigten Soffit bleibt. Dach ein/aus bleibt Voll-Rebuild (507).
+
+Docs: [roof.md](roof.md), [wall-decor.md](wall-decor.md).
+
+### Dach: Gesims, Formen, Löschen (2026-09-18) — v2.0.507
+
+**Symptom:** (1) Traufgesims schien durch/zwischen Wand und Traufe. (2) Sattel/Walm/… wirkten gleich. (3) Dach löschen → „Hinzufügen“ stellte das alte Dach (Gauben) wieder her.
+
+**Ursache:** (1) `commitRoofPatch` erzwang immer Dach-only-Rebuild — Wandkürzung und Gesims-Pfade blieben stehen; zusätzlich ragte das Traufgesims in die Traufzone. (2) Formwechsel setzte keine Giebel-`flush`-Kanten. (3) Löschen setzte nur `enabled: false` und behielt `dormers`/`kind`.
+
+**Lösung:** Dach ein/aus → Voll-Rebuild (`buildingIdsNeedingRoofOnlyRebuild` null bei `enabled`-Wechsel). Traufgesims am Dachgeschoss wird bei aktivem Dach nicht gezeichnet. Formwechsel setzt Giebelenden bündig (Sattel/Krüppelwalm) bzw. löscht Bündig-Modi (Walm/…). Löschen/Hinzufügen nutzt frisches `DEFAULT_ROOF`.
+
+Docs: [roof.md](roof.md), [wall-decor.md](wall-decor.md).
+
+### Dach-Geometrie: oh·tan-Doppelzählung rückgängig (2026-09-18) — v2.0.506
+
+**Symptom:** Nach v2.0.505 Dach/Gesims stark verzerrt — schwarze Traufe schwebte weit vor der Fassade, Giebelkanten gebrochen („schlimmer als vorher“).
+
+**Fehlannahme (505):** `gapAtWallEst ≈ 43 cm` war die erwartete Höhendifferenz **Spitze vs. Wand** (`oh·tan`), nicht ein Luftspalt an der Wandlinie. Ebenen sitzen seit v2.0.481 am **Wandring** (`outer`); die Neigung senkt die Spitze bereits.
+
+**Lösung:** Wieder `eaveY = wallTop + tv` (wie v2.0.504). Soffit an der Wand = `eaveY − tv`. Kein zusätzliches `− oh·tan`.
+
+**Nicht wieder einbauen:** globale Trauf-Absenkung um `maxEaveOverhang·tan`.
+
+Docs: [roof.md](roof.md).
+
+### Dach-Soffit an der Wand (Überstand) (2026-09-18) — v2.0.505
+
+**Zurückgenommen** in v2.0.506. Die Messung verwechselte Spitzen-Drop mit Wand-Spalt; der Fix verzerrte die Geometrie.
+
+Docs: [roof.md](roof.md).
+
+### Dach wieder auf der Wand / kein Haus-Flackern (2026-09-16) — v2.0.504
+
+**Symptom:** (1) Dach wirkte wieder leicht abgehoben (Luft unter der Traufe). (2) Haus in den Ebenen markieren → Bühne flackerte kurz.
+
+**Ursache:** (1) `eaveY = wallTop + tv + clearance` (Clearance ≥ 8 cm aus v2.0.488–492) plus Wandkürzung 6 cm → sichtbarer Spalt. (2) `selectBuilding` lief über `applyState` (voller Geometrie-Rebuild) statt nur Editor-Auswahl.
+
+**Lösung:** Traufe wieder `wallTop + tv` (Soffit auf Wandoberkante); Geschosskante weiter über `ROOF_WALL_TOP_TRIM_CM`. Gesims-Drop nur `trim + 2`. Hauswahl → `applyEditorSelection`.
+
+**Nicht rückgängig:** Wandkürzung unter Dach (v2.0.494) — ohne sie scheint die Kante wieder durch.
+
+Docs: [roof.md](roof.md), [ux.md](ux.md).
+
+### Gauben Mehrfachauswahl (2026-09-16) — v2.0.503
+
+**Soll:** Mehrere Gauben/Dachfenster gleichzeitig markieren; in den Ebenen Shift+Klick = Bereich zwischen Anker und Klick (wie bei Fenstern/Lichtern).
+
+**Umsetzung:** `EditorState.selectedRoofFixtures[]`; Ebenen-Einträge in `buildLayerTreeEntries`; Ctrl/Cmd additiv, Shift-Bereich; 3D-Highlight für alle Gewählten; Löschen/Ausblenden/Pfeiltasten wirken auf die Auswahl.
+
+Docs: [roof.md](roof.md), [ux.md](ux.md).
+
+### Gauben / Dachfenster in den Ebenen (2026-09-16) — v2.0.502
+
+**Soll:** Gesetzte Gauben (und Dachfenster) unter **Dach** in der linken Ebenenliste — wie Fenster unter der Wand.
+
+**Umsetzung:** `renderLayerList` listet `roof.dormers` / `skylights` unter dem aufgeklappten Dach; Klick → `selectRoof(…, fixture)`; Mehr-/Rechtsklick → `roofFixtureContextItems`. Auswahl in 3D klappt das Dach auf (`revealSelectionInLayerTree`).
+
+Docs: [roof.md](roof.md), [ux.md](ux.md).
+
+### Schicht: Keil links/rechts (2026-09-16) — v2.0.501
+
+**Soll:** Pro Schicht Bossenform „Keil“ — Verjüngung nur an den vertikalen Kanten (Höhe voll), wie für 45°-Optik spezifiziert.
+
+**Umsetzung:** `taperSides: 'lr' | 'all'` an Override/Tiles; `extrudeFrustum` ohne Y-Einzug bei `lr`.
+
+Docs: [masonry-course-editor.md](masonry-course-editor.md).
+
+### Schicht: Setzen / Bearbeiten (2026-09-16) — v2.0.500
+
+**Soll:** Klare Trennung Setzen (Maße vor dem Legen) vs. Bearbeiten (nur Auswahl); Bossen einer Schicht nicht wandweit.
+
+**Umsetzung:** Segmented Control Aus|Setzen|Bearbeiten; Feld-Commits nur im Bearbeiten; Taper immer auf Course-Tiles gestempelt.
+
+Docs: [masonry-course-editor.md](masonry-course-editor.md).
+
+### Schicht: Bossen / spitz zulaufen (2026-09-16) — v2.0.499
+
+**Soll:** Pro gesetzter Schicht Bossen-Vorstand und -profil (Trapez/spitz), nicht nur wandweit.
+
+**Umsetzung:** `taperDepth`/`taper` an Staging + Override; auf Tiles gestempelt; UI unter Schicht-Maßen (Profil nur bei Vorstand > 0).
+
+Docs: [masonry-course-editor.md](masonry-course-editor.md).
+
+### Gesetzte Schichten nachbearbeiten (2026-09-16) — v2.0.498
+
+**Soll:** Nach Verlassen von „Schicht setzen“ einzelne gesetzte Reihen erneut wählen und Form/Maße ändern.
+
+**Umsetzung:** Klick oder Select „Gesetzte Schicht“; Staging aus Override; Bibliothek patched die Auswahl; Löschen-Button.
+
+Docs: [masonry-course-editor.md](masonry-course-editor.md).
+
+### Schicht: Maße und Verband-Ebene (2026-09-16) — v2.0.497
+
+**Soll:** Beim Setzen Breite/Höhe/Tiefe und die Lage des Verbands (gerade/versetzt/…) wählbar.
+
+**Umsetzung:** Staging + `MasonryCourseOverride.projectDepth` / `coursePhase`; `layoutSingleCourseRow` mit erzwungenem `rowIndex`; UI-Felder unter „Schicht setzen“.
+
+Docs: [masonry-course-editor.md](masonry-course-editor.md).
+
+### Schicht bleibt nach Domino (2026-09-16) — v2.0.496
+
+**Symptom:** Domino setzt Steine, danach verschwinden sie; Wand flackert dunkelgrau.
+
+**Ursache:** `createStudioPanelGeometry` / Flat-by-Color lieferten bei `panel.pattern === 'none'` leere Geometrie trotz `courseOverrides`-Tiles. Ghosts wurden vor dem Rebuild entfernt → nackter Wandkörper.
+
+**Lösung:** Geometrie aus vorhandenen Tiles auch bei `none`; `visiblePanelRowRect` aus Overrides; Ghosts erst nach `commitState`.
+
+Docs: [masonry-course-editor.md](masonry-course-editor.md).
+
 ### Schicht-Editor Mauerwerk (2026-09-16) — v2.0.495
 
 **Soll:** Zusätzlich zum wandweiten Muster Reihen einzeln setzen (Größe 0°/90°, Farbstufe), orangene Vorschau, Domino-Animation; Öffnungen über bestehende Clip-Pipeline.

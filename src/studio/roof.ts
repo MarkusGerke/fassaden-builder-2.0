@@ -37,13 +37,12 @@ import {
   orientRingCcw,
   roofEdgeKey,
   roofSlabVerticalCm,
-  roofWallClearanceCm,
-  ROOF_WALL_CLEARANCE_CM,
+  yawToDirXZ,
   type RoofEaveCut,
   type RoofEnvelope,
   type XZ,
 } from './roofForms'
-import { isStudioWall, studioFacadeOutwardDepth, wallEndPoint, wallHasPanels, wallStartPoint } from './walls'
+import { isStudioWall, wallEndPoint, wallHasPanels, wallStartPoint } from './walls'
 
 export type { RoofConfig, RoofTileProfile }
 export { ROOF_KIND_LABELS, ROOF_KINDS, roofKindUsesPitch, roofKindUsesRidgeDir } from './roofForms'
@@ -546,6 +545,59 @@ function listRoofEdgesForRing(building: Building, roof: RoofConfig, outer: XZ[])
 
 export function overhangPerEdge(edges: RoofEdgeInfo[], overhang: number): number[] {
   return edges.map((edge) => (edge.flush ? 0 : overhang))
+}
+
+/**
+ * Kantenmodi beim Formwechsel: Sattel/Krüppelwalm → Giebelenden bündig;
+ * Walm/Mansarde/Pult → gespeicherte Bündig-Modi löschen (leeres Objekt).
+ */
+export function edgeModesForRoofKind(
+  building: Building,
+  kind: RoofKind,
+  roof: RoofConfig,
+): Record<string, RoofEdgeMode> {
+  if (kind !== 'gable' && kind !== 'halfHip') return {}
+  const outer = roofOuterRing(building)
+  if (!outer || outer.length < 3) return {}
+  let d: XZ
+  if (roof.ridgeDeg === null || roof.ridgeDeg === undefined) {
+    let best = { x: 1, z: 0 }
+    let bestLen = -1
+    for (let i = 0; i < outer.length; i += 1) {
+      const a = outer[i]!
+      const b = outer[(i + 1) % outer.length]!
+      const len = Math.hypot(b.x - a.x, b.z - a.z)
+      if (len > bestLen) {
+        bestLen = len
+        best = { x: (b.x - a.x) / (len || 1), z: (b.z - a.z) / (len || 1) }
+      }
+    }
+    d = best
+  } else {
+    d = yawToDirXZ(roof.ridgeDeg)
+  }
+  let tMin = Infinity
+  let tMax = -Infinity
+  for (const p of outer) {
+    const t = d.x * p.x + d.z * p.z
+    tMin = Math.min(tMin, t)
+    tMax = Math.max(tMax, t)
+  }
+  const modes: Record<string, RoofEdgeMode> = {}
+  const n = outer.length
+  for (let i = 0; i < n; i += 1) {
+    const a = outer[i]!
+    const b = outer[(i + 1) % n]!
+    const ta = d.x * a.x + d.z * a.z
+    const tb = d.x * b.x + d.z * b.z
+    if (
+      (Math.abs(ta - tMin) < 0.5 && Math.abs(tb - tMin) < 0.5) ||
+      (Math.abs(ta - tMax) < 0.5 && Math.abs(tb - tMax) < 0.5)
+    ) {
+      modes[roofEdgeKey(a, b)] = 'flush'
+    }
+  }
+  return modes
 }
 
 function appendTri(
@@ -1221,21 +1273,6 @@ interface RoofSinks {
   gableIndices: number[]
 }
 
-/** Max. Fassaden-Vorstand (Paneel+Bosse) der obersten Etage — für Trauf-Clearance. */
-function topFloorFacadeOutwardCm(building: Building): number {
-  const floors = building.floors
-  if (!floors?.length) return 0
-  const topY = storeyTopY(building, floors.length - 1)
-  let maxOut = 0
-  for (const wall of building.walls ?? []) {
-    if (!isStudioWall(wall)) continue
-    const wallTop = wall.y + wall.height / 2
-    if (Math.abs(wallTop - topY) > 1.5) continue
-    maxOut = Math.max(maxOut, studioFacadeOutwardDepth(wall))
-  }
-  return maxOut
-}
-
 /** Gemeinsame Vorbereitung: Traufhöhe, Ring, Kanten, Überstand. */
 function roofBase(building: Building, roof: RoofConfig): {
   outer: XZ[]
@@ -1243,7 +1280,6 @@ function roofBase(building: Building, roof: RoofConfig): {
   eave: XZ[]
   eaveY: number
   wallTopY: number
-  clearanceCm: number
   edges: RoofEdgeInfo[]
   edgeOverhang: number[]
 } | null {
@@ -1254,21 +1290,20 @@ function roofBase(building: Building, roof: RoofConfig): {
   const outer = orientRingCcw(face.outer)
   const edges = listRoofEdgesForRing(building, roof, outer)
   const edgeOverhang = overhangPerEdge(edges, roof.overhang)
-  // Traufe = Wandoberkante + Dachstärke + Clearance (inkl. Paneel-Vorstand × tan Neigung).
+  // Traufe: Ebenen am Wandring (`outer`). An der Wandlinie y≈eaveY, Spitze tiefer um oh·tan
+  // (Neigung verlängert nach außen — v2.0.481). eaveY = wallTop + tv → Soffit an Wand = wallTop.
+  // v2.0.505 zog zusätzlich oh·tan ab → Doppelzählung, Dach/Gesims verzerrt (revert v2.0.506).
   const topFloor = floors.length - 1
   const wallTopY = storeyTopY(building, topFloor)
   const pitchForSlab = roof.kind === 'mansard' ? roof.pitchLower : roof.pitch
   const slabLift = roofSlabVerticalCm(pitchForSlab)
-  const facadeOut = topFloorFacadeOutwardCm(building)
-  const clearanceCm = roofWallClearanceCm(facadeOut, pitchForSlab)
-  const eaveY = wallTopY + slabLift + clearanceCm
+  const eaveY = wallTopY + slabLift
   return {
     outer,
     holes: face.holes,
     eave: offsetPolygonPerEdge(outer, edgeOverhang),
     eaveY,
     wallTopY,
-    clearanceCm,
     edges,
     edgeOverhang,
   }

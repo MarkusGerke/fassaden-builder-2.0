@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.495'
+export const APP_VERSION = '2.0.510'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,133 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.510',
+    date: '2026-09-18',
+    title: 'Giebel schließt an die Dachhaut',
+    changes: [
+      'Giebeldreieck reicht bis an die Dachfläche — keine 13-cm-Stufe und keine Linie über die Wand hinaus',
+    ],
+  },
+  {
+    version: '2.0.509',
+    date: '2026-09-18',
+    title: 'Giebel sitzt auf der Geschosskante',
+    changes: [
+      'Giebeldreieck schließt bündig mit der Oberkante des Dachgeschosses ab — keine Stufe mehr unter der Traufkante',
+    ],
+  },
+  {
+    version: '2.0.508',
+    date: '2026-09-18',
+    title: 'Traufgesims wieder unter dem Dach',
+    changes: [
+      'Gesims am Dachgeschoss ist wieder da — sitzt unter der Traufe, ohne durch die Soffit zu stechen',
+    ],
+  },
+  {
+    version: '2.0.507',
+    date: '2026-09-18',
+    title: 'Dach: Gesims, Formen, Löschen',
+    changes: [
+      'Traufgesims am Dachgeschoss scheint nicht mehr durch die Traufe',
+      'Sattel- und Walmdach unterscheiden sich klarer (Giebelenden bündig beim Formwechsel)',
+      'Dach löschen und neu hinzufügen startet mit einem frischen Dach — alte Gauben kommen nicht zurück',
+    ],
+  },
+  {
+    version: '2.0.506',
+    date: '2026-09-18',
+    title: 'Dach-Geometrie: Fehlkorrektur Überstand',
+    changes: [
+      'Dach und Gesims wieder gerade: die Absenkung um Überstand×Neigung (v2.0.505) war eine Doppelzählung und verzerrte die Traufe',
+    ],
+  },
+  {
+    version: '2.0.505',
+    date: '2026-09-18',
+    title: 'Dach-Soffit an der Wand',
+    changes: [
+      'Zurückgenommen in v2.0.506 (Doppelzählung oh·tan)',
+    ],
+  },
+  {
+    version: '2.0.504',
+    date: '2026-09-16',
+    title: 'Dach wieder auf der Wand, kein Haus-Flackern',
+    changes: [
+      'Dach sitzt wieder auf der Wandoberkante — der Clearance-Luftspalt unter der Traufe ist weg',
+      'Haus in den Ebenen markieren flackert die Bühne nicht mehr kurz auf',
+    ],
+  },
+  {
+    version: '2.0.503',
+    date: '2026-09-16',
+    title: 'Mehrere Gauben markieren',
+    changes: [
+      'Mehrere Gauben/Dachfenster gleichzeitig markieren (Ctrl/Cmd+Klick)',
+      'In den Ebenen: Shift+Klick wählt alle Gauben/Dachfenster zwischen Anker und Klick',
+    ],
+  },
+  {
+    version: '2.0.502',
+    date: '2026-09-16',
+    title: 'Gauben in den Ebenen',
+    changes: [
+      'Gesetzte Gauben und Dachfenster erscheinen unter Dach in der Ebenenliste — wählbar, mit Mehr-Menü wie in der 3D-Ansicht',
+    ],
+  },
+  {
+    version: '2.0.501',
+    date: '2026-09-16',
+    title: 'Schicht: Keil links/rechts',
+    changes: [
+      'Bossenform „Keil (nur links/rechts)“: Verjüngung nur an den vertikalen Kanten, Höhe bleibt voll — für spitze/45°-Optik pro Schicht',
+    ],
+  },
+  {
+    version: '2.0.500',
+    date: '2026-09-16',
+    title: 'Schicht: Setzen / Bearbeiten',
+    changes: [
+      'Segmented Control Aus · Setzen · Bearbeiten: vor dem Legen Maße einstellen; im Bearbeiten gelten Änderungen nur für die gewählte Schicht',
+      'Bossen einer Schicht schreiben nicht mehr auf die ganze Wand',
+    ],
+  },
+  {
+    version: '2.0.499',
+    date: '2026-09-16',
+    title: 'Schicht: Bossen / spitz zulaufen',
+    changes: [
+      'Pro gesetzter Schicht: Bossen-Vorstand und -profil (spitz zulaufender Stein), unabhängig von der Wand-Bossen-Einstellung',
+    ],
+  },
+  {
+    version: '2.0.498',
+    date: '2026-09-16',
+    title: 'Gesetzte Schichten nachbearbeiten',
+    changes: [
+      'Nach „Schicht setzen“ aus: gesetzte Reihe anklicken oder in der Liste wählen → Form (Bibliothek), Maße, Verband-Ebene und Farbe ändern oder Schicht löschen',
+    ],
+  },
+  {
+    version: '2.0.497',
+    date: '2026-09-16',
+    title: 'Schicht: Maße und Verband-Ebene',
+    changes: [
+      'Beim Schicht setzen: Breite, Höhe und Tiefe des Steins einstellbar',
+      'Verband-Ebene wählbar (z. B. Läufer gerade/versetzt; Streifen 1 Lage, Läufer 2, ¼-Versatz 4)',
+    ],
+  },
+  {
+    version: '2.0.496',
+    date: '2026-09-16',
+    title: 'Schicht bleibt nach Domino sichtbar',
+    changes: [
+      'Gesetzte Mauerwerks-Schichten bleiben nach der Domino-Animation sichtbar (`pattern: none` + courseOverrides erzeugen Geometrie)',
+      'Kein kurzer dunkelgrauer Wand-Flash mehr: Ghosts werden erst nach dem Rebuild entfernt',
+    ],
+  },
   {
     version: '2.0.495',
     date: '2026-09-16',
