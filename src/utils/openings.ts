@@ -394,6 +394,8 @@ export function outerSillUsesProfile(sill: OpeningSillOuter): boolean {
   return sill.mode === 'profile' && Boolean(sill.profileId)
 }
 
+export type LocalXRange = { x0: number; x1: number }
+
 export function resolveOuterSillLayout(opening: Opening, sill: OpeningSillOuter): OuterSillLayout {
   const normalized = normalizeOpeningSillOuter(sill)
   const overhang = normalized.overhang ?? 16
@@ -406,6 +408,101 @@ export function resolveOuterSillLayout(opening: Opening, sill: OpeningSillOuter)
   const yTop = opening.y
   const yBottom = opening.y - thickness
   return { xLeft, xRight, yTop, yBottom, depth, thickness, angleDeg, width }
+}
+
+/** Nachbarfenster in einem Achs-Abstand (96 cm) am Erker-Mund: keine Bank (sonst Fern-Z-Fight). */
+const BAY_MOUTH_NEIGHBOR_EPS_CM = 96
+
+/** Mindestbreite Brett-Bank nach Mund-Clipping — darunter nicht rendern (Z-Stummel). */
+export const BAY_MOUTH_MIN_SILL_WIDTH_CM = 12
+
+/** Fenster direkt links/rechts am Erker-Mund (Nachbaröffnung, nicht im Mund). */
+export function openingFlanksBayMouth(
+  opening: Pick<Opening, 'x' | 'width'>,
+  mouthGaps: LocalXRange[],
+): boolean {
+  if (!mouthGaps.length) return false
+  const left = opening.x
+  const right = opening.x + opening.width
+  for (const g of mouthGaps) {
+    if (Math.abs(right - g.x0) <= BAY_MOUTH_NEIGHBOR_EPS_CM) return true
+    if (Math.abs(left - g.x1) <= BAY_MOUTH_NEIGHBOR_EPS_CM) return true
+  }
+  return false
+}
+
+/**
+ * Außenbank am Erker-Mund weglassen: Laibung am Mund oder Überstand ragt in die Mundspalte
+ * (reine Öffnungskante reicht nicht — 16 cm Überstand würde sonst sichtbar „durchscheinen“).
+ */
+export function openingOuterSillConflictsBayMouth(
+  opening: Pick<Opening, 'x' | 'width'>,
+  sill: OpeningSillOuter | undefined,
+  mouthGaps: LocalXRange[],
+): boolean {
+  if (!mouthGaps.length) return false
+  if (openingFlanksBayMouth(opening, mouthGaps)) return true
+  if (!sill?.enabled) return false
+  const layout = resolveOuterSillLayout(opening, normalizeOpeningSillOuter(sill))
+  const left = opening.x
+  const right = opening.x + opening.width
+  for (const g of mouthGaps) {
+    if (right <= g.x0 + 0.5 && layout.xRight > g.x0 - 0.5) return true
+    if (left >= g.x1 - 0.5 && layout.xLeft < g.x1 + 0.5) return true
+  }
+  return false
+}
+
+/** Fensterbretter neben Erker-Mund: Überstand nicht in die Mundöffnung. */
+export function clampOuterSillLayoutForBayMouths(
+  layout: OuterSillLayout,
+  opening: Pick<Opening, 'x' | 'width'>,
+  mouthGaps: LocalXRange[],
+): OuterSillLayout {
+  if (!mouthGaps.length) return layout
+  let xLeft = layout.xLeft
+  let xRight = layout.xRight
+  const ox = opening.x
+  const ow = opening.width
+  for (const g of mouthGaps) {
+    if (ox + ow <= g.x0 + 0.5) {
+      xRight = Math.min(xRight, g.x0)
+    } else if (ox >= g.x1 - 0.5) {
+      xLeft = Math.max(xLeft, g.x1)
+    }
+  }
+  const width = Math.max(0, xRight - xLeft)
+  return { ...layout, xLeft, xRight, width }
+}
+
+/** Abstand gegen Z-Fight / PCSS-Flecken in der Ferne an 90°-Stößen (eine Fensterachse). */
+export const SILL_JOIN_ZFIGHT_PAD_CM = 96
+
+export function sillJoinInsetFromNeighbor(
+  wallYawDeg: number,
+  neighbor: Pick<Wall, 'yawDeg' | 'depth'> | undefined,
+): number {
+  if (!neighbor) return 0
+  const yawDiff = Math.abs((((wallYawDeg ?? 0) - (neighbor.yawDeg ?? 0)) % 360) + 360) % 360
+  if (yawDiff < 8 || Math.abs(yawDiff - 180) < 8) return 0
+  return Math.max(8, neighbor.depth ?? 24) + SILL_JOIN_ZFIGHT_PAD_CM
+}
+
+/**
+ * Bank nicht in die Nachbarwand (Erker-Schenkel) ziehen.
+ * Würde die Öffnung selbst angeschnitten → `null` (kein Stummel, kein Fern-Z-Fight).
+ */
+export function clipOuterSillLayoutToJoins(
+  layout: OuterSillLayout,
+  opening: Pick<Opening, 'x' | 'width'>,
+  wallWidth: number,
+  insets: { start: number; end: number },
+): OuterSillLayout | null {
+  const xLeft = Math.max(insets.start, layout.xLeft)
+  const xRight = Math.min(wallWidth - insets.end, layout.xRight)
+  if (xRight - xLeft < 8) return null
+  if (xLeft > opening.x + 0.5 || xRight < opening.x + opening.width - 0.5) return null
+  return { ...layout, xLeft, xRight, width: xRight - xLeft }
 }
 
 export function openingHasProfile(

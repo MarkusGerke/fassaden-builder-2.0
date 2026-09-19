@@ -247,6 +247,7 @@ import {
   isGalleryModeActive,
   type GalleryModeHost,
 } from './ui/galleryMode'
+import { initArrivierenUi, type ArrivierenModeHost } from './ui/arrivierenMode'
 import {
   EXPORT_JPG_QUALITY,
   buildExportFilename,
@@ -617,7 +618,11 @@ import {
   ROOF_KIND_LABELS,
   roofKindUsesPitch,
   roofKindUsesRidgeDir,
+  roofKindUsesRidgeRise,
+  roofOuterRing,
+  roofPitchDegFromRidgeRise,
   roofRidgeHeightCm,
+  effectiveEdgeOverhangCm,
   type RoofConfig,
 } from './studio/roof'
 import {
@@ -7799,8 +7804,18 @@ const roofCoveringRow = document.querySelector<HTMLDivElement>('#roof-covering-r
 const roofCovering = document.querySelector<HTMLSelectElement>('#roof-covering')!
 const roofCoveringHint = document.querySelector<HTMLParagraphElement>('#roof-covering-hint')!
 const roofMansardRows = document.querySelector<HTMLDivElement>('#roof-mansard-rows')!
+const roofRidgeRiseRow = document.querySelector<HTMLDivElement>('#roof-ridge-rise-row')!
+const roofRidgeRise = document.querySelector<HTMLInputElement>('#roof-ridge-rise')!
 const roofPitchRow = document.querySelector<HTMLDivElement>('#roof-pitch-row')!
 const roofPitch = document.querySelector<HTMLInputElement>('#roof-pitch')!
+const roofPitchDerivedRow = document.querySelector<HTMLDivElement>('#roof-pitch-derived-row')!
+const roofPitchDerived = document.querySelector<HTMLOutputElement>('#roof-pitch-derived')!
+const roofOverhangGlobalRow = document.querySelector<HTMLDivElement>('#roof-overhang-global-row')!
+const roofOverhangCompass = document.querySelector<HTMLDivElement>('#roof-overhang-compass')!
+const roofOverhangN = document.querySelector<HTMLInputElement>('#roof-overhang-n')!
+const roofOverhangO = document.querySelector<HTMLInputElement>('#roof-overhang-o')!
+const roofOverhangS = document.querySelector<HTMLInputElement>('#roof-overhang-s')!
+const roofOverhangW = document.querySelector<HTMLInputElement>('#roof-overhang-w')!
 const roofHalfHipRow = document.querySelector<HTMLDivElement>('#roof-half-hip-row')!
 const roofHalfHipHeight = document.querySelector<HTMLInputElement>('#roof-half-hip-height')!
 const roofRidgeDerivedRow = document.querySelector<HTMLDivElement>('#roof-ridge-derived-row')!
@@ -9647,7 +9662,19 @@ function syncCeilingUI() {
 function commitRoofPatch(patch: Partial<RoofConfig>) {
   if (!facadeHasRoofablePlan(state) && patch.enabled) return
   const building = activeBuilding()
-  const next = normalizeRoof({ ...normalizeRoof(building.roof), ...patch })
+  let merged: RoofConfig = { ...normalizeRoof(building.roof), ...patch }
+  if (roofKindUsesRidgeRise(merged.kind)) {
+    const outer = roofOuterRing(building)
+    const rise = merged.ridgeRiseCm ?? roofRidgeHeightCm(building, merged)
+    if (outer && Number.isFinite(rise)) {
+      merged = {
+        ...merged,
+        ridgeRiseCm: rise,
+        pitch: roofPitchDegFromRidgeRise(rise, outer, merged),
+      }
+    }
+  }
+  const next = normalizeRoof(merged)
   commitState(updateActiveBuilding(state, { roof: next }), editor, {
     forceRoofOnlyIds: [building.id],
   })
@@ -9992,11 +10019,31 @@ function fillSelectOptions(select: HTMLSelectElement, options: Array<{ value: st
 /** Sichtbarkeit und Werte der Dachform-Felder — inaktive Felder `hidden`, nicht nur disabled. */
 function syncRoofFormUI(roof: RoofConfig) {
   const usesPitch = roofKindUsesPitch(roof.kind)
+  const usesRidgeRise = roofKindUsesRidgeRise(roof.kind)
   const usesRidge = roofKindUsesRidgeDir(roof.kind)
+  const building = activeBuilding()
   roofKind.value = roof.kind
   roofMansardRows.hidden = usesPitch
-  roofPitchRow.hidden = !usesPitch
-  roofPitch.value = String(roof.pitch)
+  roofRidgeRiseRow.hidden = !usesRidgeRise
+  roofPitchRow.hidden = !usesPitch || usesRidgeRise
+  roofPitchDerivedRow.hidden = !usesRidgeRise
+  roofOverhangGlobalRow.hidden = usesRidgeRise
+  roofOverhangCompass.hidden = !usesRidgeRise
+  if (usesRidgeRise) {
+    const rise = roof.ridgeRiseCm ?? roofRidgeHeightCm(building, roof)
+    roofRidgeRise.value = String(Math.round(rise))
+    const outer = roofOuterRing(building)
+    roofPitchDerived.textContent = outer
+      ? String(Math.round(roofPitchDegFromRidgeRise(rise, outer, roof)))
+      : '–'
+    const compass = roof.overhangCompass ?? {}
+    roofOverhangN.value = String(compass.N ?? roof.overhang)
+    roofOverhangO.value = String(compass.O ?? roof.overhang)
+    roofOverhangS.value = String(compass.S ?? roof.overhang)
+    roofOverhangW.value = String(compass.W ?? roof.overhang)
+  } else {
+    roofPitch.value = String(roof.pitch)
+  }
   roofHalfHipRow.hidden = roof.kind !== 'halfHip'
   roofHalfHipHeight.value = String(roof.halfHipHeight)
 
@@ -10021,10 +10068,10 @@ function syncRoofFormUI(roof: RoofConfig) {
   roofCoveringHint.hidden = true
   roofTilesOptions.hidden = true
 
-  // Abgeleitete Firsthöhe (Envelope) nur bei Neigungs-Formen.
-  roofRidgeDerivedRow.hidden = !usesPitch
-  if (usesPitch) {
-    const h = roofRidgeHeightCm(activeBuilding(), roof)
+  // Abgeleitete Firsthöhe (Walm/Pult) — Sattel/Krüppelwalm nutzen Eingabe First über Traufe.
+  roofRidgeDerivedRow.hidden = !usesPitch || usesRidgeRise
+  if (usesPitch && !usesRidgeRise) {
+    const h = roofRidgeHeightCm(building, roof)
     roofRidgeDerived.textContent = h > 0 ? String(Math.round(h)) : '–'
   }
 
@@ -10042,7 +10089,21 @@ function syncRoofFormUI(roof: RoofConfig) {
 
   renderRoofEdgeList(roof)
   syncRoofCrossGableUI(roof)
-  for (const input of [roofKind, roofRidgeDir, roofPitch, roofHalfHipHeight, roofCrossGableEnabled, roofCrossGableEdge, roofCrossGableWidth, roofCrossGableDepth]) {
+  for (const input of [
+    roofKind,
+    roofRidgeDir,
+    roofRidgeRise,
+    roofPitch,
+    roofHalfHipHeight,
+    roofOverhangN,
+    roofOverhangO,
+    roofOverhangS,
+    roofOverhangW,
+    roofCrossGableEnabled,
+    roofCrossGableEdge,
+    roofCrossGableWidth,
+    roofCrossGableDepth,
+  ]) {
     input.disabled = !roofEnabled.checked
   }
 }
@@ -10098,10 +10159,16 @@ function commitRoofCrossGablePatch(patch: {
   })
 }
 
-/** Traufkanten mit Modus Auto / Frei / Bündig — eine Zeile je Kante (Titel links, Select rechts). */
+/** Traufkanten: Überstand (cm) + Rinne Auto / Frei / Aus. */
 function renderRoofEdgeList(roof: RoofConfig) {
   const edges = listRoofEdges(activeBuilding(), roof)
-  const signature = edges.map((e) => `${e.key}:${e.mode}:${e.flush ? 1 : 0}:${e.label}`).join('|') + (roofEnabled.checked ? ':on' : ':off')
+  const signature =
+    edges
+      .map(
+        (e) =>
+          `${e.key}:${e.mode}:${effectiveEdgeOverhangCm(e, roof)}:${e.flush ? 1 : 0}:${e.label}`,
+      )
+      .join('|') + (roofEnabled.checked ? ':on' : ':off')
   if (roofEdgeList.dataset.signature === signature) return
   roofEdgeList.dataset.signature = signature
   roofEdgeList.replaceChildren()
@@ -10113,19 +10180,40 @@ function renderRoofEdgeList(roof: RoofConfig) {
     return
   }
   for (const edge of edges) {
+    const ohRow = document.createElement('div')
+    ohRow.className = 'toolbar-group toolbar-inline-value ui-field-inline'
+    const ohLabel = document.createElement('span')
+    ohLabel.className = 'toolbar-label'
+    ohLabel.textContent = `${edge.label} · Überstand (cm)`
+    const ohInput = document.createElement('input')
+    ohInput.type = 'number'
+    ohInput.min = '0'
+    ohInput.max = '120'
+    ohInput.step = '8'
+    ohInput.value = String(effectiveEdgeOverhangCm(edge, roof))
+    ohInput.disabled = !roofEnabled.checked || edge.mode === 'flush'
+    ohInput.addEventListener('change', () => {
+      const cm = Number(ohInput.value)
+      if (!Number.isFinite(cm)) return
+      const next = { ...(roof.edgeOverhangCm ?? {}) }
+      next[edge.key] = cm
+      commitRoofPatch({ edgeOverhangCm: next })
+    })
+    ohRow.append(ohLabel, ohInput)
+    roofEdgeList.appendChild(ohRow)
+
     const row = document.createElement('div')
     row.className = 'toolbar-group toolbar-inline-value ui-field-inline'
     const label = document.createElement('span')
     label.className = 'toolbar-label'
-    label.textContent = edge.label
-    label.title = edge.flush ? 'Wirksam: bündig' : 'Wirksam: frei (Überstand)'
+    label.textContent = `${edge.label} · Rinne`
     const select = document.createElement('select')
-    select.setAttribute('aria-label', `Kante ${edge.label}`)
-    const autoLabel = edge.mode === 'auto' ? (edge.flush ? 'Auto (bündig)' : 'Auto (frei)') : 'Auto'
+    select.setAttribute('aria-label', `Rinne ${edge.label}`)
+    const autoLabel = edge.mode === 'auto' ? (edge.flush ? 'Auto (aus)' : 'Auto (an)') : 'Auto'
     for (const [value, text] of [
       ['auto', autoLabel],
       ['free', 'Frei'],
-      ['flush', 'Bündig'],
+      ['flush', 'Aus'],
     ] as Array<[RoofEdgeMode, string]>) {
       const opt = document.createElement('option')
       opt.value = value
@@ -10139,7 +10227,13 @@ function renderRoofEdgeList(roof: RoofConfig) {
       const next: Record<string, RoofEdgeMode> = { ...(roof.edgeModes ?? {}) }
       if (mode === 'auto') delete next[edge.key]
       else next[edge.key] = mode
-      commitRoofPatch({ edgeModes: next })
+      const patch: Partial<RoofConfig> = { edgeModes: next }
+      if (mode === 'flush') {
+        const oh = { ...(roof.edgeOverhangCm ?? {}) }
+        oh[edge.key] = 0
+        patch.edgeOverhangCm = oh
+      }
+      commitRoofPatch(patch)
     })
     row.append(label, select)
     roofEdgeList.appendChild(row)
@@ -28039,6 +28133,29 @@ initGalleryUi(galleryHost, {
   reshuffleBtn: galleryReshuffleBtn,
   section: gallerySettingsSection,
 })
+
+const arrivierenHost: ArrivierenModeHost = {
+  getFacade: () => state,
+  getEditor: () => editor,
+  applyState(next, nextEditor) {
+    applyState(next, nextEditor ?? editor)
+  },
+}
+initArrivierenUi(arrivierenHost, {
+  seedInput: document.querySelector<HTMLInputElement>('#arrivieren-seed')!,
+  generateBtn: document.querySelector<HTMLButtonElement>('#arrivieren-generate')!,
+  snapshotEl: document.querySelector<HTMLElement>('#arrivieren-snapshot')!,
+  schematicHost: document.querySelector<HTMLElement>('#arrivieren-schematic')!,
+  schematicToggle: document.querySelector<HTMLInputElement>('#arrivieren-schematic-toggle')!,
+  noteInput: document.querySelector<HTMLTextAreaElement>('#arrivieren-note')!,
+  weightNoteInput: document.querySelector<HTMLTextAreaElement>('#arrivieren-weight-note')!,
+  feedbackOkBtn: document.querySelector<HTMLButtonElement>('#arrivieren-feedback-ok')!,
+  feedbackWrongBtn: document.querySelector<HTMLButtonElement>('#arrivieren-feedback-wrong')!,
+  exportCopyBtn: document.querySelector<HTMLButtonElement>('#arrivieren-feedback-copy')!,
+  exportDownloadBtn: document.querySelector<HTMLButtonElement>('#arrivieren-feedback-download')!,
+  brokenRulesHost: document.querySelector<HTMLElement>('#arrivieren-broken-rules')!,
+})
+
 viewBtnColor.addEventListener('click', () => {
   setRenderStyle('color')
 })
@@ -32409,9 +32526,31 @@ roofPitchLower.addEventListener('change', () => {
 roofPitchUpper.addEventListener('change', () => {
   commitRoofPatch({ pitchUpper: Number(roofPitchUpper.value) })
 })
-roofOverhang.addEventListener('change', () => {
+const commitRoofOverhangFromField = () => {
   commitRoofPatch({ overhang: Number(roofOverhang.value) })
-})
+}
+roofOverhang.addEventListener('input', commitRoofOverhangFromField)
+roofOverhang.addEventListener('change', commitRoofOverhangFromField)
+
+function commitRoofCompassOverhang() {
+  commitRoofPatch({
+    overhangCompass: {
+      N: Number(roofOverhangN.value),
+      O: Number(roofOverhangO.value),
+      S: Number(roofOverhangS.value),
+      W: Number(roofOverhangW.value),
+    },
+  })
+}
+for (const el of [roofOverhangN, roofOverhangO, roofOverhangS, roofOverhangW]) {
+  el.addEventListener('input', commitRoofCompassOverhang)
+  el.addEventListener('change', commitRoofCompassOverhang)
+}
+const commitRoofRidgeRiseFromField = () => {
+  commitRoofPatch({ ridgeRiseCm: Number(roofRidgeRise.value) })
+}
+roofRidgeRise.addEventListener('input', commitRoofRidgeRiseFromField)
+roofRidgeRise.addEventListener('change', commitRoofRidgeRiseFromField)
 roofRidgeHeight.addEventListener('change', () => {
   commitRoofPatch({ ridgeHeight: Number(roofRidgeHeight.value) })
 })
@@ -32459,6 +32598,9 @@ roofKind.addEventListener('change', () => {
   const prevDefault = ROOF_KIND_DEFAULT_PITCH[prev.kind] ?? DEFAULT_ROOF.pitch
   const nextDefault = ROOF_KIND_DEFAULT_PITCH[kind]
   if (nextDefault !== undefined && prev.pitch === prevDefault) patch.pitch = nextDefault
+  if (roofKindUsesRidgeRise(kind) && prev.ridgeRiseCm === undefined) {
+    patch.ridgeRiseCm = roofRidgeHeightCm(activeBuilding(), prev) || 240
+  }
   commitRoofPatch(patch)
 })
 roofRidgeDir.addEventListener('change', () => {

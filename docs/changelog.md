@@ -2,6 +2,130 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Traufschluss Wand–Dach (2026-09-19) — v2.0.564
+
+**Symptom:** Dach wirkte als eine Fläche ohne Verbindung **Wandoberkante ↔ Dachunterseite**. Mansarde: Trauf-Unterkante offen. Andere Formen: Füllung fehlte bzw. Soffit von unten unsichtbar.
+
+**Ursache:** Mansarde baute nur die geneigten Bänder, keine Schürze. Soffit lag auf dem Dach-Mesh (`FrontSide`) — von unten weggecullt.
+
+**Lösung:** `pushEaveBoxSkirt` / `appendEaveBoxSkirtToArrays` — Füllung, Soffit, Blende **beidseitig** in der Giebelgeometrie (`DoubleSide`). Mansarde: unterer Mantel am **Wandring**, Schürze in `gable*`. Alle Envelope-Formen ebenfalls.
+
+Dateien: `roofForms.ts`, `roof.ts`. Test: Kasten-Traufe Y-Spanne.
+
+### Sattel/Krüppelwalm: First cm, Überstand pro Seite (2026-09-19) — v2.0.563
+
+**Spec (Nutzer):** Firsthöhe in cm; Überstand je Himmelsrichtung/Kante; horizontaler Soffit, geneigte Haut nur bis Wandring, lotrechte Trauflinie; Krüppelwalm mit Höhe bis Walm; keine Alt-Migration.
+
+**Daten:** `ridgeRiseCm`, `overhangCompass` (N/O/S/W), `edgeOverhangCm` je `roofEdgeKey`; `pitch` abgeleitet wenn `ridgeRiseCm` gesetzt.
+
+**Geometrie:** `envelopeFaces` am **Outer** (Sattel/Krüppelwalm); Soffit + Fascia in `buildRoofEnvelopeGeometry`. Dateien: `roofForms.ts`, `roof.ts`, `main.ts`, `index.html`. Doku: [roof.md](roof.md).
+
+### Traufüberstand Park-Spiegel (2026-09-19) — v2.0.562 (Haupt-App `Fassaden-Builder 2.0`)
+
+**Symptom:** Feld **Traufüberstand (cm)** in der Park-Auswahlleiste (`FormMirror` → `#roof-overhang`) änderte die Szene nicht.
+
+**Ursachen:** (1) Geometrie wie v2.0.561 — `overhangPerEdge` noch an `edge.flush` gekoppelt (nackte Wand → Überstand 0). (2) Park-`writeNumber` schrieb in deaktivierte Vanilla-Inputs ohne kurz `disabled` zu lösen — `change` griff nicht zuverlässig. (3) Nur `change`-Listener auf `#roof-overhang`, kein `input`.
+
+**Fix (2.0-Repo):** `roof.ts` wie v2.0.561; `vanillaBind.writeNumber` + `BoundNumberField.disabled`; `main.ts` `input`+`change`. Arrivieren-Branch: zusätzlich `input` auf `#roof-overhang`.
+
+### Traufüberstand bei nackter Wand (2026-09-19) — v2.0.561
+
+**Symptom:** Traufüberstand in den Dach-Einstellungen wirkte bei **keiner** Dachform — auch Arrivieren mit ausgeschalteten Paneelen.
+
+**Ursache:** `overhangPerEdge` setzte den Überstand auf 0, sobald `edge.flush` (u. a. **Auto** + Wand ohne Paneele). Das war für Rinne/Giebel gedacht, hat aber den gesamten Traufpolygon-Offset gekillt.
+
+**Lösung:** Überstand nur noch bei Kantenmodus **Bündig** (`flush`) auf 0; **Auto**-bündig bleibt ohne Rinne (`gutterEdgeActive` / Mansarde: `!edge.flush`). Dateien: `roof.ts`, Test `roofOverhang.test.ts`. Doku: [roof.md](roof.md).
+
+### Erker Schenkel-Sohlbank sonnenhell (2026-09-19) — v2.0.560
+
+**Symptom:** Nach v2.0.559 (kein Schenkel-Schatten) blieb aus **¾-Blick** und in der Ferne ein heller/grauer Streifen auf Brüstungshöhe am Schenkel-Fenster — Nutzer: „ich sehe es auch aus einem anderen Winkel“.
+
+**Runtime (Seed 11, 2.0.559):** Keine `sillOuter`/`sillInner` auf Erker-Wänden. Schenkel-Fenster unten: weißer Rahmen `[3×4×48]` bzw. High-LOD-Baugruppe plus Laibung `[24×191×47,5]`, Farben `#ffffff`. `castShadow=false`. Hide-Test: Bank-Meshes ändern den Streifen nicht; Schenkel-Rahmen+Laibung aus → nur noch das Wandloch.
+
+**Ursache:** `facadeShadeNormalMode` dimmt nach **Flächennormale**. Die Sohlbank zeigt nach oben → N·L zur Sonne positiv → ungedimmt, während die Schenkelwand im Gegenlicht dunkel ist. Innenlaibung zusätzlich `skipFacadeShade` → bleibt weiß. **Objekt-Z der Fenster ist invertiert** (`rotation.y = yaw+π`) — Lock ohne Vorzeichen-Flip ließ den Rahmen hell.
+
+**Nicht geholfen:** Cast/Receive aus (v2.0.559, nur PCSS-Pillen auf der Front); Bank-Abstand/Z-Fight; Lock nur mit Wand-Z ohne Flip.
+
+**Lösung:** `facadeShadeWallLock` — Gegenlicht aus der **Wand**-Z; Sohlbank-Flächen die mehr Sonne sehen als die Wand extra dimmen; Hemi/IBL auf horizontalen Schenkel-Flächen stärker dämpfen (sonst bleibt die Bank himmelhell). Schenkel-Laibung direkt; Schenkel-**Fenster** mit invertiertem `uFacadeOutwardLocal` (yaw+π). Shader `facade-backlit-v22`.
+
+Dateien: `facadeShade.ts`, `FacadeController.ts`. Test: `facadeShade.test.ts`.
+
+### Erker Schatten-Pillen an der Bank (2026-09-19) — v2.0.559
+
+**Symptom:** Nach 8 cm Bank-Abstand (v2.0.558) immer noch zwei kleine **graue** Rechtecke links/rechts der Fensterbank ab mittlerer Zoom-Stufe, nah weg. Farbe wie Schatten auf der Wand, nicht wie die weiße Bank.
+
+**Ursache:** v2.0.552 schaltete Schenkel-`castShadow`/`receiveShadow` aus. `syncLabelShadowReceivers` und `applyPointLightOccluders` setzten danach **alle** Studio-Wände wieder auf Cast/Receive. Schenkel-**Fenster** (unterer Rahmen auf Brüstungshöhe) warfen zusätzlich — PCSS macht daraus in der Ferne zwei Pillen auf der Front, etwa an den 90°-Ecken.
+
+**Nicht geholfen:** Mund-Epsilon 96, Stoß-Pad 96, `SILL_FACE_BIAS_CM` 8, polygonOffset −48 (falsche Achse: nicht dieselbe Bank-Rückseite).
+
+**Lösung:** `wallOmitsBaySideShadows` zentral (`bayRole` side **und** arc); Cast/Receive an Schenkel-/Bogen-Wand, -Fenster, -Laibung, -Gitter bleiben aus. Außenbank-Brett **ohne wandseitige Fläche** (`createOuterSillBoardGeometry`) — Überstand kann nicht mit der Fassade z-fighten.
+
+Dateien: `FacadeController.ts`, `walls.ts`, `sillGeometry.ts`. Tests: `walls.front.test.ts`, `sillGeometry.test.ts`.
+
+### Fensterbank Distanz-Z-Fight (2026-09-19) — v2.0.558
+
+**Symptom:** Nach Mund-/Stoß-Schwellen (bis 96 cm) immer noch kleine graue Rechtecke links/rechts der Bank **ab einer Zoom-Stufe**, nah weg.
+
+**Ursache:** Die Brett-Rückseite lag **in der Wandebene**. Unter dem Fenster (Loch) kein Fight; der Überstand links/rechts kämpft mit der Fassade — in der Ferne Tiefenpuffer-Rechtecke, nah sauber.
+
+**Nicht geholfen:** Mund-Epsilon/Stoß-Pad (falsche Achse).
+
+**Lösung:** `SILL_FACE_BIAS_CM` **8** (Profile nur 0,2) + `polygonOffset` −2/−48 auf Bank-Material.
+
+### Erker Bank-Abstand 96 cm (2026-09-19) — v2.0.557
+
+**Symptom:** v2.0.556 (2 cm Pad, 8 cm Mund-Epsilon) — Flecken **weiterhin ab einer Zoom-Stufe**.
+
+**Wert:** `BAY_MOUTH_NEIGHBOR_EPS_CM` 8 → **96**, `SILL_JOIN_ZFIGHT_PAD_CM` 2 → **96** (eine Fensterachse). Nachbarfenster am Erker ohne Bank; Stoß-Inset ≈ Schenkelstärke + 96 cm.
+
+### Erker Bank-Z-Fight in der Ferne (2026-09-19) — v2.0.556
+
+**Symptom:** Kleine Brett-Flecken am Erker **nur in einer Zoom-Stufe**, nah weg.
+
+**Ursache:** Bank-Box ragt wenige cm in die 90°-Nachbarwand. Nah gewinnt der Tiefenpuffer der Schenkelwand; in der Ferne reichen Tiefenauflösung + PCSS-Filter, um die Überlappung (oder ihren Schatten) sichtbar zu machen.
+
+**Lösung:** Inset = Nachbar-`depth` + 2 cm an nicht-kollinearen Stößen. Würde die Öffnung angeschnitten → Bank ganz weg. Überlappende Roh-Bank: `castShadow = false`.
+
+### Erker Bank-Stummel am Mund (2026-09-19) — v2.0.555
+
+**Symptom:** Nach v2.0.553/554 kleine Brett-Stücke links/rechts vom Erkerfenster (Screenshot mit Kreisen), deutlicher als vorher.
+
+**Was nicht half:** Nur Öffnungskante ±8 cm; **Kürzen** der Bank (`clampOuterSillLayoutForBayMouths`) erzeugte gerade die Stummel. Mund-Gaps waren **zentriert** (−w/2), `opening.x` ist **0…width** — Restwände nach dem Split haben den Mund nicht mehr in der Wandfläche (`projectMouth` braucht beide Mundpunkte auf der Linie).
+
+**Lösung:** Gaps nach `opening.x` umrechnen; synthetische Lücke an Wand-Start/Ende wenn dort Mund oder Erker-Mitglied andockt. Konflikt → Bank **ganz weglassen**, nicht stutzen. Arrivieren: `enabled: false` (Hydrate würde `undefined` wieder anschalten).
+
+### Erker ohne Fensterbänke (2026-09-19) — v2.0.554
+
+**Symptom:** Nach v2.0.553 Fensterbänke am Erker **deutlicher** — volle Bretter auf der Front, seitliche Überstände an der Schenkel-Ecke sichtbar (nicht nur Mund-Nachbarn an der Hauswand).
+
+**Versuch:** Mund-Clipping allein — **verschlimmert** teils sichtbare Stummel; Hauswand-Logik greift nicht auf `bayRole` front/side.
+
+**Lösung:** Brett- und Profilbänken auf allen Erker-Oberflächen (`isBaySurfaceWall`) nicht rendern; Arrivieren strippt Front/Schenkel/Bogen. Gesims-Umlauf am Erker nur bei Paneel+Gesims an der Wand darunter.
+
+### Erker Mund-Bänke & Deckplatte (2026-09-19) — v2.0.553
+
+**Symptom:** Kleine graue Fensterbank-Stummel seitlich am Mund; horizontaler grauer Balken oben am Erker (Geschossfuge).
+
+**Versuch v2.0.552:** Nur Öffnungskante ±8 cm — **reichte nicht** (16 cm Überstand ragte in die Mundspalte).
+
+**Lösung:** `openingOuterSillConflictsBayMouth` (Überstand vs. Mund); Brett &lt;12 cm nach Clip nicht rendern; Apply deaktiviert Bänke in den Daten. Erker-**Top-Soffit** nur wenn `hostFloor` = oberstes Wandgeschoss (sonst schließt die Etage darüber).
+
+### Arrivieren Erker & Fensterbänke (2026-09-19) — v2.0.552
+
+**Nutzer:** Fensterbänke neben Erker wirkten trotz kurzem Überstand durch die Wand/Front — Ursache nicht nur X-Überstand, sondern Nachbaröffnungen am Mund + Schenkel-Bänke.
+
+**Lösung:** `openingFlanksBayMouth` (±8 cm am Mund) → keine Innen-/Außenbänke; `clampOuterSillLayoutForBayMouths` für Brett- und Profilbänke; `bayMouthLocalXGapsForWall`. Erker-Schenkel `castShadow`/`receiveShadow` aus. Hauswand: 92/8 für 96/144 cm Fenster, Raster `n×(Fenster+96)+96`, Dach ohne `shed`/`hip`, Keller ohne Rahmenprofile (`applyOpeningProfilesDelta`, `stripBasementFrameProfiles`), Schenkel ohne Bänke in `stripHauswandWallDecor`.
+
+**Runde 2 offen:** dunkelgraue Erker-Ränder (Seed 1832268593) — Rahmen/Laibung/Schatten klären.
+
+Dateien: `openings.ts`, `profilePaths.ts`, `FacadeController.ts`, `applyHauswandGeneration.ts`, `generateHauswand.ts`, `hauswandGrid.ts`, `scopePropagate.ts`.
+
+### Arrivieren Hauswand-Zufall (2026-09-19) — v2.0.495
+
+**Neu:** `generateHauswand` / `applyHauswandGeneration` mit Regelwerk-JSON (`src/arrivieren/rules/hauswand-regelwerk.json`), UI in der Szene-Leiste, Feedback localStorage + JSONL-Export. Breitenformel siehe v2.0.552, Erker-Gate ≥4 Geschosse und ≥4 Achsen, Erker nur OG-Zwischengeschosse (`singleFloor`-Insert pro Etage).
+
+Docs: [arrivieren-hauswand.md](arrivieren-hauswand.md). Tests: `src/arrivieren/generateHauswand.test.ts`.
+
 ### Geschosskante — Wandkörper kürzen (2026-09-16) — v2.0.494
 
 **Symptom:** Nach v2.0.493 noch minimal sichtbare Geschosskante unter der Traufe.

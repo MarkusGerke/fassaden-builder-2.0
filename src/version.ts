@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.494'
+export const APP_VERSION = '2.0.564'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,128 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.564',
+    date: '2026-09-19',
+    title: 'Traufe geschlossen: Wand an Dach',
+    changes: [
+      'Zwischen Wandoberkante und Dachunterseite sitzt jetzt eine Füllung plus horizontale Untersicht — auch an der Mansarde, nicht nur als offene Dachkante',
+    ],
+  },
+  {
+    version: '2.0.563',
+    date: '2026-09-19',
+    title: 'Sattel/Krüppelwalm: First cm, Überstand pro Seite',
+    changes: [
+      'First über Traufe in cm statt Neigung; Krüppelwalm behält Höhe bis Walm',
+      'Traufüberstand pro Kompass und pro Kante; Soffit horizontal, Dach endet lotrecht an der Traufe',
+    ],
+  },
+  {
+    version: '2.0.562',
+    date: '2026-09-19',
+    title: 'Traufüberstand: Eingabe sofort',
+    changes: [
+      'Traufüberstand reagiert auch beim Tippen und an den Stepper-Pfeilen (input + change) — nicht nur nach Feld-Verlassen',
+    ],
+  },
+  {
+    version: '2.0.561',
+    date: '2026-09-19',
+    title: 'Traufüberstand wieder sichtbar',
+    changes: [
+      'Überstand in den Dach-Einstellungen gilt wieder an allen Formen — auch ohne Fassadenpaneele (Arrivieren); Auto-Kante bleibt ohne Rinne, mit horizontalem Übergang an der Wand',
+    ],
+  },
+  {
+    version: '2.0.560',
+    date: '2026-09-19',
+    title: 'Erker: Schenkel-Fensterbank nicht sonnenhell',
+    changes: [
+      'Schenkel-Fenster: unterer Rahmen und Laibung dimmen wie die Wand — kein heller Streifen auf Brüstungshöhe von vorn und im Schrägblick',
+    ],
+  },
+  {
+    version: '2.0.559',
+    date: '2026-09-19',
+    title: 'Erker: keine Schatten-Pillen an der Bank',
+    changes: [
+      'Schenkel und Rund-Erker werfen wieder keinen Schatten (auch Fenster/Laibung) — graue Rechtecke links/rechts der Fensterbank in der Ferne sind weg',
+      'Außenbank ohne Rückseite gegen die Wand, damit der Überstand nicht mit der Fassade kämpft',
+    ],
+  },
+  {
+    version: '2.0.558',
+    date: '2026-09-19',
+    title: 'Fensterbank: kein Distanz-Z-Fight',
+    changes: [
+      'Außenbank 8 cm vor der Wandfläche (nicht bündig) plus stärkeres polygonOffset — keine grauen Rechtecke links/rechts beim Rauszoomen',
+    ],
+  },
+  {
+    version: '2.0.557',
+    date: '2026-09-19',
+    title: 'Erker: Bank-Abstand 96 cm',
+    changes: [
+      'Keine Fensterbank in 96 cm um den Erker-Mund und 96 cm extra an 90°-Stößen — Flecken nur noch aus der Ferne',
+    ],
+  },
+  {
+    version: '2.0.556',
+    date: '2026-09-19',
+    title: 'Erker: Bank-Z-Fight in der Ferne',
+    changes: [
+      'Fensterbänke an 90°-Stößen (Erker) um die Nachbar-Wandstärke plus 2 cm zurückgesetzt — keine Geometrie in der Schenkelwand',
+      'Bänke, die in den Stoß ragten, werfen keinen Schatten mehr (PCSS-Flecken nur in der Ferne)',
+    ],
+  },
+  {
+    version: '2.0.555',
+    date: '2026-09-19',
+    title: 'Erker: Bank-Stummel am Mund',
+    changes: [
+      'Fensterbänke am Erker: Mund-Lücken in Öffnungs-X plus Andock-Ende der Restwand — kein Kürzen zu sichtbaren Stummeln',
+      'Erker-Bänke bleiben ausgeschaltet trotz Hydrate (enabled: false statt Feld löschen)',
+    ],
+  },
+  {
+    version: '2.0.554',
+    date: '2026-09-19',
+    title: 'Erker ohne Fensterbänke',
+    changes: [
+      'Keine Brett- und Profil-Fensterbänke auf Erker-Front/Schenkel — Überstand wirkte an der Ecke wie durch die Wand',
+      'Gesims-Umlauf am Erker nur wenn darunter echtes Paneel-Gesims (kein grauer Streifen an der Geschossfuge)',
+    ],
+  },
+  {
+    version: '2.0.553',
+    date: '2026-09-19',
+    title: 'Erker: Mund-Bänke & Deckplatte',
+    changes: [
+      'Fensterbänke am Erker-Mund: auch 16 cm Überstand in die Mundspalte erkannt — keine Z-Stummel mehr',
+      'Erker-Oberkanten-Untersicht nur noch am obersten Geschoss — kein grauer Balken an der Geschossfuge',
+    ],
+  },
+  {
+    version: '2.0.552',
+    date: '2026-09-19',
+    title: 'Arrivieren Erker & Fensterbänke',
+    changes: [
+      'Hauswand: Fenster 92 % × 96 cm / 8 % × 144 cm; Raster Rand und Zwischenraum je 96 cm',
+      'Dach-Zufall ohne Pult (`shed`) und Walmdach (`hip`); Kellerfenster ohne Rahmenprofile (Scope + Apply)',
+      'Erker-Schenkel: kein Cast/Receive-Shadow; Nachbarfenster am Mund ohne Innen-/Außenbänke (nicht nur kürzen)',
+      'Schenkel in Arrivieren ohne Fensterbänke; Profil-Außenbänke am Mund geclippt',
+    ],
+  },
+  {
+    version: '2.0.495',
+    date: '2026-09-19',
+    title: 'Arrivieren Hauswand',
+    changes: [
+      'Neuer Zufallsgenerator für Geschosse, Achsen, EG-Typ und Erker — Gewichte in hauswand-regelwerk.json',
+      'Szene-Leiste Arrivieren: Generieren, Seed, Snapshot, SVG-Schematik, Feedback als JSONL',
+    ],
+  },
   {
     version: '2.0.494',
     date: '2026-09-16',

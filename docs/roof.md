@@ -8,7 +8,9 @@ Dach auf dem **primären Nesting-Outer** der obersten Etage (`planFacesWithHoles
 - **3D-Klick** auf die Dachhaut (oder Giebel/Rinne) wählt das Dach direkt — nicht nur über die Ebenen-Leiste. Priorität: Fassade vor dem Strahl gewinnt; Dach nur wenn klar näher (`roofBeatsFacadeMesh`, eps 6 cm).
 - Nur mit geschlossenem Ring auf der obersten Etage.
 - **Dachform:** Berliner Mansarde · Satteldach · Walmdach · Krüppelwalm · Pultdach.
-- **Kanten:** Auto / Frei / Bündig (Nachbar/Brandwand).
+- **Sattel / Krüppelwalm (v2.0.563):** Hauptmaß **First über Traufe (cm)** (`ridgeRiseCm`); **Neigung (°)** nur Anzeige (aus Spannweite + First). Krüppelwalm zusätzlich **Höhe bis Walm (cm)** (`halfHipHeight`). **Traufüberstand:** Kompass N/O/S/W + pro Kante in der Liste (cm); `0` = bündig. Kantenmodus nur noch **Rinne** (Auto/Frei/Aus). Geometrie: geneigte Haut nur bis **Wandring**; Überstand = **horizontaler Soffit** + **lotrechte Trauflinie** (kein schräger Ausläufer).
+- **Traufschluss (v2.0.564, alle Formen inkl. Mansarde):** Beidseitige Schürze in der Giebel-/Füllgeometrie: lotrecht **Wandoberkante → Dachunterseite**, horizontal **Soffit** bis zur Traufe, lotrechte Blende. Zuvor: Mansarde ohne Unterkante; Soffit lag auf dem Dach-Mesh (`FrontSide`) und war von unten unsichtbar.
+- **Kanten (andere Formen):** Auto / Frei / Bündig. **Auto** an nackter Wand: keine Rinne, Überstand aus Fallback `overhang` (`overhangPerEdge` nur bei **Bündig** = 0).
 - **Ziegel aus (MVP):** `ROOF_TILES_ENABLED = false` — immer glatte Dachhaut. Ziegel-UI und Ebenen-Zeile „Ziegel“ ausgeblendet; Farbe **Dachhaut** unter Dachform. Pipeline bleibt im Code für die nächste Stufe.
 - **Zwerchgiebel:** An/Aus, Seite (Traufkante), Breite, Tiefe. Schneidet in die Dachhaut, eigenes Quersatteldach. Tiefe wird auf ≤ halbe Breite begrenzt (sonst unter der Haupthaut). **Nicht** Gaube/Dachfenster.
 - **Dachfenster / Gauben (v2.0.477 / v2.0.478, realistisch ab v2.0.479, Bedienung v2.0.481–483):** Bei Dachwahl Bibliothek-Tabs **Dachfenster** und **Gauben**. Karte klicken → auf die Dachhaut klicken, oder Drag&Drop. Verschieben per Drag mit **8 cm-Raster** und **Hilfs-/Abstandslinien** (bis Boden / Dachende); rechte Leiste Gauben-Maße; bei Gaube mit Fenster die **volle Fenster-Toolbar**; Rechtsklick: Ein-/Ausblenden, Duplizieren links/rechts, Traufdurchbruch/Fenster (Gaube), Löschen. Daten an `RoofConfig.skylights` / `dormers` (nicht `Wall.openings`).
@@ -52,7 +54,9 @@ Rechte Leiste, in dieser Reihenfolge:
 | Feld | Default | Bedeutung |
 |---|---|---|
 | `kind` | `mansard` | Form |
-| `pitch` / `ridgeDeg` / `halfHipHeight` | 45° / `null` / 120 | Nicht-Mansarde |
+| `ridgeRiseCm` | – | Sattel/Krüppelwalm: First über Traufe (cm); dann `pitch` abgeleitet |
+| `overhangCompass` / `edgeOverhangCm` | – | Überstand N/O/S/W bzw. je Traufkante (cm) |
+| `pitch` / `ridgeDeg` / `halfHipHeight` | 45° / `null` / 120 | Walm/Pult/Mansarde; Sattel: ° nur wenn kein `ridgeRiseCm` |
 | `covering` | `smooth` | Gespeichert; wirksam immer glatt solange `ROOF_TILES_ENABLED` false |
 | `edgeModes` | – | `free` / `flush` je `roofEdgeKey` |
 | `crossGables` | `[]` | `{ edgeKey, widthCm, depthCm }` |

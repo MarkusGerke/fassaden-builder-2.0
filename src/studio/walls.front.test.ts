@@ -3,7 +3,7 @@ import type { FacadeState, Wall } from '../types/facade'
 import { createDefaultFacadeState } from '../types/facade'
 import { updateActiveBuilding } from '../utils/buildings'
 import { DEFAULT_STUDIO_PANEL } from './constants'
-import { alignOpeningElementsToWallFront, leafOpenSignForWall, outerSillBoardPose, unifyGroupFrontOrientation, studioPanelFaceLocalZ, studioProfileAnchorLocalZ, PROFILE_FACE_BIAS_CM } from '../studio/walls'
+import { alignOpeningElementsToWallFront, leafOpenSignForWall, outerSillBoardPose, unifyGroupFrontOrientation, studioPanelFaceLocalZ, studioProfileAnchorLocalZ, PROFILE_FACE_BIAS_CM, wallOmitsBaySideShadows } from '../studio/walls'
 
 function studioWall(overrides: Partial<Wall> = {}): Wall {
   return {
@@ -91,10 +91,19 @@ describe('leafOpenSignForWall', () => {
   })
 })
 
+describe('wallOmitsBaySideShadows', () => {
+  it('gilt für Erker-Schenkel und Rund-Erker, nicht Front oder Restwand', () => {
+    expect(wallOmitsBaySideShadows({ bayRole: 'side' })).toBe(true)
+    expect(wallOmitsBaySideShadows({ bayRole: 'arc' })).toBe(true)
+    expect(wallOmitsBaySideShadows({ bayRole: 'front' })).toBe(false)
+    expect(wallOmitsBaySideShadows({})).toBe(false)
+  })
+})
+
 describe('outerSillBoardPose', () => {
   it('setzt den Pivot an die Wandaußenkante und die Platte nach außen', () => {
     const flipped = outerSillBoardPose(studioWall({ panelFlip: true, depth: 32 }), 32)
-    expect(flipped.localZ).toBe(0)
+    expect(flipped.localZ).toBe(-8)
     expect(flipped.translateZ).toBe(-16)
     expect(flipped.tiltX).toBe(-1)
 
@@ -106,10 +115,10 @@ describe('outerSillBoardPose', () => {
       }),
       32,
     )
-    expect(withPanel.localZ).toBe(-8)
+    expect(withPanel.localZ).toBe(-16)
 
     const unflipped = outerSillBoardPose(studioWall({ panelFlip: false, depth: 32 }), 32)
-    expect(unflipped.localZ).toBe(32)
+    expect(unflipped.localZ).toBe(40)
     expect(unflipped.translateZ).toBe(16)
     expect(unflipped.tiltX).toBe(1)
   })
@@ -176,6 +185,6 @@ describe('outerSillBoardPose vs Paneeltiefe', () => {
       },
     })
     const pose = outerSillBoardPose(wall, 16)
-    expect(pose.localZ).toBe(-14)
+    expect(pose.localZ).toBe(-22)
   })
 })

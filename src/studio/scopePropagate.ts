@@ -128,11 +128,13 @@ function openingProfilesEqual(a: ProfileAssignment[], b: ProfileAssignment[]): b
 /** Ersetzt die Profil-Zuweisungen einer Peer-Öffnung durch die des Donors (IDs remappen). */
 export function applyOpeningProfilesDelta(
   peerProfiles: ProfileAssignment[],
-  peerOpeningId: string,
+  peerOpening: Pick<Opening, 'id' | 'type' | 'basementWindow'>,
   beforeProfiles: ProfileAssignment[],
   afterProfiles: ProfileAssignment[],
 ): ProfileAssignment[] {
+  if (!openingSupportsFrameProfiles(peerOpening)) return peerProfiles
   if (openingProfilesEqual(beforeProfiles, afterProfiles)) return peerProfiles
+  const peerOpeningId = peerOpening.id
   return [
     ...peerProfiles.filter((p) => p.openingId !== peerOpeningId),
     ...afterProfiles.map((p) => ({
@@ -188,7 +190,7 @@ function applyWallPropertyDelta(peer: Wall, before: Wall, after: Wall): Wall {
         openingTakesFrameProfile(peerOpen) && openingTakesFrameProfile(afterOpen)
       if (!canTakePeer) continue
       if (!profSame) {
-        profiles = applyOpeningProfilesDelta(profiles, peerOpen.id, beforeProf, afterProf)
+        profiles = applyOpeningProfilesDelta(profiles, peerOpen, beforeProf, afterProf)
         did = true
       }
       if (!openSame) {
@@ -390,7 +392,7 @@ export function propagateSelectionEdit(
           if (!profSame) {
             profiles = applyOpeningProfilesDelta(
               profiles,
-              open.id,
+              open,
               donor.profilesBefore,
               donor.profilesAfter,
             )
@@ -494,7 +496,7 @@ export function assignSelectionPropertiesToScope(
           const emptyProfiles: ProfileAssignment[] = []
           profiles = applyOpeningProfilesDelta(
             profiles,
-            open.id,
+            open,
             emptyProfiles,
             donor.profilesAfter,
           )

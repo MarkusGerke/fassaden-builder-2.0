@@ -1,7 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import type { FacadeState, Opening, Wall } from '../types/facade'
 import { emptyNeighbors } from '../types/facade'
-import { centeredOpeningX, anchoredOpeningX, resetOpenings, resolveOuterSillLayout, updateOpening, createOpening, defaultOuterSillDepth, replaceOpeningsFromSource } from './openings'
+import {
+  centeredOpeningX,
+  anchoredOpeningX,
+  resetOpenings,
+  resolveOuterSillLayout,
+  updateOpening,
+  createOpening,
+  defaultOuterSillDepth,
+  replaceOpeningsFromSource,
+  clipOuterSillLayoutToJoins,
+  openingFlanksBayMouth,
+  openingOuterSillConflictsBayMouth,
+} from './openings'
 import { STUDIO_MASONRY, DEFAULT_STUDIO_PANEL } from '../studio/constants'
 import { WALL_DEPTH } from '../constants/presets'
 
@@ -173,6 +185,48 @@ describe('resetOpenings', () => {
     expect(updated.width).toBe(96)
     expect(updated.pediment?.enabled).toBe(false)
     expect(wall.profiles).toHaveLength(0)
+  })
+})
+
+describe('clipOuterSillLayoutToJoins', () => {
+  const opening = { x: 48, width: 96 }
+  const raw = {
+    xLeft: 32,
+    xRight: 160,
+    width: 128,
+    yTop: 128,
+    yBottom: 124,
+    depth: 16,
+    thickness: 4,
+    angleDeg: 5,
+  }
+
+  it('lässt die Bank unverändert ohne Stoß-Inset', () => {
+    const next = clipOuterSillLayoutToJoins(raw, opening, 384, { start: 0, end: 0 })
+    expect(next?.width).toBe(128)
+  })
+
+  it('lässt die Bank weg wenn der Stoß die Öffnung anschneiden würde', () => {
+    expect(clipOuterSillLayoutToJoins(raw, opening, 192, { start: 0, end: 60 })).toBeNull()
+  })
+})
+describe('openingFlanksBayMouth', () => {
+  it('erkennt Nachbarfenster in 96 cm am Erker-Mund', () => {
+    const mouth = [{ x0: 192, x1: 384 }]
+    expect(openingFlanksBayMouth({ x: 96, width: 96 }, mouth)).toBe(true)
+    expect(openingFlanksBayMouth({ x: 384, width: 96 }, mouth)).toBe(true)
+    expect(openingFlanksBayMouth({ x: 0, width: 48 }, mouth)).toBe(false)
+  })
+})
+
+describe('openingOuterSillConflictsBayMouth', () => {
+  const mouth = [{ x0: 192, x1: 384 }]
+  const sill = { enabled: true, mode: 'board' as const, overhang: 16, depth: 16, thickness: 4 }
+
+  it('erkennt Überstand und Nachbarn in einer Achse am Mund', () => {
+    expect(openingOuterSillConflictsBayMouth({ x: 96, width: 96 }, sill, mouth)).toBe(true)
+    expect(openingOuterSillConflictsBayMouth({ x: 384, width: 96 }, sill, mouth)).toBe(true)
+    expect(openingOuterSillConflictsBayMouth({ x: 0, width: 48 }, sill, mouth)).toBe(false)
   })
 })
 

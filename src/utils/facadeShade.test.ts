@@ -96,6 +96,24 @@ describe('facadeShade', () => {
     expect(shader2.uniforms.uNormalBacklit.value).toBe(0)
   })
 
+  it('Wand-Lock für Erker-Schenkel: Gegenlicht aus Wand-Z, auch bei Normalen-Modus (v2.0.560)', () => {
+    const mat = new THREE.MeshStandardMaterial()
+    mat.userData.facadeShadeNormalMode = true
+    mat.userData.facadeShadeWallLock = true
+    applyFacadeShadeShader(mat, 1)
+    const shader = stubShader()
+    mat.onBeforeCompile(
+      shader as unknown as THREE.WebGLProgramParametersWithUniforms,
+      {} as THREE.WebGLRenderer,
+    )
+    expect(shader.uniforms.uWallLock.value).toBe(1)
+    expect(shader.fragmentShader).toContain('uNormalBacklit * (1.0 - uWallLock)')
+    expect(shader.fragmentShader).toContain('max(uNormalBacklit, uWallLock)')
+    expect(shader.fragmentShader).toContain('sideOrTop * 0.82 * (1.0 - uWallLock)')
+    expect(shader.fragmentShader).toContain('faceSun - sunOnFront')
+    expect(shader.fragmentShader).toContain('mix(0.22, 0.85, uWallLock)')
+  })
+
   it('Schatten-Tiefe: ⅔ = Rohkurve, 0 heller, 1 fast schwarz (v2.0.419)', () => {
     const raw = facadeShadeParamsFromSun({
       ...DEFAULT_SUN_SETTINGS,
