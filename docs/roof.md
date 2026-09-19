@@ -4,16 +4,16 @@ Dach auf dem **primären Nesting-Outer** der obersten Etage (`planFacesWithHoles
 
 ## Verhalten
 
-- Linke Sidebar **Ebenen**: **Dach hinzufügen** / Formname; Kontextmenü Ausblenden/Löschen.
+- Linke Sidebar **Ebenen**: **Dach hinzufügen** / Formname; Kontextmenü Ausblenden/Löschen. **v2.0.507:** Löschen setzt ein frisches Default-Dach (`enabled: false`); **Hinzufügen** startet neu (keine alten Gauben/Form). **v2.0.502:** Aufgeklapptes Dach listet gesetzte **Gauben** und **Dachfenster** (Breite · Form); Klick wählt, ⋯/Rechtsklick wie in 3D. **v2.0.503:** Ctrl/Cmd+Klick Mehrfachauswahl; Shift+Klick Bereich zwischen zwei Zeilen.
 - **3D-Klick** auf die Dachhaut (oder Giebel/Rinne) wählt das Dach direkt — nicht nur über die Ebenen-Leiste. Priorität: Fassade vor dem Strahl gewinnt; Dach nur wenn klar näher (`roofBeatsFacadeMesh`, eps 6 cm).
 - Nur mit geschlossenem Ring auf der obersten Etage.
-- **Dachform:** Berliner Mansarde · Satteldach · Walmdach · Krüppelwalm · Pultdach.
-- **Sattel / Krüppelwalm (v2.0.563):** Hauptmaß **First über Traufe (cm)** (`ridgeRiseCm`); **Neigung (°)** nur Anzeige (aus Spannweite + First). Krüppelwalm zusätzlich **Höhe bis Walm (cm)** (`halfHipHeight`). **Traufüberstand:** Kompass N/O/S/W + pro Kante in der Liste (cm); `0` = bündig. Kantenmodus nur noch **Rinne** (Auto/Frei/Aus). Geometrie: geneigte Haut nur bis **Wandring**; Überstand = **horizontaler Soffit** + **lotrechte Trauflinie** (kein schräger Ausläufer).
-- **Traufschluss (v2.0.564, alle Formen inkl. Mansarde):** Beidseitige Schürze in der Giebel-/Füllgeometrie: lotrecht **Wandoberkante → Dachunterseite**, horizontal **Soffit** bis zur Traufe, lotrechte Blende. Zuvor: Mansarde ohne Unterkante; Soffit lag auf dem Dach-Mesh (`FrontSide`) und war von unten unsichtbar.
-- **Kanten (andere Formen):** Auto / Frei / Bündig. **Auto** an nackter Wand: keine Rinne, Überstand aus Fallback `overhang` (`overhangPerEdge` nur bei **Bündig** = 0).
+- **Dachform:** Berliner Mansarde · Satteldach · Walmdach · Krüppelwalm · Pultdach. **v2.0.507:** Beim Formwechsel werden Giebelenden bei Sattel/Krüppelwalm auf **bündig** gesetzt; Walm/Pult/Mansarde löschen gespeicherte Bündig-Modi.
+- **Sattel / Krüppelwalm (v2.0.563):** Hauptmaß **First über Traufe (cm)** (`ridgeRiseCm`); **Neigung (°)** nur Anzeige. Krüppelwalm zusätzlich **Höhe bis Walm (cm)**. **Traufüberstand:** Kompass N/O/S/W + pro Kante; `0` = bündig.
+- **Traufschluss (v2.0.564):** Schürze Wandoberkante → Dachunterseite, horizontale Soffit, lotrechte Blende — alle Formen inkl. Mansarde.
+- **Gesims unter Traufe (v2.0.508):** Traufgesims bleibt sichtbar, abgesenkt unter die geneigte Soffit. Dach ein/aus baut Wände mit (`ROOF_WALL_TOP_TRIM_CM`).
 - **Ziegel aus (MVP):** `ROOF_TILES_ENABLED = false` — immer glatte Dachhaut. Ziegel-UI und Ebenen-Zeile „Ziegel“ ausgeblendet; Farbe **Dachhaut** unter Dachform. Pipeline bleibt im Code für die nächste Stufe.
 - **Zwerchgiebel:** An/Aus, Seite (Traufkante), Breite, Tiefe. Schneidet in die Dachhaut, eigenes Quersatteldach. Tiefe wird auf ≤ halbe Breite begrenzt (sonst unter der Haupthaut). **Nicht** Gaube/Dachfenster.
-- **Dachfenster / Gauben (v2.0.477 / v2.0.478, realistisch ab v2.0.479, Bedienung v2.0.481–483):** Bei Dachwahl Bibliothek-Tabs **Dachfenster** und **Gauben**. Karte klicken → auf die Dachhaut klicken, oder Drag&Drop. Verschieben per Drag mit **8 cm-Raster** und **Hilfs-/Abstandslinien** (bis Boden / Dachende); rechte Leiste Gauben-Maße; bei Gaube mit Fenster die **volle Fenster-Toolbar**; Rechtsklick: Ein-/Ausblenden, Duplizieren links/rechts, Traufdurchbruch/Fenster (Gaube), Löschen. Daten an `RoofConfig.skylights` / `dormers` (nicht `Wall.openings`).
+- **Dachfenster / Gauben (v2.0.477 / v2.0.478, realistisch ab v2.0.479, Bedienung v2.0.481–483, Ebenen v2.0.502/503):** Bei Dachwahl Bibliothek-Tabs **Dachfenster** und **Gauben**. Karte klicken → auf die Dachhaut klicken, oder Drag&Drop. Verschieben per Drag mit **8 cm-Raster** und **Hilfs-/Abstandslinien** (bis Boden / Dachende); rechte Leiste Gauben-Maße; bei Gaube mit Fenster die **volle Fenster-Toolbar**; Rechtsklick: Ein-/Ausblenden, Duplizieren links/rechts, Traufdurchbruch/Fenster (Gaube), Löschen. **Mehrfachauswahl** Ctrl/Cmd; in Ebenen **Shift+Bereich**. Daten an `RoofConfig.skylights` / `dormers` (nicht `Wall.openings`).
 
 ### Gauben-Bedienung (v2.0.479)
 
@@ -67,9 +67,9 @@ Rechte Leiste, in dieser Reihenfolge:
 
 ## Geometrie
 
-### Traufe (v2.0.473 / v2.0.487 / v2.0.493 / v2.0.494)
+### Traufe (v2.0.473 / v2.0.487 / v2.0.493 / v2.0.494 / v2.0.504 / v2.0.506)
 
-`wallTopY = storeyTopY`. **v2.0.494:** Wandkörper der Dach-Etage um `ROOF_WALL_TOP_TRIM_CM` (6) kürzen; Füllwand startet `trim + seal` darunter; Gesims ≥ `trim + 2`. **v2.0.493:** nur Deckel weglassen reichte nicht (Kante blieb). Deckel nur nach innen; Füllwand 0,8 cm vor der Fassade. v2.0.492-Outset durchstieß die Soffit.
+`wallTopY = storeyTopY`. **v2.0.510:** Giebelfüllung bis zur Dachhaut (`planeY`), keine Stirn auf bündigen Kanten — sonst liegt die 13-cm-Platte als Stufe auf dem Dreieck und eine Linie ragt über die Wand. **v2.0.509:** Giebel ohne Wandkürzung; Füllung ab `wallTopY`; kein Kronendeckel auf der Giebelfassade. **v2.0.506 / 504:** `eaveY = wallTop + tv` — Ebenen am Wandring (`outer`); Soffit an der Wand = `eaveY − tv`. **Nicht** zusätzlich `− oh·tan` (v2.0.505). **v2.0.494:** Trauf-Wände um `ROOF_WALL_TOP_TRIM_CM` (6) kürzen.
 
 ### Ebenen-Envelope / Zwerchgiebel / Öffnungen
 
@@ -85,7 +85,7 @@ Senkrechte Bauteile (Front, Wangen, Rückwand) werden als (s, y)-Profile entlang
 
 ## Fallstricke
 
-- Traufe: Wandkörper unter Dach kürzen (`ROOF_WALL_TOP_TRIM_CM` 6, v2.0.494); Gesims an `wall.y+height`; Deckel nicht nach außen. Nie allein Lift/Embed/polygonOffset/omitTopCap (487–493). Nie `floors × wallHeight`.
+- Traufe: Wandkörper unter **Traufe** kürzen (`ROOF_WALL_TOP_TRIM_CM` 6, v2.0.494); **nicht** am Giebel (v2.0.509). Giebelfüllung bis **Dachhaut**, keine Stirn auf `flush` (v2.0.510 — sonst Plattenstärke als Stufe + Linie über die Wand). Gesims an `wall.y+height − max(trim+2, Tiefe·tan+2)`; Deckel nicht nach außen und nicht am Giebel. **Soffit an der Wandlinie** = `wallTop` via `eaveY = wallTop + tv`. Nie zusätzlich `− oh·tan` (505). Kein Clearance-Lift (488–492). Nie allein Lift/Embed/polygonOffset/omitTopCap (487–493). Nie `floors × wallHeight`.
 - Gauben-Auswahl: kein Opening-Overlay für virtuelle Wand `__rdw:…` (liegt bei Ursprung → Kasten am Boden, v2.0.487).
 - Ziegel-Flag nicht ohne Absprache wieder auf true — Performance (~10⁵ Vertices).
 - Ruckeln im Idle nach Dach-Arbeit war **nicht** die glatte Dachhaut (v2.0.474: Wind → `liveMotion`).

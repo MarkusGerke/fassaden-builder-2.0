@@ -59,8 +59,9 @@ export interface RoofEnvelope {
 export const ROOF_SLAB_THICKNESS_CM = 10
 
 /**
- * Basis-Luft zwischen Wandoberkante und Dach-Unterseite (cm).
- * Zusätzlich: `roofWallClearanceCm(facadeOut, pitch)` für Paneel-/Gesims-Vorstand.
+ * Basis-Luft zwischen Wandoberkante und Dach-Unterseite (cm) — historisch v2.0.488–492.
+ * Traufe nutzt das nicht mehr (v2.0.504: Soffit wieder auf Wandoberkante); Konstante bleibt
+ * für Alt-Tests / Fallback-Doku.
  */
 export const ROOF_WALL_CLEARANCE_CM = 8
 
@@ -84,7 +85,7 @@ export const ROOF_FILL_FACE_OUTSET_CM = 0.8
  */
 export const ROOF_FILL_SEAL_CM = 2
 
-/** Clearance so, dass die Soffit am Paneel-Vorstand noch über der Wandkrone liegt. */
+/** Clearance-Hilfsformel (Paneel×tan); Traufe selbst hebt nicht mehr damit (v2.0.504). */
 export function roofWallClearanceCm(facadeOutCm: number, pitchDeg: number): number {
   const tan = Math.tan((Math.min(85, Math.max(1, pitchDeg)) * Math.PI) / 180)
   const forFacade = Math.max(0, facadeOutCm) * tan + 4
@@ -563,7 +564,7 @@ export function buildRoofEnvelope(input: RoofEnvelopeInput): RoofEnvelope | null
   const isEave = edgeFlat.map((flat, i) => flat && edgeMeanY[i]! <= floorY + 0.5)
   const wallTopY =
     input.wallTopY ??
-    input.eaveY - tv - ROOF_WALL_CLEARANCE_CM
+    input.eaveY - tv
   return {
     kind: input.kind,
     planes,
@@ -1056,17 +1057,12 @@ export function buildRoofEnvelopeGeometry(
         if (Math.hypot(ea.x - oa.x, ea.z - oa.z) > 0.5) continue
       }
       const flush = env.flush[edgeIdx]
-      let yuTop = top(u)
-      let yvTop = top(v)
-      let yuBot = bottom(u)
-      let yvBot = bottom(v)
-      if (flush) {
-        yuBot = Math.max(yuBot, env.eaveY)
-        yvBot = Math.max(yvBot, env.eaveY)
-        yuTop = Math.max(yuTop, env.eaveY)
-        yvTop = Math.max(yvTop, env.eaveY)
-        if (yuTop - yuBot < 0.05 && yvTop - yvBot < 0.05) continue
-      }
+      // Giebel bündig: Füllwand schließt an die Dachhaut — keine Stirn (sonst 13-cm-Stufe + Linie über die Wand hinaus).
+      if (flush) continue
+      const yuTop = top(u)
+      const yvTop = top(v)
+      const yuBot = bottom(u)
+      const yvBot = bottom(v)
       const out = edgeOutwardXZ(env.eave[edgeIdx], env.eave[(edgeIdx + 1) % env.eave.length])
       // Traufdurchbruch: Stirn nur außerhalb der Gaubenbreite.
       for (const [t0, t1] of complementIntervals(cutsOn(u, v))) {
@@ -1084,10 +1080,10 @@ export function buildRoofEnvelopeGeometry(
     }
   }
 
-  // Füllwände + Wandkronen-Deckel. Deckel knapp unter der Soffit, nach außen bis Paneel-Vorstand.
+  // Füllwände + Wandkronen-Deckel.
   const wallTopY = env.wallTopY
   const soffitAtWallLine = env.eaveY - tv
-  const fillBottomY = wallTopY - ROOF_WALL_TOP_TRIM_CM - ROOF_FILL_SEAL_CM
+  const eaveFillBottomY = wallTopY - ROOF_WALL_TOP_TRIM_CM - ROOF_FILL_SEAL_CM
   const capY = soffitAtWallLine - 0.8
   for (const { foot, a, b } of footprints) {
     const cross = buildCrossGableEnvelope(foot, env.eaveY, pitchDeg, a, b)
@@ -1105,13 +1101,13 @@ export function buildRoofEnvelopeGeometry(
     for (let s = 0; s + 1 < samples.length; s += 1) {
       const s0 = samples[s]
       const s1 = samples[s + 1]
-      const y0 = Math.max(fillBottomY, s0.y - tv)
-      const y1 = Math.max(fillBottomY, s1.y - tv)
-      if (y0 - fillBottomY < 0.05 && y1 - fillBottomY < 0.05) continue
+      const y0 = Math.max(eaveFillBottomY, s0.y - tv)
+      const y1 = Math.max(eaveFillBottomY, s1.y - tv)
+      if (y0 - eaveFillBottomY < 0.05 && y1 - eaveFillBottomY < 0.05) continue
       const p0 = { x: front[0].x + (front[1].x - front[0].x) * s0.t, z: front[0].z + (front[1].z - front[0].z) * s0.t }
       const p1 = { x: front[0].x + (front[1].x - front[0].x) * s1.t, z: front[0].z + (front[1].z - front[0].z) * s1.t }
-      const A = new THREE.Vector3(p0.x, fillBottomY, p0.z)
-      const B = new THREE.Vector3(p1.x, fillBottomY, p1.z)
+      const A = new THREE.Vector3(p0.x, eaveFillBottomY, p0.z)
+      const B = new THREE.Vector3(p1.x, eaveFillBottomY, p1.z)
       const C = new THREE.Vector3(p1.x, y1, p1.z)
       const D = new THREE.Vector3(p0.x, y0, p0.z)
       const nrm = new THREE.Vector3()
@@ -1121,21 +1117,24 @@ export function buildRoofEnvelopeGeometry(
     }
   }
 
-  // Füllwände auf der Wandlinie: von Seal unter der Wandkante bis zur Plattenunterseite.
+  // Füllwände auf der Wandlinie. Giebel: ab Geschosskante (kein Trim-Spalt); Traufe: unter die gekürzte Wand.
   const n = env.outer.length
   for (let i = 0; i < n; i += 1) {
     const a = env.outer[i]
     const b = env.outer[(i + 1) % n]
     if (Math.hypot(b.x - a.x, b.z - a.z) < 0.5) continue
+    const gableFlush = Boolean(env.flush[i])
+    const botY = gableFlush ? wallTopY : eaveFillBottomY
+    const outset = gableFlush ? 0 : ROOF_FILL_FACE_OUTSET_CM
     const samples = envelopeAlongSegment(env.planes, a, b)
     const out = edgeOutwardXZ(a, b)
     const gaps = cutsOn(a, b)
     for (let s = 0; s + 1 < samples.length; s += 1) {
       const s0 = samples[s]
       const s1 = samples[s + 1]
-      const yA = Math.max(fillBottomY, s0.y - tv)
-      const yB = Math.max(fillBottomY, s1.y - tv)
-      if (yA - fillBottomY < 0.05 && yB - fillBottomY < 0.05) continue
+      const yA = Math.max(botY, s0.y - (gableFlush ? 0 : tv))
+      const yB = Math.max(botY, s1.y - (gableFlush ? 0 : tv))
+      if (yA - botY < 0.05 && yB - botY < 0.05) continue
       // Traufdurchbruch: Füllwand nur außerhalb der Gaubenfront (sonst Z-Fight mit der Gaubenwand).
       for (const [t0, t1] of complementIntervals(gaps, s0.t, s1.t)) {
         const f0 = (t0 - s0.t) / Math.max(1e-9, s1.t - s0.t)
@@ -1145,15 +1144,15 @@ export function buildRoofEnvelopeGeometry(
         const p0 = lerpXZ(a, b, t0)
         const p1 = lerpXZ(a, b, t1)
         const f0p = {
-          x: p0.x + out.x * ROOF_FILL_FACE_OUTSET_CM,
-          z: p0.z + out.z * ROOF_FILL_FACE_OUTSET_CM,
+          x: p0.x + out.x * outset,
+          z: p0.z + out.z * outset,
         }
         const f1p = {
-          x: p1.x + out.x * ROOF_FILL_FACE_OUTSET_CM,
-          z: p1.z + out.z * ROOF_FILL_FACE_OUTSET_CM,
+          x: p1.x + out.x * outset,
+          z: p1.z + out.z * outset,
         }
-        const A = new THREE.Vector3(f0p.x, fillBottomY, f0p.z)
-        const B = new THREE.Vector3(f1p.x, fillBottomY, f1p.z)
+        const A = new THREE.Vector3(f0p.x, botY, f0p.z)
+        const B = new THREE.Vector3(f1p.x, botY, f1p.z)
         const C = new THREE.Vector3(f1p.x, y1, f1p.z)
         const D = new THREE.Vector3(f0p.x, y0, f0p.z)
         const nrm = new THREE.Vector3()
@@ -1164,8 +1163,9 @@ export function buildRoofEnvelopeGeometry(
     }
   }
 
-  // Horizontale Wandkronen-Deckel nur nach innen (außen stößt ein Deckel durch die Soffit).
+  // Horizontale Wandkronen-Deckel nur an Traufen nach innen — nicht am Giebel (sonst Naht auf Geschosshöhe).
   for (let i = 0; i < n; i += 1) {
+    if (env.flush[i]) continue
     const a = env.outer[i]
     const b = env.outer[(i + 1) % n]
     if (Math.hypot(b.x - a.x, b.z - a.z) < 0.5) continue

@@ -1194,6 +1194,39 @@ export interface CladdingZone {
   panel?: Partial<StudioPanelConfig>
 }
 
+/**
+ * Eine manuell gesetzte Mauerwerks-Schicht (Schicht-Editor).
+ * Ersetzt im Y-Band die Tiles des globalen `wall.panel`-Musters.
+ * Siehe docs/masonry-course-editor.md.
+ */
+export interface MasonryCourseOverride {
+  /** Unterkante der Schicht vom Wandfuß (cm). */
+  y: number
+  /** Schichthöhe (cm), typisch = Modulhöhe. */
+  height: number
+  pattern: StudioPanelPattern
+  panelWidth: number
+  panelHeight: number
+  /** Steintiefe / Vorstand (cm); fehlt → Panel-Default. */
+  projectDepth?: number
+  /**
+   * Welche Lage des Verbands (0…phaseCount−1).
+   * z. B. Läuferverband: 0 = gerade, 1 = versetzt. Fehlt → 0.
+   */
+  coursePhase?: number
+  /** 0…7 Farbstufe der Kontrast-Palette; fehlt → Zufall wie bisher. */
+  colorStage?: number
+  /** Bossen-Trapez-Vorstand (cm); 0 = flach. */
+  taperDepth?: number
+  /** Bossenprofil 0…1 (1 = flach, 0 = spitz); nur mit taperDepth > 0. */
+  taper?: number
+  /**
+   * Boss-Form: `all` = Trapez alle Seiten; `lr` = Keil nur links/rechts
+   * (gleiche Höhe, Verjüngung an den vertikalen Kanten — für 45°-Optik).
+   */
+  taperSides?: 'all' | 'lr'
+}
+
 export interface StudioPanelConfig {
   /** Läufer-Sichtlänge (cm), 8-cm-Raster. Binder sind die Hälfte. */
   panelWidth: number
@@ -1350,6 +1383,11 @@ export interface Wall extends WallDimensions {
    * (`claddingZonesForWall` in `facadeLayers.ts`). Siehe docs/facade-layers.md.
    */
   claddingZones?: CladdingZone[]
+  /**
+   * Schicht-Editor: Y-Bänder mit eigenem Muster/Maßen/Farbstufe.
+   * Ersetzen die Basis-Tiles im Band; Öffnungs-Clip bleibt die Standard-Pipeline.
+   */
+  courseOverrides?: MasonryCourseOverride[]
   id: string
   moduleName?: string
   x: number
@@ -1528,8 +1566,10 @@ export interface EditorState {
   selectedRoofBuildingId?: string
   /** Fokus auf Dach-Teil (Toolbar). */
   selectedRoofPart?: 'group' | 'shell' | 'tiles' | 'gutter'
-  /** Gewähltes Dachfenster oder Gaube auf dem Dach. */
+  /** Gewähltes Dachfenster oder Gaube auf dem Dach (Fokus / Toolbar). */
   selectedRoofFixture?: { kind: 'skylight' | 'dormer'; id: string }
+  /** Mehrfachauswahl Gauben/Dachfenster (Ebenen: Shift+Klick, Ctrl/Cmd). */
+  selectedRoofFixtures?: { kind: 'skylight' | 'dormer'; id: string }[]
   /** Gewählte Decke (Etage). */
   selectedCeiling?: { buildingId: string; floorIndex: number }
   /** Haus-Gruppe für Verschieben im Grundriss. */
@@ -1617,6 +1657,7 @@ export function createDefaultEditorState(): EditorState {
     selectedRoofBuildingId: undefined,
     selectedRoofPart: undefined,
     selectedRoofFixture: undefined,
+    selectedRoofFixtures: undefined,
     selectedCeiling: undefined,
     selectedBuildingId: undefined,
     selectedDownpipe: undefined,
@@ -1635,6 +1676,7 @@ export function cloneWall(wall: Wall): Wall {
       rect: zone.rect ? { ...zone.rect } : undefined,
       panel: zone.panel ? { ...zone.panel } : undefined,
     })),
+    courseOverrides: wall.courseOverrides?.map((course) => ({ ...course })),
     cornice: wall.cornice ? { ...wall.cornice } : undefined,
     trimBands: wall.trimBands?.map((band) => ({ ...band })),
     labels: wall.labels?.map((item) => ({ ...item })),

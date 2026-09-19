@@ -136,6 +136,10 @@ Alte `hdri*`-Felder in `PersistedAppState.scene` werden ignoriert (HDRI entfernt
 
 - `SceneLight.fadeInMs` / `fadeOutMs` / `schedule`, `Opening.schedule`, `OpeningRollerShutter.schedule`: Defaults beim Normalize/Hydrate (leere Zeiten, Fade 800/1200 ms). Kein `FACADE_SCHEMA_VERSION`-Bump.
 
+### Hydrate ohne Schema-Step (v2.0.495) — Schicht-Editor
+
+- `Wall.courseOverrides`: optionales Array; Hydrate setzt fehlendes Feld auf `[]`. Layout merged Y-Bänder über dem Basis-Muster. Kein `FACADE_SCHEMA_VERSION`-Bump.
+
 ### Hydrate ohne Schema-Step (v2.0.478) — Gaubenform
 
 - `RoofDormer.kind`: `shed` → `shedStraight`; unbekannte Werte → `gable`. Siehe `normalizeRoofDormerKind`.

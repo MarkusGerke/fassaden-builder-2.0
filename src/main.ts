@@ -1,4 +1,8 @@
 import './style.css'
+import { initAppLoadingIsland } from './ui/liveShellBridge'
+
+initAppLoadingIsland()
+
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js'
@@ -608,10 +612,30 @@ import {
   MASONRY_KIND_PATTERNS,
   PANEL_KIND_PATTERNS,
   PATTERN_LABELS,
+  patternCoursePhaseCount,
+  patternCoursePhaseLabels,
   studioPanelDefaultsForPattern,
 } from './studio/constants'
 import {
+  clampCoursePhase,
+  courseBandAtLocalY,
+  courseFromStaging,
+  createDefaultCourseStaging,
+  deleteWallCourseOverride,
+  dominoStepMs,
+  findCourseAtLocalY,
+  normalizeCourseOverrides,
+  previewTilesForCourse,
+  rotateCourseStaging,
+  stagingEffectiveSizes,
+  stagingFromCourse,
+  updateWallCourseOverride,
+  wallHasCourseOverrides,
+  type MasonryCourseStaging,
+} from './studio/masonryCourseEditor'
+import {
   DEFAULT_ROOF,
+  edgeModesForRoofKind,
   facadeHasRoofablePlan,
   listRoofEdges,
   normalizeRoof,
@@ -885,6 +909,16 @@ import { closeContextMenu, showContextMenu, type MenuItem } from './ui/contextMe
 import { installFieldInfo } from './ui/fieldInfo'
 import { detachScrollableSettingsPanel, scrollToSettingsSection, syncScrollableSettingsPanel } from './ui/scrollableSettingsSections'
 import { initReleaseNotesUi } from './ui/releaseNotes'
+import { publishChromeView, subscribeChromeView } from './ui/chromeBridge'
+import { publishSceneSunSync } from './ui/sceneSunBridge'
+import {
+  initLiveShell,
+  publishSceneToolbarSync,
+  publishViewportChromeSync,
+  publishSelectionToolbarSync,
+  publishLibraryDockSync,
+  publishChromeExtrasSync,
+} from './ui/liveShellBridge'
 import { initCreditsUi } from './ui/creditsDialog'
 import {
   isPerfOverlayEnabled,
@@ -1388,6 +1422,7 @@ function endNav3d(event?: PointerEvent): 'drag' | 'click' | false {
 
 function handleNav3dClick(event: PointerEvent) {
   if (tryObjectFocusDoubleTap(event)) return
+  if (handleMasonryCourseClick(event)) return
   const hit = pickFromEvent(event)
   if (!hit) {
     selectWall(null, true)
@@ -1410,7 +1445,7 @@ function handle3dCameraArrowKeys(event: KeyboardEvent): boolean {
 
   const mod = event.metaKey || event.ctrlKey
   if (!mod && !event.shiftKey && editor.selectedOpenings.length > 0) return false
-  if (!mod && !event.shiftKey && editor.selectedRoofFixture) return false
+  if (!mod && !event.shiftKey && selectedRoofFixturesList().length > 0) return false
   if (!mod && !event.shiftKey && editor.selectedDownpipe) return false
 
   event.preventDefault()
@@ -2152,6 +2187,7 @@ function syncLibraryTabs() {
     btn.classList.toggle('active', active)
     btn.setAttribute('aria-selected', active ? 'true' : 'false')
   }
+  publishLibraryDockSync()
 }
 
 function setLibraryTab(tab: LibraryTab) {
@@ -3567,6 +3603,531 @@ function applyPanelPresetFromLibrary(
   )
   rebuildStudioPatternCards()
   planStatus.textContent = `Paneel „${PATTERN_LABELS[pattern]}“ angewendet`
+}
+
+/** Schicht-Editor: Staging + Domino + Nachbearbeitung (docs/masonry-course-editor.md). */
+type MasonryCourseMode = 'off' | 'place' | 'edit'
+let masonryCourseMode: MasonryCourseMode = 'off'
+let masonryCourseStaging: MasonryCourseStaging | null = null
+/** Ausgewählte gesetzte Schicht (nur Modus Bearbeiten). */
+let masonryCourseEditTarget: { wallId: string; y: number; height: number } | null = null
+let masonryCourseHover: { wallId: string; y: number; height: number } | null = null
+let masonryCoursePlayback: {
+  wallId: string
+  course: ReturnType<typeof courseFromStaging>
+  tiles: Array<{ x: number; y: number; width: number; height: number }>
+  revealed: number
+  t0: number
+} | null = null
+
+function isMasonryCoursePlaceMode(): boolean {
+  return masonryCourseMode === 'place'
+}
+
+function isMasonryCourseEditMode(): boolean {
+  return masonryCourseMode === 'edit'
+}
+
+function isMasonryCourseEditorArmed(): boolean {
+  return (
+    isMasonryCoursePlaceMode() &&
+    masonryCourseStaging !== null &&
+    masonryCourseStaging.pattern !== 'none'
+  )
+}
+
+function isMasonryCourseEditActive(): boolean {
+  return Boolean(
+    isMasonryCourseEditMode() && masonryCourseEditTarget && masonryCourseStaging,
+  )
+}
+
+function coursePickKey(y: number, height: number): string {
+  return `${y.toFixed(2)}:${height.toFixed(2)}`
+}
+
+function clearMasonryCourseEditSelection(options?: { keepGhost?: boolean }) {
+  masonryCourseEditTarget = null
+  if (!isMasonryCoursePlaceMode()) masonryCourseStaging = null
+  if (!options?.keepGhost && !masonryCoursePlayback && !isMasonryCourseEditorArmed()) {
+    facade.clearLibraryPlacementGhost()
+    facade.setSelectionHighlightSuppressed(false)
+    svgView.setSelectionHighlightSuppressed(false)
+  }
+}
+
+function highlightMasonryCourseBand(wall: Wall, band: { y: number; height: number }) {
+  facade.setSelectionHighlightSuppressed(true)
+  svgView.setSelectionHighlightSuppressed(true)
+  facade.setLibraryPlacementGhost(wall, {
+    x: 0,
+    y: band.y,
+    width: wall.width,
+    height: band.height,
+    type: 'cutout',
+  })
+  markViewportDirty()
+}
+
+function syncMasonryCoursePickSelect(wall: Wall | null | undefined) {
+  if (!studioCoursePickRow || !studioCoursePick) return
+  const courses = wall && isStudioWall(wall) ? normalizeCourseOverrides(wall.courseOverrides) : []
+  studioCoursePickRow.hidden = !isMasonryCourseEditMode() || courses.length === 0
+  const prev = studioCoursePick.value
+  studioCoursePick.replaceChildren()
+  const empty = document.createElement('option')
+  empty.value = ''
+  empty.textContent = '— wählen —'
+  studioCoursePick.appendChild(empty)
+  for (const c of courses) {
+    const opt = document.createElement('option')
+    opt.value = coursePickKey(c.y, c.height)
+    const phase =
+      patternCoursePhaseCount(c.pattern) > 1
+        ? ` · ${patternCoursePhaseLabels(c.pattern)[c.coursePhase ?? 0] ?? ''}`
+        : ''
+    opt.textContent = `${Math.round(c.y)}–${Math.round(c.y + c.height)} cm · ${PATTERN_LABELS[c.pattern]}${phase}`
+    studioCoursePick.appendChild(opt)
+  }
+  if (masonryCourseEditTarget && masonryCourseEditTarget.wallId === wall?.id) {
+    studioCoursePick.value = coursePickKey(masonryCourseEditTarget.y, masonryCourseEditTarget.height)
+  } else if ([...studioCoursePick.options].some((o) => o.value === prev)) {
+    studioCoursePick.value = prev
+  } else {
+    studioCoursePick.value = ''
+  }
+}
+
+function syncMasonryCourseModeButtons() {
+  const buttons = [
+    studioCourseModeOff,
+    studioCourseModePlace,
+    studioCourseModeEdit,
+  ].filter(Boolean) as HTMLButtonElement[]
+  for (const btn of buttons) {
+    const mode = btn.dataset.courseMode as MasonryCourseMode | undefined
+    btn.classList.toggle('active', mode === masonryCourseMode)
+    btn.setAttribute('aria-pressed', mode === masonryCourseMode ? 'true' : 'false')
+  }
+  if (studioCourseEditorEnabled) {
+    studioCourseEditorEnabled.checked = isMasonryCoursePlaceMode()
+  }
+}
+
+function ensurePlaceStaging() {
+  if (masonryCourseStaging) return
+  const wall = editor.selectedWallIds[0] ? getWall(state, editor.selectedWallIds[0]) : null
+  const pattern =
+    wall?.panel?.pattern && wall.panel.pattern !== 'none'
+      ? wall.panel.pattern
+      : 'runningBond'
+  masonryCourseStaging = createDefaultCourseStaging(pattern, wall?.panel ?? null)
+}
+
+function setMasonryCourseMode(mode: MasonryCourseMode) {
+  if (masonryCourseMode === mode) {
+    syncMasonryCourseEditorUi()
+    return
+  }
+  masonryCourseMode = mode
+  if (mode === 'off') {
+    clearMasonryCourseEditSelection()
+    masonryCourseStaging = null
+    masonryCourseHover = null
+    if (!masonryCoursePlayback) {
+      facade.clearLibraryPlacementGhost()
+      facade.setSelectionHighlightSuppressed(false)
+      svgView.setSelectionHighlightSuppressed(false)
+    }
+    planStatus.textContent = 'Schicht aus — Bibliothek gilt wandweit'
+  } else if (mode === 'place') {
+    clearMasonryCourseEditSelection({ keepGhost: true })
+    ensurePlaceStaging()
+    planStatus.textContent =
+      'Schicht setzen — Maße hier einstellen, Muster wählen, Reihe bestätigen'
+  } else {
+    // edit
+    masonryCourseHover = null
+    if (!masonryCourseEditTarget) {
+      // Staging erst nach Auswahl; Felder bleiben verborgen bis eine Schicht gewählt ist.
+      masonryCourseStaging = null
+      facade.clearLibraryPlacementGhost()
+      facade.setSelectionHighlightSuppressed(false)
+      svgView.setSelectionHighlightSuppressed(false)
+    }
+    planStatus.textContent =
+      'Schicht bearbeiten — gesetzte Reihe anklicken oder unten wählen (nur Auswahl)'
+  }
+  syncMasonryCourseEditorUi()
+  syncLibraryAppliedOutline()
+  markViewportDirty()
+}
+
+function syncMasonryCourseEditorUi() {
+  if (!studioCourseEditorOptions || !studioCourseColorStage) return
+  syncMasonryCourseModeButtons()
+  const editing = isMasonryCourseEditActive()
+  const placing = isMasonryCoursePlaceMode()
+  const showOptions = placing || editing
+  studioCourseEditorOptions.hidden = !showOptions
+  if (studioCourseDelete) studioCourseDelete.hidden = !editing
+  if (studioCourseModeHint) {
+    studioCourseModeHint.textContent = placing
+      ? 'Setzen: Maße und Bossen hier, Muster in der Bibliothek, dann Reihe klicken. Neben der Wand = drehen.'
+      : editing || isMasonryCourseEditMode()
+        ? 'Bearbeiten: nur die gewählte Schicht. Bibliothek ändert deren Form.'
+        : 'Aus: Bibliothek gilt wandweit. Setzen: neue Reihen. Bearbeiten: bestehende Schicht.'
+  }
+  if (studioCourseOptionsHint) {
+    studioCourseOptionsHint.textContent = editing
+      ? 'Änderungen gelten nur für die gewählte Schicht — nicht für die ganze Wand.'
+      : 'Beim Setzen: Klick neben der Wand dreht 0°/90°. Domino nach Klick auf die Reihe.'
+  }
+  const wall =
+    masonryCourseEditTarget
+      ? getWall(state, masonryCourseEditTarget.wallId)
+      : editor.selectedWallIds[0]
+        ? getWall(state, editor.selectedWallIds[0])
+        : null
+  syncMasonryCoursePickSelect(wall)
+  if (!masonryCourseStaging) return
+  const sizes = stagingEffectiveSizes(masonryCourseStaging)
+  if (studioCourseWidth) {
+    studioCourseWidth.value = String(sizes.panelWidth)
+    studioCourseWidth.min = String(STUDIO_PANEL_MIN)
+    studioCourseWidth.step = String(STUDIO_PANEL_STEP)
+  }
+  if (studioCourseHeight) {
+    studioCourseHeight.value = String(sizes.panelHeight)
+    studioCourseHeight.min = String(STUDIO_PANEL_MIN)
+    studioCourseHeight.step = String(STUDIO_PANEL_STEP)
+  }
+  if (studioCourseDepth) studioCourseDepth.value = String(sizes.projectDepth)
+  if (studioCourseTaperDepth) studioCourseTaperDepth.value = String(masonryCourseStaging.taperDepth)
+  if (studioCourseTaperRow && studioCourseTaper) {
+    const hasBoss = masonryCourseStaging.taperDepth > 0
+    studioCourseTaperRow.hidden = !hasBoss
+    if (hasBoss) studioCourseTaper.value = String(masonryCourseStaging.taper)
+  }
+  if (studioCourseTaperSidesRow && studioCourseTaperSides) {
+    const hasBoss = masonryCourseStaging.taperDepth > 0
+    studioCourseTaperSidesRow.hidden = !hasBoss
+    if (hasBoss) studioCourseTaperSides.value = masonryCourseStaging.taperSides === 'lr' ? 'lr' : 'all'
+  }
+  studioCourseColorStage.value = String(masonryCourseStaging.colorStage)
+  const phaseCount = patternCoursePhaseCount(masonryCourseStaging.pattern)
+  if (studioCoursePhaseRow && studioCoursePhase) {
+    studioCoursePhaseRow.hidden = phaseCount <= 1
+    if (phaseCount > 1) {
+      const labels = patternCoursePhaseLabels(masonryCourseStaging.pattern)
+      const phase = clampCoursePhase(masonryCourseStaging.pattern, masonryCourseStaging.coursePhase)
+      masonryCourseStaging.coursePhase = phase
+      if (
+        studioCoursePhase.options.length !== phaseCount ||
+        studioCoursePhase.dataset.pattern !== masonryCourseStaging.pattern
+      ) {
+        studioCoursePhase.replaceChildren()
+        for (let i = 0; i < phaseCount; i += 1) {
+          const opt = document.createElement('option')
+          opt.value = String(i)
+          opt.textContent = labels[i] ?? `Ebene ${i + 1}`
+          studioCoursePhase.appendChild(opt)
+        }
+        studioCoursePhase.dataset.pattern = masonryCourseStaging.pattern
+      }
+      studioCoursePhase.value = String(phase)
+    }
+  }
+}
+
+function selectMasonryCourseForEdit(wallId: string, course: ReturnType<typeof findCourseAtLocalY>) {
+  if (!course) return
+  const wall = getWall(state, wallId)
+  if (!wall || !isStudioWall(wall) || !canEditWallNow(wallId)) return
+  if (!editor.selectedWallIds.includes(wallId)) selectWall(wallId, true)
+  masonryCourseMode = 'edit'
+  masonryCourseEditTarget = { wallId, y: course.y, height: course.height }
+  masonryCourseStaging = stagingFromCourse(course)
+  highlightMasonryCourseBand(wall, { y: course.y, height: course.height })
+  syncMasonryCourseEditorUi()
+  syncLibraryAppliedOutline()
+  planStatus.textContent = `Schicht bearbeiten: ${PATTERN_LABELS[course.pattern]} (${Math.round(course.y)}–${Math.round(course.y + course.height)} cm)`
+}
+
+function commitMasonryCourseEdit() {
+  if (!isMasonryCourseEditActive() || !masonryCourseEditTarget || !masonryCourseStaging) return
+  if (masonryCourseStaging.pattern === 'none') return
+  const wallId = masonryCourseEditTarget.wallId
+  if (!canEditWallNow(wallId)) return
+  const sizes = stagingEffectiveSizes(masonryCourseStaging)
+  const band = { y: masonryCourseEditTarget.y, height: sizes.panelHeight }
+  const course = courseFromStaging(band, masonryCourseStaging)
+  commitState(updateWallCourseOverride(state, [wallId], course))
+  masonryCourseEditTarget = { wallId, y: course.y, height: course.height }
+  const wall = getWall(state, wallId)
+  if (wall) highlightMasonryCourseBand(wall, masonryCourseEditTarget)
+  syncMasonryCourseEditorUi()
+  syncLibraryAppliedOutline()
+  planStatus.textContent = 'Schicht aktualisiert'
+}
+
+function applyPatternToMasonryCourseEdit(pattern: StudioPanelPattern) {
+  if (!masonryCourseEditTarget) return
+  if (pattern === 'none') {
+    commitState(
+      deleteWallCourseOverride(state, [masonryCourseEditTarget.wallId], masonryCourseEditTarget),
+    )
+    clearMasonryCourseEditSelection()
+    syncMasonryCourseEditorUi()
+    syncLibraryAppliedOutline()
+    planStatus.textContent = 'Schicht gelöscht'
+    markViewportDirty()
+    return
+  }
+  const defaults = studioPanelDefaultsForPattern(pattern)
+  const prev = masonryCourseStaging
+  masonryCourseStaging = createDefaultCourseStaging(pattern, {
+    panelWidth: prev?.panelWidth ?? defaults.panelWidth,
+    panelHeight: prev?.panelHeight ?? defaults.panelHeight,
+    projectDepth: prev?.projectDepth ?? defaults.projectDepth,
+    taperDepth: prev?.taperDepth ?? defaults.taperDepth,
+    taper: prev?.taper ?? defaults.taper,
+    pattern,
+  })
+  if (prev) {
+    masonryCourseStaging.colorStage = prev.colorStage
+    masonryCourseStaging.coursePhase = clampCoursePhase(pattern, prev.coursePhase)
+    masonryCourseStaging.taperDepth = prev.taperDepth
+    masonryCourseStaging.taper = prev.taper
+    masonryCourseStaging.taperSides = prev.taperSides
+  }
+  commitMasonryCourseEdit()
+}
+
+function disarmMasonryCourseEditor(options?: { keepToggle?: boolean }) {
+  if (!options?.keepToggle) {
+    masonryCourseMode = 'off'
+  } else if (isMasonryCoursePlaceMode()) {
+    // Muster „Keine“: Setzen bleibt an, nur Bewaffnung weg.
+    masonryCourseStaging = null
+  }
+  if (!masonryCourseEditTarget) masonryCourseStaging = null
+  masonryCourseHover = null
+  if (!masonryCoursePlayback && !masonryCourseEditTarget) {
+    facade.clearLibraryPlacementGhost()
+    facade.setSelectionHighlightSuppressed(false)
+    svgView.setSelectionHighlightSuppressed(false)
+  }
+  syncMasonryCourseEditorUi()
+  syncLibraryAppliedOutline()
+  markViewportDirty()
+}
+
+function armMasonryCourseFromLibrary(pattern: StudioPanelPattern) {
+  if (pattern === 'none') {
+    disarmMasonryCourseEditor({ keepToggle: true })
+    planStatus.textContent = 'Schicht setzen: Bewaffnung beendet'
+    return
+  }
+  if (!isMasonryCoursePlaceMode()) setMasonryCourseMode('place')
+  clearMasonryCourseEditSelection({ keepGhost: true })
+  const wall = editor.selectedWallIds[0] ? getWall(state, editor.selectedWallIds[0]) : null
+  const prev = masonryCourseStaging
+  const defaults = studioPanelDefaultsForPattern(pattern)
+  masonryCourseStaging = createDefaultCourseStaging(pattern, {
+    ...(wall?.panel ?? {}),
+    ...defaults,
+    pattern,
+    panelWidth: prev?.panelWidth ?? defaults.panelWidth ?? wall?.panel?.panelWidth,
+    panelHeight: prev?.panelHeight ?? defaults.panelHeight ?? wall?.panel?.panelHeight,
+    projectDepth: prev?.projectDepth ?? defaults.projectDepth ?? wall?.panel?.projectDepth,
+    taperDepth: prev?.taperDepth ?? defaults.taperDepth ?? 0,
+    taper: prev?.taper ?? defaults.taper ?? 0.8,
+  })
+  if (prev) {
+    masonryCourseStaging.colorStage = prev.colorStage
+    masonryCourseStaging.coursePhase = clampCoursePhase(pattern, prev.coursePhase)
+    masonryCourseStaging.taperDepth = prev.taperDepth
+    masonryCourseStaging.taper = prev.taper
+    masonryCourseStaging.taperSides = prev.taperSides
+  }
+  syncMasonryCourseEditorUi()
+  syncLibraryAppliedOutline()
+  const phaseLabel =
+    patternCoursePhaseLabels(pattern)[masonryCourseStaging.coursePhase] ?? 'Ebene 1'
+  planStatus.textContent = `Schicht: ${PATTERN_LABELS[pattern]} · ${phaseLabel} — Reihe bestätigen = füllen`
+  markViewportDirty()
+}
+
+function updateMasonryCourseHover(clientX: number, clientY: number) {
+  if (masonryCoursePlayback) return false
+  // Bearbeiten: Hover über gesetzte Schicht.
+  if (isMasonryCourseEditMode()) {
+    const hit = pickWallAtClient(clientX, clientY)
+    if (!hit) return false
+    const wall = getWall(state, hit.wallId)
+    if (!wall || !isStudioWall(wall) || !wallHasCourseOverrides(wall)) return false
+    if (!editor.selectedWallIds.includes(hit.wallId) && editor.selectedWallIds.length > 0) {
+      return false
+    }
+    const course = findCourseAtLocalY(wall, hit.localY)
+    if (!course) {
+      if (masonryCourseEditTarget && masonryCourseEditTarget.wallId === wall.id) {
+        highlightMasonryCourseBand(wall, masonryCourseEditTarget)
+      }
+      return true
+    }
+    masonryCourseHover = { wallId: wall.id, y: course.y, height: course.height }
+    if (
+      !masonryCourseEditTarget ||
+      masonryCourseEditTarget.wallId !== wall.id ||
+      Math.abs(masonryCourseEditTarget.y - course.y) > 0.05
+    ) {
+      highlightMasonryCourseBand(wall, { y: course.y, height: course.height })
+    }
+    return true
+  }
+  if (!isMasonryCourseEditorArmed() || !masonryCourseStaging) return false
+  const hit = pickWallAtClient(clientX, clientY)
+  if (!hit) {
+    if (masonryCourseHover) {
+      masonryCourseHover = null
+      facade.clearLibraryPlacementGhost()
+      facade.setSelectionHighlightSuppressed(false)
+      svgView.setSelectionHighlightSuppressed(false)
+      markViewportDirty()
+    }
+    return true
+  }
+  const wall = getWall(state, hit.wallId)
+  if (!wall || !isStudioWall(wall)) return true
+  const sizes = stagingEffectiveSizes(masonryCourseStaging)
+  const band = courseBandAtLocalY(wall, hit.localY, sizes.panelHeight, getAllWalls(state))
+  if (!band) {
+    masonryCourseHover = null
+    facade.clearLibraryPlacementGhost()
+    return true
+  }
+  masonryCourseHover = { wallId: wall.id, y: band.y, height: band.height }
+  highlightMasonryCourseBand(wall, band)
+  return true
+}
+
+function beginMasonryCourseFill(wallId: string, band: { y: number; height: number }) {
+  if (!masonryCourseStaging || masonryCourseStaging.pattern === 'none') return
+  const wall = getWall(state, wallId)
+  if (!wall || !isStudioWall(wall) || !canEditWallNow(wallId)) return
+  clearMasonryCourseEditSelection({ keepGhost: true })
+  const course = courseFromStaging(band, masonryCourseStaging)
+  let tiles = previewTilesForCourse(wall, wall.panel, course, getAllWalls(state))
+    .map((t) => ({ x: t.x, y: t.y, width: t.width, height: t.height }))
+    .sort((a, b) => a.x - b.x || a.y - b.y)
+  if (tiles.length === 0) {
+    tiles = [{ x: 0, y: band.y, width: wall.width, height: band.height }]
+  }
+  masonryCourseHover = null
+  masonryCoursePlayback = {
+    wallId,
+    course,
+    tiles,
+    revealed: 0,
+    t0: performance.now(),
+  }
+  facade.setSelectionHighlightSuppressed(true)
+  svgView.setSelectionHighlightSuppressed(true)
+  facade.setMasonryCourseGhosts(wall, tiles.slice(0, 1))
+  markViewportDirty()
+}
+
+function tickMasonryCoursePlayback(nowMs: number) {
+  const play = masonryCoursePlayback
+  if (!play) return
+  const wall = getWall(state, play.wallId)
+  if (!wall) {
+    masonryCoursePlayback = null
+    facade.clearLibraryPlacementGhost()
+    return
+  }
+  const step = dominoStepMs()
+  const revealed = Math.min(play.tiles.length, Math.floor((nowMs - play.t0) / step) + 1)
+  if (revealed !== play.revealed) {
+    play.revealed = revealed
+    facade.setMasonryCourseGhosts(wall, play.tiles.slice(0, revealed))
+    markViewportDirty()
+  }
+  if (revealed < play.tiles.length) return
+  const course = play.course
+  const wallId = play.wallId
+  masonryCoursePlayback = null
+  facade.setSelectionHighlightSuppressed(false)
+  svgView.setSelectionHighlightSuppressed(false)
+  const nextState = updateWallCourseOverride(state, [wallId], course)
+  const nextWall = nextState.buildings.flatMap((b) => b.walls).find((w) => w.id === wallId)
+  commitState(nextState)
+  // Ghosts erst nach Rebuild entfernen — sonst grauer Wand-Flash ohne Steine.
+  facade.clearLibraryPlacementGhost()
+  planStatus.textContent = 'Schicht gesetzt'
+  syncMasonryCourseEditorUi()
+}
+
+function handleMasonryCourseClick(event: PointerEvent): boolean {
+  if (masonryCoursePlayback) return false
+
+  // Bearbeiten: gesetzte Schicht treffen.
+  if (isMasonryCourseEditMode()) {
+    const hit = pickWallAtClient(event.clientX, event.clientY)
+    if (!hit) {
+      if (masonryCourseEditTarget) {
+        clearMasonryCourseEditSelection()
+        syncMasonryCourseEditorUi()
+        syncLibraryAppliedOutline()
+        markViewportDirty()
+        return true
+      }
+      return false
+    }
+    const wall = getWall(state, hit.wallId)
+    if (!wall || !isStudioWall(wall) || !wallHasCourseOverrides(wall)) return false
+    const course =
+      masonryCourseHover && masonryCourseHover.wallId === hit.wallId
+        ? findCourseAtLocalY(wall, masonryCourseHover.y + masonryCourseHover.height / 2)
+        : findCourseAtLocalY(wall, hit.localY)
+    if (!course) return false
+    selectMasonryCourseForEdit(hit.wallId, course)
+    return true
+  }
+
+  if (!isMasonryCourseEditorArmed() || !masonryCourseStaging) return false
+  let hit = pickWallAtClient(event.clientX, event.clientY)
+  // Hover-Band als Fallback: Klick auf orangenen Ghost trifft oft nicht die Wand-Meshes.
+  if (!hit && masonryCourseHover) {
+    hit = {
+      wallId: masonryCourseHover.wallId,
+      localX: 0,
+      localY: masonryCourseHover.y + masonryCourseHover.height / 2,
+    }
+  }
+  if (!hit) {
+    masonryCourseStaging = rotateCourseStaging(masonryCourseStaging)
+    const sizes = stagingEffectiveSizes(masonryCourseStaging)
+    syncMasonryCourseEditorUi()
+    planStatus.textContent = `Stein gedreht → ${sizes.panelWidth}×${sizes.panelHeight} cm`
+    markViewportDirty()
+    return true
+  }
+  const wall = getWall(state, hit.wallId)
+  if (!wall || !isStudioWall(wall)) return false
+  if (!editor.selectedWallIds.includes(hit.wallId)) {
+    selectWall(hit.wallId, true)
+  }
+  const sizes = stagingEffectiveSizes(masonryCourseStaging)
+  const band =
+    masonryCourseHover && masonryCourseHover.wallId === hit.wallId
+      ? { y: masonryCourseHover.y, height: masonryCourseHover.height, rowIndex: 0 }
+      : courseBandAtLocalY(wall, hit.localY, sizes.panelHeight, getAllWalls(state))
+  if (!band) return true
+  beginMasonryCourseFill(hit.wallId, { y: band.y, height: band.height })
+  return true
 }
 
 function placeWallPresetFromLibrary(presetId: string, clientX?: number, clientY?: number) {
@@ -5423,6 +5984,13 @@ function isLibraryCardApplied(card: HTMLElement): boolean {
       return !selectedWalls().some((wall) => bayMetaForWall(getAllWalls(state), wall))
     }
     if (libraryTab === 'panels') {
+      // Schicht-Editor bewaffnet: „Keine“ nicht als aktiv, solange ein Muster gewählt ist.
+      if (isMasonryCoursePlaceMode() && masonryCourseStaging && masonryCourseStaging.pattern !== 'none') {
+        return false
+      }
+      if (isMasonryCourseEditActive()) {
+        return false
+      }
       const wall = selectedWalls()[0]
       return !wall?.panel || wall.panel.enabled === false || wall.panel.pattern === 'none'
     }
@@ -5453,6 +6021,10 @@ function isLibraryCardApplied(card: HTMLElement): boolean {
   }
   const panelPattern = card.dataset.panelPattern
   if (panelPattern) {
+    // Schicht-Editor: bewaffnetes / bearbeitetes Bibliothek-Muster umranden (nicht wall.panel).
+    if ((isMasonryCoursePlaceMode() || isMasonryCourseEditActive()) && masonryCourseStaging) {
+      return panelPattern === masonryCourseStaging.pattern
+    }
     const wall = selectedWalls()[0]
     const pattern =
       !wall?.panel || wall.panel.enabled === false || wall.panel.pattern === 'none' ? 'none' : wall.panel.pattern
@@ -5795,6 +6367,7 @@ function openLibraryEdit(
   libraryEditFocusSections = [...sections]
   libraryEditFocusTitle = title || 'Bearbeiten'
   libraryEditPortalSource = portalSource
+  document.documentElement.dataset.editPortal = portalSource
   pedimentCatalogDepth = 'root'
   libraryEditSheetOpen = true
   document.documentElement.classList.toggle('ui-library-edit-focus', true)
@@ -5815,6 +6388,7 @@ function closeLibraryEdit() {
   libraryEditFocusSections = null
   libraryEditSheetOpen = false
   libraryEditPortalSource = 'selection'
+  delete document.documentElement.dataset.editPortal
   pedimentCatalogDepth = 'root'
   document.documentElement.classList.remove('ui-library-edit-focus')
   syncLibraryEditSheetChrome()
@@ -5911,6 +6485,9 @@ function syncPedimentCatalogChrome() {
   }
 }
 
+/** Mobil startet immer in Fassade, nicht in der gespeicherten 3D-Ansicht. */
+let touchBootViewDone = false
+
 function syncTouchChromeLayout() {
   const touch = isTouchChromeLayout(currentView)
   document.documentElement.classList.toggle('ui-touch-chrome', touch)
@@ -5920,11 +6497,11 @@ function syncTouchChromeLayout() {
   if (fileSection) fileSection.hidden = !touch
 
   if (touch) {
-    const pref = loadTouchViewPreference()
-    if (pref === '3d' && currentView !== '3d' && currentView !== 'export') {
-      setView('3d')
-    } else if (pref === 'present' && shouldForcePresentView(currentView)) {
+    if (currentView !== 'present' && currentView !== 'export' && !touchBootViewDone) {
+      touchBootViewDone = true
       setView('present')
+    } else {
+      touchBootViewDone = true
     }
   } else if (shouldForcePresentView(currentView)) {
     setView('present')
@@ -5956,9 +6533,48 @@ let lastLayerTreeAnchor: number | null = null
 
 type LayerTreeEntry =
   | { kind: 'light'; lightId: string }
+  | { kind: 'roofFixture'; buildingId: string; fixtureKind: 'skylight' | 'dormer'; fixtureId: string }
   | { kind: 'wall'; wallId: string }
   | { kind: 'opening'; wallId: string; openingId: string }
   | { kind: 'label'; wallId: string; labelId: string }
+
+type RoofFixtureRef = { kind: 'skylight' | 'dormer'; id: string }
+
+function roofFixtureKey(f: RoofFixtureRef): string {
+  return `${f.kind}:${f.id}`
+}
+
+function selectedRoofFixturesList(): RoofFixtureRef[] {
+  if (editor.selectedRoofFixtures && editor.selectedRoofFixtures.length > 0) {
+    return editor.selectedRoofFixtures.map((f) => ({ ...f }))
+  }
+  if (editor.selectedRoofFixture) return [{ ...editor.selectedRoofFixture }]
+  return []
+}
+
+function isRoofFixtureSelected(fixture: RoofFixtureRef): boolean {
+  return selectedRoofFixturesList().some((f) => roofFixtureKey(f) === roofFixtureKey(fixture))
+}
+
+/** Reihenfolge wie in der Ebenenliste unter Dach: zuerst Dachfenster, dann Gauben. */
+function roofFixtureOrderOnBuilding(buildingId: string): RoofFixtureRef[] {
+  const building = state.buildings.find((b) => b.id === buildingId)
+  if (!building) return []
+  const roof = normalizeRoof(building.roof)
+  return [
+    ...(roof.skylights ?? []).map((s) => ({ kind: 'skylight' as const, id: s.id })),
+    ...(roof.dormers ?? []).map((d) => ({ kind: 'dormer' as const, id: d.id })),
+  ]
+}
+
+function roofFixtureExistsOnBuilding(
+  buildingId: string,
+  fixture: RoofFixtureRef,
+): boolean {
+  return roofFixtureOrderOnBuilding(buildingId).some(
+    (f) => roofFixtureKey(f) === roofFixtureKey(fixture),
+  )
+}
 
 /** Sichtbare auswählbare Zeilen — gleiche Reihenfolge wie im Ebenenbaum. */
 function buildLayerTreeEntries(): LayerTreeEntry[] {
@@ -5981,6 +6597,17 @@ function buildLayerTreeEntries(): LayerTreeEntry[] {
 
   for (const building of [...state.buildings].reverse()) {
     if (collapsedBuildings.has(building.id)) continue
+    const roof = normalizeRoof(building.roof)
+    if (roof.enabled && expandedRoofs.has(building.id)) {
+      for (const fixture of roofFixtureOrderOnBuilding(building.id)) {
+        entries.push({
+          kind: 'roofFixture',
+          buildingId: building.id,
+          fixtureKind: fixture.kind,
+          fixtureId: fixture.id,
+        })
+      }
+    }
     const byFloor = groupWallsByFloorForBuilding(building)
     for (const floor of sortedFloorIndicesForBuilding(building)) {
       if (collapsedFloors.has(floor)) continue
@@ -6037,6 +6664,9 @@ function buildLayerTreeEntries(): LayerTreeEntry[] {
 
 function layerTreeEntryKey(entry: LayerTreeEntry): string {
   if (entry.kind === 'light') return `light:${entry.lightId}`
+  if (entry.kind === 'roofFixture') {
+    return `roofFixture:${entry.buildingId}:${entry.fixtureKind}:${entry.fixtureId}`
+  }
   if (entry.kind === 'wall') return `wall:${entry.wallId}`
   if (entry.kind === 'opening') return `opening:${entry.wallId}:${entry.openingId}`
   return `label:${entry.wallId}:${entry.labelId}`
@@ -6055,6 +6685,12 @@ function applyLayerTreeRange(from: number, to: number): void {
   if (slice.length === 0) return
 
   const lightIds = slice.filter((e) => e.kind === 'light').map((e) => e.lightId)
+  const roofFixtures = slice
+    .filter((e): e is Extract<LayerTreeEntry, { kind: 'roofFixture' }> => e.kind === 'roofFixture')
+    .map((e) => ({
+      buildingId: e.buildingId,
+      fixture: { kind: e.fixtureKind, id: e.fixtureId } as RoofFixtureRef,
+    }))
   const wallIds = slice.filter((e) => e.kind === 'wall').map((e) => e.wallId)
   const openings = slice
     .filter((e): e is Extract<LayerTreeEntry, { kind: 'opening' }> => e.kind === 'opening')
@@ -6063,7 +6699,13 @@ function applyLayerTreeRange(from: number, to: number): void {
     (e): e is Extract<LayerTreeEntry, { kind: 'label' }> => e.kind === 'label',
   )
 
-  if (lightIds.length > 0 && wallIds.length === 0 && openings.length === 0 && labels.length === 0) {
+  if (
+    lightIds.length > 0 &&
+    wallIds.length === 0 &&
+    openings.length === 0 &&
+    labels.length === 0 &&
+    roofFixtures.length === 0
+  ) {
     pendingSelectionToolbarTab = 'sceneLight'
     applyEditorSelection({
       ...createDefaultEditorState(),
@@ -6071,6 +6713,23 @@ function applyLayerTreeRange(from: number, to: number): void {
       selectedSceneLightIds: [...new Set(lightIds)],
     })
     return
+  }
+
+  if (
+    roofFixtures.length > 0 &&
+    lightIds.length === 0 &&
+    wallIds.length === 0 &&
+    openings.length === 0 &&
+    labels.length === 0
+  ) {
+    const buildingId = roofFixtures[roofFixtures.length - 1]!.buildingId
+    const sameBuilding = roofFixtures.every((item) => item.buildingId === buildingId)
+    if (sameBuilding) {
+      const fixtures = roofFixtures.map((item) => item.fixture)
+      const focus = fixtures[fixtures.length - 1]!
+      applyRoofFixtureSelection(buildingId, fixtures, focus)
+      return
+    }
   }
 
   // Eine Schrift im Bereich → Fokus auf diese Schrift (wie Einzelwahl).
@@ -6205,6 +6864,14 @@ function selectLayerTreeEntry(
       selectSceneLight(entry.lightId, additive)
       return
     }
+    if (entry.kind === 'roofFixture') {
+      selectRoofFixture(
+        entry.buildingId,
+        { kind: entry.fixtureKind, id: entry.fixtureId },
+        additive,
+      )
+      return
+    }
     if (entry.kind === 'wall') {
       selectWall(entry.wallId, additive)
       return
@@ -6221,6 +6888,14 @@ function selectLayerTreeEntry(
     lastLayerTreeAnchor = index
     if (entry.kind === 'light') {
       selectSceneLight(entry.lightId, true)
+      return
+    }
+    if (entry.kind === 'roofFixture') {
+      selectRoofFixture(
+        entry.buildingId,
+        { kind: entry.fixtureKind, id: entry.fixtureId },
+        true,
+      )
       return
     }
     if (entry.kind === 'wall') {
@@ -6243,6 +6918,10 @@ function selectLayerTreeEntry(
   lastLayerTreeAnchor = index
   if (entry.kind === 'light') {
     selectSceneLight(entry.lightId, false)
+    return
+  }
+  if (entry.kind === 'roofFixture') {
+    selectRoofFixture(entry.buildingId, { kind: entry.fixtureKind, id: entry.fixtureId }, false)
     return
   }
   if (entry.kind === 'wall') {
@@ -6298,6 +6977,7 @@ const collapsedBuildings = new Set<string>()
 const buildingLayersPanelMode = new Map<string, 'layers' | 'decor'>()
 const expandedRoofs = new Set<string>()
 let sceneLightsLayerCollapsed = false
+let layerCollapseBoot = false
 /** Eingeklappte Lichtgruppen im Ebenenbaum. */
 const collapsedSceneLightGroups = new Set<string>()
 const buildingAddBtn = document.querySelector<HTMLButtonElement>('#building-add')!
@@ -7626,6 +8306,8 @@ const creditsBody = document.querySelector<HTMLDivElement>('#credits-body')!
 const releaseNotesDialog = document.querySelector<HTMLDialogElement>('#release-notes-dialog')!
 const releaseNotesBody = document.querySelector<HTMLDivElement>('#release-notes-body')!
 const releaseNotesRepoLink = document.querySelector<HTMLParagraphElement>('#release-notes-repo-link')!
+/** Park/Solid-Insel — Vanilla-Button/Dialog bleiben als IDs im DOM (hidden). */
+const uiIslandRelease = document.querySelector<HTMLElement>('#ui-island-release')!
 const planSidebar = document.querySelector<HTMLDetailsElement>('#plan-sidebar')!
 const planStatus = document.querySelector<HTMLSpanElement>('#plan-status')!
 const planClearButton = document.querySelector<HTMLButtonElement>('#plan-clear')!
@@ -7992,6 +8674,27 @@ const studioJointInput = document.querySelector<HTMLInputElement>('#studio-joint
 const studioPanelWidthInput = document.querySelector<HTMLInputElement>('#studio-panel-width')!
 const studioPanelWidthRow = document.querySelector<HTMLDivElement>('#studio-panel-width-row')!
 const studioPanelHeightInput = document.querySelector<HTMLInputElement>('#studio-panel-height')!
+const studioCourseEditorEnabled = document.querySelector<HTMLInputElement>('#studio-course-editor-enabled')!
+const studioCourseModeOff = document.querySelector<HTMLButtonElement>('#studio-course-mode-off')!
+const studioCourseModePlace = document.querySelector<HTMLButtonElement>('#studio-course-mode-place')!
+const studioCourseModeEdit = document.querySelector<HTMLButtonElement>('#studio-course-mode-edit')!
+const studioCourseModeHint = document.querySelector<HTMLParagraphElement>('#studio-course-mode-hint')!
+const studioCourseEditorOptions = document.querySelector<HTMLDivElement>('#studio-course-editor-options')!
+const studioCoursePickRow = document.querySelector<HTMLDivElement>('#studio-course-pick-row')!
+const studioCoursePick = document.querySelector<HTMLSelectElement>('#studio-course-pick')!
+const studioCourseWidth = document.querySelector<HTMLInputElement>('#studio-course-width')!
+const studioCourseHeight = document.querySelector<HTMLInputElement>('#studio-course-height')!
+const studioCourseDepth = document.querySelector<HTMLInputElement>('#studio-course-depth')!
+const studioCourseTaperDepth = document.querySelector<HTMLInputElement>('#studio-course-taper-depth')!
+const studioCourseTaperRow = document.querySelector<HTMLDivElement>('#studio-course-taper-row')!
+const studioCourseTaper = document.querySelector<HTMLInputElement>('#studio-course-taper')!
+const studioCourseTaperSidesRow = document.querySelector<HTMLDivElement>('#studio-course-taper-sides-row')!
+const studioCourseTaperSides = document.querySelector<HTMLSelectElement>('#studio-course-taper-sides')!
+const studioCoursePhaseRow = document.querySelector<HTMLDivElement>('#studio-course-phase-row')!
+const studioCoursePhase = document.querySelector<HTMLSelectElement>('#studio-course-phase')!
+const studioCourseColorStage = document.querySelector<HTMLInputElement>('#studio-course-color-stage')!
+const studioCourseOptionsHint = document.querySelector<HTMLParagraphElement>('#studio-course-options-hint')!
+const studioCourseDelete = document.querySelector<HTMLButtonElement>('#studio-course-delete')!
 const studioCladdingTwoBands = document.querySelector<HTMLInputElement>('#studio-cladding-two-bands')!
 const studioCladdingTwoBandsOptions = document.querySelector<HTMLDivElement>('#studio-cladding-two-bands-options')!
 const studioCladdingSplitY = document.querySelector<HTMLInputElement>('#studio-cladding-split-y')!
@@ -9337,12 +10040,15 @@ function setCompassYaw(yaw: number) {
 function syncSceneViewControls() {
   const presentBtn = document.querySelector<HTMLButtonElement>('#scene-view-mode-present')
   const mode3dBtn = document.querySelector<HTMLButtonElement>('#scene-view-mode-3d')
+  const mode2dBtn = document.querySelector<HTMLButtonElement>('#scene-view-mode-front')
   const facingBlock = document.querySelector<HTMLElement>('#scene-view-facing-block')
   const yaw = currentElevation.kind === 'yaw' ? snapYawTo45(currentElevation.yaw) : 0
   const isPresent = currentView === 'present'
   const is3d = currentView === '3d'
+  const is2d = currentView === 'front'
   presentBtn?.classList.toggle('active', isPresent)
   mode3dBtn?.classList.toggle('active', is3d)
+  mode2dBtn?.classList.toggle('active', is2d)
   if (facingBlock) facingBlock.hidden = !isPresent
   const matched = touchFacingFromYaw(touchFacingHomeYaw, yaw)
   if (matched) touchFacadeFacing = matched
@@ -9378,6 +10084,10 @@ function bindSceneViewControls() {
   }
   document.querySelector('#scene-view-mode-present')?.addEventListener('click', () => {
     setTouchViewMode('present')
+  })
+  document.querySelector('#scene-view-mode-front')?.addEventListener('click', () => {
+    setView('front')
+    syncSceneViewControls()
   })
   document.querySelector('#scene-view-mode-3d')?.addEventListener('click', () => {
     setTouchViewMode('3d')
@@ -9662,7 +10372,8 @@ function syncCeilingUI() {
 function commitRoofPatch(patch: Partial<RoofConfig>) {
   if (!facadeHasRoofablePlan(state) && patch.enabled) return
   const building = activeBuilding()
-  let merged: RoofConfig = { ...normalizeRoof(building.roof), ...patch }
+  const prev = normalizeRoof(building.roof)
+  let merged: RoofConfig = { ...prev, ...patch }
   if (roofKindUsesRidgeRise(merged.kind)) {
     const outer = roofOuterRing(building)
     const rise = merged.ridgeRiseCm ?? roofRidgeHeightCm(building, merged)
@@ -9675,8 +10386,9 @@ function commitRoofPatch(patch: Partial<RoofConfig>) {
     }
   }
   const next = normalizeRoof(merged)
+  const enabledChanged = prev.enabled !== next.enabled
   commitState(updateActiveBuilding(state, { roof: next }), editor, {
-    forceRoofOnlyIds: [building.id],
+    forceRoofOnlyIds: enabledChanged ? undefined : [building.id],
   })
 }
 
@@ -9803,6 +10515,7 @@ function placeRoofPresetAt(
         selectedRoofBuildingId: buildingId,
         selectedRoofPart: 'group',
         selectedRoofFixture: { kind: 'skylight', id: draft.id },
+        selectedRoofFixtures: [{ kind: 'skylight', id: draft.id }],
       },
       { forceRoofOnlyIds: [buildingId] },
     )
@@ -9833,6 +10546,7 @@ function placeRoofPresetAt(
       selectedRoofBuildingId: buildingId,
       selectedRoofPart: 'group',
       selectedRoofFixture: { kind: 'dormer', id: draft.id },
+      selectedRoofFixtures: [{ kind: 'dormer', id: draft.id }],
     },
     { forceRoofOnlyIds: [buildingId] },
   )
@@ -9876,25 +10590,37 @@ function tryPlaceArmedRoofPreset(event: { clientX: number; clientY: number }): b
 
 function deleteSelectedRoofFixture() {
   const buildingId = editor.selectedRoofBuildingId
-  const fixture = editor.selectedRoofFixture
-  if (!buildingId || !fixture) return
+  const fixtures = selectedRoofFixturesList()
+  if (!buildingId || fixtures.length === 0) return
   const building = state.buildings.find((b) => b.id === buildingId)
   if (!building) return
   const roof = normalizeRoof(building.roof)
-  const next =
-    fixture.kind === 'skylight'
-      ? { ...roof, skylights: (roof.skylights ?? []).filter((s) => s.id !== fixture.id) }
-      : { ...roof, dormers: (roof.dormers ?? []).filter((d) => d.id !== fixture.id) }
+  const removeKeys = new Set(fixtures.map(roofFixtureKey))
+  const next = {
+    ...roof,
+    skylights: (roof.skylights ?? []).filter((s) => !removeKeys.has(`skylight:${s.id}`)),
+    dormers: (roof.dormers ?? []).filter((d) => !removeKeys.has(`dormer:${d.id}`)),
+  }
+  const hadDormer = fixtures.some((f) => f.kind === 'dormer')
+  const hadSkylight = fixtures.some((f) => f.kind === 'skylight')
   commitState(
     updateBuilding(state, buildingId, { roof: normalizeRoof(next) }),
     {
       ...editor,
       selectedRoofFixture: undefined,
+      selectedRoofFixtures: undefined,
       selectedRoofPart: 'group',
+      selectedOpenings: [],
+      selectedWallIds: [],
     },
     { forceRoofOnlyIds: [buildingId] },
   )
-  planStatus.textContent = fixture.kind === 'skylight' ? 'Dachfenster gelöscht' : 'Gaube gelöscht'
+  planStatus.textContent =
+    fixtures.length > 1
+      ? `${fixtures.length} Dachöffnungen gelöscht`
+      : hadDormer && !hadSkylight
+        ? 'Gaube gelöscht'
+        : 'Dachfenster gelöscht'
 }
 
 function patchSelectedRoofFixture(patch: {
@@ -10436,6 +11162,7 @@ function syncStudioPanelVisibility(
   studioTileColorSection.hidden = !panelsOn
   studioTileVarietyRow.hidden = !panelsOn || (panel.tileColorVariance ?? 0) <= 0
   studioPanelWidthRow.hidden = !panelsOn
+  syncMasonryCourseEditorUi()
 }
 
 function syncStudioToolbar(wall: Wall) {
@@ -11713,7 +12440,7 @@ function initOpeningLibrary() {
     const newBtn = document.createElement('button')
     newBtn.type = 'button'
     newBtn.id = 'opening-template-new'
-    newBtn.className = 'preset-btn opening-library-new'
+    newBtn.className = 'opening-library-card opening-library-new'
     newBtn.title = kind === 'door' ? 'Neue Tür-Vorlage' : 'Neue Fenster-Vorlage'
     newBtn.textContent = 'Neue Vorlage'
     host.appendChild(newBtn)
@@ -12092,6 +12819,14 @@ function initOpeningLibrary() {
       card.addEventListener('click', () => {
         if (card.dataset.didDrag === '1') {
           delete card.dataset.didDrag
+          return
+        }
+        if (isMasonryCoursePlaceMode()) {
+          armMasonryCourseFromLibrary(pattern)
+          return
+        }
+        if (isMasonryCourseEditMode() && masonryCourseEditTarget) {
+          applyPatternToMasonryCourseEdit(pattern)
           return
         }
         applyPanelPresetFromLibrary(pattern)
@@ -12727,28 +13462,6 @@ function initOpeningLibrary() {
       })
       host.appendChild(card)
     }
-    appendLibraryGroupLabel(host, 'Anzeige')
-    const allLightsToggle = document.createElement('label')
-    allLightsToggle.className = 'library-lights-option toolbar-check'
-    const allLightsCheckbox = document.createElement('input')
-    allLightsCheckbox.type = 'checkbox'
-    allLightsCheckbox.id = 'library-all-scene-lights'
-    allLightsCheckbox.addEventListener('change', () => {
-      commitAllSceneLightsEnabled(allLightsCheckbox.checked)
-    })
-    allLightsToggle.append(allLightsCheckbox, document.createTextNode(' Alle Lichter an'))
-    host.appendChild(allLightsToggle)
-    const markerToggle = document.createElement('label')
-    markerToggle.className = 'library-lights-option toolbar-check'
-    const markerCheckbox = document.createElement('input')
-    markerCheckbox.type = 'checkbox'
-    markerCheckbox.checked = state.viewOptions?.showLightMarkers !== false
-    markerCheckbox.addEventListener('change', () => {
-      commitViewOptions({ showLightMarkers: markerCheckbox.checked })
-      syncSceneLightRuntime()
-    })
-    markerToggle.append(markerCheckbox, document.createTextNode(' Lichtpunkte anzeigen'))
-    host.appendChild(markerToggle)
     syncAllSceneLightsEnabledControl()
     syncLibraryAppliedOutline()
     return
@@ -13109,6 +13822,68 @@ function normalizeEditor(nextState: FacadeState, nextEditor: EditorState): Edito
     }
   }
 
+  const roofBuildingId = nextEditor.selectedRoofBuildingId
+  const roofBuilding = roofBuildingId
+    ? nextState.buildings.find((b) => b.id === roofBuildingId)
+    : undefined
+  const roofFixtureCandidates: RoofFixtureRef[] = []
+  if (roofBuilding && normalizeRoof(roofBuilding.roof).enabled) {
+    const roof = normalizeRoof(roofBuilding.roof)
+    const validKeys = new Set([
+      ...(roof.skylights ?? []).map((s) => `skylight:${s.id}`),
+      ...(roof.dormers ?? []).map((d) => `dormer:${d.id}`),
+    ])
+    const merged = [
+      ...(nextEditor.selectedRoofFixtures ?? []),
+      ...(nextEditor.selectedRoofFixture ? [nextEditor.selectedRoofFixture] : []),
+    ]
+    for (const f of merged) {
+      const key = roofFixtureKey(f)
+      if (!validKeys.has(key)) continue
+      if (roofFixtureCandidates.some((x) => roofFixtureKey(x) === key)) continue
+      roofFixtureCandidates.push({ kind: f.kind, id: f.id })
+    }
+  }
+  const selectedRoofFixture =
+    roofFixtureCandidates.find(
+      (f) =>
+        nextEditor.selectedRoofFixture &&
+        roofFixtureKey(f) === roofFixtureKey(nextEditor.selectedRoofFixture),
+    ) ?? roofFixtureCandidates[roofFixtureCandidates.length - 1]
+  if (roofBuildingId && roofFixtureCandidates.length > 0 && selectedRoofFixture) {
+    let selectedOpenings = nextEditor.selectedOpenings.filter((ref) =>
+      openingExists(nextState, ref),
+    )
+    let selectedWallIds = nextEditor.selectedWallIds.filter((id) =>
+      getAllWalls(nextState).some((wall) => wall.id === id),
+    )
+    if (roofFixtureCandidates.length > 1) {
+      selectedOpenings = []
+      selectedWallIds = []
+    } else if (selectedRoofFixture.kind === 'dormer' && selectedOpenings.length === 0) {
+      const dormer = normalizeRoof(roofBuilding!.roof).dormers?.find(
+        (d) => d.id === selectedRoofFixture.id,
+      )
+      if (dormer && !dormer.window?.hidden && dormer.window) {
+        const wallId = roofDormerWallId(roofBuildingId, dormer.id)
+        selectedOpenings = [{ wallId, openingId: dormer.window.id }]
+        selectedWallIds = [wallId]
+      }
+    }
+    return {
+      ...createDefaultEditorState(),
+      selectedWallIds,
+      selectedOpenings,
+      selectedEdges: selectedOpenings.length > 0 ? [...nextEditor.selectedEdges] : [],
+      selectedOpeningPart:
+        selectedOpenings.length > 0 ? nextEditor.selectedOpeningPart ?? 'group' : undefined,
+      selectedRoofBuildingId: roofBuildingId,
+      selectedRoofPart: 'group',
+      selectedRoofFixture,
+      selectedRoofFixtures: roofFixtureCandidates,
+    }
+  }
+
   const selectedWallIds = nextEditor.selectedWallIds.filter((id) =>
     getAllWalls(nextState).some((wall) => wall.id === id),
   )
@@ -13155,9 +13930,8 @@ function normalizeEditor(nextState: FacadeState, nextEditor: EditorState): Edito
     selectedRoofPart: nextEditor.selectedRoofBuildingId
       ? nextEditor.selectedRoofPart ?? 'group'
       : undefined,
-    selectedRoofFixture: nextEditor.selectedRoofBuildingId
-      ? nextEditor.selectedRoofFixture
-      : undefined,
+    selectedRoofFixture: undefined,
+    selectedRoofFixtures: undefined,
     selectedCeiling: nextEditor.selectedCeiling,
     selectedBuildingId: nextEditor.selectedBuildingId,
     selectedDownpipe: undefined,
@@ -13596,6 +14370,8 @@ function syncSunUi() {
   if (windInput) windInput.value = String(wind)
   if (windValue) windValue.textContent = wind.toFixed(2)
   syncSunAnimUi()
+  publishSceneSunSync()
+  publishSceneToolbarSync()
 }
 
 function syncSunAnimUi() {
@@ -14743,7 +15519,10 @@ function editorLayerSelectionKey(ed: EditorState): string {
     ? `${ed.selectedCeiling.buildingId}:${ed.selectedCeiling.floorIndex}`
     : ''
   const roof = ed.selectedRoofBuildingId
-    ? `${ed.selectedRoofBuildingId}:${ed.selectedRoofPart ?? 'group'}:${ed.selectedRoofFixture?.kind ?? ''}:${ed.selectedRoofFixture?.id ?? ''}`
+    ? `${ed.selectedRoofBuildingId}:${ed.selectedRoofPart ?? 'group'}:${(ed.selectedRoofFixtures ?? [])
+        .map((f) => `${f.kind}:${f.id}`)
+        .sort()
+        .join(',')}:${ed.selectedRoofFixture?.kind ?? ''}:${ed.selectedRoofFixture?.id ?? ''}`
     : ''
   const downpipe = ed.selectedDownpipe
     ? `${ed.selectedDownpipe.buildingId}:${ed.selectedDownpipe.downpipeId}`
@@ -14779,7 +15558,10 @@ function revealSelectionInLayerTree(): void {
 
   if (editor.selectedRoofBuildingId) {
     collapsedBuildings.delete(editor.selectedRoofBuildingId)
-    if ((editor.selectedRoofPart ?? 'group') !== 'group') {
+    if (
+      (editor.selectedRoofPart ?? 'group') !== 'group' ||
+      selectedRoofFixturesList().length > 0
+    ) {
       expandedRoofs.add(editor.selectedRoofBuildingId)
     }
   }
@@ -15198,7 +15980,43 @@ function finishRenderUi() {
   requestAnimationFrame(positionToolbar)
 }
 
-/** Bei neuer Auswahl Bibliothek auf Farben schalten (v2.0.434). */
+/** Tab passend zu Teil-Auswahl (Gesims → Gesimse, nicht immer Farben). */
+function primaryLibraryTabForSelection(): LibraryTab | null {
+  const allowed = allowedLibraryTabs()
+  if (editor.selectedOpenings.length > 0) {
+    const part = editor.selectedOpeningPart ?? 'group'
+    if (part === 'stairs' && allowed.has('stairs')) return 'stairs'
+    if (part === 'rollerShutter' && allowed.has('rollerShutters')) return 'rollerShutters'
+    if (part === 'awning' && allowed.has('awnings')) return 'awnings'
+    if ((part === 'pediment' || part === 'consoles') && allowed.has('pediment')) return 'pediment'
+    if (
+      (part === 'sillInner' || part === 'sillOuter' || part === 'trim') &&
+      allowed.has('profiles')
+    ) {
+      return 'profiles'
+    }
+    const opening = selectedWindowOpening()?.opening
+    if (opening?.type === 'door' && allowed.has('doors')) return 'doors'
+    if (
+      opening &&
+      (opening.type === 'cutout' || opening.type === 'conch' || openingLacksWindowChrome(opening)) &&
+      allowed.has('niches')
+    ) {
+      return 'niches'
+    }
+    if (allowed.has('windows')) return 'windows'
+  }
+  const wallPart = editor.selectedWallPart ?? 'group'
+  if (wallPart === 'cornice' && allowed.has('cornice')) return 'cornice'
+  if (wallPart === 'plinth' && allowed.has('plinth')) return 'plinth'
+  if (wallPart === 'trimBand' && allowed.has('trimBands')) return 'trimBands'
+  if (wallPart === 'label' && allowed.has('label')) return 'label'
+  if (wallPart === 'awning' && allowed.has('awnings')) return 'awnings'
+  if (wallPart === 'cladding' && allowed.has('panels')) return 'panels'
+  return null
+}
+
+/** Bei neuer Auswahl Bibliothek auf passenden Tab (v2.0.434 / v2.0.543). */
 let lastLibrarySelectionKey = ''
 function syncLibraryTabForOpeningSelection() {
   const part = editor.selectedOpeningPart ?? editor.selectedWallPart ?? 'group'
@@ -15228,10 +16046,15 @@ function syncLibraryTabForOpeningSelection() {
     } else {
       initOpeningLibrary()
     }
-  } else if (allowed.has('farbe') && libraryTab !== 'farbe') {
-    setLibraryTab('farbe')
-  } else if (libraryTab === 'farbe') {
-    initOpeningLibrary()
+  } else {
+    const primary = primaryLibraryTabForSelection()
+    if (primary && libraryTab !== primary) {
+      setLibraryTab(primary)
+    } else if (!primary && allowed.has('farbe') && libraryTab !== 'farbe') {
+      setLibraryTab('farbe')
+    } else if (libraryTab === 'farbe' || primary) {
+      initOpeningLibrary()
+    }
   }
 }
 
@@ -16946,9 +17769,17 @@ function showElementContextMenu(
     return
   }
   if (hit.roof?.fixture) {
-    const items = roofFixtureContextItems(hit.roof.buildingId, hit.roof.fixture.kind, hit.roof.fixture.id)
+    const fixture = hit.roof.fixture
+    if (
+      !(
+        editor.selectedRoofBuildingId === hit.roof.buildingId &&
+        isRoofFixtureSelected(fixture)
+      )
+    ) {
+      selectRoofFixture(hit.roof.buildingId, fixture, false)
+    }
+    const items = roofFixtureContextItems(hit.roof.buildingId, fixture.kind, fixture.id)
     showContextMenu(clientX, clientY, items)
-    selectRoof(hit.roof.buildingId, hit.roof.part, hit.roof.fixture)
     return
   }
   if (hit.roof) {
@@ -17402,16 +18233,10 @@ function selectBuilding(buildingId: string) {
     commitState(setActiveBuildingId(state, buildingId))
     syncFloorUI()
   }
-  applyState(state, {
+  // Nur Auswahl — kein Geometrie-Rebuild (sonst kurzes Aufblitzen der Bühne).
+  applyEditorSelection({
+    ...createDefaultEditorState(),
     selectedBuildingId: buildingId,
-    selectedWallIds: [],
-    selectedOpenings: [],
-    selectedEdges: [],
-    selectedRoofBuildingId: undefined,
-    selectedRoofPart: undefined,
-    selectedCeiling: undefined,
-    selectedOpeningPart: undefined,
-    selectedWallPart: undefined,
   })
   rebuildFloorPlanOverlay()
 }
@@ -17685,11 +18510,12 @@ function roofContextItems(buildingId: string): MenuItem[] {
       label: 'Löschen',
       danger: true,
       action: () => {
+        // Frisches Default-Dach aus — nicht nur enabled:false (sonst stellt „Hinzufügen“ Gauben wieder her).
         commitState(
           updateBuilding(state, buildingId, {
-            roof: { ...normalizeRoof(building?.roof), enabled: false, hidden: false },
+            roof: normalizeRoof({ ...DEFAULT_ROOF, enabled: false }),
           }),
-          { ...editor, selectedRoofBuildingId: undefined },
+          { ...editor, selectedRoofBuildingId: undefined, selectedRoofPart: undefined, selectedRoofFixtures: [] },
         )
       },
     },
@@ -17745,7 +18571,12 @@ function roofFixtureContextItems(
     label: 'Löschen',
     danger: true,
     action: () => {
-      selectRoof(buildingId, 'group', { kind, id })
+      if (
+        editor.selectedRoofBuildingId !== buildingId ||
+        !isRoofFixtureSelected({ kind, id })
+      ) {
+        selectRoofFixture(buildingId, { kind, id }, false)
+      }
       deleteSelectedRoofFixture()
     },
   })
@@ -17760,28 +18591,37 @@ function toggleRoofFixtureHidden(
   const building = state.buildings.find((b) => b.id === buildingId)
   if (!building) return
   const roof = normalizeRoof(building.roof)
-  if (kind === 'skylight') {
-    const skylights = (roof.skylights ?? []).map((s) =>
-      s.id === id ? { ...s, hidden: !s.hidden } : s,
-    )
-    commitState(updateBuilding(state, buildingId, { roof: { ...roof, skylights } }), {
+  const target: RoofFixtureRef = { kind, id }
+  const selected =
+    editor.selectedRoofBuildingId === buildingId && isRoofFixtureSelected(target)
+      ? selectedRoofFixturesList()
+      : [target]
+  const keys = new Set(selected.map(roofFixtureKey))
+  // Sichtbarkeit am geklickten Eintrag umschalten; gleiche Richtung für die ganze Auswahl.
+  const sampleHidden =
+    kind === 'dormer'
+      ? Boolean(roof.dormers?.find((d) => d.id === id)?.hidden)
+      : Boolean(roof.skylights?.find((s) => s.id === id)?.hidden)
+  const nextHidden = !sampleHidden
+  const skylights = (roof.skylights ?? []).map((s) =>
+    keys.has(`skylight:${s.id}`) ? { ...s, hidden: nextHidden } : s,
+  )
+  const dormers = (roof.dormers ?? []).map((d) =>
+    keys.has(`dormer:${d.id}`) ? { ...d, hidden: nextHidden } : d,
+  )
+  commitState(
+    updateBuilding(state, buildingId, { roof: { ...roof, skylights, dormers } }),
+    {
       ...editor,
       selectedRoofBuildingId: buildingId,
       selectedRoofPart: 'group',
-      selectedRoofFixture: { kind, id },
-    }, { forceRoofOnlyIds: [buildingId] })
-  } else {
-    const dormers = (roof.dormers ?? []).map((d) =>
-      d.id === id ? { ...d, hidden: !d.hidden } : d,
-    )
-    commitState(updateBuilding(state, buildingId, { roof: { ...roof, dormers } }), {
-      ...editor,
-      selectedRoofBuildingId: buildingId,
-      selectedRoofPart: 'group',
-      selectedRoofFixture: { kind, id },
-    }, { forceRoofOnlyIds: [buildingId] })
-  }
-  planStatus.textContent = 'Sichtbarkeit geändert'
+      selectedRoofFixture: target,
+      selectedRoofFixtures: selected,
+    },
+    { forceRoofOnlyIds: [buildingId] },
+  )
+  planStatus.textContent =
+    selected.length > 1 ? `${selected.length} Sichtbarkeit geändert` : 'Sichtbarkeit geändert'
 }
 
 function duplicateRoofFixtureAlong(
@@ -17833,6 +18673,7 @@ function duplicateRoofFixtureAlong(
       selectedRoofBuildingId: buildingId,
       selectedRoofPart: 'group',
       selectedRoofFixture: { kind: 'dormer', id: copy.id },
+      selectedRoofFixtures: [{ kind: 'dormer', id: copy.id }],
     }, { forceRoofOnlyIds: [buildingId] })
     planStatus.textContent = 'Gaube dupliziert'
     return
@@ -17864,6 +18705,7 @@ function duplicateRoofFixtureAlong(
     selectedRoofBuildingId: buildingId,
     selectedRoofPart: 'group',
     selectedRoofFixture: { kind: 'skylight', id: copy.id },
+    selectedRoofFixtures: [{ kind: 'skylight', id: copy.id }],
   }, { forceRoofOnlyIds: [buildingId] })
   planStatus.textContent = 'Dachfenster dupliziert'
 }
@@ -18092,6 +18934,15 @@ function renderSceneLightsLayerSection() {
 }
 
 function renderLayerList() {
+  if (!layerCollapseBoot && state.buildings.length > 0) {
+    layerCollapseBoot = true
+    sceneLightsLayerCollapsed = true
+    for (const building of state.buildings) {
+      for (const floor of sortedFloorIndicesForBuilding(building)) {
+        collapsedFloors.add(floor)
+      }
+    }
+  }
   layerList.replaceChildren()
   renderSceneLightsLayerSection()
   let layerIndex = 0
@@ -18163,9 +19014,11 @@ function renderLayerList() {
         return btn
       }
       modeToggle.append(mkModeBtn('layers', 'Ebenen'), mkModeBtn('decor', 'Fassadenschmuck'))
+      // Vanilla-Toggle bleibt im DOM (Legacy), in Park nicht gespiegelt — beide Listen immer sichtbar
+      modeToggle.hidden = true
       buildingItem.appendChild(modeToggle)
 
-      if (panelMode === 'decor') {
+      {
         const decorList = document.createElement('ul')
         decorList.className = 'layer-floor-body layer-decor-body'
         const decor = normalizeFacadeDecor(building.facadeDecor)
@@ -18199,7 +19052,9 @@ function renderLayerList() {
           })
         }
         buildingItem.appendChild(decorList)
-      } else {
+      }
+
+      {
       const buildingBody = document.createElement('ul')
       buildingBody.className = 'layer-floor-body'
 
@@ -18220,7 +19075,13 @@ function renderLayerList() {
           if (!isActive) activateBuilding(building.id)
           if (!facadeHasRoofablePlan(state)) return
           selectRoof(building.id, 'shell')
-          commitRoofPatch({ enabled: true })
+          // Neues Dach = Defaults, nicht das zuletzt gelöschte mit Gauben/Form.
+          commitState(
+            updateBuilding(state, building.id, {
+              roof: normalizeRoof({ ...DEFAULT_ROOF, enabled: true }),
+            }),
+            editor,
+          )
         })
         roofLi.appendChild(addBtn)
       } else {
@@ -18288,6 +19149,84 @@ function renderLayerList() {
           // Ziegel-Zeile ausgeblendet, solange ROOF_TILES_ENABLED false (MVP Formen).
           addRoofPartRow('Ziegel', 'Ziegel', 'tiles', true)
           addRoofPartRow('Rinne', 'Rinne', 'gutter', !roof.gutter)
+
+          const addRoofFixtureRow = (
+            kindLabel: string,
+            metaText: string,
+            fixture: { kind: 'skylight' | 'dormer'; id: string },
+            hidden: boolean,
+          ) => {
+            const rowWrap = document.createElement('li')
+            rowWrap.className = 'layer-row-wrap' + layerHiddenClass(hidden || roof.hidden)
+            const kindEl = document.createElement('span')
+            kindEl.className = 'layer-kind'
+            kindEl.textContent = kindLabel
+            const btn = document.createElement('button')
+            btn.type = 'button'
+            const selected = isRoofFixtureSelected(fixture) &&
+              editor.selectedRoofBuildingId === building.id
+            btn.className = selected ? 'layer-row selected' : 'layer-row'
+            const labelEl = document.createElement('span')
+            labelEl.className = 'layer-label'
+            labelEl.textContent = ''
+            const metaEl = document.createElement('span')
+            metaEl.className = 'layer-meta'
+            metaEl.textContent = metaText
+            btn.append(kindEl, labelEl, metaEl)
+            btn.addEventListener('click', (e) => {
+              e.stopPropagation()
+              if (!isActive) activateBuilding(building.id)
+              const additive = e.metaKey || e.ctrlKey
+              selectLayerTreeEntry(
+                {
+                  kind: 'roofFixture',
+                  buildingId: building.id,
+                  fixtureKind: fixture.kind,
+                  fixtureId: fixture.id,
+                },
+                e.shiftKey && !additive,
+                additive,
+              )
+            })
+            const moreBtn = createLayerMoreButton(
+              roofFixtureContextItems(building.id, fixture.kind, fixture.id),
+            )
+            const row = document.createElement('div')
+            row.className = 'layer-wall-row'
+            row.addEventListener('contextmenu', (event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              if (!isRoofFixtureSelected(fixture)) {
+                selectRoofFixture(building.id, fixture, false)
+              }
+              showContextMenu(
+                event.clientX,
+                event.clientY,
+                roofFixtureContextItems(building.id, fixture.kind, fixture.id),
+              )
+            })
+            row.append(btn, moreBtn)
+            rowWrap.append(row)
+            roofBody.appendChild(rowWrap)
+          }
+
+          for (const skylight of roof.skylights ?? []) {
+            addRoofFixtureRow(
+              'Dachfenster',
+              `${Math.round(skylight.widthCm)}`,
+              { kind: 'skylight', id: skylight.id },
+              Boolean(skylight.hidden),
+            )
+          }
+          for (const dormer of roof.dormers ?? []) {
+            const form = (ROOF_DORMER_LABELS[dormer.kind] ?? 'Gaube').replace(/\s*\([^)]*\)\s*/g, '').trim()
+            addRoofFixtureRow(
+              'Gaube',
+              `${Math.round(dormer.widthCm)} · ${form}`,
+              { kind: 'dormer', id: dormer.id },
+              Boolean(dormer.hidden),
+            )
+          }
 
           roofLi.appendChild(roofBody)
         }
@@ -18709,18 +19648,101 @@ function commitBuildingFacadeDecor(
 function selectRoof(
   buildingId: string,
   part: 'group' | 'shell' | 'tiles' | 'gutter' = 'group',
-  fixture?: { kind: 'skylight' | 'dormer'; id: string },
+  fixture?: RoofFixtureRef,
+) {
+  if (fixture) {
+    selectRoofFixture(buildingId, fixture, false)
+    return
+  }
+  if (state.activeBuildingId !== buildingId) {
+    commitState(setActiveBuildingId(state, buildingId))
+  }
+  pendingSelectionToolbarTab =
+    part === 'group' ? 'all' : part === 'shell' ? 'roof-shell' : part === 'gutter' ? 'roof-gutter' : 'all'
+  applyState(state, {
+    selectedWallIds: [],
+    selectedOpenings: [],
+    selectedEdges: [],
+    selectedOpeningPart: undefined,
+    selectedWallPart: undefined,
+    selectedCeiling: undefined,
+    selectedBuildingId: undefined,
+    selectedRoofBuildingId: buildingId,
+    selectedRoofPart: part,
+    selectedRoofFixture: undefined,
+    selectedRoofFixtures: undefined,
+    selectedDownpipe: undefined,
+    selectedSceneLightId: undefined,
+    selectedSceneLightIds: [],
+  })
+}
+
+/** Gaube/Dachfenster wählen — Ctrl/Cmd additiv, Shift-Bereich über `selectRoofFixturesInRange`. */
+function selectRoofFixture(buildingId: string, fixture: RoofFixtureRef, additive = false) {
+  if (!roofFixtureExistsOnBuilding(buildingId, fixture)) return
+  if (state.activeBuildingId !== buildingId) {
+    commitState(setActiveBuildingId(state, buildingId))
+  }
+  let next: RoofFixtureRef[]
+  if (additive && editor.selectedRoofBuildingId === buildingId) {
+    const current = selectedRoofFixturesList()
+    const key = roofFixtureKey(fixture)
+    const exists = current.some((f) => roofFixtureKey(f) === key)
+    next = exists
+      ? current.filter((f) => roofFixtureKey(f) !== key)
+      : [...current, fixture]
+    if (next.length === 0) {
+      selectRoof(buildingId, 'group')
+      return
+    }
+  } else {
+    next = [fixture]
+  }
+  applyRoofFixtureSelection(buildingId, next, fixture)
+}
+
+function selectRoofFixturesInRange(
+  buildingId: string,
+  from: RoofFixtureRef,
+  to: RoofFixtureRef,
+) {
+  const order = roofFixtureOrderOnBuilding(buildingId)
+  const i0 = order.findIndex((f) => roofFixtureKey(f) === roofFixtureKey(from))
+  const i1 = order.findIndex((f) => roofFixtureKey(f) === roofFixtureKey(to))
+  if (i0 < 0 || i1 < 0) {
+    selectRoofFixture(buildingId, to, false)
+    return
+  }
+  const start = Math.min(i0, i1)
+  const end = Math.max(i0, i1)
+  applyRoofFixtureSelection(buildingId, order.slice(start, end + 1), to)
+}
+
+function applyRoofFixtureSelection(
+  buildingId: string,
+  fixtures: RoofFixtureRef[],
+  focus: RoofFixtureRef,
 ) {
   if (state.activeBuildingId !== buildingId) {
     commitState(setActiveBuildingId(state, buildingId))
   }
-  // Gaube mit Fenster → auch Opening-Toolbar (wie normales Fenster); sonst Gauben-Maße.
+  const unique = [
+    ...new Map(fixtures.map((f) => [roofFixtureKey(f), f] as const)).values(),
+  ].filter((f) => roofFixtureExistsOnBuilding(buildingId, f))
+  if (unique.length === 0) {
+    selectRoof(buildingId, 'group')
+    return
+  }
+  const focusOk =
+    unique.find((f) => roofFixtureKey(f) === roofFixtureKey(focus)) ?? unique[unique.length - 1]!
+
+  // Fenster-Toolbar nur bei genau einer Gaube mit Fenster — sonst Gauben-Maße.
   let selectedOpenings: OpeningRef[] = []
   let selectedOpeningPart: OpeningPart | undefined
   let selectedWallIds: string[] = []
-  if (fixture?.kind === 'dormer') {
+  if (unique.length === 1 && focusOk.kind === 'dormer') {
     const building = state.buildings.find((b) => b.id === buildingId)
-    const dormer = normalizeRoof(building?.roof).dormers?.find((d) => d.id === fixture.id)
+    const dormer = normalizeRoof(building?.roof).dormers?.find((d) => d.id === focusOk.id)
     if (dormer && !dormer.window?.hidden && dormer.window) {
       const wallId = roofDormerWallId(buildingId, dormer.id)
       selectedOpenings = [{ wallId, openingId: dormer.window.id }]
@@ -18728,17 +19750,7 @@ function selectRoof(
       selectedWallIds = [wallId]
     }
   }
-  pendingSelectionToolbarTab = fixture
-    ? selectedOpenings.length > 0
-      ? 'all'
-      : 'roof-fixture'
-    : part === 'group'
-      ? 'all'
-      : part === 'shell'
-        ? 'roof-shell'
-        : part === 'gutter'
-          ? 'roof-gutter'
-          : 'all'
+  pendingSelectionToolbarTab = selectedOpenings.length > 0 ? 'all' : 'roof-fixture'
   applyState(state, {
     selectedWallIds,
     selectedOpenings,
@@ -18748,8 +19760,9 @@ function selectRoof(
     selectedCeiling: undefined,
     selectedBuildingId: undefined,
     selectedRoofBuildingId: buildingId,
-    selectedRoofPart: part,
-    selectedRoofFixture: fixture,
+    selectedRoofPart: 'group',
+    selectedRoofFixture: focusOk,
+    selectedRoofFixtures: unique,
     selectedDownpipe: undefined,
     selectedSceneLightId: undefined,
     selectedSceneLightIds: [],
@@ -21883,6 +22896,7 @@ function syncSettingsSectionStickyHeads(sections: HTMLElement[]) {
     head.hidden = false
   }
   syncScrollableSettingsPanel(panel, sections)
+  publishSelectionToolbarSync()
 }
 
 function syncStudioPanelColorControls(wall: Wall) {
@@ -23061,6 +24075,11 @@ function selectWall(
     if (additive) return
     lastLayerTreeAnchor = null
     noteWallRangeAnchor(null)
+    if (masonryCourseEditTarget) {
+      clearMasonryCourseEditSelection()
+      syncMasonryCourseEditorUi()
+      syncLibraryAppliedOutline()
+    }
     applyEditorSelection({
       selectedWallIds: [],
       selectedOpenings: [],
@@ -24611,6 +25630,24 @@ document.querySelector('#opening-library-items')?.addEventListener(
 )
 
 window.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && (masonryCourseMode !== 'off' || masonryCourseStaging || masonryCoursePlayback || masonryCourseEditTarget)) {
+    if (masonryCoursePlayback) {
+      masonryCoursePlayback = null
+      facade.clearLibraryPlacementGhost()
+      facade.setSelectionHighlightSuppressed(false)
+      svgView.setSelectionHighlightSuppressed(false)
+    }
+    if (isMasonryCourseEditMode() && masonryCourseEditTarget) {
+      clearMasonryCourseEditSelection()
+      syncMasonryCourseEditorUi()
+      syncLibraryAppliedOutline()
+      markViewportDirty()
+    } else {
+      setMasonryCourseMode('off')
+    }
+    event.preventDefault()
+    return
+  }
   if (event.key === 'Escape' && libraryEditFocusSections) {
     if (pedimentCatalogDepth !== 'root') {
       setPedimentCatalogDepth('root')
@@ -26560,14 +27597,16 @@ canvas.addEventListener('pointerdown', (event) => {
       return
     }
     if (hit.roof.fixture && armedRoofPreset) armedRoofPreset = null
+    const fixtureRef = hit.roof.fixture
     // Drag vor selectRoof — Auswahl-Highlight darf den Drag-Start nicht abbrechen.
-    if (hit.roof.fixture && canEditActiveBuildingNow()) {
+    // Bei Mehrfachauswahl/Shift/Ctrl kein Drag starten (nur markieren).
+    if (fixtureRef && canEditActiveBuildingNow() && !additive && !rangeSelect) {
       const building = state.buildings.find((b) => b.id === hit.roof!.buildingId)
       const roof = normalizeRoof(building?.roof)
       const fixture =
-        hit.roof.fixture.kind === 'skylight'
-          ? roof.skylights?.find((s) => s.id === hit.roof!.fixture!.id)
-          : roof.dormers?.find((d) => d.id === hit.roof!.fixture!.id)
+        fixtureRef.kind === 'skylight'
+          ? roof.skylights?.find((s) => s.id === fixtureRef.id)
+          : roof.dormers?.find((d) => d.id === fixtureRef.id)
       if (fixture) {
         const rect = canvas.getBoundingClientRect()
         pointerNdc.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
@@ -26576,8 +27615,8 @@ canvas.addEventListener('pointerdown', (event) => {
         const grab = raycaster.intersectObject(facade.roofGroup, true)[0]?.point
         drag3dRoofFixture = {
           buildingId: hit.roof.buildingId,
-          kind: hit.roof.fixture.kind,
-          id: hit.roof.fixture.id,
+          kind: fixtureRef.kind,
+          id: fixtureRef.id,
           startX: fixture.x,
           startZ: fixture.z,
           offX: grab ? fixture.x - grab.x : 0,
@@ -26589,7 +27628,23 @@ canvas.addEventListener('pointerdown', (event) => {
         canvas.setPointerCapture(event.pointerId)
       }
     }
-    selectRoof(hit.roof.buildingId, hit.roof.part, hit.roof.fixture)
+    if (fixtureRef) {
+      if (
+        rangeSelect &&
+        editor.selectedRoofBuildingId === hit.roof.buildingId &&
+        editor.selectedRoofFixture
+      ) {
+        selectRoofFixturesInRange(
+          hit.roof.buildingId,
+          editor.selectedRoofFixture,
+          fixtureRef,
+        )
+      } else {
+        selectRoofFixture(hit.roof.buildingId, fixtureRef, additive)
+      }
+    } else {
+      selectRoof(hit.roof.buildingId, hit.roof.part)
+    }
     return
   }
   if (hit?.downpipe) {
@@ -26711,6 +27766,20 @@ canvas.addEventListener('pointerdown', (event) => {
         pointerDown = { x: event.clientX, y: event.clientY, additive, rangeSelect }
         return
       }
+      // Schicht setzen: kein Wand-Drag. Nachbearbeitung: nur wenn Klick auf eine gesetzte Schicht.
+      const courseWall = getWall(state, hit.wallId)
+      const coursePick =
+        courseWall && isStudioWall(courseWall)
+          ? pickWallAtClient(event.clientX, event.clientY)
+          : null
+      const hitCourse =
+        coursePick && courseWall
+          ? findCourseAtLocalY(courseWall, coursePick.localY)
+          : null
+      if (isMasonryCourseEditorArmed() || (hitCourse && isMasonryCourseEditMode())) {
+        pointerDown = { x: event.clientX, y: event.clientY, additive, rangeSelect }
+        return
+      }
       // Shift-Bereich: nicht sofort Wand-Drag starten (Auswahl ist der Zweck).
       if (rangeSelect) {
         pointerDown = { x: event.clientX, y: event.clientY, additive, rangeSelect }
@@ -26782,6 +27851,11 @@ canvas.addEventListener('pointermove', (event) => {
     !orbitLite
   ) {
     updateLeafWindFromClient(event.clientX, event.clientY)
+  }
+
+  if (updateMasonryCourseHover(event.clientX, event.clientY)) {
+    // Schicht-Hover kann parallel zu anderen Previews laufen; nicht early-return,
+    // außer wir sind bewaffnet und wollen keine konkurrierenden Library-Ghosts.
   }
 
   if (leafPaintActive && leafEditMode) {
@@ -27321,6 +28395,19 @@ canvas.addEventListener('pointerup', (event) => {
   }
 
   if (isSceneEditView() && drag3dWallMove) {
+    // Schicht-Editor: auch wenn ein Wand-Drag gestartet wurde — Klick ohne Bewegung = Reihe setzen.
+    if (!drag3dWallMoved && handleMasonryCourseClick(event)) {
+      drag3dWallMove = null
+      drag3dWallMoved = false
+      wallMoveDragBase = null
+      drag3dWallPlane = null
+      clearWallDockPreview()
+      facade.clearOpeningGuides()
+      svgView.clearOpeningGuides()
+      if (currentView === '3d') controls.enabled = true
+      if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId)
+      return
+    }
     if (drag3dWallMoved && drag3dWallMove.baySlid) {
       // Erker-Gleiten: `state` ist bereits der gegleitete Zustand. Für Undo-Snapshot und
       // Rebuild-Diff (Reststücke!) den Startzustand als Vorzustand setzen.
@@ -27510,6 +28597,10 @@ canvas.addEventListener('pointerup', (event) => {
 
   if (dx * dx + dy * dy > 16) return
   if (trySwapDraftWallSegmentAtClick(event)) return
+  // Schicht-Editor: normaler Wand-Klick (Auswahl schon auf pointerdown) — nicht nur Orbit-Click.
+  if (handleMasonryCourseClick(event)) {
+    return
+  }
   // Auswahl schon auf pointerdown (z. B. obere Etage ohne Boden-Drag): nicht erneut
   // picken — Deckenkante / Leertreffer würde die Wand sonst sofort wieder abwählen.
   if (keepDownSelection) {
@@ -27522,8 +28613,8 @@ canvas.addEventListener('pointerup', (event) => {
     else if (!additive) selectSceneLight(null)
     return
   }
-  if (!hit) {
-    selectWallFromViewport(null, { additive })
+  if (!hit || !isSelectablePickHit(hit)) {
+    if (!additive) applyEditorSelection(createDefaultEditorState())
     return
   }
   if (hit.sceneLightId) {
@@ -27540,7 +28631,23 @@ canvas.addEventListener('pointerup', (event) => {
   }
   if (hit.roof) {
     try {
-      selectRoof(hit.roof.buildingId, hit.roof.part, hit.roof.fixture)
+      if (hit.roof.fixture) {
+        if (
+          rangeSelect &&
+          editor.selectedRoofBuildingId === hit.roof.buildingId &&
+          editor.selectedRoofFixture
+        ) {
+          selectRoofFixturesInRange(
+            hit.roof.buildingId,
+            editor.selectedRoofFixture,
+            hit.roof.fixture,
+          )
+        } else {
+          selectRoofFixture(hit.roof.buildingId, hit.roof.fixture, additive)
+        }
+      } else {
+        selectRoof(hit.roof.buildingId, hit.roof.part)
+      }
     } catch (err) {
     }
     return
@@ -27788,6 +28895,9 @@ function syncViewChromeButtons() {
     .querySelector('#edit-presentation-btn')
     ?.closest('.view-mode-toggle')
   if (presentationGroup instanceof HTMLElement) presentationGroup.hidden = presentChrome
+  publishChromeView(currentView === 'top' ? 'front' : currentView)
+  publishViewportChromeSync()
+  publishChromeExtrasSync()
 }
 
 function applyLineStrokeScale() {
@@ -28254,12 +29364,15 @@ function lightModeLoadingOverlay(): HTMLElement {
   el.setAttribute('role', 'status')
   el.setAttribute('aria-live', 'polite')
   el.hidden = true
-  const spinner = document.createElement('span')
-  spinner.className = 'light-mode-loading-spinner'
-  spinner.setAttribute('aria-hidden', 'true')
+  const bar = document.createElement('div')
+  bar.className = 'ui-progress-linear'
+  bar.setAttribute('aria-hidden', 'true')
+  const range = document.createElement('span')
+  range.className = 'ui-progress-linear__range'
+  bar.appendChild(range)
   const text = document.createElement('p')
   text.className = 'light-mode-loading-text'
-  el.append(spinner, text)
+  el.append(bar, text)
   viewport.appendChild(el)
   return el
 }
@@ -28295,7 +29408,7 @@ function nextAnimationFrames(count: number): Promise<void> {
 /**
  * Licht-Modus ein/aus mit Ladescreen: Lichtanzahl und Sonnenschatten ändern die Shader-Programme
  * aller Materialien (~1–2 s Kompilierung). `compileAsync` nutzt KHR_parallel_shader_compile,
- * damit der Hauptthread frei bleibt und der Spinner läuft; erst danach der erste Frame.
+ * damit der Hauptthread frei bleibt und der Linear-Progress sichtbar bleibt; erst danach der erste Frame.
  */
 async function toggleLightEditMode(): Promise<void> {
   if (lightModeToggleBusy) return
@@ -28370,8 +29483,32 @@ navHelpButton.addEventListener('click', () => {
   navHelpDialog.showModal()
 })
 
-initReleaseNotesUi(appVersionBtn, releaseNotesDialog, releaseNotesBody, releaseNotesRepoLink)
+// Vanilla-Hosts behalten (keine-ui-loeschen); sichtbare UI = Park Live-Shell (Hard-Cutover).
+void appVersionBtn
+void releaseNotesDialog
+void releaseNotesBody
+void releaseNotesRepoLink
+initReleaseNotesUi(uiIslandRelease)
 initCreditsUi(appCreditsBtn, creditsDialog, creditsBody)
+
+const parkLiveShell = document.querySelector<HTMLElement>('#park-live-shell')!
+initLiveShell({
+  host: parkLiveShell,
+  getView: () => (currentView === 'top' ? 'front' : currentView),
+  setView: (v) => {
+    if (v === 'front' || v === 'present' || v === '3d' || v === 'export' || v === 'top') {
+      setView(v)
+    }
+  },
+  subscribeView: subscribeChromeView,
+})
+void document.querySelector('#ui-island-file-menu')
+void document.querySelector('#ui-island-view-mode')
+void document.querySelector('#ui-island-scene-sun')
+void publishSceneSunSync
+void publishLibraryDockSync
+void publishChromeExtrasSync
+void publishSelectionToolbarSync
 
 function setRenderStyle(style: 'color' | 'line') {
   currentRenderStyle = style
@@ -30055,7 +31192,7 @@ window.addEventListener('keydown', (event) => {
   if (handle3dCameraArrowKeys(event)) return
 
   // Pfeiltasten: Gaube/Dachfenster in 8-cm-Schritten auf der Schräge (along / distance)
-  if (!mod && !event.shiftKey && isSceneEditView() && editor.selectedRoofFixture) {
+  if (!mod && !event.shiftKey && isSceneEditView() && selectedRoofFixturesList().length > 0) {
     const MOVE = heldNudgeStepCm()
     let dAlong = 0
     let dDist = 0
@@ -30070,40 +31207,53 @@ window.addEventListener('keydown', (event) => {
       event.preventDefault()
       event.stopImmediatePropagation()
       const buildingId = editor.selectedRoofBuildingId
-      const fixture = editor.selectedRoofFixture
-      if (!buildingId || !fixture) return
+      const fixtures = selectedRoofFixturesList()
+      if (!buildingId || fixtures.length === 0) return
       const building = state.buildings.find((b) => b.id === buildingId)
       if (!building) return
-      const roof = normalizeRoof(building.roof)
-      const item =
-        fixture.kind === 'skylight'
-          ? roof.skylights?.find((s) => s.id === fixture.id)
-          : roof.dormers?.find((d) => d.id === fixture.id)
-      if (!item) return
-      const placement = dormerEavePlacement(building, roof, item)
-      if (!placement) return
-      const alongCm = Math.max(
-        0,
-        Math.min(placement.edgeLengthCm, snapToGrid(placement.alongCm + dAlong, STUDIO_MASONRY)),
-      )
-      const distanceCm = Math.max(0, snapToGrid(placement.distanceCm + dDist, STUDIO_MASONRY))
-      const anchor = dormerAnchorForEavePlacement(building, roof, item, { alongCm, distanceCm })
-      if (!anchor) {
+      let roof = normalizeRoof(building.roof)
+      let moved = 0
+      for (const fixture of fixtures) {
+        const item =
+          fixture.kind === 'skylight'
+            ? roof.skylights?.find((s) => s.id === fixture.id)
+            : roof.dormers?.find((d) => d.id === fixture.id)
+        if (!item) continue
+        const placement = dormerEavePlacement(building, roof, item)
+        if (!placement) continue
+        const alongCm = Math.max(
+          0,
+          Math.min(placement.edgeLengthCm, snapToGrid(placement.alongCm + dAlong, STUDIO_MASONRY)),
+        )
+        const distanceCm = Math.max(0, snapToGrid(placement.distanceCm + dDist, STUDIO_MASONRY))
+        const anchor = dormerAnchorForEavePlacement(building, roof, item, { alongCm, distanceCm })
+        if (!anchor) continue
+        if (fixture.kind === 'skylight') {
+          roof = {
+            ...roof,
+            skylights: (roof.skylights ?? []).map((s) =>
+              s.id === fixture.id ? { ...s, x: anchor.x, z: anchor.z } : s,
+            ),
+          }
+        } else {
+          roof = {
+            ...roof,
+            dormers: (roof.dormers ?? []).map((d) =>
+              d.id === fixture.id ? { ...d, x: anchor.x, z: anchor.z } : d,
+            ),
+          }
+        }
+        moved += 1
+      }
+      if (moved === 0) {
         planStatus.textContent = 'Außerhalb der Dachhaut'
         return
       }
-      if (fixture.kind === 'skylight') {
-        const skylights = (roof.skylights ?? []).map((s) =>
-          s.id === fixture.id ? { ...s, x: anchor.x, z: anchor.z } : s,
-        )
-        commitState(
-          updateBuilding(state, buildingId, { roof: normalizeRoof({ ...roof, skylights }) }),
-          editor,
-          { forceRoofOnlyIds: [buildingId] },
-        )
-      } else {
-        patchSelectedDormer({ x: anchor.x, z: anchor.z })
-      }
+      commitState(
+        updateBuilding(state, buildingId, { roof: normalizeRoof(roof) }),
+        editor,
+        { forceRoofOnlyIds: [buildingId] },
+      )
       return
     }
   }
@@ -30386,6 +31536,8 @@ function animate() {
     if (rollerShutterPlayback) tickRollerShutterPlayback(nowMs)
     if (isAwningPlaybackActive()) tickAwningPlayback(nowMs)
   }
+  // Schicht-Domino: unabhängig von „Animationen pausieren“ — sonst nie Commit.
+  if (masonryCoursePlayback) tickMasonryCoursePlayback(nowMs)
 
   const pathMoved = tickSunPathAnimation(nowMs, dayDt)
   const dayMoved = !pathMoved && tickDayCycle(nowMs, dayDt)
@@ -30426,6 +31578,7 @@ function animate() {
     (!paused && Boolean(openingMotionPlayback)) ||
     (!paused && Boolean(rollerShutterPlayback)) ||
     (!paused && isAwningPlaybackActive()) ||
+    (!paused && Boolean(masonryCoursePlayback)) ||
     sceneLightLive ||
     leafMoved
 
@@ -31016,12 +32169,145 @@ studioPanelWidthInput.addEventListener('change', () => {
   const panelWidth = clampStudioPanelSize(Number(studioPanelWidthInput.value))
   studioPanelWidthInput.value = String(panelWidth)
   commitStudioPanelPatch({ panelWidth })
+  if (masonryCourseStaging && !masonryCourseStaging.rotated90) {
+    masonryCourseStaging = { ...masonryCourseStaging, panelWidth }
+    syncMasonryCourseEditorUi()
+  }
 })
 
 studioPanelHeightInput.addEventListener('change', () => {
   const panelHeight = clampStudioPanelSize(Number(studioPanelHeightInput.value))
   studioPanelHeightInput.value = String(panelHeight)
   commitStudioPanelPatch({ panelHeight })
+  if (masonryCourseStaging && !masonryCourseStaging.rotated90) {
+    masonryCourseStaging = { ...masonryCourseStaging, panelHeight }
+    syncMasonryCourseEditorUi()
+  }
+})
+
+studioCourseModeOff.addEventListener('click', () => setMasonryCourseMode('off'))
+studioCourseModePlace.addEventListener('click', () => setMasonryCourseMode('place'))
+studioCourseModeEdit.addEventListener('click', () => setMasonryCourseMode('edit'))
+
+studioCourseEditorEnabled.addEventListener('change', () => {
+  // Verstecktes Checkbox-Sync (Legacy): An → Setzen, Aus → Aus.
+  setMasonryCourseMode(studioCourseEditorEnabled.checked ? 'place' : 'off')
+})
+
+studioCoursePick.addEventListener('change', () => {
+  if (!isMasonryCourseEditMode()) return
+  const wallId = editor.selectedWallIds[0]
+  const wall = wallId ? getWall(state, wallId) : null
+  if (!wall || !studioCoursePick.value) {
+    clearMasonryCourseEditSelection()
+    syncMasonryCourseEditorUi()
+    syncLibraryAppliedOutline()
+    markViewportDirty()
+    return
+  }
+  const course = normalizeCourseOverrides(wall.courseOverrides).find(
+    (c) => coursePickKey(c.y, c.height) === studioCoursePick.value,
+  )
+  if (!course) return
+  selectMasonryCourseForEdit(wall.id, course)
+})
+
+studioCourseWidth.addEventListener('change', () => {
+  if (!masonryCourseStaging) return
+  const panelWidth = clampStudioPanelSize(Number(studioCourseWidth.value))
+  studioCourseWidth.value = String(panelWidth)
+  masonryCourseStaging = { ...masonryCourseStaging, panelWidth, rotated90: false }
+  if (isMasonryCourseEditActive()) commitMasonryCourseEdit()
+  else syncMasonryCourseEditorUi()
+  markViewportDirty()
+})
+
+studioCourseHeight.addEventListener('change', () => {
+  if (!masonryCourseStaging) return
+  const panelHeight = clampStudioPanelSize(Number(studioCourseHeight.value))
+  studioCourseHeight.value = String(panelHeight)
+  masonryCourseStaging = { ...masonryCourseStaging, panelHeight, rotated90: false }
+  if (isMasonryCourseEditActive()) commitMasonryCourseEdit()
+  else syncMasonryCourseEditorUi()
+  markViewportDirty()
+})
+
+studioCourseDepth.addEventListener('change', () => {
+  if (!masonryCourseStaging) return
+  const projectDepth = Math.max(0, Number(studioCourseDepth.value) || 0)
+  studioCourseDepth.value = String(projectDepth)
+  masonryCourseStaging = { ...masonryCourseStaging, projectDepth }
+  if (isMasonryCourseEditActive()) commitMasonryCourseEdit()
+  else syncMasonryCourseEditorUi()
+  markViewportDirty()
+})
+
+studioCourseTaperDepth.addEventListener('change', () => {
+  if (!masonryCourseStaging) return
+  const taperDepth = Math.max(0, Number(studioCourseTaperDepth.value) || 0)
+  studioCourseTaperDepth.value = String(taperDepth)
+  let taper = masonryCourseStaging.taper
+  if (taperDepth > 0 && taper >= 0.999) taper = 0.8
+  if (taperDepth <= 0) taper = 1
+  masonryCourseStaging = { ...masonryCourseStaging, taperDepth, taper }
+  if (isMasonryCourseEditActive()) commitMasonryCourseEdit()
+  else syncMasonryCourseEditorUi()
+  markViewportDirty()
+})
+
+studioCourseTaper.addEventListener('change', () => {
+  if (!masonryCourseStaging) return
+  const taper = Math.max(0, Math.min(1, Number(studioCourseTaper.value) || 0))
+  studioCourseTaper.value = String(taper)
+  masonryCourseStaging = { ...masonryCourseStaging, taper }
+  if (isMasonryCourseEditActive()) commitMasonryCourseEdit()
+  else syncMasonryCourseEditorUi()
+  markViewportDirty()
+})
+
+studioCourseTaperSides.addEventListener('change', () => {
+  if (!masonryCourseStaging) return
+  const taperSides = studioCourseTaperSides.value === 'lr' ? 'lr' : 'all'
+  masonryCourseStaging = { ...masonryCourseStaging, taperSides }
+  if (isMasonryCourseEditActive()) commitMasonryCourseEdit()
+  else syncMasonryCourseEditorUi()
+  markViewportDirty()
+})
+
+studioCoursePhase.addEventListener('change', () => {
+  if (!masonryCourseStaging) return
+  const coursePhase = clampCoursePhase(
+    masonryCourseStaging.pattern,
+    Number(studioCoursePhase.value) || 0,
+  )
+  masonryCourseStaging = { ...masonryCourseStaging, coursePhase }
+  if (isMasonryCourseEditActive()) commitMasonryCourseEdit()
+  else {
+    syncMasonryCourseEditorUi()
+    const label =
+      patternCoursePhaseLabels(masonryCourseStaging.pattern)[coursePhase] ?? `Ebene ${coursePhase + 1}`
+    planStatus.textContent = `Verband-Ebene: ${label}`
+  }
+  markViewportDirty()
+})
+
+studioCourseColorStage.addEventListener('change', () => {
+  const stage = Math.max(0, Math.min(7, Math.round(Number(studioCourseColorStage.value) || 0)))
+  studioCourseColorStage.value = String(stage)
+  if (masonryCourseStaging) masonryCourseStaging = { ...masonryCourseStaging, colorStage: stage }
+  if (isMasonryCourseEditActive()) commitMasonryCourseEdit()
+})
+
+studioCourseDelete.addEventListener('click', () => {
+  if (!masonryCourseEditTarget || !canEditWallNow(masonryCourseEditTarget.wallId)) return
+  commitState(
+    deleteWallCourseOverride(state, [masonryCourseEditTarget.wallId], masonryCourseEditTarget),
+  )
+  clearMasonryCourseEditSelection()
+  syncMasonryCourseEditorUi()
+  syncLibraryAppliedOutline()
+  planStatus.textContent = 'Schicht gelöscht'
+  markViewportDirty()
 })
 
 function commitTwoHorizontalBands(options: {
@@ -31126,6 +32412,13 @@ studioJointInput.addEventListener('input', () => {
 
 studioProjectDepthInput.addEventListener('change', () => {
   commitStudioPanelPatch({ projectDepth: Number(studioProjectDepthInput.value) })
+  if (masonryCourseStaging) {
+    masonryCourseStaging = {
+      ...masonryCourseStaging,
+      projectDepth: Math.max(0, Number(studioProjectDepthInput.value) || 0),
+    }
+    syncMasonryCourseEditorUi()
+  }
 })
 studioPlinthHeightInput.addEventListener('input', () => {
   if (studioPlinthHeightInput.value === '') return
@@ -31867,12 +33160,27 @@ viewport.addEventListener('drop', (event) => {
     ((PANEL_KIND_PATTERNS as readonly string[]).includes(panelPattern) ||
       (MASONRY_KIND_PATTERNS as readonly string[]).includes(panelPattern))
   ) {
-    const wallId = pickWallAtClient(event.clientX, event.clientY)?.wallId ?? null
-    if (!wallId) {
+    const hit = pickWallAtClient(event.clientX, event.clientY)
+    if (!hit) {
       planStatus.textContent = 'Paneel: auf eine Wand ablegen'
       return
     }
-    applyPanelPresetFromLibrary(panelPattern as StudioPanelPattern, { wallId })
+    if (isMasonryCoursePlaceMode()) {
+      armMasonryCourseFromLibrary(panelPattern as StudioPanelPattern)
+      if (!isMasonryCourseEditorArmed() || !masonryCourseStaging) return
+      const wall = getWall(state, hit.wallId)
+      if (!wall || !isStudioWall(wall)) return
+      selectWall(hit.wallId, true)
+      const sizes = stagingEffectiveSizes(masonryCourseStaging)
+      const band = courseBandAtLocalY(wall, hit.localY, sizes.panelHeight, getAllWalls(state))
+      if (band) beginMasonryCourseFill(hit.wallId, band)
+      return
+    }
+    if (isMasonryCourseEditMode() && masonryCourseEditTarget) {
+      applyPatternToMasonryCourseEdit(panelPattern as StudioPanelPattern)
+      return
+    }
+    applyPanelPresetFromLibrary(panelPattern as StudioPanelPattern, { wallId: hit.wallId })
     return
   }
   const wallPresetId =
@@ -32591,9 +33899,14 @@ const ROOF_KIND_DEFAULT_PITCH: Partial<Record<RoofKind, number>> = {
 
 roofKind.addEventListener('change', () => {
   const kind = roofKind.value as RoofKind
-  const prev = normalizeRoof(activeBuilding().roof)
+  const building = activeBuilding()
+  const prev = normalizeRoof(building.roof)
   // Eindeckung bleibt gespeichert (wirksam über roofEffectiveCovering) — Rückwechsel behält Ziegel.
-  const patch: Partial<RoofConfig> = { kind }
+  const patch: Partial<RoofConfig> = {
+    kind,
+    // Sattel/Krüppelwalm: Giebelenden bündig; Walm/Pult/Mansarde: Bündig-Modi zurücksetzen.
+    edgeModes: edgeModesForRoofKind(building, kind, { ...prev, kind }),
+  }
   // Neigung folgt der Form, wenn sie noch dem Default der vorigen Form entspricht.
   const prevDefault = ROOF_KIND_DEFAULT_PITCH[prev.kind] ?? DEFAULT_ROOF.pitch
   const nextDefault = ROOF_KIND_DEFAULT_PITCH[kind]

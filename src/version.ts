@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.564'
+export const APP_VERSION = '2.0.565'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,14 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.565',
+    date: '2026-09-19',
+    title: 'Ark-Oberfläche',
+    changes: [
+      'Rechte und linke Leiste als Park/Ark-Shell — die Live-Seite nutzt dieselbe Oberfläche wie der Ark-Branch',
+    ],
+  },
   {
     version: '2.0.564',
     date: '2026-09-19',

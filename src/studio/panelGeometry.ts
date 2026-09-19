@@ -128,6 +128,8 @@ interface Rect {
   depth?: number
   taperDepth?: number
   taper?: number
+  /** `lr` = Keil nur vertikalen Kanten (Schicht-Editor). */
+  taperSides?: 'all' | 'lr'
   recessed?: boolean
   bottomArc?: { x: number; y: number }[]
   topArc?: { x: number; y: number }[]
@@ -146,6 +148,8 @@ interface Rect {
   /** Dock 0,5+0,5: Chamfer der Dock-Innenseite auf 0. */
   flattenDockStart?: boolean
   flattenDockEnd?: boolean
+  /** Feste Farbstufe 0…7 (Schicht-Editor). */
+  colorStage?: number
 }
 
 /** Rückseite an der Wandfläche, Vorderseite um `depth` nach außen. */
@@ -2418,11 +2422,19 @@ function extrudeFrustum(
   if (taperDepth <= 1e-6) return
 
   const taper = Math.max(0.005, Math.min(1, rect.taper ?? panel.taper ?? 1))
+  const taperSides = rect.taperSides === 'lr' ? 'lr' : 'all'
   const { flip, backZ, bodyFrontZ } = panelDepthZs(wall, panel, Math.max(projectDepth, 1e-6))
   const taperFrontZ = flip ? bodyFrontZ - taperDepth : bodyFrontZ + taperDepth
   // Gehrung bis zur Bossen-Front: sonst wandert die Kante bei taperDepth-Änderung nicht mit.
   const facadeDepth = Math.max(projectDepth + taperDepth, 1e-6)
-  const chamfer = Math.max(0, (Math.min(panel.panelWidth, panel.panelHeight) / 2) * (1 - taper))
+  const chamferIso = Math.max(0, (Math.min(panel.panelWidth, panel.panelHeight) / 2) * (1 - taper))
+  // Keil: nur horizontale Einzüge (vertikale Kanten); Höhe bleibt voll.
+  const chamferX =
+    taperSides === 'lr'
+      ? Math.max(0, (panel.panelWidth / 2) * (1 - taper))
+      : chamferIso
+  const chamferY = taperSides === 'lr' ? 0 : chamferIso
+  const chamfer = chamferIso // Remnant/Polar behalten Iso-Fallback
   const coordAt = makeCoordAt(wall, panel, miter, [], facadeDepth, backZ)
   const p = makePanelPointFn(wall, coordAt)
 
@@ -2522,10 +2534,9 @@ function extrudeFrustum(
   }
 
   const minFront = 0.05
-  // Isotroper Kantenrücksprung — gleiche Maße an allen vier Seiten (Bossenprofil, kein Stretch).
-  const inset = Math.min(chamfer, rect.width / 2 - minFront / 2, rect.height / 2 - minFront / 2)
-  const insetX = Math.max(0, inset)
-  const insetY = Math.max(0, inset)
+  // Iso: gleiche Maße an allen vier Seiten. Keil (`lr`): nur links/rechts.
+  const insetX = Math.max(0, Math.min(chamferX, rect.width / 2 - minFront / 2))
+  const insetY = Math.max(0, Math.min(chamferY, rect.height / 2 - minFront / 2))
 
   let tx0 = atStart ? x0 : x0 + insetX
   let tx1 = atEnd ? x1 : x1 - insetX
@@ -2535,8 +2546,9 @@ function extrudeFrustum(
     tx1 = mid + minFront / 2
   }
 
-  let ty0 = flatBottom ? rect.y : rect.y + insetY
-  let ty1 = flatTop ? rect.y + rect.height : rect.y + rect.height - insetY
+  let ty0 = flatBottom || taperSides === 'lr' ? rect.y : rect.y + insetY
+  let ty1 =
+    flatTop || taperSides === 'lr' ? rect.y + rect.height : rect.y + rect.height - insetY
   if (ty1 - ty0 < minFront) {
     const mid = rect.y + rect.height / 2
     ty0 = mid - minFront / 2
@@ -2653,10 +2665,9 @@ export function createStudioPanelGeometry(
   precomputedTiles?: PanelTile[],
   opts?: StudioPanelGeomOpts,
 ): THREE.BufferGeometry {
-  if (panel.pattern === 'none' || panel.enabled === false) {
-    return new THREE.BufferGeometry()
-  }
+  // `pattern: 'none'` kann trotzdem Tiles haben (Schicht-Editor / courseOverrides).
   const tiles = precomputedTiles ?? layoutPanelTiles(wall, panel, allWalls)
+  if (tiles.length === 0) return new THREE.BufferGeometry()
   return buildStudioPanelGeometry(wall, panel, tiles, allWalls, tiles, opts)
 }
 
@@ -2728,17 +2739,20 @@ export function createStudioPanelGeometriesByColorIndex(
 
 /** Farbstufe eines Steins aus dem Ursprungsfeld (`sourceX/Y`, vor dem Öffnungs-Clip). */
 function tileColorBucketIndex(
-  part: { x: number; y: number; sourceX?: number; sourceY?: number },
+  part: { x: number; y: number; sourceX?: number; sourceY?: number; colorStage?: number },
   seedKey: string,
   stageCount: number,
 ): number {
+  if (typeof part.colorStage === 'number' && Number.isFinite(part.colorStage)) {
+    return Math.max(0, Math.min(stageCount - 1, Math.round(part.colorStage)))
+  }
   const x = part.sourceX ?? part.x
   const y = part.sourceY ?? part.y
   const stableIdx = Math.round((x + 1) * 128 + (y + 1) * 0.5)
   return pickTileColorIndex(seedKey, stableIdx, stageCount)
 }
 
-function bucketPartsByColorIndex<T extends { x: number; y: number; sourceX?: number; sourceY?: number }>(
+function bucketPartsByColorIndex<T extends { x: number; y: number; sourceX?: number; sourceY?: number; colorStage?: number }>(
   parts: T[],
   seedKey: string,
   stageCount: number,
@@ -4639,10 +4653,10 @@ export function createStudioPanelFlatGeometriesByColorIndex(
   allWalls: Wall[] = [],
   precomputedTiles?: PanelTile[],
 ): Array<{ stageIndex: number; geometry: THREE.BufferGeometry }> {
-  if (panel.pattern === 'none' || panel.enabled === false) {
+  const tiles = precomputedTiles ?? layoutPanelTiles(wall, panel, allWalls)
+  if (tiles.length === 0) {
     return [{ stageIndex: 0, geometry: new THREE.BufferGeometry() }]
   }
-  const tiles = precomputedTiles ?? layoutPanelTiles(wall, panel, allWalls)
   if (stageCount <= 1) {
     return [
       {

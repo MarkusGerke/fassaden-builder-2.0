@@ -86,3 +86,4 @@ Scrollbare Panels und Toolbars nutzen **32px Gap** zwischen Sektionen (nicht `pa
 
 - Viewport-Chrome / Bibliothek-Markup voll migrieren
 - Stylelint-Enforcement gegen Hardcode-Abstände
+- **Neue Lib:** Token-Parität und Cutover → [ui-component-library.md](ui-component-library.md) (`@fassaden/ui`, Ark + Solid)

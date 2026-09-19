@@ -67,7 +67,7 @@ export const SCENE_LIBRARY_TILES: ReadonlyArray<{
 }> = [
   { tab: 'sceneView', label: 'Ansicht', sections: ['view'] },
   { tab: 'sceneSun', label: 'Licht & Schatten', sections: ['sun'] },
-  { tab: 'sceneBloom', label: 'Bloom', sections: ['bloom'] },
+  { tab: 'sceneBloom', label: 'Schein', sections: ['bloom'] },
   { tab: 'sceneLights', label: 'Lampen & Leuchten', sections: ['sceneLights'] },
   { tab: 'sceneFile', label: 'Datei', sections: ['file'] },
 ]

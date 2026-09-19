@@ -118,10 +118,11 @@ export function buildingIdsNeedingRebuild(prev: FacadeState, next: FacadeState):
 }
 
 /**
- * Gebäude, bei denen **nur** `roof` abweicht (Ein/Aus, Form, Farbe, …).
+ * Gebäude, bei denen **nur** `roof` abweicht (Form, Farbe, Gauben, …) — **ohne**
+ * `enabled`-Wechsel. Ein/Aus ändert Wandkürzung + Gesims → Voll-Rebuild.
  * `floors` werden ignoriert — `syncFloorPlansFromWalls` erzeugt sonst Rauschen
  * und erzwingt fälschlich einen Voll-Rebuild (v2.0.476).
- * `null` = andere Felder geändert → kein Dach-only-Pfad.
+ * `null` = andere Felder geändert bzw. Dach ein/aus → kein Dach-only-Pfad.
  * Leeres Array = keine / nur Floor-Sync-Änderung.
  */
 export function buildingIdsNeedingRoofOnlyRebuild(
@@ -134,6 +135,9 @@ export function buildingIdsNeedingRoofOnlyRebuild(
   for (const nb of next.buildings) {
     const ob = prev.buildings.find((b) => b.id === nb.id)
     if (!ob) return null
+    const prevEnabled = Boolean(ob.roof && (ob.roof as { enabled?: boolean }).enabled)
+    const nextEnabled = Boolean(nb.roof && (nb.roof as { enabled?: boolean }).enabled)
+    if (prevEnabled !== nextEnabled) return null
     const roofChanged = JSON.stringify(ob.roof ?? null) !== JSON.stringify(nb.roof ?? null)
     const { roof: _pr, floors: _pf, ...prevRest } = ob
     const { roof: _nr, floors: _nf, ...nextRest } = nb

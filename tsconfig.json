@@ -6,22 +6,27 @@
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "types": ["vite/client", "three"],
     "skipLibCheck": true,
-
-    /* Bundler mode */
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./packages/ui/src/*"],
+      "@fassaden/ui": ["./packages/ui/src/index.ts"],
+      "@fassaden/ui/*": ["./packages/ui/src/*"],
+      "styled-system/*": ["./styled-system/*"]
+    },
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "verbatimModuleSyntax": true,
     "moduleDetection": "force",
     "noEmit": true,
-
-    /* Linting */
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true,
-    "noUncheckedSideEffectImports": true
+    "noUncheckedSideEffectImports": true,
+    "jsx": "preserve",
+    "jsxImportSource": "solid-js"
   },
-  "include": ["src"]
+  "include": ["src", "packages/ui/src", "packages/ui/sandbox", "styled-system"]
 }

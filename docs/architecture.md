@@ -18,9 +18,11 @@ src/
 ├── ui/                       Dialoge, Galerie, Export, Motion-Editor, …
 ├── utils/                    Persistenz, Hydrate, Profile-Sweeps, Licht, …
 └── constants/presets.ts      WALL_DEPTH, WALL_HEIGHT, …
+
+packages/ui/                  @fassaden/ui — Solid + Park UI; Live-Shell = Ark Splitter (`#park-live-shell`); Vanilla-IDs hidden
 ```
 
-Feature-Docs und Index: [README.md](README.md). Historie: [changelog.md](changelog.md).
+Feature-Docs und Index: [README.md](README.md). Historie: [changelog.md](changelog.md). UI-Lib: [ui-component-library.md](ui-component-library.md).
 
 **Partial-Rebuild (v2.0.113):** `FacadeController.setState({ rebuildBuildingIds })` → `removeBuildingRenderables` muss **auch Meshes gelöschter Wände** entfernen (Orphans), nicht nur noch existierende `wallId`s. Sonst bleiben Wandkörper/Sockel als Phantom, während Paneele (Gebäude-ID-Clear) verschwinden.
 

@@ -90,6 +90,8 @@ export interface OpeningPoly extends OpeningRect {
   /** Dock 0,5+0,5: Chamfer der Dock-Innenseite auf 0. */
   flattenDockStart?: boolean
   flattenDockEnd?: boolean
+  /** Feste Farbstufe 0…7 (Schicht-Editor). */
+  colorStage?: number
 }
 
 export interface ArchGeom {

@@ -357,4 +357,9 @@ describe('hydrateWall', () => {
     const wall = hydrateWall(facadeWithOpenings([]).buildings[0]!.walls[0]!)
     expect(wall.interiorColor).toBe('#ffffff')
   })
+
+  it('hydratisiert courseOverrides als Array', () => {
+    const wall = hydrateWall(facadeWithOpenings([]).buildings[0]!.walls[0]!)
+    expect(Array.isArray(wall.courseOverrides)).toBe(true)
+  })
 })

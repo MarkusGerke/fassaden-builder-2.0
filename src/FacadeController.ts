@@ -157,7 +157,7 @@ import { ROOF_WALL_TOP_TRIM_CM } from './studio/roofForms'
 import { findAdjacentWall, isBaySurfaceWall, isStudioWall, leafOpenSignForWall, outerSillBoardPose, SILL_FACE_BIAS_CM, studioFacadeOutwardLocalZ, studioFacadeSelectionLocalZ, studioPanelFaceLocalZ, studioProfileAnchorLocalZ, studioWallTransform, studioWindowOriginZ, wallEndPoint, wallHasPanels, wallOmitsBaySideShadows, wallStartPoint, windowDepthForwardSign } from './studio/walls'
 import { createOuterSillBoardGeometry } from './studio/sillGeometry'
 import { bayWallSkirtDropCm } from './studio/bayWindow'
-import { buildMansardRoof, normalizeRoof } from './studio/roof'
+import { buildMansardRoof, listRoofEdges, normalizeRoof } from './studio/roof'
 import {
   buildDormerMeshes,
   buildSkylightMeshes,
@@ -497,7 +497,15 @@ export class FacadeController {
         floors.length > 0 &&
         Math.abs(wall.y + wall.height - storeyTopY(building, floors.length - 1)) < 1.5,
     )
-    const topTrimCm = underRoof ? ROOF_WALL_TOP_TRIM_CM : 0
+    // Giebel (bündig): Wand volle Geschosshöhe — sonst sitzt das Dreieck über einer 6-cm-Stufe.
+    let topTrimCm = 0
+    let gableFlush = false
+    if (underRoof && building) {
+      const edges = listRoofEdges(building, normalizeRoof(building.roof))
+      const wallEdges = edges.filter((e) => e.wallId === wall.id)
+      gableFlush = wallEdges.length > 0 && wallEdges.every((e) => e.flush)
+      topTrimCm = gableFlush ? 0 : ROOF_WALL_TOP_TRIM_CM
+    }
     return createStudioWallGeometry(wall, neighborWalls, {
       treatAsBareWall: this.wallTreatAsBare(wall),
       // Sockel-Decor aus: kein barePlinth (sonst Wandband statt Paneele in der Sockelzone).
@@ -1366,6 +1374,55 @@ export class FacadeController {
 
   clearLibraryPlacementGhost() {
     this.clearOpeningDragGhosts()
+  }
+
+  /**
+   * Mehrere orange Rechtecke (Schicht-Editor Domino) — gleiche Materialien wie
+   * Bibliothek-Ghost, ohne Shadow-Cast.
+   */
+  setMasonryCourseGhosts(
+    wall: Wall,
+    rects: Array<{ x: number; y: number; width: number; height: number }>,
+  ) {
+    this.clearOpeningDragGhosts()
+    if (rects.length === 0) return
+    const localZ = openingDragFloatLocalZ(wall)
+    const transform = wallPlacement(wall)
+    for (let i = 0; i < rects.length; i += 1) {
+      const rect = rects[i]!
+      if (rect.width < 1 || rect.height < 1) continue
+      const synthetic: Opening = {
+        id: `__masonry_course_${i}__`,
+        type: 'cutout',
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+      }
+      const group = new THREE.Group()
+      for (const part of createOpeningDragGhostParts(
+        wall,
+        synthetic,
+        localZ,
+        this.openingDragGhostFillMaterial,
+        this.selectionLineMaterial,
+      )) {
+        part.castShadow = false
+        part.receiveShadow = false
+        group.add(part)
+      }
+      if (group.children.length === 0) continue
+      group.userData = {
+        kind: 'openingDragGhost',
+        wallId: wall.id,
+        openingId: synthetic.id,
+        libraryPlacement: true,
+        masonryCourse: true,
+      }
+      group.position.set(transform.position.x, transform.position.y, transform.position.z)
+      group.rotation.y = transform.rotationY
+      this.openingDragGhostGroup.add(group)
+    }
   }
 
   private createOpeningDragGhosts(refs: OpeningRef[]) {
@@ -3053,6 +3110,7 @@ export class FacadeController {
       selectedRoofFixture: editor.selectedRoofFixture
         ? { ...editor.selectedRoofFixture }
         : undefined,
+      selectedRoofFixtures: editor.selectedRoofFixtures?.map((f) => ({ ...f })),
       selectedCeiling: editor.selectedCeiling ? { ...editor.selectedCeiling } : undefined,
       selectedBuildingId: editor.selectedBuildingId,
       selectedDownpipe: editor.selectedDownpipe
@@ -4947,7 +5005,10 @@ export class FacadeController {
         const transform = wallPlacement(wall)
         const building = findBuildingForWall(this.state, wall.id)
         const panelGeomOpts = { windowDepthOffset: building?.windowDepthOffset }
-        if (!(panel.enabled === false || panel.pattern === 'none')) {
+        if (
+          !(panel.enabled === false || panel.pattern === 'none') ||
+          (geomWall.courseOverrides && geomWall.courseOverrides.length > 0)
+        ) {
           try {
             const claddingColor = wall.claddingColor ?? wall.wallColor ?? DEFAULT_WALL_COLOR
             const tiles = layoutPanelTiles(geomWall, panel, neighborWalls)
@@ -5024,7 +5085,8 @@ export class FacadeController {
                           stageIndex: 0,
                           // Bei persistierten Zonen echtes Raster (sonst eine Platte ohne Modulwechsel).
                           geometry:
-                            geomWall.claddingZones && geomWall.claddingZones.length > 0
+                            (geomWall.claddingZones && geomWall.claddingZones.length > 0) ||
+                            (geomWall.courseOverrides && geomWall.courseOverrides.length > 0)
                               ? createStudioPanelGeometry(
                                   geomWall,
                                   panel,
@@ -6639,7 +6701,13 @@ export class FacadeController {
     }
 
     const selRoofId = this.editor.selectedRoofBuildingId
-    const selFixture = this.editor.selectedRoofFixture
+    const selFixtures =
+      this.editor.selectedRoofFixtures && this.editor.selectedRoofFixtures.length > 0
+        ? this.editor.selectedRoofFixtures
+        : this.editor.selectedRoofFixture
+          ? [this.editor.selectedRoofFixture]
+          : []
+    const selFixtureKeys = new Set(selFixtures.map((f) => `${f.kind}:${f.id}`))
     if (selRoofId && !this.suppressSelectionHighlight) {
       for (const child of this.roofGroup.children) {
         const mesh = child as THREE.Mesh
@@ -6647,13 +6715,12 @@ export class FacadeController {
         // Gaubenfenster ist eine Group ohne geometry — EdgesGeometry würde werfen und
         // selectRoof/Drag/Kontextmenü abbrechen (v2.0.481).
         if (!mesh.isMesh || !mesh.geometry) continue
-        if (selFixture) {
-          if (
-            mesh.userData.fixtureKind !== selFixture.kind ||
-            mesh.userData.fixtureId !== selFixture.id
-          ) {
-            continue
-          }
+        if (selFixtureKeys.size > 0) {
+          const key =
+            mesh.userData.fixtureKind && mesh.userData.fixtureId
+              ? `${mesh.userData.fixtureKind}:${mesh.userData.fixtureId}`
+              : ''
+          if (!selFixtureKeys.has(key)) continue
         } else {
           // Ganzes Dach: nur Haut/Giebel/Rinne, nicht jedes Fixture doppelt
           if (mesh.userData.fixtureId) continue

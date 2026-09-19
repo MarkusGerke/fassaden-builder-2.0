@@ -58,44 +58,24 @@
         contain: layout style paint;
       }
       #app-loading.is-done { opacity: 0; pointer-events: none; }
-      .app-loading-inner { text-align: center; color: #333; }
-      .app-loading-house {
-        display: block;
-        width: 2.4rem; height: 2.4rem; margin: 0 auto 0.85rem;
-        transform: translateZ(0);
+      #app-loading-root { display: flex; justify-content: center; }
+      .app-loading-fallback { width: 6rem; text-align: center; color: #333; font: 600 0.875rem/1.3 system-ui, sans-serif; }
+      .app-loading-fallback .ui-progress-linear { margin-top: 0.5rem; height: 0.35rem; border-radius: 999px; background: rgba(0,0,0,0.08); overflow: hidden; position: relative; }
+      .app-loading-fallback .ui-progress-linear span {
+        position: absolute; inset-block: 0; width: 50%;
+        background: linear-gradient(to right, transparent, #333, transparent);
+        animation: ui-progress-linear-slide 1s ease infinite;
       }
-      .app-loading-house path {
-        fill: none;
-        stroke: #333;
-        stroke-width: 1.35;
-        stroke-linecap: square;
-        stroke-linejoin: miter;
-        /* pathLength="1" → Dash 0…1; 720 ms Zeichnen + 280 ms Pause = 1 s Loop */
-        stroke-dasharray: 1;
-        stroke-dashoffset: 1;
-        animation: app-loading-house-draw 1s linear infinite;
-        will-change: stroke-dashoffset;
-      }
-      @keyframes app-loading-house-draw {
-        0% { stroke-dashoffset: 1; }
-        72% { stroke-dashoffset: 0; }
-        100% { stroke-dashoffset: 0; }
-      }
-      .app-loading-inner p { margin: 0; font-size: 0.92rem; }
+      @keyframes ui-progress-linear-slide { from { left: -40%; } to { left: 100%; } }
     </style>
   </head>
   <body>
     <div id="app-loading" role="status" aria-live="polite" aria-busy="true">
-      <div class="app-loading-inner">
-        <svg class="app-loading-house" viewBox="0 0 24 24" aria-hidden="true">
-          <!-- Klassisches Haus vom Nikolaus (Eulerweg); pathLength normalisiert für CSS-Anim. -->
-          <path
-            id="app-loading-house-path"
-            pathLength="1"
-            d="M5 20L5 11L12 3.5L19 11L19 20L5 20L19 11L5 11L19 20"
-          />
-        </svg>
-        <p>Studio wird geladen …</p>
+      <div id="app-loading-root">
+        <div class="app-loading-fallback">
+          Studio wird geladen …
+          <div class="ui-progress-linear" aria-hidden="true"><span></span></div>
+        </div>
       </div>
     </div>
     <script>
@@ -112,10 +92,14 @@
       })()
     </script>
     <div id="app">
+      <div id="park-live-shell" class="park-live-shell-host"></div>
       <div id="ui">
+        <div id="park-live-left" class="park-live-left"></div>
+        <div id="vanilla-ui-left" class="vanilla-legacy-park">
         <h1>Fassaden-Builder 2.0</h1>
         <div class="app-version-row">
-          <button id="app-version-btn" class="app-version-btn" type="button" aria-haspopup="dialog">
+          <div id="ui-island-release"></div>
+          <button id="app-version-btn" class="app-version-btn" type="button" aria-haspopup="dialog" hidden>
             Version
           </button>
           <button id="app-credits-btn" class="app-credits-btn" type="button" aria-haspopup="dialog">
@@ -123,7 +107,8 @@
           </button>
         </div>
 
-        <details class="file-menu">
+        <div id="ui-island-file-menu"></div>
+        <details class="file-menu" hidden>
           <summary>Datei</summary>
           <div class="file-menu-panel">
             <button id="save-json" type="button">Exportieren als .json</button>
@@ -141,6 +126,7 @@
           <h2 class="section-title">Ebenen</h2>
           <ul id="layer-list" class="layer-list"></ul>
         </section>
+        </div>
       </div>
 
       <button type="button" id="ui-left-collapse" class="ui-left-collapse-btn" title="Linke Spalte einklappen" aria-expanded="true" aria-controls="ui">‹</button>
@@ -148,7 +134,11 @@
       <div id="viewport" class="view-front">
         <div id="viewport-stage">
         <div id="viewport-chrome" class="viewport-chrome">
-          <div class="view-mode-toggle" role="group" aria-label="Ansicht">
+          <div id="park-live-viewport" class="park-live-viewport"></div>
+          <div id="park-live-chrome-extras" class="park-live-chrome-extras"></div>
+          <div id="vanilla-viewport-chrome" class="vanilla-legacy-park">
+          <div id="ui-island-view-mode" class="ui-island-view-mode"></div>
+          <div class="view-mode-toggle" role="group" aria-label="Ansicht" hidden>
             <button type="button" class="preset-btn view-mode-btn" data-chrome="top" id="view-btn-top" hidden>Oben</button>
             <button type="button" class="preset-btn view-mode-btn active" data-chrome="front" id="view-btn-front">2D</button>
             <button type="button" class="preset-btn view-mode-btn" data-chrome="present" id="view-btn-present" title="Perspektive: Gebäude zentriert, Kompass wie 2D">Fassade</button>
@@ -246,6 +236,7 @@
               <input id="scene-line-stroke-num" type="number" min="0.25" max="3" step="0.05" value="1" aria-label="Strichstärke (Zahl)" />
               <output id="scene-line-stroke-value">1.00</output>
             </div>
+          </div>
           </div>
         </div>
         <div id="scope-bar-slot" class="scope-bar-slot viewport-scope-bar" hidden>
@@ -359,10 +350,12 @@
         </div>
 
         <div id="library-dock" aria-label="Element-Bibliothek">
-            <div class="library-tabs" role="tablist" aria-label="Elemente">
+            <div id="park-live-library" class="park-live-library"></div>
+            <div id="vanilla-library-dock" class="vanilla-legacy-park">
+            <div class="library-tabs" role="tablist" aria-label="Elemente" id="vanilla-library-tabs">
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="sceneView" id="library-tab-scene-view" hidden>Ansicht</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="sceneSun" id="library-tab-scene-sun" hidden>Licht &amp; Schatten</button>
-              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="sceneBloom" id="library-tab-scene-bloom" hidden>Bloom</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="sceneBloom" id="library-tab-scene-bloom" hidden>Schein</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="sceneLights" id="library-tab-scene-lights" hidden>Lampen &amp; Leuchten</button>
               <button type="button" class="library-tab active" role="tab" aria-selected="true" data-library-tab="windows" id="library-tab-windows" data-library-when="wall">Fenster</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="doors" id="library-tab-doors" data-library-when="wall">Türen</button>
@@ -393,6 +386,7 @@
               <div id="library-filter-row" class="library-filter-row" hidden></div>
               <div id="opening-library-items" class="opening-library-items"></div>
             </div>
+          </div>
           </div>
           </div>
         </div>
@@ -506,7 +500,8 @@
         </details>
 
         <div id="selection-toolbar" class="right-selection-toolbar" hidden>
-          <div id="selection-toolbar-panels" class="selection-toolbar-panels">
+          <div id="park-live-selection" class="park-live-selection"></div>
+          <div id="selection-toolbar-panels" class="selection-toolbar-panels vanilla-legacy-park">
           <div id="toolbar-ceiling" hidden>
             <div class="settings-section" data-settings-section="ceiling" data-settings-label="Decke / Boden">
               <div class="toolbar-group">
@@ -1238,6 +1233,61 @@
                 <p class="toolbar-hint compact-hint">Gerade und ungerade Streifen mit eigener Tiefe und Trapez.</p>
               </div>
               <p class="settings-subheading settings-subheading-nested">Maße</p>
+              <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                <span class="toolbar-label">Schicht</span>
+                <div id="studio-course-mode-toggle" class="view-mode-toggle" role="group" aria-label="Schicht-Modus">
+                  <button type="button" class="preset-btn view-mode-btn active" id="studio-course-mode-off" data-course-mode="off">Aus</button>
+                  <button type="button" class="preset-btn view-mode-btn" id="studio-course-mode-place" data-course-mode="place">Setzen</button>
+                  <button type="button" class="preset-btn view-mode-btn" id="studio-course-mode-edit" data-course-mode="edit">Bearbeiten</button>
+                </div>
+              </div>
+              <input id="studio-course-editor-enabled" type="checkbox" hidden />
+              <p id="studio-course-mode-hint" class="toolbar-hint compact-hint">Aus: Bibliothek gilt wandweit. Setzen: Maße hier, dann Muster wählen und Reihe klicken. Bearbeiten: nur die gewählte Schicht.</p>
+              <div id="studio-course-pick-row" class="toolbar-group toolbar-inline-value ui-field-inline" hidden>
+                <span class="toolbar-label">Gesetzte Schicht</span>
+                <select id="studio-course-pick">
+                  <option value="">— wählen —</option>
+                </select>
+              </div>
+              <div id="studio-course-editor-options" hidden>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Breite (cm)</span>
+                  <input id="studio-course-width" type="number" min="8" step="8" value="48" />
+                </div>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Höhe (cm)</span>
+                  <input id="studio-course-height" type="number" min="8" step="8" value="24" />
+                </div>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Tiefe (cm)</span>
+                  <input id="studio-course-depth" type="number" min="0" step="0.1" value="4" />
+                </div>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Bossen-Vorstand (cm)</span>
+                  <input id="studio-course-taper-depth" type="number" min="0" step="0.5" value="0" />
+                </div>
+                <div id="studio-course-taper-row" class="toolbar-group toolbar-inline-value ui-field-inline" hidden>
+                  <span class="toolbar-label">Bossenprofil (1=flach, 0=spitz)</span>
+                  <input id="studio-course-taper" type="number" min="0" max="1" step="0.05" value="0.8" />
+                </div>
+                <div id="studio-course-taper-sides-row" class="toolbar-group toolbar-inline-value ui-field-inline" hidden>
+                  <span class="toolbar-label">Bossenform</span>
+                  <select id="studio-course-taper-sides">
+                    <option value="all">Trapez (alle Seiten)</option>
+                    <option value="lr">Keil (nur links/rechts)</option>
+                  </select>
+                </div>
+                <div id="studio-course-phase-row" class="toolbar-group toolbar-inline-value ui-field-inline" hidden>
+                  <span class="toolbar-label">Verband-Ebene</span>
+                  <select id="studio-course-phase"></select>
+                </div>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Farbstufe (0–7)</span>
+                  <input id="studio-course-color-stage" type="number" min="0" max="7" step="1" value="0" />
+                </div>
+                <p id="studio-course-options-hint" class="toolbar-hint compact-hint">Beim Setzen: Klick neben der Wand dreht 0°/90°. Beim Bearbeiten gelten Änderungen nur für die gewählte Schicht.</p>
+                <button type="button" id="studio-course-delete" class="preset-btn toolbar-danger" hidden>Schicht löschen</button>
+              </div>
               <div id="studio-standard-depth-row" class="toolbar-group">
                 <span class="toolbar-label">Vorstand / Steintiefe (cm)</span>
                 <input id="studio-project-depth" type="number" min="0" step="0.1" value="4" />
@@ -2877,11 +2927,13 @@
 
         <div id="lighting-accordion" class="sidebar-accordion scene-sidebar-accordion">
           <div id="scene-toolbar" class="right-selection-toolbar scene-toolbar">
-            <div id="scene-toolbar-panels" class="selection-toolbar-panels">
+            <div id="park-live-scene" class="park-live-scene"></div>
+            <div id="scene-toolbar-panels" class="selection-toolbar-panels vanilla-legacy-park">
               <div id="scene-view-section" class="settings-section ui-stack" data-settings-section="view" data-settings-label="Ansicht" data-settings-order="5" hidden>
                 <div class="toolbar-group toolbar-inline-value ui-field-inline">
                   <span class="toolbar-label">Darstellung</span>
                   <div class="preset-group" role="group" aria-label="Darstellung">
+                    <button type="button" class="preset-btn" id="scene-view-mode-front">2D</button>
                     <button type="button" class="preset-btn active" id="scene-view-mode-present">Fassade</button>
                     <button type="button" class="preset-btn" id="scene-view-mode-3d">3D</button>
                   </div>
@@ -2904,6 +2956,9 @@
                 </label>
                 <input id="sun-date" type="date" />
 
+                <div id="ui-island-scene-sun" class="ui-island-scene-sun"></div>
+
+                <div id="scene-sun-legacy-ranges" hidden>
                 <label class="slider-label">
                   <span>Tageszeit</span>
                   <output id="sun-time-value">13:15</output>
@@ -2980,6 +3035,7 @@
                 </label>
                 <input id="sun-color-temp" type="range" min="2700" max="8000" step="100" value="3500" />
                 <p class="toolbar-hint compact-hint">Manuell verstellbar; wird bei Datum/Tageszeit wieder aus dem Sonnenstand gesetzt.</p>
+                </div>
               </div>
 
               <div class="settings-section ui-stack" data-settings-section="sceneLights" data-settings-label="Lampen &amp; Leuchten" data-settings-order="12">
@@ -3003,17 +3059,17 @@
                 <p id="scene-share-status" class="toolbar-hint compact-hint" hidden></p>
               </div>
 
-              <div class="settings-section ui-stack" data-settings-section="bloom" data-settings-label="Bloom" data-settings-order="14">
+              <div class="settings-section ui-stack" data-settings-section="bloom" data-settings-label="Schein" data-settings-order="14">
                 <div class="toolbar-group">
                   <label class="toolbar-check">
                     <input id="bloom-enabled" type="checkbox" />
-                    Bloom an
+                    Schein an
                   </label>
                 </div>
                 <div id="bloom-options" hidden>
                   <label class="toolbar-check">
                     <input id="bloom-disable-during-motion" type="checkbox" />
-                    Bloom bei Kamerabewegung aus
+                    Schein bei Kamerabewegung aus
                   </label>
                   <p class="toolbar-hint compact-hint">An = Bloom während Orbit/Zoom aus. Default: Bloom bleibt auch beim Navigieren an.</p>
                   <label class="slider-label">
@@ -3580,7 +3636,7 @@
       </form>
     </dialog>
 
-    <dialog id="release-notes-dialog" class="release-notes-dialog">
+    <dialog id="release-notes-dialog" class="release-notes-dialog" hidden>
       <form method="dialog" class="dialog-form release-notes-form">
         <header class="release-notes-header">
           <h2>Release Notes</h2>

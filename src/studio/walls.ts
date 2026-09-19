@@ -1659,7 +1659,7 @@ export function updateStudioPanel(
     let next: Wall = { ...cloneWall(wall), panel }
     // Paneele aus → persistierte Zonen verwerfen (Fallback auf wall.panel).
     if (panel.enabled === false || panel.pattern === 'none') {
-      next = { ...next, claddingZones: undefined }
+      next = { ...next, claddingZones: undefined, courseOverrides: undefined }
       return next
     }
     // Zwei Horizontal-Bänder: Zone-Panels an Wand-Panel anbinden (unteres Modul = panelWidth).

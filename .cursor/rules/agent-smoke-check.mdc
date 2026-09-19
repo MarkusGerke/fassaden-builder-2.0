@@ -1,0 +1,22 @@
+---
+description: Nach Park/Bridge/Live-Shell-Änderungen selbst laden und auf ScrollArea-Crash prüfen, bevor „fertig“
+globs: packages/ui/**,src/ui/**,index.html,src/style.css,ui-sandbox.html
+alwaysApply: false
+---
+
+# Agent-Smoke-Check (Live-UI)
+
+Nach Änderungen an den gematchten Dateien **nicht** „fertig“ sagen, bevor dieser Check gelaufen ist. Der Nutzer ist nicht der erste Tester.
+
+## Muss der Agent tun
+
+1. Dev-Server (`http://127.0.0.1:5173/`) laden (Hard-Reload nach Recipe-/Bridge-Änderung).
+2. Vite-Konsole: **kein** `useScrollAreaScrollbarContext` / `ContextError` (das killt die ganze Solid-UI).
+3. Prüfen: `html.park-shell`, `#park-live-shell`, `#park-live-library` existieren und sind sichtbar.
+4. Bei Recipe-Änderung: `npm run codegen`. Bei größerer UI-Änderung: `npx vite build`.
+
+## ScrollArea
+
+Nur `ScrollArea.ScrollbarWithThumb` bzw. ungestyltes Ark `Scrollbar` → Kind `Thumb`. Kein `defaultProps` auf Thumb, kein Nesting der Park-`withContext`-Wrapper für Scrollbar+Thumb.
+
+Details: `docs/agent-smoke-check.md`.

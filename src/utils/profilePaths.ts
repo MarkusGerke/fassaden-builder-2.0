@@ -13,7 +13,6 @@ import {
   plinthProfileForwardBoost,
   plinthMiterEnds,
   corniceMiterEnds,
-  studioFacadeOutwardDepth,
   wallEndPoint,
   wallHasPanels,
   wallStartPoint,
@@ -61,7 +60,7 @@ import { trimSectionScales, profileSectionNativeExtents } from './profileSection
 import { basementWindowEnabled } from '../studio/basementWindow'
 import { findBuildingForWall, getAllWalls, getVisibleWalls } from './buildings'
 import { storeyTopY } from './layers'
-import { roofWallClearanceCm, ROOF_WALL_TOP_TRIM_CM } from '../studio/roofForms'
+import { ROOF_WALL_TOP_TRIM_CM } from '../studio/roofForms'
 import { normalizeFacadeDecor } from '../studio/facadeDecor'
 
 export interface Vec2 {
@@ -906,7 +905,8 @@ function buildCornicePaths(state: FacadeState): ProfilePath[] {
       : cornice.edge === 'bottom'
         ? wall.y
         : wall.y + wall.height
-    // Unter Dach: Gesims-Pfad unter die Wandoberkante, sonst koplanar mit Soffit/Deckel.
+    // Unter Dach: Gesims unter die gekürzte Wandkante und unter die geneigte Soffit
+    // (Krone ragt um Profil-Tiefe × tan nach außen — nicht skippen, v2.0.507).
     let corniceDropCm = 0
     if (cornice.edge === 'top') {
       const building = findBuildingForWall(state, wall.id)
@@ -915,12 +915,16 @@ function buildCornicePaths(state: FacadeState): ProfilePath[] {
         const topY = storeyTopY(building, floors.length - 1)
         const wallTopWorld = wall.y + wall.height
         if (Math.abs(wallTopWorld - topY) < 1.5) {
-          const pitch =
+          const pitchDeg =
             building.roof.kind === 'mansard' ? building.roof.pitchLower : building.roof.pitch
-          corniceDropCm = Math.max(
-            roofWallClearanceCm(studioFacadeOutwardDepth(wall), pitch ?? 40),
-            ROOF_WALL_TOP_TRIM_CM + 2,
-          )
+          const tan = Math.tan((Math.min(85, Math.max(1, pitchDeg ?? 40)) * Math.PI) / 180)
+          const native = profileSectionNativeExtents(profile.section)
+          const fwd =
+            native.forward *
+            (Number.isFinite(cornice.sectionScaleForward)
+              ? (cornice.sectionScaleForward as number)
+              : (cornice.scale ?? 1))
+          corniceDropCm = Math.max(ROOF_WALL_TOP_TRIM_CM + 2, fwd * tan + 2)
           edgeY = studio ? wall.height / 2 - corniceDropCm : wall.y + wall.height - corniceDropCm
         }
       }
