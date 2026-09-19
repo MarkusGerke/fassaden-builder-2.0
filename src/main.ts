@@ -247,6 +247,7 @@ import {
   isGalleryModeActive,
   type GalleryModeHost,
 } from './ui/galleryMode'
+import { initArrivierenUi, type ArrivierenModeHost } from './ui/arrivierenMode'
 import {
   EXPORT_JPG_QUALITY,
   buildExportFilename,
@@ -28039,6 +28040,29 @@ initGalleryUi(galleryHost, {
   reshuffleBtn: galleryReshuffleBtn,
   section: gallerySettingsSection,
 })
+
+const arrivierenHost: ArrivierenModeHost = {
+  getFacade: () => state,
+  getEditor: () => editor,
+  applyState(next, nextEditor) {
+    applyState(next, nextEditor ?? editor)
+  },
+}
+initArrivierenUi(arrivierenHost, {
+  seedInput: document.querySelector<HTMLInputElement>('#arrivieren-seed')!,
+  generateBtn: document.querySelector<HTMLButtonElement>('#arrivieren-generate')!,
+  snapshotEl: document.querySelector<HTMLElement>('#arrivieren-snapshot')!,
+  schematicHost: document.querySelector<HTMLElement>('#arrivieren-schematic')!,
+  schematicToggle: document.querySelector<HTMLInputElement>('#arrivieren-schematic-toggle')!,
+  noteInput: document.querySelector<HTMLTextAreaElement>('#arrivieren-note')!,
+  weightNoteInput: document.querySelector<HTMLTextAreaElement>('#arrivieren-weight-note')!,
+  feedbackOkBtn: document.querySelector<HTMLButtonElement>('#arrivieren-feedback-ok')!,
+  feedbackWrongBtn: document.querySelector<HTMLButtonElement>('#arrivieren-feedback-wrong')!,
+  exportCopyBtn: document.querySelector<HTMLButtonElement>('#arrivieren-feedback-copy')!,
+  exportDownloadBtn: document.querySelector<HTMLButtonElement>('#arrivieren-feedback-download')!,
+  brokenRulesHost: document.querySelector<HTMLElement>('#arrivieren-broken-rules')!,
+})
+
 viewBtnColor.addEventListener('click', () => {
   setRenderStyle('color')
 })
