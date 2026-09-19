@@ -3104,6 +3104,41 @@
                 </div>
               </div>
 
+              <div id="arrivieren-settings-section" class="settings-section ui-stack" data-settings-section="arrivieren" data-settings-label="Arrivieren" data-settings-order="28">
+                <p class="toolbar-hint compact-hint">Regelbasierter Hauswand-Zufall (Geschosse, Achsen, EG, Erker). Gewichte nur in <code>hauswand-regelwerk.json</code>.</p>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Seed</span>
+                  <input id="arrivieren-seed" type="text" inputmode="numeric" value="" placeholder="Zufall" aria-label="Seed" />
+                </div>
+                <div class="toolbar-group">
+                  <button id="arrivieren-generate" class="preset-btn" type="button">Generieren</button>
+                </div>
+                <p id="arrivieren-snapshot" class="toolbar-hint compact-hint">Noch nicht generiert.</p>
+                <label class="toolbar-check">
+                  <input id="arrivieren-schematic-toggle" type="checkbox" />
+                  SVG-Schematik
+                </label>
+                <div id="arrivieren-schematic" class="arrivieren-schematic-host" hidden></div>
+                <p class="settings-subheading settings-subheading-nested">Feedback</p>
+                <div id="arrivieren-broken-rules" class="ui-stack"></div>
+                <div class="toolbar-group ui-stack">
+                  <span class="toolbar-label">Notiz</span>
+                  <textarea id="arrivieren-note" rows="2" class="arrivieren-note"></textarea>
+                </div>
+                <div class="toolbar-group ui-stack">
+                  <span class="toolbar-label">Gewichtsvorschlag</span>
+                  <textarea id="arrivieren-weight-note" rows="2" class="arrivieren-note"></textarea>
+                </div>
+                <div class="toolbar-group">
+                  <button id="arrivieren-feedback-ok" class="preset-btn" type="button">Korrekt</button>
+                  <button id="arrivieren-feedback-wrong" class="preset-btn" type="button">Falsch</button>
+                </div>
+                <div class="toolbar-group">
+                  <button id="arrivieren-feedback-copy" class="preset-btn" type="button">Feedback kopieren</button>
+                  <button id="arrivieren-feedback-download" class="preset-btn" type="button">JSONL laden</button>
+                </div>
+              </div>
+
               <div id="gallery-settings-section" class="settings-section" data-settings-section="gallery" data-settings-label="Galerie" data-settings-order="30" hidden>
                 <p class="toolbar-hint">QA-Übersicht aller Wandlängen, Stile, Öffnungen und Erker. Projekt wird beim Verlassen wiederhergestellt.</p>
                 <div class="toolbar-group">

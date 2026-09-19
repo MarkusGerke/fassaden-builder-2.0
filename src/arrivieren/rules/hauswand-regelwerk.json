@@ -1,0 +1,89 @@
+{
+  "version": "0.1.0",
+  "id": "arrivieren-hauswand",
+  "title": "Arrivieren Hauswand-Zufall",
+  "units": "cm",
+  "grid": {
+    "planGridCm": 48,
+    "masonryStepCm": 8,
+    "wallHeightCm": 448,
+    "wallDepthCm": 32,
+    "defaultWindow": { "widthCm": 96, "heightCm": 192, "sillYCm": 128 },
+    "endPierCm": 48,
+    "interPierCm": 48,
+    "widthFormula": "n * windowWidth + (n + 1) * pier = n * 144 + 48 for window=96 pier=48"
+  },
+  "constraints": {
+    "storeys": { "min": 1, "max": 5, "note": "Berlin Gründerzeit oft 4–5 Vollgeschosse; Bauordnung historisch oft max. 5" },
+    "axes": { "min": 3, "softMax": 9, "hardMax": 15, "note": "Soft-Max für Arrivieren; Hard-Max nur explizit" },
+    "driveway": { "maxPerFacade": 1 },
+    "bay": {
+      "neverOnGroundFloor": true,
+      "neverOnTopStorey": true,
+      "singleTypePerHouse": true,
+      "mustStackSameAxes": true,
+      "minStoreys": 4,
+      "minAxes": 4,
+      "allowedShapes": ["rect", "angled45", "round"]
+    },
+    "upperFloors": {
+      "sameWindowTypePerAxis": true,
+      "openingsMustAlignVertically": true
+    },
+    "groundFloor": {
+      "mayDifferFromUpper": true,
+      "mustShareTotalWidth": true,
+      "groupsSnapToWholeAxes": true
+    },
+    "validity": [
+      "sameTotalWidthAllStoreys",
+      "ogOpeningsOnAxisGrid",
+      "egGroupsOnWholeAxes",
+      "bayColumnContinuous"
+    ]
+  },
+  "enums": {
+    "egType": ["entrance", "driveway", "shopWindow", "shopfrontGroup", "residentialWindows"],
+    "bayShape": ["none", "rect", "angled45", "round"]
+  },
+  "weights": {
+    "storeys": { "1": 0.04, "2": 0.08, "3": 0.18, "4": 0.35, "5": 0.35 },
+    "axes": { "3": 0.08, "4": 0.14, "5": 0.18, "6": 0.28, "7": 0.14, "8": 0.10, "9": 0.08 },
+    "egType": {
+      "entrance": 0.28,
+      "driveway": 0.12,
+      "shopWindow": 0.18,
+      "shopfrontGroup": 0.22,
+      "residentialWindows": 0.20
+    },
+    "bayPresence": {
+      "none": 0.72,
+      "present": 0.28,
+      "gate": { "minStoreys": 4, "minAxes": 4 }
+    },
+    "bayShapeWhenPresent": { "rect": 0.45, "angled45": 0.35, "round": 0.20 },
+    "bayAxisSpan": { "1": 0.65, "2": 0.35 },
+    "bayHorizontalPlacement": { "centerish": 0.55, "leftThird": 0.225, "rightThird": 0.225 }
+  },
+  "derived": {
+    "widthCm": "axes * 144 + 48",
+    "bayFloors": "storeys >= 4 ? floors 1..(storeys-2) inclusive (0=EG excluded, top excluded) : none"
+  },
+  "feedbackSchema": {
+    "verdict": ["ok", "wrong"],
+    "brokenRules": [
+      "storeys",
+      "axes",
+      "width",
+      "egType",
+      "egAlignment",
+      "ogWindows",
+      "bayPlacement",
+      "bayStacking",
+      "proportions",
+      "other"
+    ],
+    "note": "string",
+    "suggestedWeightTweaks": "optional free text"
+  }
+}

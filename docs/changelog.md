@@ -2,6 +2,12 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Arrivieren Hauswand-Zufall (2026-09-19) — v2.0.495
+
+**Neu:** `generateHauswand` / `applyHauswandGeneration` mit Regelwerk-JSON (`src/arrivieren/rules/hauswand-regelwerk.json`), UI in der Szene-Leiste, Feedback localStorage + JSONL-Export. Breitenformel `n×144+48`, Erker-Gate ≥4 Geschosse und ≥4 Achsen, Erker nur OG-Zwischengeschosse (`singleFloor`-Insert pro Etage).
+
+Docs: [arrivieren-hauswand.md](arrivieren-hauswand.md). Tests: `src/arrivieren/generateHauswand.test.ts`.
+
 ### Geschosskante — Wandkörper kürzen (2026-09-16) — v2.0.494
 
 **Symptom:** Nach v2.0.493 noch minimal sichtbare Geschosskante unter der Traufe.

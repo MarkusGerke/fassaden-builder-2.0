@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.494'
+export const APP_VERSION = '2.0.495'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,15 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.495',
+    date: '2026-09-19',
+    title: 'Arrivieren Hauswand',
+    changes: [
+      'Neuer Zufallsgenerator für Geschosse, Achsen, EG-Typ und Erker — Gewichte in hauswand-regelwerk.json',
+      'Szene-Leiste Arrivieren: Generieren, Seed, Snapshot, SVG-Schematik, Feedback als JSONL',
+    ],
+  },
   {
     version: '2.0.494',
     date: '2026-09-16',
