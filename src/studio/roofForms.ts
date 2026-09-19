@@ -120,6 +120,16 @@ export function roofKindUsesPitch(kind: RoofKind): boolean {
   return kind !== 'mansard'
 }
 
+/** Sattel/Krüppelwalm: Firsthöhe (cm) statt Neigung als Hauptmaß. */
+export function roofKindUsesRidgeRise(kind: RoofKind): boolean {
+  return kind === 'gable' || kind === 'halfHip'
+}
+
+/** Trauf-Überstand als horizontaler Kasten + Lot an der Außenkante (alle Formen). */
+export function roofKindUsesBoxedEave(_kind?: RoofKind): boolean {
+  return true
+}
+
 export function roofKindUsesRidgeDir(kind: RoofKind): boolean {
   return kind === 'gable' || kind === 'halfHip' || kind === 'shed'
 }
@@ -276,6 +286,28 @@ function ridgeAxisDir(roof: RoofConfig, eave: XZ[]): XZ {
   return yawToDirXZ(roof.ridgeDeg)
 }
 
+/** Halbe Spannweite lotrecht zur Firstachse (Außenring). */
+export function halfSpanPerpendicularToRidge(outer: XZ[], roof: RoofConfig): number {
+  const d = ridgeAxisDir(roof, outer)
+  const n = { x: -d.z, z: d.x }
+  let sMin = Infinity
+  let sMax = -Infinity
+  for (const p of outer) {
+    const s = n.x * p.x + n.z * p.z
+    sMin = Math.min(sMin, s)
+    sMax = Math.max(sMax, s)
+  }
+  return Math.max(40, (sMax - sMin) * 0.5)
+}
+
+/** Neigung (°) aus Firsthöhe über Traufe und Grundriss-Spannweite. */
+export function roofPitchDegFromRidgeRise(ridgeRiseCm: number, outer: XZ[], roof: RoofConfig): number {
+  const half = halfSpanPerpendicularToRidge(outer, roof)
+  const tan = Math.max(0.05, ridgeRiseCm) / half
+  const deg = (Math.atan(tan) * 180) / Math.PI
+  return Math.min(85, Math.max(5, deg))
+}
+
 /** Pult: Richtung zur Hochseite. Auto = Innen-Normale der längsten Traufkante. */
 function shedHighDir(roof: RoofConfig, eave: XZ[]): XZ {
   if (roof.ridgeDeg === null || roof.ridgeDeg === undefined) {
@@ -384,6 +416,13 @@ function halfHipPlanes(ctx: PlaneBuildContext, d: XZ): RoofPlane[] {
   return planes
 }
 
+function effectivePitchDegForPlanes(kind: RoofKind, outer: XZ[], roof: RoofConfig): number {
+  if (roofKindUsesRidgeRise(kind) && roof.ridgeRiseCm !== undefined) {
+    return roofPitchDegFromRidgeRise(roof.ridgeRiseCm, outer, roof)
+  }
+  return roof.pitch
+}
+
 export function buildRoofPlanes(
   kind: RoofKind,
   eave: XZ[],
@@ -391,7 +430,8 @@ export function buildRoofPlanes(
   flush: boolean[],
   roof: RoofConfig,
 ): RoofPlane[] {
-  const ctx: PlaneBuildContext = { eave, eaveY, flush, tan: pitchTan(roof.pitch), roof }
+  const pitchDeg = effectivePitchDegForPlanes(kind, eave, roof)
+  const ctx: PlaneBuildContext = { eave, eaveY, flush, tan: pitchTan(pitchDeg), roof }
   let planes: RoofPlane[]
   switch (kind) {
     case 'gable':
@@ -473,7 +513,8 @@ export function buildRoofEnvelope(input: RoofEnvelopeInput): RoofEnvelope | null
   // hebt den First aber nicht (v2.0.481). Flächenclip bleibt am Traufpolygon.
   const planes = buildRoofPlanes(input.kind, outer, input.eaveY, input.flush, input.roof)
   if (planes.length === 0) return null
-  const faces = envelopeFaces(planes, eave)
+  const skinClip = roofKindUsesBoxedEave(input.kind) ? outer : eave
+  const faces = envelopeFaces(planes, skinClip)
   if (faces.length === 0) return null
   // Firsthöhe am Gebäudeumriss / Innen — Überstands-Spitzen (Pult-Hochseite) heben nicht.
   let ridgeY = input.eaveY
@@ -489,7 +530,7 @@ export function buildRoofEnvelope(input: RoofEnvelopeInput): RoofEnvelope | null
   }
   ridgeSamples.push({ x: cx / outer.length, z: cz / outer.length })
   for (const p of ridgeSamples) ridgeY = Math.max(ridgeY, envelopeY(planes, p))
-  const tan = pitchTan(input.roof.pitch)
+  const tan = pitchTan(effectivePitchDegForPlanes(input.kind, outer, input.roof))
   const cos = 1 / Math.sqrt(1 + tan * tan)
   const tv = ROOF_SLAB_THICKNESS_CM / cos
   const n = eave.length
@@ -566,6 +607,106 @@ function pushTri(sink: Sink, a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector
 function pushQuad(sink: Sink, a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, d: THREE.Vector3) {
   pushTri(sink, a, b, c)
   pushTri(sink, a, c, d)
+}
+
+function pushQuadBoth(sink: Sink, a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, d: THREE.Vector3) {
+  pushQuad(sink, a, b, c, d)
+  pushQuad(sink, a, d, c, b)
+}
+
+/**
+ * Kasten-Traufe: lotrechte Füllung Wandoberkante → Dachunterseite, horizontale
+ * Soffit bis zur Traufkante, lotrechte Blende. Beidseitig (von unten sichtbar).
+ */
+export function pushEaveBoxSkirt(
+  sink: Sink,
+  outer: XZ[],
+  eave: XZ[],
+  wallTopY: number,
+  soffitY: number,
+  lipY: number,
+  cutsOn?: (a: XZ, b: XZ) => Array<[number, number]>,
+) {
+  const n = Math.min(outer.length, eave.length)
+  if (n < 3) return
+  const lerpXZ = (p: XZ, q: XZ, t: number): XZ => ({
+    x: p.x + (q.x - p.x) * t,
+    z: p.z + (q.z - p.z) * t,
+  })
+  const fasciaTop = Math.max(soffitY, wallTopY + 0.2)
+  for (let i = 0; i < n; i += 1) {
+    const oa = outer[i]!
+    const ob = outer[(i + 1) % n]!
+    const ea = eave[i]!
+    const eb = eave[(i + 1) % n]!
+    if (Math.hypot(ob.x - oa.x, ob.z - oa.z) < 0.5) continue
+    const out = edgeOutwardXZ(oa, ob)
+    const gaps = cutsOn ? cutsOn(oa, ob) : []
+    const spans = complementIntervals(gaps)
+    for (const [t0, t1] of spans) {
+      if (t1 - t0 < 1e-4) continue
+      const p0o = lerpXZ(oa, ob, t0)
+      const p1o = lerpXZ(oa, ob, t1)
+      const p0e = lerpXZ(ea, eb, t0)
+      const p1e = lerpXZ(ea, eb, t1)
+      const f0 = {
+        x: p0o.x + out.x * ROOF_FILL_FACE_OUTSET_CM,
+        z: p0o.z + out.z * ROOF_FILL_FACE_OUTSET_CM,
+      }
+      const f1 = {
+        x: p1o.x + out.x * ROOF_FILL_FACE_OUTSET_CM,
+        z: p1o.z + out.z * ROOF_FILL_FACE_OUTSET_CM,
+      }
+      if (fasciaTop - wallTopY > 0.15) {
+        pushQuadBoth(
+          sink,
+          new THREE.Vector3(f0.x, wallTopY, f0.z),
+          new THREE.Vector3(f1.x, wallTopY, f1.z),
+          new THREE.Vector3(f1.x, fasciaTop, f1.z),
+          new THREE.Vector3(f0.x, fasciaTop, f0.z),
+        )
+      }
+      const oh = Math.hypot(p0e.x - p0o.x, p0e.z - p0o.z)
+      if (oh > 0.5) {
+        pushQuadBoth(
+          sink,
+          new THREE.Vector3(p0o.x, soffitY, p0o.z),
+          new THREE.Vector3(p1o.x, soffitY, p1o.z),
+          new THREE.Vector3(p1e.x, soffitY, p1e.z),
+          new THREE.Vector3(p0e.x, soffitY, p0e.z),
+        )
+        if (lipY - soffitY > 0.15) {
+          pushQuadBoth(
+            sink,
+            new THREE.Vector3(p0e.x, soffitY, p0e.z),
+            new THREE.Vector3(p1e.x, soffitY, p1e.z),
+            new THREE.Vector3(p1e.x, lipY, p1e.z),
+            new THREE.Vector3(p0e.x, lipY, p0e.z),
+          )
+        }
+      }
+    }
+  }
+}
+
+export function appendEaveBoxSkirtToArrays(
+  positions: number[],
+  normals: number[],
+  uvs: number[],
+  indices: number[],
+  outer: XZ[],
+  eave: XZ[],
+  wallTopY: number,
+  soffitY: number,
+  lipY: number,
+) {
+  const sink: Sink = { positions: [], normals: [], uvs: [], indices: [] }
+  pushEaveBoxSkirt(sink, outer, eave, wallTopY, soffitY, lipY)
+  const base = positions.length / 3
+  positions.push(...sink.positions)
+  normals.push(...sink.normals)
+  uvs.push(...sink.uvs)
+  for (const i of sink.indices) indices.push(base + i)
 }
 
 /** Polygon in Plan-Koordinaten triangulieren und auf eine Höhenfunktion heben. */
@@ -909,6 +1050,11 @@ export function buildRoofEnvelopeGeometry(
       if (edgeIdx < 0) continue
       // Stirn vor dem Zwerchgiebel weglassen (dort sitzt die Giebelwand).
       if (footprints.some((f) => f.edgeIdx === edgeIdx)) continue
+      if (roofKindUsesBoxedEave(env.kind)) {
+        const oa = env.outer[edgeIdx]!
+        const ea = env.eave[edgeIdx]!
+        if (Math.hypot(ea.x - oa.x, ea.z - oa.z) > 0.5) continue
+      }
       const flush = env.flush[edgeIdx]
       let yuTop = top(u)
       let yvTop = top(v)
@@ -1047,6 +1193,10 @@ export function buildRoofEnvelopeGeometry(
     }
   }
 
+  const soffitY = env.eaveY - tv
+  const lipY = env.eaveY
+  pushEaveBoxSkirt(gableSink, env.outer, env.eave, wallTopY, soffitY, lipY, cutsOn)
+
   const gutterEdgeActive = env.isEave.map((eave, i) => {
     if (!eave || env.flush[i]) return false
     // Keine Rinne vor dem Zwerchgiebel.
@@ -1063,12 +1213,13 @@ export function buildRoofEnvelopeGeometry(
   }
   const tipY =
     tipYs.length > 0 ? tipYs.reduce((sum, y) => sum + y, 0) / tipYs.length : env.eaveY
+  const gutterY = roofKindUsesBoxedEave(env.kind) ? env.eaveY - tv + 4 : tipY - tv + 4
   return {
     roof: toGeometry(roofSink) ?? new THREE.BufferGeometry(),
     gable: toGeometry(gableSink),
     gutterEdgeActive,
     gutterGaps,
-    gutterEaveY: tipY - tv + 4,
+    gutterEaveY: gutterY,
   }
 }
 

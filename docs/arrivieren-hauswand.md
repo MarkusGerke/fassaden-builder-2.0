@@ -10,9 +10,13 @@ Maschinenlesbar: [`src/arrivieren/rules/hauswand-regelwerk.json`](../src/arrivie
 | Mauerwerk-Schritt | 8 cm (`STUDIO_MASONRY`) |
 | Geschosshöhe | 448 cm (`WALL_HEIGHT`) |
 | Standardfenster | 96 × 192 cm, Brüstung 128 cm |
-| Rand-/Zwischenpfeiler | 48 cm |
+| Rand links/rechts | 96 cm |
+| Zwischenraum Fenster | 96 cm |
+| Fensterbreite Zufall | 92 % × 96 cm, 8 % × 144 cm |
 
-**Breite bei n Achsen à 96 cm:** `n × 144 + 48` cm (Vielfaches von 48). Implementierung: `hauswandWidthCm()` in `src/arrivieren/hauswandGrid.ts`.
+**Breite bei n Achsen:** `n × (Fensterbreite + 96) + 96` cm. Implementierung: `hauswandWidthCm(axes, windowWidthCm)` in `src/arrivieren/hauswandGrid.ts`.
+
+**Erker (Rendering):** Schenkel und Rund-Erker ohne Schatten-Cast/Receive (Wand, Fenster, Laibung) — `syncLabelShadowReceivers` darf das nicht wieder anschalten (v2.0.559). Schenkel-Rahmen/Laibung dimmen wie die Wand (`facadeShadeWallLock`, v2.0.560) — sonst bleibt die Sohlbank im Schrägblick sonnenhell. Nachbarfenster am Mund ohne Fensterbänke. Graue Erker-Ränder (eigene Rahmen/Laibung-Farbe): Klärung Runde 2.
 
 ## Harte Regeln
 

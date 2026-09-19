@@ -239,17 +239,25 @@ const FACADE_SHADE_DIRECT_PATCH = `
           vec3 objN = normalize(vFacadeObjectNormal);
           float frontness = abs(objN.z);
           float sideOrTop = 1.0 - smoothstep(0.35, 0.85, frontness);
+          // Erker-Schenkel: Oberseite des Fensterrahmens nicht sonnenhell lassen, wenn die
+          // Wand im Gegenlicht ist (v2.0.560). Gegenlicht aus Wand-Z, kein Side/Top-Nachlass.
           facadeSideOrTop = sideOrTop;
           float sunOnFront = 0.0;
           #if ( NUM_DIR_LIGHTS > 0 )
-            vec3 facadeRef = normalize(mix(normalize(vFacadeView), geometryNormal, uNormalBacklit));
+            vec3 facadeRef = normalize(mix(normalize(vFacadeView), geometryNormal, uNormalBacklit * (1.0 - uWallLock)));
             sunOnFront = dot(facadeRef, directionalLights[0].direction);
           #endif
           float backlit = 1.0 - smoothstep(-0.28, -0.04, sunOnFront);
           // Front (sideOrTop≈0): volles Gegenlicht-Dim. Flache horizontale Facetten: stärker dimmen
           // (v2.0.370/371). v2.0.428: kein Kanten-wallUnlit mehr.
-          float dimMask = max(mix(1.0 - sideOrTop * 0.82, 1.0, uLabelShade), uNormalBacklit);
+          float dimMask = max(mix(1.0 - sideOrTop * 0.82 * (1.0 - uWallLock), 1.0, uLabelShade), max(uNormalBacklit, uWallLock));
           facadeDim = clamp(backlit * dimMask, 0.0, 1.0);
+          #if ( NUM_DIR_LIGHTS > 0 )
+            // Schenkel-Sohlbank: Flächen die mehr Sonne sehen als die Wand (oben)
+            // auch bei Streiflicht dimmen — sonst bleibt der untere Rahmen hell.
+            float faceSun = dot(geometryNormal, directionalLights[0].direction);
+            facadeDim = max(facadeDim, uWallLock * clamp(faceSun - sunOnFront, 0.0, 1.0));
+          #endif
           float directAmt = mix(uDirectDim, uLabelDirectDim, uLabelShade);
           facadeHemiAmt = mix(uHemiDim, uLabelHemiDim, uLabelShade);
           reflectedLight.directDiffuse *= mix(1.0, directAmt, facadeDim);
@@ -265,7 +273,8 @@ const FACADE_SHADE_DIRECT_PATCH = `
 const FACADE_SHADE_INDIRECT_PATCH = `
         {
           float facadeIndirect = mix(1.0, facadeHemiAmt, facadeDim);
-          float horizExtra = facadeSideOrTop * max(facadeDim, 0.22);
+          float horizFloor = mix(0.22, 0.85, uWallLock);
+          float horizExtra = facadeSideOrTop * max(facadeDim, horizFloor);
           facadeIndirect *= mix(1.0, 0.35, horizExtra);
           irradiance *= facadeIndirect;
           iblIrradiance *= facadeIndirect;
@@ -286,6 +295,7 @@ export function applyFacadeShadeShader(
   const isLabel = options?.label === true
   const normalBacklit =
     options?.normalBacklit === true || material.userData.facadeShadeNormalMode === true
+  const wallLock = material.userData.facadeShadeWallLock === true
   // Flache Schrift: transparent + opacity 1 + alphaTest — Shader trotzdem anwenden.
   if (!isLabel && material.transparent && material.opacity < 0.95) return
   if (material instanceof THREE.MeshPhysicalMaterial && material.transmission > 0.05) return
@@ -295,6 +305,7 @@ export function applyFacadeShadeShader(
   material.userData.uFacadeOutwardLocal = outwardLocalZ
   material.userData.uLabelShade = isLabel ? 1 : 0
   material.userData.uNormalBacklit = normalBacklit ? 1 : 0
+  material.userData.uWallLock = wallLock ? 1 : 0
   material.userData.exteriorSurface = true
   const existing = material.userData.uFacadeOutwardUniform as { value: number } | undefined
   if (existing) existing.value = outwardLocalZ
@@ -302,11 +313,13 @@ export function applyFacadeShadeShader(
   if (existingLabel) existingLabel.value = isLabel ? 1 : 0
   const existingNormal = material.userData.uNormalBacklitUniform as { value: number } | undefined
   if (existingNormal) existingNormal.value = normalBacklit ? 1 : 0
+  const existingLock = material.userData.uWallLockUniform as { value: number } | undefined
+  if (existingLock) existingLock.value = wallLock ? 1 : 0
   if (material.userData.facadeShadeApplied) return
   material.userData.facadeShadeApplied = true
   const prevKey = material.customProgramCacheKey?.bind(material)
   material.customProgramCacheKey = () =>
-    `${prevKey ? prevKey() : ''}|facade-backlit-v19${isLabel ? '|label' : ''}`
+    `${prevKey ? prevKey() : ''}|facade-backlit-v22${isLabel ? '|label' : ''}`
   const prevCompile = material.onBeforeCompile
   material.onBeforeCompile = (shader, renderer) => {
     prevCompile?.(shader, renderer)
@@ -327,6 +340,9 @@ export function applyFacadeShadeShader(
     const normalUniform = { value: material.userData.uNormalBacklit as number }
     shader.uniforms.uNormalBacklit = normalUniform
     material.userData.uNormalBacklitUniform = normalUniform
+    const lockUniform = { value: material.userData.uWallLock as number }
+    shader.uniforms.uWallLock = lockUniform
+    material.userData.uWallLockUniform = lockUniform
     shader.uniforms.uDirectDim = shadeUniforms.uDirectDim
     shader.uniforms.uHemiDim = shadeUniforms.uHemiDim
     shader.uniforms.uInteriorDirectDim = shadeUniforms.uInteriorDirectDim
@@ -370,6 +386,7 @@ uniform float uInteriorDirectDim;
 uniform float uInteriorHemiDim;
 uniform float uLabelShade;
 uniform float uNormalBacklit;
+uniform float uWallLock;
 uniform float uLabelDirectDim;
 uniform float uLabelHemiDim;
 uniform float uFacadeWallUnlit;`,

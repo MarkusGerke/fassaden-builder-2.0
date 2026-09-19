@@ -8,28 +8,40 @@ import {
 /** Fensterbreite pro Achse (cm) — wie Regelwerk / 2.0-Standard. */
 export const HAUSWAND_WINDOW_WIDTH_CM = WINDOW_WIDTH_PRESETS[1] ?? 96
 
-/** Rand- und Zwischenpfeiler (cm). */
+/** Historischer Pfeiler (48) — Endrand der Fassade ist 96 cm. */
 export const HAUSWAND_PIER_CM = 48
+/** Außenrand links/rechts vor der ersten bzw. nach der letzten Öffnung. */
+export const HAUSWAND_END_MARGIN_CM = 96
+/** Lichter Abstand zwischen Fenstern (cm) — fest 96. */
+export const HAUSWAND_INTER_WINDOW_GAP_CM = 96
 
-/** Achsenabstand: Pfeiler + Fenster. */
-export const HAUSWAND_AXIS_PITCH_CM = HAUSWAND_WINDOW_WIDTH_CM + HAUSWAND_PIER_CM
-
-/** Gesamtbreite bei n Achsen à 96 cm mit 48 cm Pfeilern. */
-export function hauswandWidthCm(axes: number): number {
-  if (!Number.isFinite(axes) || axes < 1) return HAUSWAND_PIER_CM
-  return axes * HAUSWAND_AXIS_PITCH_CM + HAUSWAND_PIER_CM
+/**
+ * Gesamtbreite bei n Achsen: Rand 96 | Fenster | 96 | … | Rand 96
+ * = n × (Fensterbreite + 96) + 96.
+ */
+export function hauswandWidthCm(axes: number, windowWidthCm: number = HAUSWAND_WINDOW_WIDTH_CM): number {
+  if (!Number.isFinite(axes) || axes < 1) return HAUSWAND_END_MARGIN_CM * 2
+  const win = Number.isFinite(windowWidthCm) && windowWidthCm > 0 ? windowWidthCm : HAUSWAND_WINDOW_WIDTH_CM
+  return axes * (win + HAUSWAND_INTER_WINDOW_GAP_CM) + HAUSWAND_END_MARGIN_CM
 }
 
-/** Linker Rand der Öffnung auf Achse i (0-basiert). */
-export function hauswandAxisOpeningXCm(axisIndex: number): number {
-  return HAUSWAND_PIER_CM + axisIndex * HAUSWAND_AXIS_PITCH_CM
+/** Achsenabstand für Standard-96er (Kompatibilität). */
+export const HAUSWAND_AXIS_PITCH_CM = HAUSWAND_WINDOW_WIDTH_CM + HAUSWAND_INTER_WINDOW_GAP_CM
+
+/** Linker Rand der Öffnung auf Achse i (0-basiert), optional Fensterbreite. */
+export function hauswandAxisOpeningXCm(axisIndex: number, windowWidthCm: number = HAUSWAND_WINDOW_WIDTH_CM): number {
+  const pitch = windowWidthCm + HAUSWAND_INTER_WINDOW_GAP_CM
+  return HAUSWAND_END_MARGIN_CM + axisIndex * pitch
 }
 
-/** Breite einer Gruppe aus `axisCount` ganzen Achsen. */
-export function hauswandAxisGroupWidthCm(axisCount: number): number {
+/** Breite einer Gruppe aus `axisCount` ganzen Achsen (Fenster + 96er-Zwischenräume). */
+export function hauswandAxisGroupWidthCm(
+  axisCount: number,
+  windowWidthCm: number = HAUSWAND_WINDOW_WIDTH_CM,
+): number {
   if (axisCount < 1) return 0
   return (
-    axisCount * HAUSWAND_WINDOW_WIDTH_CM + Math.max(0, axisCount - 1) * HAUSWAND_PIER_CM
+    axisCount * windowWidthCm + Math.max(0, axisCount - 1) * HAUSWAND_INTER_WINDOW_GAP_CM
   )
 }
 

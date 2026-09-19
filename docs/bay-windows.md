@@ -80,6 +80,12 @@ Presets: `BAY_WINDOW_PRESETS` in `src/studio/bayWindow.ts` (Erker generiert aus 
 
 ## Fallstricke
 
+- **Graue Rechtecke links/rechts der Fensterbank in der Ferne (v2.0.552 → 559/560).** Symptom: zwei kleine graue Pillen auf Brüstungshöhe neben dem Frontfenster, nur ab mittlerer Zoom-Stufe; **v2.0.560** auch im ¾-Blick am Schenkel-Fenster als heller Sohlbank-Streifen.
+  - **Ursache (559):** Schenkel-Cast wurde in `syncWallBodyMeshes` ausgeschaltet, danach aber von `syncLabelShadowReceivers` und `applyPointLightOccluders` für **alle** Studio-Wände wieder an. Schenkel-Fenster (unterer Rahmen) warfen weiter — PCSS filtert das auf der Front zu zwei Flecken.
+  - **Ursache (560, Runtime Seed 11):** Nach Cast-aus blieb die **Geometrie** hell: `facadeShadeNormalMode` lässt die nach oben zeigende Rahmen-/Laibungs-Sohlbank sonnenhell, die Schenkelwand ist im Gegenlicht dunkel. Innenlaibung `skipFacadeShade`.
+  - **Nicht geholfen:** Mund-Epsilon/Stoß-Pad 96 cm, Bank 8 cm vor der Wand, polygonOffset −48 (falsche Achse: nicht dieselbe Bank-Rückseite).
+  - **Fix 559:** `wallOmitsBaySideShadows` — Cast/Receive an Schenkel- und Rund-Erker-Wand, Fenster, Laibung, Gitter bleiben aus. Außenbank ohne wandseitige Fläche (`createOuterSillBoardGeometry`).
+  - **Fix 560:** `facadeShadeWallLock` — Schenkel-Rahmen und -Laibung dimmen wie die Wand (Gegenlicht aus Wand-Z; Fenster mit yaw+π daher invertiertes Outward-Vorzeichen).
 - **Muster „verrutscht“ / Ecken-Lücke (v2.0.303–304).** Stumpf an Erker-Ecken schloss die Gehrung nicht → sichtbare Lücke. Fix v2.0.304: Gehrung wieder an + Erker-Vorstand 0. **Reichte nicht** — siehe nächster Punkt.
 - **Front optisch 24 cm breiter je Seite als `wall.width` (v2.0.305).** Symptom: 384er Front rechnerisch 384, optisch 432; Läufer 8×48 ab Planlinie → an beiden Ecken 24-cm-Stummel, „Muster nicht einheitlich“. Bei Außenwänden trat das nicht auf.
   - **Ursache (Probe `bayOuterOrigin.test.ts`):** `buildUShapeWalls` legte die U-Kontur auf die Host-Planlinie und wählte `panelFlip` nur nach Außennormale. Bei Host mit **Innen-Origin** (`panelFlip: false`) bekamen Front/Schenkel ebenfalls `panelFlip: false` → Planlinie = Innenkante, Körper 24 cm nach **außen**, Gehrung verlängert die sichtbare Außenfläche um 2×24. Genau das Problem von v0.7.279 bei Außenwänden — dort per Load-Fit auf die Außenkante gelöst, Erker waren ausgenommen. Erkennbar am Vorzeichen der Körper-Gehrung: Innen-Origin `miterStart +24 / miterEnd −24`, Außen-Origin `−24 / +24`.

@@ -64,6 +64,8 @@ export interface HauswandPlan {
   seed: number
   storeys: number
   axes: number
+  /** Standard-Fensterbreite (Höhe 192 außer Shop/Keller). */
+  windowWidthCm: number
   widthCm: number
   egType: HauswandEgType
   egGroups: HauswandEgGroup[]

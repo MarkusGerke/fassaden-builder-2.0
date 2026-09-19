@@ -47,24 +47,24 @@ function pickIntWeighted(rng: () => number, weights: Record<string, number>): nu
   return Number.parseInt(pickWeighted(rng, weights), 10)
 }
 
-function standardWindowAtAxis(axisIndex: number): HauswandOpeningSpec {
+function standardWindowAtAxis(axisIndex: number, windowWidthCm: number): HauswandOpeningSpec {
   return {
-    x: hauswandAxisOpeningXCm(axisIndex),
-    width: HAUSWAND_WINDOW_WIDTH_CM,
+    x: hauswandAxisOpeningXCm(axisIndex, windowWidthCm),
+    width: windowWidthCm,
     height: HAUSWAND_STANDARD_WINDOW_HEIGHT_CM,
     y: HAUSWAND_STANDARD_WINDOW_SILL_Y_CM,
     type: 'window',
   }
 }
 
-function doorGroup(axisStart: number, axisCount: number): HauswandEgGroup {
+function doorGroup(axisStart: number, axisCount: number, windowWidthCm: number): HauswandEgGroup {
   return {
     axisStart,
     axisCount,
     openings: [
       {
-        x: hauswandAxisOpeningXCm(axisStart),
-        width: hauswandAxisGroupWidthCm(axisCount),
+        x: hauswandAxisOpeningXCm(axisStart, windowWidthCm),
+        width: hauswandAxisGroupWidthCm(axisCount, windowWidthCm),
         height: HAUSWAND_DOOR_HEIGHT_CM,
         y: 0,
         type: 'door',
@@ -73,10 +73,10 @@ function doorGroup(axisStart: number, axisCount: number): HauswandEgGroup {
   }
 }
 
-function windowGroup(axisStart: number, axisCount: number): HauswandEgGroup {
+function windowGroup(axisStart: number, axisCount: number, windowWidthCm: number): HauswandEgGroup {
   const openings: HauswandOpeningSpec[] = []
   for (let a = axisStart; a < axisStart + axisCount; a += 1) {
-    openings.push(standardWindowAtAxis(a))
+    openings.push(standardWindowAtAxis(a, windowWidthCm))
   }
   return { axisStart, axisCount, openings }
 }
@@ -84,6 +84,7 @@ function windowGroup(axisStart: number, axisCount: number): HauswandEgGroup {
 function fillRemainingWithWindows(
   axes: number,
   used: boolean[],
+  windowWidthCm: number,
 ): HauswandEgGroup[] {
   const groups: HauswandEgGroup[] = []
   let a = 0
@@ -94,7 +95,7 @@ function fillRemainingWithWindows(
     }
     const start = a
     while (a < axes && !used[a]) a += 1
-    groups.push(windowGroup(start, a - start))
+    groups.push(windowGroup(start, a - start, windowWidthCm))
   }
   return groups
 }
@@ -103,17 +104,18 @@ function buildEgGroups(
   egType: HauswandEgType,
   axes: number,
   rng: () => number,
+  windowWidthCm: number,
 ): HauswandEgGroup[] {
   const used = Array.from({ length: axes }, () => false)
 
   if (egType === 'residentialWindows') {
-    return [windowGroup(0, axes)]
+    return [windowGroup(0, axes, windowWidthCm)]
   }
 
   if (egType === 'entrance') {
     const doorAxis = Math.floor(rng() * axes)
     used[doorAxis] = true
-    return [doorGroup(doorAxis, 1), ...fillRemainingWithWindows(axes, used)]
+    return [doorGroup(doorAxis, 1, windowWidthCm), ...fillRemainingWithWindows(axes, used, windowWidthCm)]
   }
 
   if (egType === 'driveway') {
@@ -121,7 +123,7 @@ function buildEgGroups(
     const maxStart = Math.max(0, axes - span)
     const start = Math.floor(rng() * (maxStart + 1))
     for (let i = start; i < start + span; i += 1) used[i] = true
-    return [doorGroup(start, span), ...fillRemainingWithWindows(axes, used)]
+    return [doorGroup(start, span, windowWidthCm), ...fillRemainingWithWindows(axes, used, windowWidthCm)]
   }
 
   if (egType === 'shopWindow') {
@@ -129,13 +131,13 @@ function buildEgGroups(
     const maxStart = Math.max(0, axes - span)
     const start = Math.floor(rng() * (maxStart + 1))
     for (let i = start; i < start + span; i += 1) used[i] = true
-    const w = hauswandAxisGroupWidthCm(span)
+    const w = hauswandAxisGroupWidthCm(span, windowWidthCm)
     const group: HauswandEgGroup = {
       axisStart: start,
       axisCount: span,
       openings: [
         {
-          x: hauswandAxisOpeningXCm(start),
+          x: hauswandAxisOpeningXCm(start, windowWidthCm),
           width: w,
           height: HAUSWAND_STANDARD_WINDOW_HEIGHT_CM,
           y: HAUSWAND_STANDARD_WINDOW_SILL_Y_CM,
@@ -143,7 +145,7 @@ function buildEgGroups(
         },
       ],
     }
-    return [group, ...fillRemainingWithWindows(axes, used)]
+    return [group, ...fillRemainingWithWindows(axes, used, windowWidthCm)]
   }
 
   // shopfrontGroup — Tür + Schaufenster (Stub ohne Säulen)
@@ -154,15 +156,15 @@ function buildEgGroups(
   const shopStart = doorStart + doorSpan
   for (let i = doorStart; i < doorStart + doorSpan; i += 1) used[i] = true
   for (let i = shopStart; i < shopStart + shopSpan; i += 1) used[i] = true
-  const shopWidth = hauswandAxisGroupWidthCm(shopSpan)
+  const shopWidth = hauswandAxisGroupWidthCm(shopSpan, windowWidthCm)
   return [
-    doorGroup(doorStart, doorSpan),
+    doorGroup(doorStart, doorSpan, windowWidthCm),
     {
       axisStart: shopStart,
       axisCount: shopSpan,
       openings: [
         {
-          x: hauswandAxisOpeningXCm(shopStart),
+          x: hauswandAxisOpeningXCm(shopStart, windowWidthCm),
           width: shopWidth,
           height: HAUSWAND_STANDARD_WINDOW_HEIGHT_CM,
           y: HAUSWAND_STANDARD_WINDOW_SILL_Y_CM,
@@ -170,7 +172,7 @@ function buildEgGroups(
         },
       ],
     },
-    ...fillRemainingWithWindows(axes, used),
+    ...fillRemainingWithWindows(axes, used, windowWidthCm),
   ]
 }
 
@@ -223,6 +225,7 @@ function buildBayPlan(
   axes: number,
   rng: () => number,
   rules: HauswandRegelwerk,
+  windowWidthCm: number,
 ): HauswandBayPlan | null {
   const gate = rules.weights.bayPresence.gate
   if (storeys < gate.minStoreys || axes < gate.minAxes) return null
@@ -234,8 +237,8 @@ function buildBayPlan(
   const shape = pickWeighted(rng, rules.weights.bayShapeWhenPresent) as HauswandBayPlan['shape']
   const axisStart = pickBayPlacement(rng, axes, span, rules.weights.bayHorizontalPlacement)
   const preset = bayPresetFor(shape, span)
-  const groupWidth = hauswandAxisGroupWidthCm(span)
-  const centerLocalXCm = hauswandAxisOpeningXCm(axisStart) + groupWidth / 2
+  const groupWidth = hauswandAxisGroupWidthCm(span, windowWidthCm)
+  const centerLocalXCm = hauswandAxisOpeningXCm(axisStart, windowWidthCm) + groupWidth / 2
   return {
     shape,
     axisStart,
@@ -250,11 +253,11 @@ function axisBlockedByBay(axis: number, bay: HauswandBayPlan | null): boolean {
   return axis >= bay.axisStart && axis < bay.axisStart + bay.axisSpan
 }
 
-function buildOgWindows(axes: number, bay: HauswandBayPlan | null): HauswandOpeningSpec[] {
+function buildOgWindows(axes: number, bay: HauswandBayPlan | null, windowWidthCm: number): HauswandOpeningSpec[] {
   const out: HauswandOpeningSpec[] = []
   for (let a = 0; a < axes; a += 1) {
     if (axisBlockedByBay(a, bay)) continue
-    out.push(standardWindowAtAxis(a))
+    out.push(standardWindowAtAxis(a, windowWidthCm))
   }
   return out
 }
@@ -303,15 +306,17 @@ export function generateHauswand(
   const storeys = pickIntWeighted(rng, rules.weights.storeys)
   const axes = pickIntWeighted(rng, rules.weights.axes)
   const egType = pickWeighted(rng, rules.weights.egType) as HauswandEgType
-  const widthCm = hauswandWidthCm(axes)
-  const bay = buildBayPlan(storeys, axes, rng, rules)
-  const egGroups = buildEgGroups(egType, axes, rng)
-  const ogWindowByAxis = buildOgWindows(axes, bay)
+  const windowWidthCm = Number.parseInt(pickWeighted(rng, { '96': 0.92, '144': 0.08 }), 10)
+  const widthCm = hauswandWidthCm(axes, windowWidthCm)
+  const bay = buildBayPlan(storeys, axes, rng, rules, windowWidthCm)
+  const egGroups = buildEgGroups(egType, axes, rng, windowWidthCm)
+  const ogWindowByAxis = buildOgWindows(axes, bay, windowWidthCm)
 
   const plan: HauswandPlan = {
     seed,
     storeys,
     axes,
+    windowWidthCm,
     widthCm,
     egType,
     egGroups,

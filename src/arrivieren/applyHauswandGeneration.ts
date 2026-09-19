@@ -1,7 +1,8 @@
-import type { FacadeState, Wall } from '../types/facade'
+import type { FacadeState, RoofConfig, Wall } from '../types/facade'
 import { WALL_DEPTH, WALL_HEIGHT, UPPER_STOREY_WALL_DEPTH } from '../constants/presets'
 import { getActiveBuilding, updateActiveBuilding } from '../utils/buildings'
-import { createOpening } from '../utils/openings'
+import { createOpening, openingOuterSillConflictsBayMouth } from '../utils/openings'
+import { bayMouthLocalXGapsForWall } from '../utils/profilePaths'
 import { duplicateStorey, removeStorey } from '../utils/walls'
 import { floorIndex } from '../utils/layers'
 import { createId } from '../utils/id'
@@ -16,11 +17,101 @@ import {
 import { DEFAULT_STUDIO_PANEL, normalizeStudioPanel } from '../studio/constants'
 import { finalizeStudioGeometry } from '../studio/planGeometry'
 import { syncFloorPlansFromWalls } from '../studio/floorPlan'
+import { createGalleryRng } from '../gallery/galleryRandom'
+import { DEFAULT_ROOF, normalizeRoof, ROOF_KINDS } from '../studio/roof'
+import { basementWindowEnabled } from '../studio/basementWindow'
 import type { HauswandPlan } from './hauswandTypes'
 import { resolveBayPresetFromPlan } from './generateHauswand'
 import { HAUSWAND_WALL_HEIGHT_CM } from './hauswandGrid'
 
 const EPS = 0.5
+
+function stripBasementFrameProfiles(wall: Wall): Wall {
+  const basementIds = new Set(
+    wall.openings.filter((o) => basementWindowEnabled(o)).map((o) => o.id),
+  )
+  if (!basementIds.size) return wall
+  const profiles = wall.profiles.filter((p) => !p.openingId || !basementIds.has(p.openingId))
+  return profiles.length === wall.profiles.length ? wall : { ...wall, profiles }
+}
+
+function bareHauswandPanel() {
+  return normalizeStudioPanel({
+    ...DEFAULT_STUDIO_PANEL,
+    enabled: false,
+    plinthEnabled: false,
+    plinthHeight: 0,
+    plinthDepth: 0,
+  })
+}
+
+/** Erker/Fassade Arrivieren: keine Paneele; Schenkel ohne Fensterbänke. */
+export function stripHauswandWallDecor(wall: Wall): Wall {
+  const openings = (wall.openings ?? []).map((o) => {
+    if (wall.bayRole === 'side' || wall.bayRole === 'front' || wall.bayRole === 'arc') {
+      return {
+        ...o,
+        // Nicht `undefined`: hydrate/ensureWindowSills würden Defaults wieder anschalten.
+        sillOuter: {
+          ...(o.sillOuter ?? { mode: 'board' as const, depth: 16, thickness: 4, overhang: 16 }),
+          enabled: false,
+        },
+        sillInner: { ...(o.sillInner ?? { depth: 16, thickness: 4 }), enabled: false },
+        trim: undefined,
+      }
+    }
+    return o
+  })
+  return {
+    ...wall,
+    openings,
+    panel: bareHauswandPanel(),
+    cornice: undefined,
+    trimBands: [],
+    labels: [],
+    label: undefined,
+    awnings: [],
+    claddingZones: undefined,
+    claddingColor: undefined,
+    claddingFinish: undefined,
+    profiles: [],
+  }
+}
+
+const HAUSWAND_ROOF_KINDS = ROOF_KINDS.filter((kind) => kind !== 'shed' && kind !== 'hip')
+
+/** Zufallsdach ohne Pult (`shed`) und Walmdach (`hip`); First O–W. */
+function stripMouthNeighborSills(state: FacadeState, wall: Wall): Wall {
+  const gaps = bayMouthLocalXGapsForWall(state, wall)
+  if (!gaps.length) return wall
+  let changed = false
+  const openings = wall.openings.map((o) => {
+    const outerHit = openingOuterSillConflictsBayMouth(o, o.sillOuter, gaps)
+    const innerHit = openingOuterSillConflictsBayMouth(o, o.sillInner, gaps)
+    if (!outerHit && !innerHit) return o
+    changed = true
+    return {
+      ...o,
+      sillOuter: o.sillOuter ? { ...o.sillOuter, enabled: false } : o.sillOuter,
+      sillInner: o.sillInner ? { ...o.sillInner, enabled: false } : o.sillInner,
+    }
+  })
+  return changed ? { ...wall, openings } : wall
+}
+
+export function pickHauswandRoof(seed: number): RoofConfig {
+  const rng = createGalleryRng(seed ^ 0x60f7)
+  const kind = HAUSWAND_ROOF_KINDS[Math.floor(rng() * HAUSWAND_ROOF_KINDS.length) % HAUSWAND_ROOF_KINDS.length]!
+  return normalizeRoof({
+    ...DEFAULT_ROOF,
+    enabled: true,
+    kind,
+    ridgeDeg: 90,
+    dormers: [],
+    crossGables: [],
+    skylights: [],
+  })
+}
 
 function cloneStyleWall(source: Wall): Partial<Wall> {
   return {
@@ -256,5 +347,25 @@ export function applyHauswandGeneration(state: FacadeState, plan: HauswandPlan):
 
   next = syncFloorPlansFromWalls(next)
 
-  return finalizeStudioGeometry(next)
+  next = finalizeStudioGeometry(next)
+
+  const hostIdFinal = hostId
+  next = updateActiveBuilding(next, (b) => {
+    const wallHeight = b.wallHeight
+    return {
+      ...b,
+      roof: pickHauswandRoof(plan.seed),
+      walls: b.walls.map((wall) => {
+        let w = stripBasementFrameProfiles(wall)
+        const onFacade =
+          wallInHostStack(wall, hostIdFinal, b.walls, wallHeight) ||
+          Boolean(wall.bayRole || wall.bayParentId)
+        if (onFacade) w = stripHauswandWallDecor(w)
+        w = stripMouthNeighborSills(next, w)
+        return w
+      }),
+    }
+  })
+
+  return next
 }
