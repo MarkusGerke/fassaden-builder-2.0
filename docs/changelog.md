@@ -2,19 +2,23 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
-### Übernehmen-Toast schließen (2026-09-19) — v2.0.550
+### Erker, Zufall, Kellerprofile (2026-09-19) — v2.0.551
 
-**Symptom:** Toast per × geschlossen, aber `pendingScopePropagate` blieb — späterer Klick auf Typ/Etage/Fassade konnte noch übernehmen.
+**Fensterbretter:** Außenbänke an Fenstern neben dem Erker-Mund werden in X gekürzt (`clampOuterSillLayoutForBayMouths`), Schenkel behalten keine Bänke (`stripHauswandWallDecor`).
 
-**Versuch:** Nur `toaster.dismiss` in `ScopeOfferToast` — Vanilla-State blieb hängen.
+**Zufall:** Fassadenbreite 92 % × 96 cm / 8 % × 144 cm; `pickHauswandRoof` ohne `shed` und `hip`.
 
-**Fix:** `toaster.subscribe` bei User-Dismiss → `clickId('scope-propagate-dismiss')` → `hideScopePropagateOffer` (inkl. `fb-scope-offer-hide`). Sync von Vanilla aus setzt `suppressDismissSync`, damit kein Loop.
+**Keller:** `applyOpeningProfilesDelta` und Hauswand-Apply streifen Rahmenprofile an Kellerfenstern.
 
-### Übernehmen-Toast zuverlässig (2026-09-19) — v2.0.550
+**Schatten:** Erker-Schenkel (`bayRole === 'side'`) casten/empfangen keine Schatten mehr — weniger Streifen auf der Wand hinter dem Erker.
 
-**Symptom:** Toast mit Typ/Etage/Fassade blieb aus (Meta mit Funktionen, Timing vor `renderUi`).
+### Übernehmen-Toast (2026-09-19) — v2.0.550
 
-**Fix:** `meta.scopeOffer` nur Booleans; Anzeige per `queueMicrotask`; Toaster `z-index` 10000; Schließen → `#scope-propagate-dismiss`.
+**Symptom:** In der Park-Shell fehlte „Übernehmen? Typ / Etage / Fassade“; per × geschlossen blieb `pendingScopePropagate` hängen.
+
+**Versuch:** `toaster.subscribe` (existiert in `@zag-js/toast` nicht); nur `toaster.dismiss` ohne Vanilla-`hideScopePropagateOffer`.
+
+**Fix:** `fb-scope-offer` / `fb-scope-offer-hide` in `main.ts` (Show per `queueMicrotask`). `ScopeOfferToast` + `Toaster` mit `meta.scopeOffer` (Booleans) und Buttons; `z-index` 10000. User-Dismiss: `onStatusChange` → `#scope-propagate-dismiss`; Vanilla-Hide: `suppressDismissSync`. Einklappen/Hilfe-Zeile in `ChromeExtrasApp` entfernt.
 
 ### Übernehmen-Toast (2026-09-19) — v2.0.549
 

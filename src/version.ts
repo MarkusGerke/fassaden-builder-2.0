@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.550'
+export const APP_VERSION = '2.0.551'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,17 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.551',
+    date: '2026-09-19',
+    title: 'Erker, Zufall, Kellerprofile',
+    changes: [
+      'Fensterbretter neben Erker: kein Überstand durch die Erkerfront',
+      'Zufall: überwiegend 96er Fenster, kein Walmdach',
+      'Rahmenprofile nicht auf Kellerfenster (Zuweisen/Generierung)',
+      'Erker-Schenkel werfen weniger Schatten auf die Fassade dahinter',
+    ],
+  },
   {
     version: '2.0.550',
     date: '2026-09-19',

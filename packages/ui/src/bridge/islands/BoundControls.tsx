@@ -4,6 +4,7 @@ import { Checkbox, Field, NumberInput, Slider } from '@/components/ui'
 import { FieldRow } from '@/composites/FieldRow'
 import {
   readChecked,
+  readDisabled,
   readNumber,
   writeChecked,
   writeNumber,
@@ -112,6 +113,10 @@ export function BoundNumberField(props: {
     props.tick()
     return String(readNumber(props.id))
   }
+  const disabled = () => {
+    props.tick()
+    return readDisabled(props.id)
+  }
   return (
     <Field.Root>
       <FieldRow label={props.label}>
@@ -120,9 +125,12 @@ export function BoundNumberField(props: {
           max={props.max}
           step={props.step}
           value={value()}
+          disabled={disabled()}
           onValueChange={(d) => {
-            const n = Number(d.value)
-            if (Number.isFinite(n)) writeNumber(props.id, n)
+            const raw = d.value
+            const n = typeof raw === 'string' ? Number(raw) : Number(raw)
+            if (!Number.isFinite(n)) return
+            writeNumber(props.id, n)
             props.bump()
           }}
           size="sm"

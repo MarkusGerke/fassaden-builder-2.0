@@ -7,6 +7,7 @@ import * as ScrollArea from '@/components/ui/scroll-area'
 import { LeftChromeApp, type LeftChromeAppProps } from './LeftChromeApp'
 import { ViewportChromeApp, type ViewportChromeAppProps } from './ViewportChromeApp'
 import { ChromeExtrasApp } from './ChromeExtrasApp'
+import { ScopeOfferToast } from './ScopeOfferToast'
 import { LibraryDockApp, type LibraryDockAppProps } from './LibraryDockApp'
 import { SelectionToolbarApp, type SelectionToolbarAppProps } from './SelectionToolbarApp'
 import { FormMirror } from './FormMirror'
@@ -127,6 +128,7 @@ export function LiveShellApp(props: LiveShellAppProps) {
   let planHost!: HTMLDivElement
   let syncing = false
   const [hasSelection, setHasSelection] = createSignal(false)
+  const [roofSelected, setRoofSelected] = createSignal(false)
   const [dockCollapsed, setDockCollapsed] = createSignal(false)
   const [touch, setTouch] = createSignal(false)
   const [editOpen, setEditOpen] = createSignal(false)
@@ -200,6 +202,8 @@ export function LiveShellApp(props: LiveShellAppProps) {
         setDockCollapsed(!narrow && (app.classList.contains('ui-bottom-collapsed') || stage))
         const sel = document.getElementById('selection-toolbar')
         setHasSelection(!!sel && !sel.hidden)
+        const roof = document.getElementById('toolbar-roof')
+        setRoofSelected(!!roof && !roof.hidden)
       } finally {
         syncing = false
       }
@@ -222,11 +226,15 @@ export function LiveShellApp(props: LiveShellAppProps) {
     const sel = document.getElementById('selection-toolbar')
     const selMo = sel ? new MutationObserver(applyAppClasses) : null
     if (sel) selMo?.observe(sel, { attributes: true, attributeFilter: ['hidden'] })
+    const roof = document.getElementById('toolbar-roof')
+    const roofMo = roof ? new MutationObserver(applyAppClasses) : null
+    if (roof) roofMo?.observe(roof, { attributes: true, attributeFilter: ['hidden'] })
     onCleanup(() => {
       mo.disconnect()
       htmlMo.disconnect()
       touchMq.removeEventListener('change', applyAppClasses)
       selMo?.disconnect()
+      roofMo?.disconnect()
     })
   })
 
@@ -242,6 +250,7 @@ export function LiveShellApp(props: LiveShellAppProps) {
       bg="gray.2"
       color="fg.default"
     >
+      <ScopeOfferToast />
       <Splitter.RootProvider value={main} h="100%" w="100%" minH="0" minW="0">
         <Splitter.Panel id="left">
           <ScrollArea.Frame h="100%" minH="0" bg="gray.1">
@@ -265,6 +274,20 @@ export function LiveShellApp(props: LiveShellAppProps) {
                   <ChromeExtrasApp syncEvent={props.chromeExtras?.syncEvent} />
                 </Box>
               </Box>
+              <Show when={touch()}>
+                <Box position="absolute" top="3" left="3" zIndex="40" pointerEvents="auto">
+                  <Button
+                    size="sm"
+                    variant="surface"
+                    bg="white"
+                    title="Zufällige Fassade"
+                    aria-label="Zufällige Fassade"
+                    onClick={() => clickId('arrivieren-viewport-random')}
+                  >
+                    Zufall
+                  </Button>
+                </Box>
+              </Show>
               <Box
                 ref={(el) => {
                   stageHost = el
@@ -316,11 +339,15 @@ export function LiveShellApp(props: LiveShellAppProps) {
                   </ScrollArea.Frame>
                 </Box>
               </Show>
-              <Show when={!touch()}>
+              <Show when={!touch() && !roofSelected()}>
                 <Box flex="1" minH="0">
                   <ScrollArea.Frame h="100%" minH="0">
                     <Box p="3">
-                      <SceneToolbarApp {...props.scene} />
+                      <SceneToolbarApp
+                        {...props.scene}
+                        showArrivieren={!hasSelection()}
+                        hideSun={roofSelected()}
+                      />
                     </Box>
                   </ScrollArea.Frame>
                 </Box>

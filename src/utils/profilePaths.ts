@@ -39,7 +39,14 @@ import { studioPlinthActive } from '../studio/constants'
 import { wallDecorFallbackColor } from '../constants/colorPalettes'
 import { wallCornice, wallHasCornice } from './cornice'
 import { wallHasTrimBands, wallTrimBands } from './trimBands'
-import { defaultOpeningTrimForProfile, normalizeOpeningSillOuter, outerSillUsesProfile, resolveOuterSillLayout } from './openings'
+import {
+  clampOuterSillLayoutForBayMouths,
+  openingFlanksBayMouth,
+  defaultOpeningTrimForProfile,
+  normalizeOpeningSillOuter,
+  outerSillUsesProfile,
+  resolveOuterSillLayout,
+} from './openings'
 import {
   DEFAULT_DOWNPIPE_NICHE_WIDTH_CM,
   downpipeLinkedOpeningIds,
@@ -593,7 +600,7 @@ function crossXZ(ax: number, az: number, bx: number, bz: number): number {
  * projizieren. Liefert das lokale, zentrierte X-Intervall (−w/2..w/2), falls
  * die Mundpunkte auf der Wandlinie liegen und sich mit der Wand überlappen.
  */
-function projectMouthLocalRange(
+export function projectMouthLocalRange(
   wall: Wall,
   mouthA: { x: number; z: number },
   mouthB: { x: number; z: number },
@@ -624,6 +631,27 @@ function projectMouthLocalRange(
 
 function isBayWrapWall(wall: Wall | undefined): wall is Wall {
   return Boolean(wall && (wall.bayRole === 'side' || wall.bayRole === 'front'))
+}
+
+/** Erker-Mundöffnungen in lokalem Wand-X (für Fensterbank-Clipping). */
+export function bayMouthLocalXGapsForWall(state: FacadeState, wall: Wall): Array<{ x0: number; x1: number }> {
+  const gaps: Array<{ x0: number; x1: number }> = []
+  const building = state.buildings.find((b) => b.id === wall.buildingId)
+  if (!building) return gaps
+  const byId = new Map(building.walls.map((w) => [w.id, w] as const))
+  for (const host of building.walls) {
+    const meta = host.bayWindow
+    if (!meta?.wallIds?.length) continue
+    const sides = meta.wallIds
+      .map((id) => byId.get(id))
+      .filter((w): w is Wall => Boolean(w) && w.bayRole === 'side')
+    if (sides.length < 2) continue
+    const mouthA = wallStartPoint(sides[0]!)
+    const mouthB = wallEndPoint(sides[sides.length - 1]!)
+    const range = projectMouthLocalRange(wall, mouthA, mouthB)
+    if (range && range.x1 - range.x0 > 0.5) gaps.push(range)
+  }
+  return gaps
 }
 
 function buildBayCorniceWraps(state: FacadeState, visibleIds: Set<string>): BayCorniceWrapResult {
@@ -1948,11 +1976,17 @@ function buildSillOuterPaths(state: FacadeState): ProfilePath[] {
       if (opening.hidden) continue
       const sill = opening.sillOuter
       if (!sill?.enabled || opening.type !== 'window' || opening.y <= 0) continue
+      const mouthGaps = bayMouthLocalXGapsForWall(state, wall)
+      if (openingFlanksBayMouth(opening, mouthGaps)) continue
       const normalized = normalizeOpeningSillOuter(sill)
       if (!outerSillUsesProfile(normalized)) continue
       const profile = resolveProfile(normalized.profileId!, state.customProfiles)
       if (!profile?.projecting || !profile.section) continue
-      const layout = resolveOuterSillLayout(opening, normalized)
+      const layout = clampOuterSillLayoutForBayMouths(
+        resolveOuterSillLayout(opening, normalized),
+        opening,
+        bayMouthLocalXGapsForWall(state, wall),
+      )
       const zOffset = profileZOffset(wall)
       const x0 = studio ? layout.xLeft - wall.width / 2 : wall.x + layout.xLeft
       const x1 = studio ? layout.xRight - wall.width / 2 : wall.x + layout.xRight

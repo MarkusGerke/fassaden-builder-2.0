@@ -18,6 +18,10 @@ import {
 
 export type SceneToolbarAppProps = {
   subscribe?: (listener: () => void) => () => void
+  /** Ohne Objektauswahl: Zufallsmodus oben in der rechten Leiste. */
+  showArrivieren?: boolean
+  /** Dach gewählt: Licht & Schatten gehört nicht in diese Leiste. */
+  hideSun?: boolean
 }
 
 const SUN_SLIDERS: BoundSliderDef[] = [
@@ -295,9 +299,44 @@ export function SceneToolbarApp(props: SceneToolbarAppProps) {
     <Box data-park-scene-toolbar="" class="park-scene-toolbar" color="fg.default" minW="0">
       <Accordion.Root
         multiple
-        defaultValue={['sun', 'bloom', 'anim', 'scene']}
+        defaultValue={props.showArrivieren ? ['arrivieren', 'sun', 'bloom', 'anim', 'scene'] : ['sun', 'bloom', 'anim', 'scene']}
         collapsible
       >
+        <Show when={props.showArrivieren}>
+          <Section value="arrivieren" title="Zufallsmodus">
+            <Field.Root>
+              <Field.Label>Seed</Field.Label>
+              <HStack gap="2">
+                <Input
+                  size="sm"
+                  inputMode="numeric"
+                  placeholder="leer = Zufall"
+                  value={readString('arrivieren-seed')}
+                  onInput={(e) => {
+                    writeString('arrivieren-seed', e.currentTarget.value)
+                    bump()
+                  }}
+                />
+                <Button size="sm" variant="outline" onClick={() => clickId('arrivieren-seed-random')}>
+                  Zufall
+                </Button>
+              </HStack>
+            </Field.Root>
+            <Button size="sm" onClick={() => clickId('arrivieren-generate')}>
+              Generieren
+            </Button>
+            <Box textStyle="sm" color="fg.muted">
+              {(tick(), document.getElementById('arrivieren-snapshot')?.textContent ?? '')}
+            </Box>
+            <BoundCheckbox
+              id="arrivieren-schematic-toggle"
+              label="SVG-Schematik"
+              tick={tick}
+              bump={bump}
+            />
+          </Section>
+        </Show>
+        <Show when={!props.hideSun}>
         <Section value="sun" title="Licht & Schatten">
           <Field.Root>
             <Field.Label>Datum (Berlin)</Field.Label>
@@ -315,6 +354,7 @@ export function SceneToolbarApp(props: SceneToolbarAppProps) {
             {(def) => <BoundSliderControl def={def} tick={tick} bump={bump} />}
           </For>
         </Section>
+        </Show>
 
         <Section value="lamps" title="Lampen & Leuchten">
           <BoundCheckbox

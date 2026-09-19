@@ -80,7 +80,7 @@ describe('applyOpeningProfilesDelta', () => {
       { openingId: 'donor', profileId: 'neu', edge: 'top' as const },
       { openingId: 'donor', profileId: 'neu', edge: 'right' as const },
     ]
-    const next = applyOpeningProfilesDelta(peer, 'peer', before, after)
+    const next = applyOpeningProfilesDelta(peer, { id: 'peer', type: 'window' }, before, after)
     expect(next.filter((p) => p.openingId === 'other')).toEqual([
       { openingId: 'other', profileId: 'keep', edge: 'left' },
     ])
@@ -93,7 +93,18 @@ describe('applyOpeningProfilesDelta', () => {
   it('ändert nichts wenn Donor-Profile gleich', () => {
     const peer = [{ openingId: 'peer', profileId: 'a', edge: 'top' as const }]
     const same = [{ openingId: 'donor', profileId: 'a', edge: 'top' as const }]
-    expect(applyOpeningProfilesDelta(peer, 'peer', same, same)).toBe(peer)
+    expect(applyOpeningProfilesDelta(peer, { id: 'peer', type: 'window' }, same, same)).toBe(peer)
+  })
+
+  it('keine Rahmenprofile auf Kellerfenster', () => {
+    const after = [{ openingId: 'donor', profileId: 'neu', edge: 'top' as const }]
+    const next = applyOpeningProfilesDelta(
+      [],
+      { id: 'keller', type: 'window', basementWindow: { enabled: true } },
+      [],
+      after,
+    )
+    expect(next).toEqual([])
   })
 })
 

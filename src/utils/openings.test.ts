@@ -1,7 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import type { FacadeState, Opening, Wall } from '../types/facade'
 import { emptyNeighbors } from '../types/facade'
-import { centeredOpeningX, anchoredOpeningX, resetOpenings, resolveOuterSillLayout, updateOpening, createOpening, defaultOuterSillDepth, replaceOpeningsFromSource } from './openings'
+import {
+  centeredOpeningX,
+  anchoredOpeningX,
+  resetOpenings,
+  resolveOuterSillLayout,
+  clampOuterSillLayoutForBayMouths,
+  openingFlanksBayMouth,
+  updateOpening,
+  createOpening,
+  defaultOuterSillDepth,
+  replaceOpeningsFromSource,
+} from './openings'
 import { STUDIO_MASONRY, DEFAULT_STUDIO_PANEL } from '../studio/constants'
 import { WALL_DEPTH } from '../constants/presets'
 
@@ -283,5 +294,25 @@ describe('defaultOuterSillDepth', () => {
       { donorWalls: [{ openings: [donor] }] },
     )
     expect(created.frameColor).toBe('#010203')
+  })
+})
+
+describe('openingFlanksBayMouth', () => {
+  it('erkennt Nachbarfenster links und rechts am Mund', () => {
+    const mouth = [{ x0: 100, x1: 200 }]
+    expect(openingFlanksBayMouth({ x: 0, width: 96 }, mouth)).toBe(true)
+    expect(openingFlanksBayMouth({ x: 204, width: 96 }, mouth)).toBe(true)
+    expect(openingFlanksBayMouth({ x: 48, width: 96 }, mouth)).toBe(false)
+  })
+})
+
+describe('clampOuterSillLayoutForBayMouths', () => {
+  it('kürzt Überstand Richtung Erker-Mund', () => {
+    const opening = { x: 0, width: 96, y: 128, type: 'window' as const, id: 'o1' }
+    const sill = { enabled: true, mode: 'board' as const, overhang: 16, depth: 16, thickness: 4 }
+    const base = resolveOuterSillLayout(opening, sill)
+    const clamped = clampOuterSillLayoutForBayMouths(base, opening, [{ x0: 100, x1: 200 }])
+    expect(clamped.xRight).toBe(100)
+    expect(clamped.width).toBe(100 - base.xLeft)
   })
 })

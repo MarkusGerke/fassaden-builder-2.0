@@ -577,7 +577,22 @@ export function FormMirror(props: FormMirrorProps): JSX.Element {
   onMount(() => {
     const root = document.querySelector(props.rootSelector)
     if (!root) return
-    const mo = new MutationObserver(() => bump())
+    const mo = new MutationObserver((records) => {
+      // Geklebte Sektionsköpfe toggeln class/style jedes Frame. Das würde
+      // BoundSelect/NumberInput neu mounten — Dropdowns und Stepper bleiben dann tot.
+      const relevant = records.some((record) => {
+        const el = record.target
+        if (!(el instanceof Element)) return true
+        if (
+          el.classList.contains('settings-section-head') ||
+          el.classList.contains('settings-section-end-spacer')
+        ) {
+          return false
+        }
+        return true
+      })
+      if (relevant) bump()
+    })
     mo.observe(root, {
       attributes: true,
       childList: true,

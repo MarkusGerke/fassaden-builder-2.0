@@ -145,6 +145,10 @@
             <button type="button" class="preset-btn view-mode-btn" data-chrome="3d" id="view-btn-3d">3D</button>
             <button type="button" class="preset-btn view-mode-btn" data-chrome="export" id="view-btn-export" title="Export-Modus: Ansichten nebeneinander">Export</button>
           </div>
+          <div class="view-mode-toggle" role="group" aria-label="Arrivieren Zufall">
+            <button type="button" class="preset-btn view-mode-btn" id="arrivieren-viewport-undo" title="Vorheriger Seed" aria-label="Vorheriger Seed" disabled>↩</button>
+            <button type="button" class="preset-btn view-mode-btn" id="arrivieren-viewport-random" title="Zufällige Fassade generieren" aria-label="Zufällige Fassade">Zufall</button>
+          </div>
           <div class="view-mode-toggle" role="group" aria-label="Darstellung">
             <button type="button" class="preset-btn view-mode-btn active" data-chrome="color" id="view-btn-color">Farbe</button>
             <button type="button" class="preset-btn view-mode-btn" data-chrome="line" id="view-btn-line">Zeichnung</button>
@@ -359,7 +363,8 @@
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="sceneLights" id="library-tab-scene-lights" hidden>Lampen &amp; Leuchten</button>
               <button type="button" class="library-tab active" role="tab" aria-selected="true" data-library-tab="windows" id="library-tab-windows" data-library-when="wall">Fenster</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="doors" id="library-tab-doors" data-library-when="wall">Türen</button>
-              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="panels" id="library-tab-panels" data-library-when="wall">Fassade</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="facades" id="library-tab-facades" data-library-when="always">Fassade</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="panels" id="library-tab-panels" data-library-when="wall">Paneele &amp; Mauerwerk</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="walls" id="library-tab-walls" data-library-when="always">Wände</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="farbe" id="library-tab-farbe" data-library-when="always">Farben</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="bay" id="library-tab-bay" data-library-when="always">Erker</button>
@@ -661,7 +666,7 @@
             </div>
           </div>
           <div id="toolbar-roof" hidden>
-              <div class="toolbar-group">
+              <div class="settings-section ui-stack" data-settings-section="roof-toggle" data-settings-label="Dach">
                 <label class="toolbar-check">
                   <input id="roof-enabled" type="checkbox" />
                   Dach
@@ -1175,7 +1180,7 @@
               <div id="studio-trim-bands-list"></div>
               <button id="studio-trim-band-add" class="preset-btn" type="button">Band hinzufügen</button>
 </div>
-<div class="settings-section" data-settings-section="panels" data-settings-label="Fassade" data-settings-order="40">
+<div class="settings-section" data-settings-section="panels" data-settings-label="Paneele & Mauerwerk" data-settings-order="40">
               <div class="toolbar-group" hidden>
                 <label class="toolbar-check">
                   <input id="studio-panels-enabled" type="checkbox" checked />
@@ -3157,6 +3162,44 @@
                     <button id="sun-path-play" class="preset-btn" type="button">Abspielen</button>
                     <button id="sun-path-stop" class="preset-btn" type="button" hidden>Stop</button>
                   </div>
+                </div>
+              </div>
+
+              <div id="arrivieren-settings-section" class="settings-section ui-stack" data-settings-section="arrivieren" data-settings-label="Arrivieren" data-settings-order="28">
+                <p class="toolbar-hint compact-hint">Regelbasierter Hauswand-Zufall (Geschosse, Achsen, EG, Erker). Gewichte nur in <code>hauswand-regelwerk.json</code>.</p>
+                <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                  <span class="toolbar-label">Seed</span>
+                  <div class="preset-group arrivieren-seed-row" role="group" aria-label="Seed">
+                    <input id="arrivieren-seed" type="text" inputmode="numeric" value="" placeholder="leer = Zufall" aria-label="Seed" />
+                    <button id="arrivieren-seed-random" class="preset-btn" type="button" title="Neuer Seed und sofort generieren">Zufall</button>
+                  </div>
+                </div>
+                <div class="toolbar-group">
+                  <button id="arrivieren-generate" class="preset-btn" type="button">Generieren</button>
+                </div>
+                <p id="arrivieren-snapshot" class="toolbar-hint compact-hint">Noch nicht generiert.</p>
+                <label class="toolbar-check">
+                  <input id="arrivieren-schematic-toggle" type="checkbox" />
+                  SVG-Schematik
+                </label>
+                <div id="arrivieren-schematic" class="arrivieren-schematic-host" hidden></div>
+                <p class="settings-subheading settings-subheading-nested">Feedback</p>
+                <div id="arrivieren-broken-rules" class="ui-stack"></div>
+                <div class="toolbar-group ui-stack">
+                  <span class="toolbar-label">Notiz</span>
+                  <textarea id="arrivieren-note" rows="2" class="arrivieren-note"></textarea>
+                </div>
+                <div class="toolbar-group ui-stack">
+                  <span class="toolbar-label">Gewichtsvorschlag</span>
+                  <textarea id="arrivieren-weight-note" rows="2" class="arrivieren-note"></textarea>
+                </div>
+                <div class="toolbar-group">
+                  <button id="arrivieren-feedback-ok" class="preset-btn" type="button">Korrekt</button>
+                  <button id="arrivieren-feedback-wrong" class="preset-btn" type="button">Falsch</button>
+                </div>
+                <div class="toolbar-group">
+                  <button id="arrivieren-feedback-copy" class="preset-btn" type="button">Feedback kopieren</button>
+                  <button id="arrivieren-feedback-download" class="preset-btn" type="button">JSONL laden</button>
                 </div>
               </div>
 

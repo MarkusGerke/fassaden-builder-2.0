@@ -389,9 +389,28 @@ function insetByPitch(
   riseCm: number,
   pitchDeg: number,
 ): Array<{ x: number; z: number }> {
-  const rad = (pitchDeg * Math.PI) / 180
-  const run = riseCm / Math.tan(Math.max(0.15, rad))
+  const run = pitchRun(riseCm, pitchDeg)
   return offsetPolygonXZ(poly, -run)
+}
+
+/** Mansarde: Stirnseiten bleiben auf der Wand, nur vorne/hinten laufen ein. */
+function insetMansard(
+  poly: Array<{ x: number; z: number }>,
+  riseCm: number,
+  pitchDeg: number,
+  roof: RoofConfig,
+): Array<{ x: number; z: number }> {
+  const run = pitchRun(riseCm, pitchDeg)
+  const ends = ridgeEndEdgeMask(poly, ridgeAxisDir(roof, poly))
+  return offsetPolygonPerEdge(
+    poly,
+    ends.map((end) => (end ? 0 : -run)),
+  )
+}
+
+function pitchRun(riseCm: number, pitchDeg: number): number {
+  const rad = (pitchDeg * Math.PI) / 180
+  return riseCm / Math.tan(Math.max(0.15, rad))
 }
 
 /** Wand ohne Paneele → Dach bündig, keine Rinne an dieser Kante. */
@@ -516,7 +535,8 @@ function listRoofEdgesForRing(building: Building, roof: RoofConfig, outer: XZ[])
     const key = roofEdgeKey(a, b)
     const mode = roofEdgeModeFor(roof, key)
     const autoFlush = Boolean(wall && wallIsBareForRoof(wall))
-    const flush = mode === 'flush' || (mode === 'auto' && autoFlush)
+    const sideFlush = ridgeEndEdgeMask(outer, ridgeAxisDir(roof, outer))[i] === true
+    const flush = sideFlush || mode === 'flush' || (mode === 'auto' && autoFlush)
     const compass = edgeCompassLabel(a, b)
     compassCount.set(compass, (compassCount.get(compass) ?? 0) + 1)
     edges.push({
@@ -543,59 +563,68 @@ function listRoofEdgesForRing(building: Building, roof: RoofConfig, outer: XZ[])
   return edges
 }
 
+/** Traufüberstand nur bei explizit bündiger Kante aus — `auto`+nackte Wand bleibt ohne Rinne, darf aber überstehen. */
 export function overhangPerEdge(edges: RoofEdgeInfo[], overhang: number): number[] {
-  return edges.map((edge) => (edge.flush ? 0 : overhang))
+  return edges.map((edge) => (edge.mode === 'flush' ? 0 : overhang))
+}
+
+/** Firstachse: gespeicherter Winkel, sonst die längste Ringkante. */
+function ridgeAxisDir(roof: RoofConfig, ring: XZ[]): XZ {
+  if (roof.ridgeDeg !== null && roof.ridgeDeg !== undefined) return yawToDirXZ(roof.ridgeDeg)
+  let best = { x: 1, z: 0 }
+  let bestLen = -1
+  for (let i = 0; i < ring.length; i += 1) {
+    const a = ring[i]!
+    const b = ring[(i + 1) % ring.length]!
+    const len = Math.hypot(b.x - a.x, b.z - a.z)
+    if (len > bestLen) {
+      bestLen = len
+      best = { x: (b.x - a.x) / (len || 1), z: (b.z - a.z) / (len || 1) }
+    }
+  }
+  return best
+}
+
+/** Stirnkanten der Firstachse (links/rechts zur Fassade): immer wandbündig, ohne Schräge. */
+function ridgeEndEdgeMask(ring: XZ[], d: XZ): boolean[] {
+  let tMin = Infinity
+  let tMax = -Infinity
+  for (const p of ring) {
+    const t = d.x * p.x + d.z * p.z
+    tMin = Math.min(tMin, t)
+    tMax = Math.max(tMax, t)
+  }
+  return ring.map((a, i) => {
+    const b = ring[(i + 1) % ring.length]!
+    const ta = d.x * a.x + d.z * a.z
+    const tb = d.x * b.x + d.z * b.z
+    return (
+      (Math.abs(ta - tMin) < 0.5 && Math.abs(tb - tMin) < 0.5) ||
+      (Math.abs(ta - tMax) < 0.5 && Math.abs(tb - tMax) < 0.5)
+    )
+  })
 }
 
 /**
- * Kantenmodi beim Formwechsel: Sattel/Krüppelwalm → Giebelenden bündig;
- * Walm/Mansarde/Pult → gespeicherte Bündig-Modi löschen (leeres Objekt).
+ * Kantenmodi beim Formwechsel: Stirnseiten (links/rechts) immer bündig,
+ * vorne/hinten behalten den Überstand.
  */
 export function edgeModesForRoofKind(
   building: Building,
   kind: RoofKind,
   roof: RoofConfig,
 ): Record<string, RoofEdgeMode> {
-  if (kind !== 'gable' && kind !== 'halfHip') return {}
+  void kind
   const outer = roofOuterRing(building)
   if (!outer || outer.length < 3) return {}
-  let d: XZ
-  if (roof.ridgeDeg === null || roof.ridgeDeg === undefined) {
-    let best = { x: 1, z: 0 }
-    let bestLen = -1
-    for (let i = 0; i < outer.length; i += 1) {
-      const a = outer[i]!
-      const b = outer[(i + 1) % outer.length]!
-      const len = Math.hypot(b.x - a.x, b.z - a.z)
-      if (len > bestLen) {
-        bestLen = len
-        best = { x: (b.x - a.x) / (len || 1), z: (b.z - a.z) / (len || 1) }
-      }
-    }
-    d = best
-  } else {
-    d = yawToDirXZ(roof.ridgeDeg)
-  }
-  let tMin = Infinity
-  let tMax = -Infinity
-  for (const p of outer) {
-    const t = d.x * p.x + d.z * p.z
-    tMin = Math.min(tMin, t)
-    tMax = Math.max(tMax, t)
-  }
+  const d = ridgeAxisDir(roof, outer)
   const modes: Record<string, RoofEdgeMode> = {}
-  const n = outer.length
-  for (let i = 0; i < n; i += 1) {
+  const ends = ridgeEndEdgeMask(outer, d)
+  for (let i = 0; i < outer.length; i += 1) {
+    if (!ends[i]) continue
     const a = outer[i]!
-    const b = outer[(i + 1) % n]!
-    const ta = d.x * a.x + d.z * a.z
-    const tb = d.x * b.x + d.z * b.z
-    if (
-      (Math.abs(ta - tMin) < 0.5 && Math.abs(tb - tMin) < 0.5) ||
-      (Math.abs(ta - tMax) < 0.5 && Math.abs(tb - tMax) < 0.5)
-    ) {
-      modes[roofEdgeKey(a, b)] = 'flush'
-    }
+    const b = outer[(i + 1) % outer.length]!
+    modes[roofEdgeKey(a, b)] = 'flush'
   }
   return modes
 }
@@ -1296,7 +1325,9 @@ function roofBase(building: Building, roof: RoofConfig): {
   const topFloor = floors.length - 1
   const wallTopY = storeyTopY(building, topFloor)
   const pitchForSlab = roof.kind === 'mansard' ? roof.pitchLower : roof.pitch
-  const slabLift = roofSlabVerticalCm(pitchForSlab)
+  // Mansarde: steile untere Neigung bläht `roofSlabVerticalCm` auf (~30 cm bei 70°)
+  // und hebt die ganze Haut von der Wand — Traufe direkt auf die Wandkrone.
+  const slabLift = roof.kind === 'mansard' ? 0 : roofSlabVerticalCm(pitchForSlab)
   const eaveY = wallTopY + slabLift
   return {
     outer,
@@ -1354,8 +1385,8 @@ function buildMansardRoofForBuilding(
   const smooth = roofEffectiveCovering(roof) === 'smooth'
   const breakRise = roof.ridgeHeight * 0.55
   const upperRise = roof.ridgeHeight - breakRise
-  const breakPoly = insetByPitch(eave, breakRise, roof.pitchLower)
-  const ridgePoly = insetByPitch(breakPoly, upperRise, roof.pitchUpper)
+  const breakPoly = insetMansard(eave, breakRise, roof.pitchLower, roof)
+  const ridgePoly = insetMansard(breakPoly, upperRise, roof.pitchUpper, roof)
   const ridgeHoles = [
     ...holes
       .map((hole) =>
@@ -1396,7 +1427,7 @@ function buildMansardRoofForBuilding(
     buildRidgeTiles(positions, normals, uvs, indices, ridgePoly, eaveY + roof.ridgeHeight, roof)
   }
 
-  const edgeActive = edgeOverhang.map((d) => d > 0.5)
+  const edgeActive = base.edges.map((edge, i) => edgeOverhang[i]! > 0.5 && !edge.flush)
   appendGutter(sinks, roof, eave, eaveY, edgeActive)
   return true
 }

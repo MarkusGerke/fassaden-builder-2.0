@@ -29,7 +29,20 @@ import {
   type FacadeDecorKind,
 } from './studio/facadeDecor'
 import { resolveProfile } from './profiles/registry'
-import { applyPlinthOpeningFragmentDiscard, buildProfilePaths, clipProfileSectionAboveCm, createPlinthProfileSweepGeometry, createProfileSweepGeometry, createSimpleProfileBarGeometry, disposePlinthOpeningDiscard, scaleProfileSectionAxes, transformProfileSection, transformProfileSectionAnchored, openingFrameProfileOutwardCm } from './utils/profilePaths'
+import {
+  applyPlinthOpeningFragmentDiscard,
+  bayMouthLocalXGapsForWall,
+  buildProfilePaths,
+  clipProfileSectionAboveCm,
+  createPlinthProfileSweepGeometry,
+  createProfileSweepGeometry,
+  createSimpleProfileBarGeometry,
+  disposePlinthOpeningDiscard,
+  scaleProfileSectionAxes,
+  transformProfileSection,
+  transformProfileSectionAnchored,
+  openingFrameProfileOutwardCm,
+} from './utils/profilePaths'
 import { clampFacadeState, edgeIsJoined, storeyStructuralDepthCm } from './utils/walls'
 import {
   labelWorldDeltaFromStates,
@@ -38,7 +51,14 @@ import {
   trimBandWorldDeltaFromStates,
   wallWorldDeltaFromStates,
 } from './utils/liveDrag'
-import { openingHasProfile, normalizeOpeningSillOuter, outerSillUsesProfile, resolveOuterSillLayout } from './utils/openings'
+import {
+  clampOuterSillLayoutForBayMouths,
+  openingFlanksBayMouth,
+  openingHasProfile,
+  normalizeOpeningSillOuter,
+  outerSillUsesProfile,
+  resolveOuterSillLayout,
+} from './utils/openings'
 import {
   ARCH_MESH_SEGMENTS,
   effectiveOpeningDepthOffset,
@@ -2379,7 +2399,8 @@ export class FacadeController {
         color: new THREE.Color(built.tileColor),
         roughness: 0.88,
         metalness: 0.02,
-        side: THREE.FrontSide,
+        // Mansarden-Bänder haben nach innen zeigende Normalen → FrontSide = unsichtbare Straßenfront
+        side: roof.kind === 'mansard' ? THREE.DoubleSide : THREE.FrontSide,
         shadowSide: THREE.FrontSide,
       })
       const roofMesh = new THREE.Mesh(built.roof, tileMat)
@@ -4308,18 +4329,20 @@ export class FacadeController {
       wall,
       this.pointLightOccludersEnabled ? THREE.DoubleSide : THREE.FrontSide,
     )
+    const baySide = isStudioWall(wall) && wall.bayRole === 'side'
     let mesh = this.meshes.get(wall.id)
     if (!mesh) {
       mesh = new THREE.Mesh(geometry, wallMaterial)
-      mesh.castShadow = true
-      mesh.receiveShadow = true
+      mesh.castShadow = !baySide
+      mesh.receiveShadow = !baySide
       this.wallGroup.add(mesh)
       this.meshes.set(wall.id, mesh)
     } else {
       mesh.geometry.dispose()
       mesh.geometry = geometry
       mesh.material = wallMaterial
-      mesh.receiveShadow = true
+      mesh.castShadow = !baySide
+      mesh.receiveShadow = !baySide
     }
     mesh.userData = { kind: 'wall', wallId: wall.id, buildingId: wall.buildingId }
     mesh.position.set(transform.position.x, transform.position.y, transform.position.z)
@@ -5921,6 +5944,8 @@ export class FacadeController {
         const sill = opening.sillInner
         if (!sill?.enabled || !openingActsAsWindow(opening) || opening.y <= 0) continue
         if (basementWindowEnabled(opening)) continue
+        const mouthGaps = bayMouthLocalXGapsForWall(this.state, wall)
+        if (openingFlanksBayMouth(opening, mouthGaps)) continue
         // Konche: Innenbank sitzt an der Wandinnenkante und ragt in die Kalotte
         // (weißer Oval-Fleck hinten unten). Außenbank bleibt.
         if (opening.type === 'conch') continue
@@ -6010,9 +6035,15 @@ export class FacadeController {
         const sill = opening.sillOuter
         if (!sill?.enabled || !openingActsAsWindow(opening) || opening.y <= 0) continue
         if (basementWindowEnabled(opening)) continue
+        const mouthGaps = bayMouthLocalXGapsForWall(this.state, wall)
+        if (openingFlanksBayMouth(opening, mouthGaps)) continue
         const normalized = normalizeOpeningSillOuter(sill)
         if (outerSillUsesProfile(normalized)) continue
-        const layout = resolveOuterSillLayout(opening, normalized)
+        const layout = clampOuterSillLayoutForBayMouths(
+          resolveOuterSillLayout(opening, normalized),
+          opening,
+          bayMouthLocalXGapsForWall(this.state, wall),
+        )
         const depth = Math.max(1, layout.depth)
         const thickness = Math.max(0.5, layout.thickness)
         const width = Math.max(1, layout.width)

@@ -394,6 +394,8 @@ export function outerSillUsesProfile(sill: OpeningSillOuter): boolean {
   return sill.mode === 'profile' && Boolean(sill.profileId)
 }
 
+export type LocalXRange = { x0: number; x1: number }
+
 export function resolveOuterSillLayout(opening: Opening, sill: OpeningSillOuter): OuterSillLayout {
   const normalized = normalizeOpeningSillOuter(sill)
   const overhang = normalized.overhang ?? 16
@@ -406,6 +408,45 @@ export function resolveOuterSillLayout(opening: Opening, sill: OpeningSillOuter)
   const yTop = opening.y
   const yBottom = opening.y - thickness
   return { xLeft, xRight, yTop, yBottom, depth, thickness, angleDeg, width }
+}
+
+const BAY_MOUTH_NEIGHBOR_EPS_CM = 8
+
+/** Fenster direkt links/rechts am Erker-Mund (Nachbaröffnung, nicht im Mund). */
+export function openingFlanksBayMouth(
+  opening: Pick<Opening, 'x' | 'width'>,
+  mouthGaps: LocalXRange[],
+): boolean {
+  if (!mouthGaps.length) return false
+  const left = opening.x
+  const right = opening.x + opening.width
+  for (const g of mouthGaps) {
+    if (Math.abs(right - g.x0) <= BAY_MOUTH_NEIGHBOR_EPS_CM) return true
+    if (Math.abs(left - g.x1) <= BAY_MOUTH_NEIGHBOR_EPS_CM) return true
+  }
+  return false
+}
+
+/** Fensterbretter neben Erker-Mund: Überstand nicht in die Mundöffnung. */
+export function clampOuterSillLayoutForBayMouths(
+  layout: OuterSillLayout,
+  opening: Pick<Opening, 'x' | 'width'>,
+  mouthGaps: LocalXRange[],
+): OuterSillLayout {
+  if (!mouthGaps.length) return layout
+  let xLeft = layout.xLeft
+  let xRight = layout.xRight
+  const ox = opening.x
+  const ow = opening.width
+  for (const g of mouthGaps) {
+    if (ox + ow <= g.x0 + 0.5) {
+      xRight = Math.min(xRight, g.x0)
+    } else if (ox >= g.x1 - 0.5) {
+      xLeft = Math.max(xLeft, g.x1)
+    }
+  }
+  const width = Math.max(1, xRight - xLeft)
+  return { ...layout, xLeft, xRight, width }
 }
 
 export function openingHasProfile(
