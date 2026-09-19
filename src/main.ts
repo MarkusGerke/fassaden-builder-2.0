@@ -1740,6 +1740,8 @@ function presentOverviewPose(): { position: THREE.Vector3; target: THREE.Vector3
     fovDeg: camera.fov,
     aspect: width / height,
     storeyHeight: activeWallHeight(),
+    // Dach immer mit einrahmen (Firsthöhe), sonst angeschnitten im Fassadenmodus
+    contentMaxY: sceneContentMaxY(),
   })
   if (!frame) return null
   const outward = facadeOutward(yawDeg, true)
@@ -1747,7 +1749,7 @@ function presentOverviewPose(): { position: THREE.Vector3; target: THREE.Vector3
     target: new THREE.Vector3(frame.lookX, frame.lookY, frame.lookZ),
     position: new THREE.Vector3(
       frame.lookX + outward.x * frame.distance,
-      frame.lookY,
+      frame.lookY + frame.cameraElevateCm,
       frame.lookZ + outward.z * frame.distance,
     ),
   }
@@ -1834,6 +1836,7 @@ type LibraryTab =
   | 'doors'
   | 'niches'
   | 'stairs'
+  | 'facades'
   | 'panels'
   | 'cornice'
   | 'trimBands'
@@ -1917,6 +1920,7 @@ function allowedLibraryTabs(): Set<LibraryTab> {
     if (wallGeomLockedByTouchChrome()) {
       return new Set<LibraryTab>([
         'panels',
+        'facades',
         'farbe',
         'cornice',
         'trimBands',
@@ -1932,6 +1936,7 @@ function allowedLibraryTabs(): Set<LibraryTab> {
       'bay',
       'balcony',
       'panels',
+      'facades',
       'farbe',
       'cornice',
       'trimBands',
@@ -1952,7 +1957,17 @@ function allowedLibraryTabs(): Set<LibraryTab> {
   if (wallGeomLockedByTouchChrome()) {
     return new Set<LibraryTab>()
   }
-  return new Set<LibraryTab>(['windows', 'doors', 'walls', 'farbe', 'bay', 'balcony', 'lights', 'awnings'])
+  return new Set<LibraryTab>([
+    'windows',
+    'doors',
+    'walls',
+    'farbe',
+    'bay',
+    'balcony',
+    'lights',
+    'awnings',
+    'facades',
+  ])
 }
 
 /** Touch ohne Objektauswahl: Szene-Kacheln statt Katalog-Register. */
@@ -10201,6 +10216,95 @@ function focusCameraOnFloorPlan(walls: Wall[]) {
   controls.update()
 }
 
+let hauswandCamAnim: number | null = null
+
+/** Weiche Kamera-Animation (Arrivieren nach Generieren). */
+function animateCameraToPose(
+  toPos: THREE.Vector3,
+  toTarget: THREE.Vector3,
+  durationMs = 520,
+) {
+  if (hauswandCamAnim !== null) {
+    cancelAnimationFrame(hauswandCamAnim)
+    hauswandCamAnim = null
+  }
+  const fromPos = camera.position.clone()
+  const fromTarget = controls.target.clone()
+  const t0 = performance.now()
+  const ease = (t: number) => 1 - (1 - t) ** 3
+  const tick = (now: number) => {
+    // View-Wechsel während Animation → abbrechen (nie in anderen Modus „mitnehmen“)
+    if (currentView !== '3d' && currentView !== 'present') {
+      hauswandCamAnim = null
+      return
+    }
+    const u = Math.min(1, (now - t0) / durationMs)
+    const e = ease(u)
+    camera.position.lerpVectors(fromPos, toPos, e)
+    controls.target.lerpVectors(fromTarget, toTarget, e)
+    if (currentView === 'present') {
+      camera.lookAt(controls.target.x, controls.target.y, controls.target.z)
+      camera.near = 1
+      camera.far = Math.max(5000, camera.position.distanceTo(controls.target) * 4)
+      camera.updateProjectionMatrix()
+    } else {
+      controls.update()
+    }
+    markViewportDirty()
+    if (u < 1) {
+      hauswandCamAnim = requestAnimationFrame(tick)
+    } else {
+      hauswandCamAnim = null
+      if (currentView === 'present') syncPresentCamera()
+    }
+  }
+  hauswandCamAnim = requestAnimationFrame(tick)
+}
+
+/** Arrivieren: Haus einrahmen — View-Modus nie wechseln (Fassade≠3D). */
+function frameHauswandAfterGenerate() {
+  if (currentView === 'top') {
+    framePlanCameraToContent()
+    markViewportDirty()
+    return
+  }
+  if (currentView === 'front') {
+    frontPanScreenX = 0
+    frontPanScreenY = 0
+    invalidateFrontViewBase()
+    applyFrontCameraView({ fitOnly: true })
+    syncFrontView()
+    markViewportDirty()
+    return
+  }
+  // „Fassade“ = present: frontal vor die Hausfront — nie setView('3d'), nie Isometrie
+  if (currentView === 'present') {
+    objectFocusBookmark = null
+    const pose = presentOverviewPose()
+    if (pose) {
+      animateCameraToPose(pose.position, pose.target, 560)
+    } else {
+      syncPresentCamera()
+    }
+    markViewportDirty()
+    return
+  }
+  if (currentView !== '3d') return
+  const building = getActiveBuilding(state)
+  const walls = building.walls.filter((w) => isStudioWall(w))
+  const bounds = galleryFocusBounds(walls)
+  if (!bounds) return
+  const { cx, cy, cz, span } = bounds
+  const dist = Math.max(span * 1.45, cy * 2.1, 320)
+  const elev = Math.max(cy * 0.65, span * 0.38, 180)
+  const horiz = dist * Math.SQRT1_2
+  animateCameraToPose(
+    new THREE.Vector3(cx + horiz, elev, cz + horiz),
+    new THREE.Vector3(cx, cy, cz),
+    560,
+  )
+}
+
 function focusCameraExterior(walls: Wall[]) {
   // maxDistance zuerst an die Site — sonst klemmt OrbitControls die Position auf 4000.
   if (!isGalleryModeActive()) syncCameraDistanceLimits()
@@ -11976,6 +12080,17 @@ function initOpeningLibrary() {
       })
       host.appendChild(card)
     }
+    syncLibraryAppliedOutline()
+    return
+  }
+
+  if (libraryTab === 'facades') {
+    const hint = document.createElement('p')
+    hint.className = 'toolbar-hint compact-hint'
+    hint.style.padding = '0.5rem 0.75rem'
+    hint.textContent =
+      'Gespeicherte Fassaden (Seeds) — demnächst bis zu 10 Favoriten. Bis dahin: Zufall auf der Bühne.'
+    host.appendChild(hint)
     syncLibraryAppliedOutline()
     return
   }
@@ -21012,7 +21127,7 @@ function refreshAllProfileCards() {
 
 function fillAllProfileSelects() {
   refreshAllProfileCards()
-  if (libraryTab === 'profiles' || libraryTab === 'pediment' || libraryTab === 'openingForm' || libraryTab === 'cornice' || libraryTab === 'plinth' || libraryTab === 'label' || libraryTab === 'panels' || libraryTab === 'awnings' || libraryTab === 'rollerShutters') initOpeningLibrary()
+  if (libraryTab === 'profiles' || libraryTab === 'pediment' || libraryTab === 'openingForm' || libraryTab === 'cornice' || libraryTab === 'plinth' || libraryTab === 'label' || libraryTab === 'panels' || libraryTab === 'facades' || libraryTab === 'awnings' || libraryTab === 'rollerShutters') initOpeningLibrary()
 }
 
 function selectedWindowOpening() {
@@ -28047,9 +28162,13 @@ const arrivierenHost: ArrivierenModeHost = {
   applyState(next, nextEditor) {
     applyState(next, nextEditor ?? editor)
   },
+  frameGeneratedFacade: () => {
+    frameHauswandAfterGenerate()
+  },
 }
 initArrivierenUi(arrivierenHost, {
   seedInput: document.querySelector<HTMLInputElement>('#arrivieren-seed')!,
+  seedRandomBtn: document.querySelector<HTMLButtonElement>('#arrivieren-seed-random')!,
   generateBtn: document.querySelector<HTMLButtonElement>('#arrivieren-generate')!,
   snapshotEl: document.querySelector<HTMLElement>('#arrivieren-snapshot')!,
   schematicHost: document.querySelector<HTMLElement>('#arrivieren-schematic')!,
@@ -28061,6 +28180,8 @@ initArrivierenUi(arrivierenHost, {
   exportCopyBtn: document.querySelector<HTMLButtonElement>('#arrivieren-feedback-copy')!,
   exportDownloadBtn: document.querySelector<HTMLButtonElement>('#arrivieren-feedback-download')!,
   brokenRulesHost: document.querySelector<HTMLElement>('#arrivieren-broken-rules')!,
+  viewportRandomBtn: document.querySelector<HTMLButtonElement>('#arrivieren-viewport-random'),
+  viewportUndoBtn: document.querySelector<HTMLButtonElement>('#arrivieren-viewport-undo'),
 })
 
 viewBtnColor.addEventListener('click', () => {

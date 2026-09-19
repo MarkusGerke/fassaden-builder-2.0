@@ -25,9 +25,11 @@ describe('computePresentCameraFrame', () => {
       fovDeg: 50,
       aspect: 16 / 9,
       storeyHeight: 280,
+      cameraElevateCm: 0,
     })
     expect(frame).not.toBeNull()
     expect(frame!.lookY).toBeCloseTo(140, 0)
+    expect(frame!.cameraElevateCm).toBe(0)
   })
 
   it('größere Distanz bei mehr Geschosshöhe im Bild', () => {
@@ -37,6 +39,7 @@ describe('computePresentCameraFrame', () => {
       fovDeg: 50,
       aspect: 1,
       storeyHeight: 280,
+      cameraElevateCm: 0,
     })
     const two = computePresentCameraFrame({
       walls: [wall({ id: 'a', width: 400, height: 560, y: 0 })],
@@ -44,7 +47,42 @@ describe('computePresentCameraFrame', () => {
       fovDeg: 50,
       aspect: 1,
       storeyHeight: 280,
+      cameraElevateCm: 0,
     })
     expect(one!.distance).toBeLessThan(two!.distance)
+  })
+
+  it('contentMaxY (Dach) vergrößert Distanz und hebt lookY', () => {
+    const walls = [wall({ id: 'a', width: 400, height: 280, y: 0 })]
+    const bare = computePresentCameraFrame({
+      walls,
+      yawDeg: 0,
+      fovDeg: 50,
+      aspect: 1,
+      storeyHeight: 280,
+      cameraElevateCm: 0,
+    })
+    const withRoof = computePresentCameraFrame({
+      walls,
+      yawDeg: 0,
+      fovDeg: 50,
+      aspect: 1,
+      storeyHeight: 280,
+      contentMaxY: 280 + 280,
+      cameraElevateCm: 0,
+    })
+    expect(withRoof!.lookY).toBeGreaterThan(bare!.lookY)
+    expect(withRoof!.distance).toBeGreaterThan(bare!.distance)
+  })
+
+  it('cameraElevateCm default > 0', () => {
+    const frame = computePresentCameraFrame({
+      walls: [wall({ id: 'a', width: 400, height: 280, y: 0 })],
+      yawDeg: 0,
+      fovDeg: 50,
+      aspect: 1,
+      storeyHeight: 280,
+    })
+    expect(frame!.cameraElevateCm).toBeGreaterThan(0)
   })
 })

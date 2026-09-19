@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.495'
+export const APP_VERSION = '2.0.511'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,155 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.511',
+    date: '2026-09-19',
+    title: 'Arrivieren: Dach im Fassadenmodus, Zufall auf der Bühne',
+    changes: [
+      'Fassaden-Kamera rahmt Firsthöhe ein und sitzt höher — Dach immer ganz sichtbar',
+      'Zufallsdach: First fest O–W; Bühne: Zufall + ↩ vorheriger Seed; Bibliothek: Reiter „Fassade“ (Favoriten demnächst), Paneele umbenannt',
+    ],
+  },
+  {
+    version: '2.0.510',
+    date: '2026-09-19',
+    title: 'Arrivieren: OG-Flucht, Rechteck-Haus, Dach',
+    changes: [
+      'Seed 405147048 u. a.: Serienbruch zählt Türspalten nicht mit; 144er nur noch ohne EG-Konflikt',
+      'Generieren baut Seiten- und Rückwände (Gründerzeit-Tiefe ~12–14 m, 8er) und ein Zufallsdach ohne Gauben',
+    ],
+  },
+  {
+    version: '2.0.509',
+    date: '2026-09-19',
+    title: 'Arrivieren: schmalere Häuser (3–7 Achsen)',
+    changes: [
+      'Zufallsbreite eher 3–7×96er-Fenster (kein Soft-8/9 mehr); Geschosse weiter 2–5 mit Schwerpunkt 3–4',
+    ],
+  },
+  {
+    version: '2.0.508',
+    date: '2026-09-19',
+    title: 'Arrivieren: Shop-Tür, EG≥96, Keller optional, Erker-Soffit',
+    changes: [
+      'Schaufenster immer mit Tür 24–96 cm daneben; EG-Abstände inkl. Schaufenster ≥96 cm',
+      'Kellerfenster nur noch ~30 % der Fassaden; Serien >4 Fenster → Erker oder 144er',
+      'Nackte Arrivieren-Wände: Erker-Untersicht/Mundblende bleiben (keine dunklen Löcher); keine seitlichen Fensterbretter durch die Front',
+    ],
+  },
+  {
+    version: '2.0.507',
+    date: '2026-09-19',
+    title: 'Arrivieren: Erker 288/384, Abstände 128, EG-Flucht',
+    changes: [
+      'Nur noch Erker 288 oder 384 (kein 192); max. Öffnungsabstand 128 cm',
+      'EG-Fenster fluchten mit OG; Erker ganz über Tür oder ≥48 cm daneben',
+      '45°-Erker-Spalte: mittig 96, links/rechts 48 mit 64 cm Abstand',
+    ],
+  },
+  {
+    version: '2.0.506',
+    date: '2026-09-19',
+    title: 'Arrivieren: Raster-Abstände & Erker 48',
+    changes: [
+      'Keine 48er-Fassadenfenster (nur 45°-Erker); Zwischenräume Fenster↔Fenster 96 cm',
+      'Leere Flächen max. 96 cm; Erker-Nachbarn bevorzugt 48 cm und ausgemittelt',
+    ],
+  },
+  {
+    version: '2.0.505',
+    date: '2026-09-19',
+    title: 'Arrivieren: Fassade-Ansicht bleibt',
+    changes: [
+      'Zufall/Generieren im Modus Fassade: frontal einrahmen wie üblich — kein Wechsel auf 3D',
+    ],
+  },
+  {
+    version: '2.0.504',
+    date: '2026-09-19',
+    title: 'Arrivieren Ränder 96, Erker-Serie, Viewport',
+    changes: [
+      'Wandenden 96 cm; >4 Fenster in Folge → Erker (EG darunter Schaufenster/Tor)',
+      'Erker seltener, schmaler Erker mit 96er; Fensterfolge EG/OG durch die Erker-Spalte',
+      'Keine überlagernden Wände beim Generieren; Zufall wechselt den Ansichtsmodus nicht',
+    ],
+  },
+  {
+    version: '2.0.503',
+    date: '2026-09-19',
+    title: 'Arrivieren nackte Erker, Viewport, Audit',
+    changes: [
+      'Erker wie Fassade ohne Paneel, Sockel, Gesims und Zierbänder',
+      'Nach Generieren: Viewport rahmt das Haus mit Rand ein (Übergang ~560 ms)',
+      'Kontrollprotokoll: 30 Zufalls-Fassaden per Audit-Test gegen die Regeln',
+    ],
+  },
+  {
+    version: '2.0.502',
+    date: '2026-09-19',
+    title: 'Arrivieren 96er-Raster & Schaufenster',
+    changes: [
+      'Fensterabstand immer 96 cm; Fassadenbreite n×192; Wandenden links/rechts gleich (≤96 cm)',
+      '48er-Fensterbreite nur noch Ausnahme (~2 %); Schaufenster 256 cm mit 64 cm Abstand vom Boden',
+    ],
+  },
+  {
+    version: '2.0.501',
+    date: '2026-09-19',
+    title: 'Arrivieren Raster, Erker, Keller',
+    changes: [
+      '96er-Fenster immer 48 cm zum linken und rechten Wandende; Fassadenbreite bleibt Achsenraster',
+      'Erker: eine Variante, keine Überlagerung; breite Fassade bis zwei gleiche Erker; Fenster laufen auf der Front weiter (45°: 96 mittig plus 48er)',
+      'Öffnungen nur auf passenden Wandstücken (kein Fensterbrett ohne Loch); Stapel bündig',
+      'Fensterbreiten 48/96/144 bei 192 cm Höhe; Kellerfenster am Boden mittig darunter',
+    ],
+  },
+  {
+    version: '2.0.500',
+    date: '2026-09-19',
+    title: 'Arrivieren Zufall & Tor 288',
+    changes: [
+      'Zufall würfelt Seed und generiert sofort',
+      'EG-Leerraum: Wandbreite an Inhalt, Wandenden höchstens 96 cm',
+      'Tor 288: darüber zwei 96er-Fenster oder Erker über der Tür',
+    ],
+  },
+  {
+    version: '2.0.499',
+    date: '2026-09-19',
+    title: 'Arrivieren Öffnungs-Regeln',
+    changes: [
+      'Symmetrische Wandenden 48–96 cm; Mindestabstände 48 cm (Türen untereinander 24 cm)',
+      'OG-Fenster zentriert über EG-Türen; OG-Paar 96+96 → EG Tor 288 oder Tür 96 + Fenster 96',
+      'Generierte Hauswände ohne Mauerwerk, Sockel und Gesimse',
+    ],
+  },
+  {
+    version: '2.0.498',
+    date: '2026-09-19',
+    title: 'Arrivieren Erker-Raster',
+    changes: [
+      'Kein runder Erker im Zufall',
+      'Fenster 96 cm Abstand, 48 cm zum Erker; EG und oberstes OG am gleichen Raster',
+      'Erker vor Öffnungen — keine Überlagerung (z. B. Seed 3804516913)',
+    ],
+  },
+  {
+    version: '2.0.497',
+    date: '2026-09-19',
+    title: 'Arrivieren Zufallsregeln',
+    changes: [
+      'Generieren: Fassaden-Stapel ohne Alt-Öffnungen',
+      'EG immer Tür 144×320 oder Tor 288×320',
+      'Geschosse nur 2–5, häufigster Fall 5 (abnehmend bis 2)',
+    ],
+  },
+  {
+    version: '2.0.496',
+    date: '2026-09-19',
+    title: 'Arrivieren Seed-Zufall',
+    changes: ['Button Zufall neben dem Seed — neuer Wert, danach Generieren (oder leeres Feld = Zufall beim Generieren)'],
+  },
   {
     version: '2.0.495',
     date: '2026-09-19',

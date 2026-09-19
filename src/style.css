@@ -5967,3 +5967,16 @@ html.ui-touch-chrome.ui-library-edit-focus #scene-toolbar-panels .settings-secti
   pointer-events: none;
   border: none;
 }
+
+.arrivieren-seed-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.arrivieren-seed-row #arrivieren-seed {
+  width: var(--input-narrow);
+  min-width: var(--input-narrow);
+  max-width: 100%;
+}

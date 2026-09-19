@@ -2,6 +2,70 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Arrivieren: Dach sichtbar, Bühnen-Zufall (2026-09-19) — v2.0.511
+
+**Fassade-Ansicht:** `presentOverviewPose` nutzt `sceneContentMaxY` (inkl. First) und hebt die Kamera (`cameraElevateCm`) — Dach bleibt vollständig im Bild. **Dach-Zufall:** `ridgeDeg: 90` (First O–W). **UI:** Viewport **Zufall** + **↩** (ein Seed zurück); Bibliothek-Reiter **Fassade** (Platzhalter für Favoriten-Seeds); alter Tab → **Paneele & Mauerwerk**. Port auch nach `Fassaden-Builder 2.0` (Park-Chrome).
+
+### Arrivieren: OG-Flucht, Rechteck-Haus, Dach (2026-09-19) — v2.0.510
+
+**Bug:** Seed 405147048 — OG mit versetztem 144er (552) und fehlendem rechten Fenster, weil `breakLong` auf Achsenbreite statt `plan.widthCm` rechnete und Türspalten zur Fensterserie zählte. **Fix:** Türspalte unterbricht die Serie; 144er nur als Paar-Ersatz mit Tür-Abstand, danach EG-Flucht. **Neu:** Apply ergänzt Seiten-/Rückwände (Tiefe 1200–1440 cm, 8er; typ. Gründerzeit-Vorderhaus ~13 m) und Zufallsdach ohne Gauben.
+
+### Arrivieren: schmalere Häuser 3–7 Achsen (2026-09-19) — v2.0.509
+
+**Zufall:** Achsen Soft-Max **7** (Gewichte nur 3–7, Schwerpunkt 4–6); Geschosse weiter **2–5**, Schwerpunkt **3–4**. Keine Soft-8/9-Fassaden mehr.
+
+### Arrivieren: Shop-Tür, EG≥96, Keller optional, Erker-Soffit (2026-09-19) — v2.0.508
+
+**Layout:** Schaufenster immer mit Tür 24–96 cm (neben Erker-Mund ≥48); EG-Abstände Fenster↔Schaufenster ≥96. Kellerfenster nur noch mit ~30 % Wahrscheinlichkeit (`withOptionalBasementWindows`). Serien >4 Fenster → Erker (Gate) oder 144er (`breakLongWindowRunsWithBayOrWide`). **3D:** nackte Arrivieren-Wände behalten Erker-Untersicht/Mundblende (keine dunklen Löcher oben/unten); Apply strippt seitliche Fensterbretter (`sillOuter`/`sillInner`). Fill ohne unkontrollierte Wand-Aufweitung.
+
+### Arrivieren: Erker 288/384, Abstände 128, EG-Flucht (2026-09-19) — v2.0.507
+
+**Erker:** nur noch Front **288 oder 384** (kein 192). **Abstände:** Öffnung↔Öffnung max. **128 cm**. **EG** Standardfenster fluchten mit OG. Erker entweder vollständig über einer Tür oder klar daneben (≥48 cm), nie halb. **45°-Spalte:** mittig 96 + links/rechts 48 mit **64 cm** Abstand (Mundbreite).
+
+### Arrivieren: Raster-Abstände & Erker 48 (2026-09-19) — v2.0.506
+
+**Raster:** Keine 48er-Fassadenfenster (Ausnahme 45°-Erker-Front, max. 1×/Reihe wenn nötig). Fenster↔Fenster **96 cm**; leere Fläche **≤96 cm** (`fillEmptySpansWithWindows`, ggf. Aufweiten). Erker-Nachbarn **bevorzugt 48 cm**, ausgemittelt (`recenterBaysBetweenOpenings` / `ensureBaySideNeighbors48`). Geprüft u. a. Seeds 543261222, 2098820688, 3851625772.
+
+### Arrivieren: Fassade-Ansicht bleibt (2026-09-19) — v2.0.505
+
+**Bug:** Nach Generieren wirkte der Modus „Fassade“ (`present`) wie ein Wechsel auf 3D, weil `frameHauswandAfterGenerate` die Isometrie-Orbit-Pose setzte. **Fix:** In `present` frontal über `presentOverviewPose` / `syncPresentCamera` einrahmen — `setView` nie aufrufen.
+
+### Arrivieren Ränder 96, Erker-Serie, Viewport (2026-09-19) — v2.0.504
+
+**Raster:** Außenrand links/rechts **96 cm** (`hauswandWidthCm` = n×(F+96)+96). **>4 Fenster** in Folge → Erker dazwischen (GGF. mehrere); EG unter Erker Schaufenster/Tor. Erker seltener (Gewicht 0,12); schmaler Erker immer mit 96er. Fensterfolge EG/oberstes OG durch die Erker-Spalte (optional 192). Apply: alle Studio-Wände neu, keine Überlagerung; Fassadenmodus wechselt beim Zufall nicht auf 3D.
+
+### Arrivieren nackte Erker, Viewport, Audit (2026-09-19) — v2.0.503
+
+**Apply:** Erker-Wände nach Insert ebenfalls `stripHauswandWallDecor` (kein Paneel/Sockel/Gesims). **UI:** nach Generieren `frameHauswandAfterGenerate` mit Kameratransition (~560 ms), Haus mit Rand sichtbar. **QA:** `hauswandAudit.ts` + Test „30 Zufalls-Fassaden“; OG-Fenster über Tür halten ≥96 cm Abstand zu Nachbarn.
+
+### Arrivieren 96er-Raster & Schaufenster (2026-09-19) — v2.0.502
+
+**Raster:** Fensterabstand immer 96 cm; Breite `n×192`; linke/rechte Außenabstände der Öffnungen identisch (48–96 cm), Ausnahme Regenrinne an der Kante (noch nicht generiert). **48er** Fensterbreite nur Ausnahme. **Schaufenster** 256 cm hoch mit `y=64`.
+
+### Arrivieren Raster, Erker, Keller (2026-09-19) — v2.0.501
+
+**Layout:** Breite = Achsenraster; 96er mit 48 cm Rand links/rechts. **Erker:** eine Form/Größe, optional zwei gleiche auf breiter Fassade, Fenster auf der Front weiter (45°: 96 + 48/48). **Apply:** Öffnung nur wenn sie auf das Wandstück passt; Stapel bündig. **Fenster:** 48/96/144 × 192; Keller y=0 mittig.
+
+### Arrivieren Zufall & Tor 288 (2026-09-19) — v2.0.500
+
+**UI:** Zufall generiert direkt. **Layout:** Wandbreite ohne Achsen-Mindestüberbreite; EG-Raster-Fenster auch bei OG-Paar; Tor 288 → OG zwei 96er oder Erker zentriert.
+
+### Arrivieren Öffnungs-Regeln (2026-09-19) — v2.0.499
+
+**Regeln:** Symmetrische Wandenden 48–96 cm; Mindestabstände 48 cm (Tür↔Tür 24 cm); keine Überlagerung; OG-Fenster zentriert über EG-Türen; OG-Paar 96+96 → EG Tor 288 oder Tür 96 + Fenster 96; Apply ohne Mauerwerk/Sockel/Gesimse. `hauswandFacadeLayout.ts`, `finalizeHauswandPlanLayout`, `applyHauswandGeneration`.
+
+### Arrivieren Erker-Raster (2026-09-19) — v2.0.498
+
+**Regeln:** Kein runder Erker; Fenster 96/48 cm zum Erker; EG/OG/top an einem Raster; Erker vor Öffnungen (Fix Überlagerung z. B. Seed 3804516913). `hauswandFacadeLayout.ts`.
+
+### Arrivieren Regeln Zufall (2026-09-19) — v2.0.497
+
+**Regeln:** Fassaden-Stapel leer vor Setzen; EG immer Tür 144×320 oder Tor 288×320; Geschosse nur 2–5 (Gewichte 5→2 abnehmend). `hauswand-regelwerk.json`, `generateHauswand`, `applyHauswandGeneration`.
+
+### Arrivieren Seed-Zufall (2026-09-19) — v2.0.496
+
+**Neu:** Button **Zufall** neben dem Seed-Feld (`randomHauswandSeed`); füllt einen neuen 32-bit-Seed, **Generieren** wendet ihn an.
+
 ### Arrivieren Hauswand-Zufall (2026-09-19) — v2.0.495
 
 **Neu:** `generateHauswand` / `applyHauswandGeneration` mit Regelwerk-JSON (`src/arrivieren/rules/hauswand-regelwerk.json`), UI in der Szene-Leiste, Feedback localStorage + JSONL-Export. Breitenformel `n×144+48`, Erker-Gate ≥4 Geschosse und ≥4 Achsen, Erker nur OG-Zwischengeschosse (`singleFloor`-Insert pro Etage).

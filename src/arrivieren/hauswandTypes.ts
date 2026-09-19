@@ -22,6 +22,7 @@ export interface HauswandRegelwerk {
     }
     bayShapeWhenPresent: Record<string, number>
     bayAxisSpan: Record<string, number>
+    bayFrontWidthCm?: Record<string, number>
     bayHorizontalPlacement: Record<string, number>
   }
   constraints: {
@@ -43,6 +44,8 @@ export interface HauswandOpeningSpec {
   height: number
   y: number
   type: 'window' | 'door'
+  /** Keller / Schaufenster weichen von 192 cm Höhe ab. */
+  role?: 'standard' | 'shop' | 'basement'
 }
 
 export interface HauswandEgGroup {
@@ -69,7 +72,12 @@ export interface HauswandPlan {
   egGroups: HauswandEgGroup[]
   /** Fenster pro Achse OG (und ggf. EG bei Wohnfenster). */
   ogWindowByAxis: HauswandOpeningSpec[]
+  /** Erste Erker-Variante (Kompatibilität); gleich `bays[0]`. */
   bay: HauswandBayPlan | null
+  /** Alle Erker — gleiche Form und Größe, nie überlappend. */
+  bays: HauswandBayPlan[]
+  /** Standard-Fensterbreite OG (Höhe immer 192 außer Shop/Keller). */
+  windowWidthCm: number
   snapshotDe: string
 }
 

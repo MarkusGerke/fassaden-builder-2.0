@@ -2108,13 +2108,16 @@ export class FacadeController {
 
     for (const building of this.state.buildings) {
       if (building.hidden) continue
-      if (buildingShowsBareWalls(building)) continue
+      const bare = buildingShowsBareWalls(building)
+      // Nackte Arrivieren-Fassaden: keine Innenböden/-decken, aber Erker-Untersicht/Deckel
+      // sonst bleiben oben/unten am Erker dunkle Löcher (v2.0.508).
       const floors = building.floors
       if (!floors || floors.length === 0) continue
       const buildingWalls = getVisibleWalls(this.state).filter(
         (wall) => wall.buildingId === building.id,
       )
 
+      if (!bare) {
       for (let fi = 0; fi < floors.length; fi++) {
         const plan = floors[fi]
         if (plan.hidden) continue
@@ -2182,9 +2185,11 @@ export class FacadeController {
           }
         }
       }
+      } // end !bare (Innenböden/-decken)
 
       // Erker-Untersicht (item 6): unter jedem echten Erker (kein Balkon/Loggia) die
       // Unterseite schließen. Außenpolygon aus Schenkel- + Frontwänden (Planlinie = Außenkante).
+      // Auch bei nackten Arrivieren-Wänden — sonst dunkle Löcher oben/unten im Erker.
       for (const host of buildingWalls) {
         const bay = host.bayWindow
         if (!bay?.wallIds?.length) continue

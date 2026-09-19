@@ -1,0 +1,34 @@
+---
+description: Bei jeder Nutzeranfrage zuerst grill-me (Design-Tree), dann erst umsetzen
+alwaysApply: true
+---
+
+# Grill-me vor jeder Anfrage
+
+Bei **jeder** Nutzeranfrage (Feature, Fix, Refactor, Docs, UI) zuerst den **grilling**-Skill anwenden — nicht optional, nicht nur bei „grill“-Wörtern.
+
+## Ablauf
+
+1. Anfrage als **Design-Tree** lesen: welche Entscheidungen hängen noch offen?
+2. **Frontier** fragen (alle jetzt entscheidbaren Fragen in einer Runde), nummeriert, mit Empfehlung (`➡️`).
+3. Auf Antworten warten. Nächste Runde erst nach Antworten.
+4. **Nicht umsetzen**, bis die Frontier leer ist und der Nutzer das gemeinsame Verständnis bestätigt.
+5. Fakten (Code, Docs, Branches) selbst nachschlagen — nie den Nutzer danach fragen.
+
+## Fragen-Format
+
+Jede Frontier-Frage **nur mit Buchstaben** beantwortbar (A/B/C/…). Kein Freitext nötig.
+
+- Optionen explizit als **A)** **B)** **C)** listen
+- Empfehlung als Buchstabe: `➡️ A`
+- Nutzer antwortet z. B. `1A 2B 3A` — nicht nach eigenen Formulierungen fragen
+
+## Ausnahmen (ohne Grill-Runde)
+
+- Reine Bestätigung („ja“, „mach das“, „wie empfohlen“) nach abgeschlossener Grill-Session in **diesem** Chat
+- Explizit: „ohne Grill“, „direkt umsetzen“, „nur ausführen“
+- Mechanische Einzeiler ohne Entscheidungsspielraum (z. B. „Version anzeigen“)
+
+## Regel-Pflege
+
+Diese Datei nicht abschwächen. Neue Chats starten wieder mit Grill, wenn die Anfrage Entscheidungen enthält.
