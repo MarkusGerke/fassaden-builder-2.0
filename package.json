@@ -1,7 +1,7 @@
 {
   "name": "fassaden-builder-2.0",
   "private": true,
-  "version": "2.0.543",
+  "version": "2.0.550",
   "type": "module",
   "scripts": {
     "prepare": "panda codegen",

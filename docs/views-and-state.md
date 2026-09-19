@@ -189,6 +189,10 @@ Buttons `#edit-scope-element|type|floor|facade` in `#edit-scope-bar`. Bei Fassad
 
 **v2.0.233 / v2.0.234 / v2.0.321 / v2.0.322 / v2.0.323 / v2.0.324 / v2.0.381 / v2.0.412 / v2.0.429 / v2.0.430:** Nach einem Property-Edit mit Scope **Auswahl**, **Typ** oder **Etage** erscheint leise `#scope-propagate-offer` (Fade, **5-s-Timer**). Buttons: **Typ** / **Etage** / **Fassade**. **v2.0.324:** Toast-**Typ** = gleicher Öffnungstyp ohne Maßfilter (sonst fehlt der Button bei Unikat-Maßen); Toolbar „Gültig für → Typ“ weiter Typ+Maß. **v2.0.323:** Farbe/Profil auf Fenster und Türen. **v2.0.412:** Etage/Fassade auch Cutout/Konche. **v2.0.381:** auch nach Drag/`commitDragFromBase`; Nested Wand-Objekte (`cornice`, `plinth`, `panel`, `label`) ganz ersetzen; Rechtsklick **Zuweisen für**. **v2.0.429:** Opening-Nested (`gruenderzeit`, `pediment`, …) per `deepApplyChanged` nur Deltas — Toast ändert z. B. nur `boxWindow`, nicht die ganze Teilung; **Zuweisen für** unverändert Vollstil. **v2.0.430:** Markisen-Delta ohne fixes `widthCm` (Peer: Öffnung + Überstand). Schließen, Timeout oder Scope-Wechsel blendet aus.
 
+**v2.0.550:** Toast schließen (× oder Ark-Ablauf) ruft `#scope-propagate-dismiss` auf — `pendingScopePropagate` wird wie bei der Vanilla-Leiste geleert.
+
+**v2.0.549:** Im Park-Shell ist `#scope-propagate-offer` geclippt. Sichtbar ist der Ark-Toast (`fb-scope-offer` → `ScopeOfferToast`), Buttons klicken weiter `#scope-propagate-type|floor|facade`. Timer bleibt 7 s.
+
 Gilt analog für Gesims, Wandfarben, Öffnungs-Profil, Fensterbank, Treppe, Rahmen/Glas — jeweils über `editWallTargets` oder `editOpeningTargets` / `scopedOpeningRefs()`.
 
 Bei Scope **Etage** werden alle `floorIndex`-Werte aus der aktuellen Auswahl gesammelt (nicht nur der erste Anker), sodass Multi-Etagen-Auswahl alle betroffenen Geschosse trifft.

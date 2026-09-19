@@ -2,6 +2,52 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Übernehmen-Toast schließen (2026-09-19) — v2.0.550
+
+**Symptom:** Toast per × geschlossen, aber `pendingScopePropagate` blieb — späterer Klick auf Typ/Etage/Fassade konnte noch übernehmen.
+
+**Versuch:** Nur `toaster.dismiss` in `ScopeOfferToast` — Vanilla-State blieb hängen.
+
+**Fix:** `toaster.subscribe` bei User-Dismiss → `clickId('scope-propagate-dismiss')` → `hideScopePropagateOffer` (inkl. `fb-scope-offer-hide`). Sync von Vanilla aus setzt `suppressDismissSync`, damit kein Loop.
+
+### Übernehmen-Toast zuverlässig (2026-09-19) — v2.0.550
+
+**Symptom:** Toast mit Typ/Etage/Fassade blieb aus (Meta mit Funktionen, Timing vor `renderUi`).
+
+**Fix:** `meta.scopeOffer` nur Booleans; Anzeige per `queueMicrotask`; Toaster `z-index` 10000; Schließen → `#scope-propagate-dismiss`.
+
+### Übernehmen-Toast (2026-09-19) — v2.0.549
+
+**Symptom:** Nach einer Objektänderung fehlte „Übernehmen? Typ / Etage / Fassade“. Die Vanilla-Leiste `#scope-propagate-offer` sitzt in `#scope-bar-slot`, den die Park-Shell auf 1 px clippt.
+
+**Nicht:** Slot wieder einblenden (zieht die alte Leiste zurück). Collapse-/Hilfe-Zeile in `ChromeExtrasApp` nicht behalten — Nutzer hat die Zeile als unnötig markiert.
+
+**Fix:** `showScopePropagateOfferIfUseful` / `hideScopePropagateOffer` feuern `fb-scope-offer`. `ScopeOfferToast` zeigt den Ark-`Toaster` (7 s, Buttons klicken die bestehenden `#scope-propagate-*`). Auswahl/Typ/Etage/Fassade und Strichstärke bleiben.
+
+### Zufallsmodus, Dach bündig (2026-09-19) — v2.0.548
+
+Ohne Auswahl zeigt die rechte Leiste **Zufallsmodus** (Seed, Zufall, Generieren). Ist das Dach gewählt, fällt die Szenenleiste inkl. Licht & Schatten weg; die Dachfelder bleiben, auch wenn das Dach aus ist (Checkbox **Dach**).
+
+Stirnkanten der Firstachse sind immer bündig (Überstand 0, Mansarde läuft dort nicht ein). Schrägen nur an den First-Längskanten.
+
+### Dachform klickbar (2026-09-19) — v2.0.547
+
+Die geklebten Vanilla-Sektionsköpfe toggeln `class` jedes Frame. `FormMirror` hat darauf die Ark-Felder neu gemountet — Dachform-Select und Stepper haben Klicks verschluckt. Kopf- und Spacer-Klassen werden ignoriert.
+
+### Mobil: Zufall oben links (2026-09-19) — v2.0.546
+
+Touch blendet die ganze Bühnen-Leiste aus (`display: none` auf `[data-park-viewport-chrome]`). Zufall sitzt deshalb als eigener Button oben links, nur im Touch-Chrome. Seed-Zurück (↩) ist weg; Widerrufen bleibt.
+
+### Arrivieren: kein Pultdach, Mansarde (2026-09-19) — v2.0.545
+
+**Zufall:** `shed` (Pultdach) nicht mehr. Krüppelwalm bleibt: wie Sattel, plus kurze Walme an den Stirnseiten (First kürzer, `halfHipHeight`).
+
+**Mansarde:** `roofSlabVerticalCm` bei 70° hob die Haut ~30 cm ab — Mansarde-Traufe jetzt `wallTopY`. Material `DoubleSide` nur für Mansarde (Fronten waren Rückseiten und unsichtbar).
+
+### Arrivieren im Park-UI (2026-09-19) — v2.0.544
+
+**Neu:** Arrivieren-Hauswand-Zufall (Rechteck, Dach First O–W, Fassaden-Kamera inkl. First höher). Bühne Zufall/↩; Bibliothek-Reiter Fassade; Paneele & Mauerwerk. Domain aus Arrivieren-Worktree.
+
 ### Mobil: Sheet, Bibliothek, Gesims (2026-09-18) — v2.0.543
 
 **Sheet:** Transparenter Ark-`Backdrop` (`pointer-events: none`) — Griff/Snap wieder nutzbar, Bühne hell.

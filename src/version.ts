@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.543'
+export const APP_VERSION = '2.0.550'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,70 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.550',
+    date: '2026-09-19',
+    title: 'Übernehmen-Toast',
+    changes: [
+      'Nach Objektänderung: Toast „Übernehmen?“ mit Typ, Etage, Fassade (Park-Shell)',
+      'Einklappen/Hilfe-Zeile oben in der Bühnenleiste entfernt',
+      'Toast schließen verwirft das Angebot zuverlässig',
+    ],
+  },
+  {
+    version: '2.0.549',
+    date: '2026-09-19',
+    title: 'Übernehmen-Toast, Chrome-Zeile weg',
+    changes: [
+      'Nach einer Objektänderung: Toast „Übernehmen?“ mit Typ, Etage, Fassade',
+      'Einklappen und Hilfe oben links entfallen',
+    ],
+  },
+  {
+    version: '2.0.548',
+    date: '2026-09-19',
+    title: 'Zufallsmodus, Dach bündig, Dach-Leiste',
+    changes: [
+      'Ohne Auswahl: rechts Sektion Zufallsmodus (Seed, Generieren)',
+      'Dach gewählt: Licht & Schatten weg, Dachfelder bleiben (auch bei ausgeschaltetem Dach)',
+      'Dach links/rechts wandbündig, Schrägen nur vorne und hinten',
+    ],
+  },
+  {
+    version: '2.0.547',
+    date: '2026-09-19',
+    title: 'Dachform wieder klickbar',
+    changes: [
+      'Rechte Leiste: Dropdowns und Zahlenfelder bleiben stehen, auch wenn die versteckte Sektionsleiste jede Frame die Klasse wechselt',
+    ],
+  },
+  {
+    version: '2.0.546',
+    date: '2026-09-19',
+    title: 'Mobil: Zufall oben links',
+    changes: [
+      'Touch blendet die Bühnen-Leiste aus — Zufall sitzt trotzdem oben links',
+      'Seed-Zurück (↩) entfällt; Widerrufen bleibt',
+    ],
+  },
+  {
+    version: '2.0.545',
+    date: '2026-09-19',
+    title: 'Arrivieren: kein Pultdach, Mansarde sitzt auf',
+    changes: [
+      'Zufallsdach ohne Pultdach; Krüppelwalm bleibt (kürzerer First als Sattel)',
+      'Berliner Mansarde: Traufe auf Wandkrone (nicht abgehoben); Straßenfront beidseitig sichtbar',
+    ],
+  },
+  {
+    version: '2.0.544',
+    date: '2026-09-19',
+    title: 'Arrivieren im Park-UI: Zufall, Dach, Bibliothek',
+    changes: [
+      'Arrivieren-Generator portiert: Rechteck-Haus, Dach ohne Gauben (First O–W), Fassaden-Kamera inkl. First',
+      'Park-Chrome: Zufall + ↩; Bibliothek-Reiter Fassade (Favoriten demnächst); Paneele & Mauerwerk umbenannt',
+    ],
+  },
   {
     version: '2.0.543',
     date: '2026-09-18',
