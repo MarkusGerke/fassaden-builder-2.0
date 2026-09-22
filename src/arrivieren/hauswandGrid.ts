@@ -49,3 +49,9 @@ export const HAUSWAND_WALL_HEIGHT_CM = WINDOW_HEIGHT
 export const HAUSWAND_STANDARD_WINDOW_HEIGHT_CM = 192
 export const HAUSWAND_STANDARD_WINDOW_SILL_Y_CM = WINDOW_SILL_Y
 export const HAUSWAND_DOOR_HEIGHT_CM = DOOR_HEIGHT
+/** Eingangstür (1 Achse, Raster-zentriert). */
+export const HAUSWAND_ENTRANCE_DOOR_WIDTH_CM = 144
+/** Tor / breite Einfahrt (typisch 2 Achsen inkl. Zwischenpfeiler). */
+export const HAUSWAND_GATE_WIDTH_CM = 288
+/** Schmale Tür (96 cm) — z. B. EG zu OG-Fensterpaar. */
+export const HAUSWAND_NARROW_DOOR_WIDTH_CM = 96

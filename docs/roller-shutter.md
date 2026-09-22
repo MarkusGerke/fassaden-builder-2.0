@@ -56,7 +56,7 @@ Hydrate setzt fehlende Config auf **disabled**. Kein Schema-Step nötig.
 | `src/utils/hydrate.ts` | Defaults für Fenster/Tür |
 | `src/FacadeController.ts` | `rebuildRollerShutters`, `applyRollerShutterDrop`, Schatten-Okkluder an Maske |
 | `src/utils/daySchedule.ts` / `src/ui/dayScheduleEditor.ts` | Uhrzeiten |
-| `index.html` / `src/main.ts` | Tab, Sync, Playback, Schedule |
+| `index.html` / `src/main.ts` | Tab, Sync, Playback, Schedule; Park-Adopt `roller-motion-editor` / `roller-shutter-schedule` (v2.0.552, [park-restore.md](park-restore.md)) |
 | `src/ui/rollerShutterMotionEditor.ts` | SVG-Kurve, Vorlagen, Punkt-Edit (v2.0.378) |
 
 ## Fallstricke

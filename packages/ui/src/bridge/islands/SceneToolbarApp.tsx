@@ -11,6 +11,7 @@ import {
 } from './BoundControls'
 import {
   clickId,
+  isButtonActive,
   readChecked,
   readString,
   writeString,
@@ -18,6 +19,10 @@ import {
 
 export type SceneToolbarAppProps = {
   subscribe?: (listener: () => void) => () => void
+  /** Ohne Objektauswahl: Zufallsmodus oben in der rechten Leiste. */
+  showArrivieren?: boolean
+  /** Dach gewählt: Licht & Schatten gehört nicht in diese Leiste. */
+  hideSun?: boolean
 }
 
 const SUN_SLIDERS: BoundSliderDef[] = [
@@ -137,6 +142,28 @@ const BLOOM_SLIDERS: BoundSliderDef[] = [
 const WIND_SLIDER: BoundSliderDef = {
   id: 'scene-wind-intensity',
   label: 'Windintensität',
+  min: 0,
+  max: 1,
+  step: 0.01,
+  format: (v) => v.toFixed(2),
+}
+
+const SNOW_TEMP_SLIDER: BoundSliderDef = {
+  id: 'snow-temp',
+  label: 'Lufttemperatur (°C)',
+  min: -20,
+  max: 20,
+  step: 0.5,
+  format: (v) => {
+    const rounded = Math.round(v * 10) / 10
+    const body = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)
+    return rounded < 0 ? `−${body.replace('-', '')}` : body
+  },
+}
+
+const SNOW_INTENSITY_SLIDER: BoundSliderDef = {
+  id: 'snow-intensity',
+  label: 'Intensität',
   min: 0,
   max: 1,
   step: 0.01,
@@ -277,6 +304,14 @@ export function SceneToolbarApp(props: SceneToolbarAppProps) {
     tick()
     return readChecked('fog-enabled')
   }
+  const snowOn = () => {
+    tick()
+    return readChecked('snow-enabled')
+  }
+  const snowQuality = () => {
+    tick()
+    return isButtonActive('snow-quality-high') ? 'high' : 'low'
+  }
   const fogType = () => {
     tick()
     return readString('fog-type') || 'linear'
@@ -295,9 +330,48 @@ export function SceneToolbarApp(props: SceneToolbarAppProps) {
     <Box data-park-scene-toolbar="" class="park-scene-toolbar" color="fg.default" minW="0">
       <Accordion.Root
         multiple
-        defaultValue={['sun', 'bloom', 'anim', 'scene']}
+        defaultValue={
+          props.showArrivieren
+            ? ['arrivieren', 'sun', 'bloom', 'anim', 'weather', 'scene']
+            : ['sun', 'bloom', 'anim', 'weather', 'scene']
+        }
         collapsible
       >
+        <Show when={props.showArrivieren}>
+          <Section value="arrivieren" title="Zufallsmodus">
+            <Field.Root>
+              <Field.Label>Seed</Field.Label>
+              <HStack gap="2">
+                <Input
+                  size="sm"
+                  inputMode="numeric"
+                  placeholder="leer = Zufall"
+                  value={readString('arrivieren-seed')}
+                  onInput={(e) => {
+                    writeString('arrivieren-seed', e.currentTarget.value)
+                    bump()
+                  }}
+                />
+                <Button size="sm" variant="outline" onClick={() => clickId('arrivieren-seed-random')}>
+                  Zufall
+                </Button>
+              </HStack>
+            </Field.Root>
+            <Button size="sm" onClick={() => clickId('arrivieren-generate')}>
+              Generieren
+            </Button>
+            <Box textStyle="sm" color="fg.muted">
+              {(tick(), document.getElementById('arrivieren-snapshot')?.textContent ?? '')}
+            </Box>
+            <BoundCheckbox
+              id="arrivieren-schematic-toggle"
+              label="SVG-Schematik"
+              tick={tick}
+              bump={bump}
+            />
+          </Section>
+        </Show>
+        <Show when={!props.hideSun}>
         <Section value="sun" title="Licht & Schatten">
           <Field.Root>
             <Field.Label>Datum (Berlin)</Field.Label>
@@ -315,6 +389,7 @@ export function SceneToolbarApp(props: SceneToolbarAppProps) {
             {(def) => <BoundSliderControl def={def} tick={tick} bump={bump} />}
           </For>
         </Section>
+        </Show>
 
         <Section value="lamps" title="Lampen & Leuchten">
           <BoundCheckbox
@@ -415,6 +490,46 @@ export function SceneToolbarApp(props: SceneToolbarAppProps) {
               Stop
             </Button>
           </HStack>
+        </Section>
+
+        <Section value="weather" title="Wetter">
+          <BoundCheckbox id="snow-enabled" label="Schneefall" tick={tick} bump={bump} />
+          <ConditionalReveal when={snowOn()}>
+            <Stack gap="4">
+              <BoundSliderControl def={SNOW_TEMP_SLIDER} tick={tick} bump={bump} />
+              <BoundSliderControl def={SNOW_INTENSITY_SLIDER} tick={tick} bump={bump} />
+              <Box fontWeight="semibold" textStyle="sm">
+                Qualität
+              </Box>
+              <HStack gap="2" flexWrap="wrap">
+                <Button
+                  size="sm"
+                  variant={snowQuality() === 'low' ? 'solid' : 'outline'}
+                  onClick={() => {
+                    clickId('snow-quality-low')
+                    bump()
+                  }}
+                >
+                  Niedrig
+                </Button>
+                <Button
+                  size="sm"
+                  variant={snowQuality() === 'high' ? 'solid' : 'outline'}
+                  onClick={() => {
+                    clickId('snow-quality-high')
+                    bump()
+                  }}
+                >
+                  Hoch
+                </Button>
+              </HStack>
+              <Box textStyle="sm" color="fg.muted">
+                In 3D und Fassade (Vorschau oder Render). Unter 0 °C bleibt Schnee liegen; darüber schmilzt die
+                Decke.
+              </Box>
+              <Box id="snow-visibility-hint-park" textStyle="sm" color="fg.muted" hidden />
+            </Stack>
+          </ConditionalReveal>
         </Section>
 
         <Section value="scene" title="Szene">

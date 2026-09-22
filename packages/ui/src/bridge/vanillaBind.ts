@@ -12,9 +12,17 @@ export function readNumber(id: string): number {
 export function writeNumber(id: string, value: number): void {
   const el = document.getElementById(id) as HTMLInputElement | null
   if (!el) return
+  const wasDisabled = el.disabled
+  if (wasDisabled) el.disabled = false
   el.value = String(value)
   el.dispatchEvent(new Event('input', { bubbles: true }))
   el.dispatchEvent(new Event('change', { bubbles: true }))
+  if (wasDisabled) el.disabled = true
+}
+
+export function readDisabled(id: string): boolean {
+  const el = document.getElementById(id) as HTMLInputElement | null
+  return !!el?.disabled
 }
 
 export function readChecked(id: string): boolean {

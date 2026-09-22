@@ -31,11 +31,12 @@ export function hauswandPlanSchematicSvg(plan: HauswandPlan, opts?: { scale?: nu
     )
   }
 
-  if (plan.bay) {
+  const bays = plan.bays?.length ? plan.bays : plan.bay ? [plan.bay] : []
+  for (const bay of bays) {
     for (let s = 1; s <= plan.storeys - 2; s += 1) {
       const y = pad + s * storeyH + 6
-      const x0 = pad + hauswandAxisOpeningXCm(plan.bay.axisStart) * scale
-      const bw = (plan.bay.axisSpan * 144 - 48) * scale || winW
+      const x0 = pad + hauswandAxisOpeningXCm(bay.axisStart) * scale
+      const bw = (bay.axisSpan * 144 - 48) * scale || winW
       rects.push(
         `<rect x="${x0}" y="${y}" width="${bw}" height="${storeyH - 16}" fill="#c8dff0" stroke="#4a7" stroke-width="1.2" rx="2"/>`,
       )

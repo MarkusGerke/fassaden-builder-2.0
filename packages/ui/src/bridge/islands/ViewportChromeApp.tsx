@@ -158,6 +158,17 @@ export function ViewportChromeApp(props: ViewportChromeAppProps) {
         >
           Licht
         </Button>
+
+        <Button
+          size="sm"
+          variant="surface"
+          bg="white"
+          title="Zufällige Fassade"
+          aria-label="Zufällige Fassade"
+          onClick={() => clickId('arrivieren-viewport-random')}
+        >
+          Zufall
+        </Button>
       </HStack>
     </Stack>
   )

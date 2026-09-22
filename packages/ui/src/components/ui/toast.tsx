@@ -2,8 +2,9 @@ import { Toaster as ArkToaster, createToaster, Toast, useToastContext } from '@a
 import { CheckCircleIcon, CircleAlertIcon, CircleXIcon } from 'lucide-solid'
 import { Show } from 'solid-js'
 import { Portal } from 'solid-js/web'
-import { createStyleContext, Stack, styled } from 'styled-system/jsx'
+import { createStyleContext, HStack, Stack, styled } from 'styled-system/jsx'
 import { toast } from 'styled-system/recipes'
+import { Button } from './button'
 import { CloseButton } from './close-button'
 import { Icon, type IconProps } from './icon'
 import { LinearIndeterminate } from './progress'
@@ -39,6 +40,27 @@ const Indicator = (props: IconProps) => {
   )
 }
 
+export type ScopeOfferToastMeta = {
+  type?: boolean
+  floor?: boolean
+  facade?: boolean
+}
+
+function readScopeOfferMeta(meta: Record<string, unknown> | undefined): ScopeOfferToastMeta {
+  const raw = meta?.scopeOffer
+  if (!raw || typeof raw !== 'object') return {}
+  const o = raw as ScopeOfferToastMeta
+  return {
+    type: o.type === true,
+    floor: o.floor === true,
+    facade: o.facade === true,
+  }
+}
+
+function clickScopePropagate(kind: 'type' | 'floor' | 'facade'): void {
+  document.getElementById(`scope-propagate-${kind}`)?.click()
+}
+
 export const toaster = createToaster({
   placement: 'bottom-end',
   pauseOnPageIdle: true,
@@ -49,8 +71,14 @@ export const toaster = createToaster({
 export const Toaster = () => {
   return (
     <Portal>
-      <StyledToaster toaster={toaster} insetInline={{ mdDown: '4' }}>
-        {(toast) => (
+      <StyledToaster toaster={toaster} insetInline={{ mdDown: '4' }} zIndex="var(--z-index-toast, 10000)">
+        {(toast) => {
+          const scopeOffer = () => readScopeOfferMeta(toast().meta)
+          const scopeOfferVisible = () => {
+            const m = scopeOffer()
+            return m.type || m.floor || m.facade
+          }
+          return (
           <Root>
             <Show when={toast().type === 'loading'} fallback={<Indicator />}>
               <LinearIndeterminate size="xs" trackWidth="3rem" colorPalette="gray" />
@@ -68,6 +96,25 @@ export const Toaster = () => {
               <Show when={toast().action}>
                 {(action) => <ActionTrigger>{action().label}</ActionTrigger>}
               </Show>
+              <Show when={scopeOfferVisible()}>
+                <HStack gap="2" flexWrap="wrap">
+                  <Show when={scopeOffer().type}>
+                    <Button size="sm" variant="outline" onClick={() => clickScopePropagate('type')}>
+                      Typ
+                    </Button>
+                  </Show>
+                  <Show when={scopeOffer().floor}>
+                    <Button size="sm" variant="outline" onClick={() => clickScopePropagate('floor')}>
+                      Etage
+                    </Button>
+                  </Show>
+                  <Show when={scopeOffer().facade}>
+                    <Button size="sm" variant="outline" onClick={() => clickScopePropagate('facade')}>
+                      Fassade
+                    </Button>
+                  </Show>
+                </HStack>
+              </Show>
             </Stack>
             <Show when={toast().closable}>
               <CloseTrigger>
@@ -75,7 +122,8 @@ export const Toaster = () => {
               </CloseTrigger>
             </Show>
           </Root>
-        )}
+          )
+        }}
       </StyledToaster>
     </Portal>
   )

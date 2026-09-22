@@ -553,13 +553,23 @@ html.park-shell:not(.ui-touch-chrome) .park-library-slide {
   opacity: 1;
   transform: translateY(100%);
   pointer-events: none;
-  transition: transform 0.22s ease;
+  visibility: hidden;
+  transition: transform 0.22s ease, visibility 0s linear 0.22s;
   will-change: transform;
 }
 
 html.park-shell:not(.ui-touch-chrome) .park-library-slide[data-open='true'] {
   transform: translateY(0);
   pointer-events: auto;
+  visibility: visible;
+  transition: transform 0.22s ease, visibility 0s;
+}
+
+/* Stage / ui-bottom-collapsed: Dock bleibt im DOM (Hosts), aber unsichtbar */
+html.park-shell .park-library-slide[data-dock-collapsed='true'] {
+  transform: translateY(100%) !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
 }
 
 /* Kompass über dem Bibliothek-Overlay (Bühne schrumpft nicht mehr). */
@@ -812,6 +822,43 @@ html.park-shell #park-live-chrome-extras {
   margin-top: 0.35rem;
 }
 
+html.park-shell .park-adopt-slot {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  pointer-events: auto;
+}
+
+/* Platzhalter in Vanilla nach Adopt — kein [hidden], sonst FormMirror-Scan tot */
+html.park-shell .park-adopt-anchor,
+.park-adopt-anchor {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+html.park-shell .park-adopt-slot [data-park-adopt] {
+  pointer-events: auto;
+  min-width: 0;
+  max-width: 100%;
+}
+html.park-shell .park-adopt-slot .opening-motion-curve {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  touch-action: none;
+}
+html.park-shell .park-adopt-slot .day-schedule-editor,
+html.park-shell .park-adopt-slot .window-open-group,
+html.park-shell .park-adopt-slot .opening-motion-dataset {
+  max-width: 100%;
+}
+
 /* Park-Surfaces: Vanilla-Label-Layout (#ui-right label space-between) nicht erben */
 html.park-shell [data-park-scene-toolbar],
 html.park-shell [data-park-selection-toolbar],
@@ -868,6 +915,24 @@ html.park-shell .accordion__itemBody {
 html.park-shell .accordion__itemContent {
   /* overflow-x:visible wird bei overflow-y:hidden zu auto — Padding statt Clip-Trick */
   padding-inline: 0;
+}
+
+/*
+ * Accordion expand-height: beim controlled Erst-Open (FormMirror default Maße)
+ * misst Zag --height oft als 0 (Kinder noch nicht gerendert) → Inhalt bleibt unsichtbar,
+ * Chevron zeigt „offen“. Klick wirkt dann „tot“. Keine Höhen-Animation in Park.
+ */
+html.park-shell [data-scope='accordion'][data-part='item-content'][data-state='open'] {
+  height: auto !important;
+  animation: none !important;
+  opacity: 1 !important;
+  overflow: hidden;
+}
+html.park-shell [data-scope='accordion'][data-part='item-content'][data-state='closed'] {
+  height: 0 !important;
+  animation: none !important;
+  opacity: 0 !important;
+  overflow: hidden !important;
 }
 
 /* FormMirror: kein Horizontal-Clip an Accordion/Scroll */
@@ -1118,7 +1183,7 @@ html.park-shell .park-library-items-slot .opening-library-thumb svg {
 #app.showcase-view #stage-hud,
 #app.showcase-view #gallery-settings-section,
 #app.showcase-view #lighting-accordion [data-settings-section="gallery"],
-#app.showcase-view #lighting-accordion [data-settings-section="colors"],
+#app.showcase-view #lighting-accordion [data-settings-section="scene"],
 #app.showcase-view #lighting-accordion [data-settings-section="perf"],
 #app.showcase-view #export-sidebar,
 #app.showcase-view #export-stage {
@@ -5781,7 +5846,16 @@ label.toolbar-check:has(#awning-enabled) {
   display: none !important;
 }
 
-.settings-section[data-settings-section="colors"],
+/* v2.0.455: Farb-Swatches/Farben-Tabs nur Bibliothek — Objekt-Toolbars.
+   Nicht #lighting-accordion: dort heißt die Bühnen-Sektion seit v2.0.554 `scene`
+   (früher fälschlich `colors` → display:none, „Szene“ unsichtbar). */
+#selection-toolbar .settings-section[data-settings-section="colors"],
+#toolbar-opening .settings-section[data-settings-section="colors"],
+#toolbar-studio .settings-section[data-settings-section="colors"],
+#toolbar-wall .settings-section[data-settings-section="colors"],
+#toolbar-roof .settings-section[data-settings-section="colors"],
+#toolbar-ceiling .settings-section[data-settings-section="colors"],
+#toolbar-downpipe .settings-section[data-settings-section="colors"],
 .opening-colors-hub,
 #opening-colors-section {
   display: none !important;
@@ -6624,3 +6698,19 @@ html.ui-touch-chrome.ui-library-edit-focus #scene-toolbar-panels .settings-secti
   pointer-events: none;
   border: none;
 }
+
+
+/* Arrivieren Hauswand */
+.arrivieren-seed-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.arrivieren-seed-row #arrivieren-seed {
+  width: var(--input-narrow);
+  min-width: var(--input-narrow);
+  max-width: 100%;
+}
+

@@ -6,11 +6,14 @@ export interface PresentCameraFrame {
   lookY: number
   lookZ: number
   distance: number
+  /** Kamerahöhe über lookY (cm) — Blick leicht nach unten, Dach oben im Bild. */
+  cameraElevateCm: number
 }
 
 /**
- * Perspektiv-Einpassen wie 2D-Aufriss: Blick auf Gebäudemitte, Augenhöhe = vertikale Mitte,
- * Randabstand mindestens eine Geschosshöhe (in Welt-cm).
+ * Perspektiv-Einpassen wie 2D-Aufriss: Blick auf Gebäudemitte.
+ * Mit Dach: `contentMaxY` = First/Firsthöhe; Kamera höher als Fassadenmitte,
+ * damit das ganze Dach im Fassadenmodus sichtbar bleibt (v2.0.511).
  */
 export function computePresentCameraFrame(args: {
   walls: Wall[]
@@ -19,15 +22,27 @@ export function computePresentCameraFrame(args: {
   aspect: number
   storeyHeight: number
   marginStoreys?: number
+  /** Oberkante inkl. Dach (Welt-Y). Default: Wand-AABB. */
+  contentMaxY?: number
+  /**
+   * Kamera über lookY anheben (cm). Default: ~12 % der Bauhöhe, mind. 0,35 Geschoss.
+   * `0` = keine Anhebung.
+   */
+  cameraElevateCm?: number
 }): PresentCameraFrame | null {
   const box = buildingWorldBox(args.walls)
   if (box.isEmpty()) return null
 
+  const topY =
+    typeof args.contentMaxY === 'number' && Number.isFinite(args.contentMaxY)
+      ? Math.max(box.max.y, args.contentMaxY)
+      : box.max.y
   const margin = (args.marginStoreys ?? 1) * Math.max(80, args.storeyHeight)
   const lookX = (box.min.x + box.max.x) / 2
   const lookZ = (box.min.z + box.max.z) / 2
-  const lookY = (box.min.y + box.max.y) / 2
-  const buildingH = Math.max(80, box.max.y - box.min.y)
+  // Vertikale Mitte von Sockel bis First (nicht nur Wandkrone)
+  const lookY = (box.min.y + topY) / 2
+  const buildingH = Math.max(80, topY - box.min.y)
 
   const yawRad = (args.yawDeg * Math.PI) / 180
   const rightX = Math.cos(yawRad)
@@ -55,5 +70,9 @@ export function computePresentCameraFrame(args: {
   const distForW = (buildingW + 2 * margin) / (2 * Math.tan(hFovRad / 2))
   const distance = Math.max(distForH, distForW, 200)
 
-  return { lookX, lookY, lookZ, distance }
+  const defaultElevate = Math.max(args.storeyHeight * 0.35, buildingH * 0.12)
+  const cameraElevateCm =
+    args.cameraElevateCm === undefined ? defaultElevate : Math.max(0, args.cameraElevateCm)
+
+  return { lookX, lookY, lookZ, distance, cameraElevateCm }
 }

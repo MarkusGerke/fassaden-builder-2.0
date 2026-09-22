@@ -7,6 +7,7 @@ import * as ScrollArea from '@/components/ui/scroll-area'
 import { LeftChromeApp, type LeftChromeAppProps } from './LeftChromeApp'
 import { ViewportChromeApp, type ViewportChromeAppProps } from './ViewportChromeApp'
 import { ChromeExtrasApp } from './ChromeExtrasApp'
+import { ScopeOfferToast } from './ScopeOfferToast'
 import { LibraryDockApp, type LibraryDockAppProps } from './LibraryDockApp'
 import { SelectionToolbarApp, type SelectionToolbarAppProps } from './SelectionToolbarApp'
 import { FormMirror } from './FormMirror'
@@ -153,6 +154,12 @@ export function LiveShellApp(props: LiveShellAppProps) {
       const api = main()
       const app = document.getElementById('app')
       if (!app) return
+      // Stage/Showcase erzwingen Collapse nur visuell — nicht als Nutzer-Präferenz speichern.
+      // Sonst bleibt ui-right-collapsed in localStorage und die Leiste ist nach Stage tot (Breite 0).
+      if (app.classList.contains('stage-view') || app.classList.contains('showcase-view')) {
+        bumpCanvas()
+        return
+      }
       const leftDown = api.isPanelCollapsed('left')
       const rightDown = api.isPanelCollapsed('right')
       if (leftDown !== app.classList.contains('ui-left-collapsed')) clickId('ui-left-collapse')
@@ -178,6 +185,10 @@ export function LiveShellApp(props: LiveShellAppProps) {
 
     const app = document.getElementById('app')
     const touchMq = window.matchMedia('(pointer: coarse), (max-width: 900px)')
+    /** Merker: Collapse kam von Stage — Prefs beim Verlassen wiederherstellen. */
+    let stageForcedCollapse = false
+    let preStageLeftCollapsed = false
+    let preStageRightCollapsed = false
     const syncChrome = () => {
       setTouch(touchMq.matches)
       setEditOpen(document.documentElement.classList.contains('ui-library-edit-focus'))
@@ -195,13 +206,36 @@ export function LiveShellApp(props: LiveShellAppProps) {
         const api = main()
         const stage = app.classList.contains('stage-view') || app.classList.contains('showcase-view')
         const narrow = touchMq.matches
-        syncCollapsed(api, 'left', !narrow && (stage || app.classList.contains('ui-left-collapsed')))
-        syncCollapsed(api, 'right', !narrow && (stage || app.classList.contains('ui-right-collapsed')))
+        if (stage) {
+          if (!stageForcedCollapse) {
+            preStageLeftCollapsed = app.classList.contains('ui-left-collapsed')
+            preStageRightCollapsed = app.classList.contains('ui-right-collapsed')
+            stageForcedCollapse = true
+          }
+          syncCollapsed(api, 'left', !narrow)
+          syncCollapsed(api, 'right', !narrow)
+        } else {
+          if (stageForcedCollapse) {
+            stageForcedCollapse = false
+            // Race kann ui-*-collapsed gesetzt haben — auf Pref vor Stage zurück.
+            const leftNow = app.classList.contains('ui-left-collapsed')
+            const rightNow = app.classList.contains('ui-right-collapsed')
+            if (leftNow !== preStageLeftCollapsed) clickId('ui-left-collapse')
+            if (rightNow !== preStageRightCollapsed) clickId('ui-right-collapse')
+          }
+          syncCollapsed(api, 'left', !narrow && app.classList.contains('ui-left-collapsed'))
+          syncCollapsed(api, 'right', !narrow && app.classList.contains('ui-right-collapsed'))
+        }
         setDockCollapsed(!narrow && (app.classList.contains('ui-bottom-collapsed') || stage))
-        const sel = document.getElementById('selection-toolbar')
-        setHasSelection(!!sel && !sel.hidden)
+        // Quelle der Wahrheit: `main.ts` setzt `#app.has-selection` (nicht nur Toolbar-hidden).
+        setHasSelection(app.classList.contains('has-selection'))
       } finally {
-        syncing = false
+        // Ark feuert onCollapse oft erst nach dem Sync-Frame — syncing länger halten.
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            syncing = false
+          })
+        })
       }
     }
 
@@ -219,14 +253,10 @@ export function LiveShellApp(props: LiveShellAppProps) {
       attributeFilter: ['class', 'data-edit-portal'],
     })
     touchMq.addEventListener('change', applyAppClasses)
-    const sel = document.getElementById('selection-toolbar')
-    const selMo = sel ? new MutationObserver(applyAppClasses) : null
-    if (sel) selMo?.observe(sel, { attributes: true, attributeFilter: ['hidden'] })
     onCleanup(() => {
       mo.disconnect()
       htmlMo.disconnect()
       touchMq.removeEventListener('change', applyAppClasses)
-      selMo?.disconnect()
     })
   })
 
@@ -242,6 +272,7 @@ export function LiveShellApp(props: LiveShellAppProps) {
       bg="gray.2"
       color="fg.default"
     >
+      <ScopeOfferToast />
       <Splitter.RootProvider value={main} h="100%" w="100%" minH="0" minW="0">
         <Splitter.Panel id="left">
           <ScrollArea.Frame h="100%" minH="0" bg="gray.1">
@@ -265,6 +296,20 @@ export function LiveShellApp(props: LiveShellAppProps) {
                   <ChromeExtrasApp syncEvent={props.chromeExtras?.syncEvent} />
                 </Box>
               </Box>
+              <Show when={touch()}>
+                <Box position="absolute" top="3" left="3" zIndex="40" pointerEvents="auto">
+                  <Button
+                    size="sm"
+                    variant="surface"
+                    bg="white"
+                    title="Zufällige Fassade"
+                    aria-label="Zufällige Fassade"
+                    onClick={() => clickId('arrivieren-viewport-random')}
+                  >
+                    Zufall
+                  </Button>
+                </Box>
+              </Show>
               <Box
                 ref={(el) => {
                   stageHost = el
@@ -275,20 +320,23 @@ export function LiveShellApp(props: LiveShellAppProps) {
                 class="park-stage-host"
               />
             </Box>
-            <Show when={!dockCollapsed()}>
-              <Box
-                class="park-library-slide"
-                data-park-library-fixed=""
-                data-open={touch() || hasSelection() ? 'true' : 'false'}
-                flexShrink="0"
-                bg="gray.1"
-                overflow="hidden"
-              >
-                <Box h={touch() ? 'auto' : LIBRARY_DOCK_HEIGHT} minH={touch() ? '0' : LIBRARY_DOCK_HEIGHT}>
-                  <LibraryDockApp {...props.library} />
-                </Box>
+            {/*
+              Immer gemountet (auch bei dockCollapsed / ohne Auswahl).
+              Sichtbarkeit: data-open + data-dock-collapsed — Unmount zerstört Adopt-Hosts.
+            */}
+            <Box
+              class="park-library-slide"
+              data-park-library-fixed=""
+              data-open={touch() || hasSelection() ? 'true' : 'false'}
+              data-dock-collapsed={dockCollapsed() ? 'true' : 'false'}
+              flexShrink="0"
+              bg="gray.1"
+              overflow="hidden"
+            >
+              <Box h={touch() ? 'auto' : LIBRARY_DOCK_HEIGHT} minH={touch() ? '0' : LIBRARY_DOCK_HEIGHT}>
+                <LibraryDockApp {...props.library} />
               </Box>
-            </Show>
+            </Box>
           </Box>
         </Splitter.Panel>
         <SplitGrip id="main:right" />
@@ -307,6 +355,7 @@ export function LiveShellApp(props: LiveShellAppProps) {
               class="park-plan-slot"
             />
             <Box flex="1" minH="0" display="flex" flexDirection="column">
+              {/* Mit Auswahl nur Objekt-Inspector — Szene/Zufall erst wieder ohne Auswahl. */}
               <Show when={hasSelection() && !touch()}>
                 <Box flex="1" minH="0" display="flex" flexDirection="column">
                   <ScrollArea.Frame h="100%" minH="0">
@@ -316,11 +365,11 @@ export function LiveShellApp(props: LiveShellAppProps) {
                   </ScrollArea.Frame>
                 </Box>
               </Show>
-              <Show when={!touch()}>
+              <Show when={!hasSelection() && !touch()}>
                 <Box flex="1" minH="0">
                   <ScrollArea.Frame h="100%" minH="0">
                     <Box p="3">
-                      <SceneToolbarApp {...props.scene} />
+                      <SceneToolbarApp {...props.scene} showArrivieren hideSun={false} />
                     </Box>
                   </ScrollArea.Frame>
                 </Box>

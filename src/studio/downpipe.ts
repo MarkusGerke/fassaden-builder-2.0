@@ -23,7 +23,7 @@ import type {
   Wall,
 } from '../types/facade'
 import { cloneBuilding, cloneWall } from '../types/facade'
-import { normalizeRoof } from './roof'
+import { GUTTER_OUTER_DIAMETER_CM, gutterMouthOnWall, normalizeRoof } from './roof'
 
 /** Titanzink / QUARTZ-ZINC hellgrau. */
 export const DEFAULT_DOWNPIPE_COLOR = '#8E8A88'
@@ -228,8 +228,11 @@ export function buildDownpipeGeometry(
 
   const parts: THREE.BufferGeometry[] = []
   const radial = 16
+  const neck = buildSwanNeck(building, dp, pose)
+  const yTop = neck ? neck.yEnd : pose.yTop
+  if (neck) parts.push(neck.geometry)
 
-  const mainH = Math.max(1, pose.yTop - pose.yBottom)
+  const mainH = Math.max(1, yTop - pose.yBottom)
   const main = new THREE.CylinderGeometry(pose.radiusCm, pose.radiusCm, mainH, radial, 1, false)
   main.translate(pose.x, pose.yBottom + mainH / 2, pose.z)
   parts.push(main)
@@ -239,32 +242,123 @@ export function buildDownpipeGeometry(
     if (shoe) parts.push(shoe)
   }
 
-  if (pose.gutterBottomY != null && pose.gutterBottomY < pose.yTop - 1) {
-    // Ablaufstutzen: von Rinnenboden leicht nach unten zum Rohr (überlappt Kopf)
-    const stubTop = pose.gutterBottomY + 2
-    const stubBot = Math.min(pose.yTop, pose.gutterBottomY - 4)
-    if (stubTop > stubBot + 1) {
-      const stubH = stubTop - stubBot
-      const stub = new THREE.CylinderGeometry(
-        pose.radiusCm * 0.95,
-        pose.radiusCm * 0.95,
-        stubH,
-        radial,
-        1,
-        false,
-      )
-      stub.translate(pose.x, stubBot + stubH / 2, pose.z)
-      parts.push(stub)
-    }
-  }
-
-  for (const clamp of buildClampGeometries(pose, dp)) {
+  for (const clamp of buildClampGeometries({ ...pose, yTop }, dp)) {
     parts.push(clamp)
   }
 
   const merged = mergeGeometries(parts)
   for (const p of parts) p.dispose()
   return merged
+}
+
+/** Zwei Bögen à 72° vom Rinnenboden zur Rohrachse, unter der Untersicht. */
+function buildSwanNeck(
+  building: Building,
+  dp: DownpipeFixture,
+  pose: DownpipeWorldPose,
+): { geometry: THREE.BufferGeometry; yEnd: number } | null {
+  let mouth: ReturnType<typeof gutterMouthOnWall> = null
+  for (const wall of downpipeStackWalls(building, dp)) {
+    mouth = gutterMouthOnWall(building, wall.id, { x: pose.x, z: pose.z })
+    if (mouth) break
+  }
+  if (!mouth) return null
+  const ox = mouth.outward.x
+  const oz = mouth.outward.z
+  const reach = (mouth.x - pose.x) * ox + (mouth.z - pose.z) * oz
+  if (reach < 4) return null
+  const alpha = (72 * Math.PI) / 180
+  const sinA = Math.sin(alpha)
+  const cosA = Math.cos(alpha)
+  let bendR = pose.radiusCm * 2
+  const horizOf = (radius: number) => radius * (1 - cosA)
+  if (reach < 2 * horizOf(bendR) + 1) {
+    bendR = Math.max(pose.radiusCm * 0.8, (reach - 1) / (2 * (1 - cosA)))
+  }
+  const hBend = horizOf(bendR)
+  const straightH = Math.max(0, reach - 2 * hBend)
+  const vBend = bendR * sinA
+  const yOuterBottom = mouth.yTop - GUTTER_OUTER_DIAMETER_CM / 2
+  const y0 = yOuterBottom - 4
+  const y1 = y0 - vBend
+  const y2 = y1 - (straightH * cosA) / sinA
+  const h2 = hBend + straightH
+  const yEnd = y2 - vBend
+  if (!(yEnd < y0 - 2) || yEnd <= pose.yBottom + 24) return null
+
+  const towardX = -ox
+  const towardZ = -oz
+  const at = (horiz: number, y: number) =>
+    new THREE.Vector3(mouth.x + towardX * horiz, y, mouth.z + towardZ * horiz)
+  const pts: THREE.Vector3[] = [at(0, yOuterBottom - 0.3), at(0, y0)]
+  const steps = 5
+  for (let i = 1; i <= steps; i += 1) {
+    const t = (alpha * i) / steps
+    pts.push(at(bendR * (1 - Math.cos(t)), y0 - bendR * Math.sin(t)))
+  }
+  if (straightH > 0.5) pts.push(at(h2, y2))
+  for (let i = 1; i <= steps; i += 1) {
+    const s = (alpha * i) / steps
+    pts.push(at(h2 + bendR * (1 - Math.cos(s)), y2 - bendR * Math.sin(s)))
+  }
+  pts.push(at(reach, yEnd - 0.5))
+  return { geometry: tubeAlong(pts, pose.radiusCm), yEnd }
+}
+
+function tubeAlong(points: THREE.Vector3[], radius: number): THREE.BufferGeometry {
+  const radial = 10
+  const rings: THREE.Vector3[][] = points.map((point, index) => {
+    const prev = points[Math.max(0, index - 1)]!
+    const next = points[Math.min(points.length - 1, index + 1)]!
+    const tan = next.clone().sub(prev).normalize()
+    const side = new THREE.Vector3(tan.z, 0, -tan.x)
+    if (side.lengthSq() < 1e-6) side.set(1, 0, 0)
+    side.normalize()
+    const up = new THREE.Vector3().crossVectors(side, tan).normalize()
+    const ring: THREE.Vector3[] = []
+    for (let k = 0; k < radial; k += 1) {
+      const ang = (k / radial) * Math.PI * 2
+      ring.push(
+        point
+          .clone()
+          .addScaledVector(side, Math.cos(ang) * radius)
+          .addScaledVector(up, Math.sin(ang) * radius),
+      )
+    }
+    return ring
+  })
+  const positions: number[] = []
+  const normals: number[] = []
+  const uvs: number[] = []
+  const indices: number[] = []
+  const push = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3) => {
+    const base = positions.length / 3
+    const nrm = new THREE.Vector3()
+      .subVectors(b, a)
+      .cross(new THREE.Vector3().subVectors(c, a))
+      .normalize()
+    for (const v of [a, b, c]) {
+      positions.push(v.x, v.y, v.z)
+      normals.push(nrm.x, nrm.y, nrm.z)
+      uvs.push(0, 0)
+    }
+    indices.push(base, base + 1, base + 2)
+  }
+  for (let i = 0; i < rings.length - 1; i += 1) {
+    const a = rings[i]!
+    const b = rings[i + 1]!
+    for (let k = 0; k < radial; k += 1) {
+      const k2 = (k + 1) % radial
+      push(a[k]!, b[k]!, b[k2]!)
+      push(a[k]!, b[k2]!, a[k2]!)
+    }
+  }
+  const geo = new THREE.BufferGeometry()
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3))
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
+  geo.setIndex(indices)
+  return geo
 }
 
 function buildShoeGeometry(pose: DownpipeWorldPose): THREE.BufferGeometry | null {

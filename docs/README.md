@@ -14,6 +14,7 @@
 | [stage-environment.md](stage-environment.md) | Bühnenmodus Himmel vs. Neutral (Schalen-Plattform, Beige/Nacht) |
 | [scrollable-settings-sections.md](scrollable-settings-sections.md) | Scroll-Akkordeon rechte Einstellungs-Leiste |
 | [ground-puddles.md](ground-puddles.md) | Steingrau-Boden, optionale Pfützen mit Fassaden-Spiegelung |
+| [snow.md](snow.md) | Schneefall: Partikel, Decke nach Neigung, Temp/Schmelze, Wetter-UI |
 | [ground-leaves.md](ground-leaves.md) | Herbstlaub: Platzieren, Cursor-Wind, Persistenz |
 | [panel-geometry.md](panel-geometry.md) | Gehrungsberechnung, `wallLocalX`, Paneelextrusion, 3D-Leibung, Rest-Bossen an Öffnungen (`remnantBoss.ts`) |
 | [masonry-course-editor.md](masonry-course-editor.md) | Schicht-Editor: Setzen/Bearbeiten, Domino, Bossen/Keil, `courseOverrides` |
@@ -23,6 +24,7 @@
 | [ux.md](ux.md) | Bedienung: Navigation, Kontextmenü, Farben, Scope; **rechte Einstellungs-Tabs** (Übersicht → Maße → Farben → Formen → Dekor oben→unten) |
 | [ui-kit.md](ui-kit.md) | Design-Tokens, UI-Primitives (`.ui-*`), Stepper, Abstände 4/8/16, Teilüberschriften |
 | [ui-component-library.md](ui-component-library.md) | **@fassaden/ui**: Park-Sandbox, Bridge-Inseln (Release Notes), Cutover |
+| [park-restore.md](park-restore.md) | Bedien-Parität Vanilla→Park: Adopt-Slots, Coverage-Matrix, Slices |
 | [agent-smoke-check.md](agent-smoke-check.md) | Pflicht-Check nach Park/Bridge-Änderungen (Laden, ScrollArea-Crash, Shell-DOM) |
 | [wall-decor.md](wall-decor.md) | Gesims, Sockel, Zierbänder |
 | [opening-features.md](opening-features.md) | Bogen, Nischen/Konche, Freiraum, Paneel-Laibung, Bänke, Verdachung, Treppe, Kellerfenster |
@@ -35,6 +37,7 @@
 | [awnings.md](awnings.md) | Markisen: Gelenkarm/Fallarm/Markisolette, Volant, Neigung, Live-Schatten |
 | [wind.md](wind.md) | Bühnen-Wind: Intensität windstill→stürmisch, Stoff-Registry |
 | [roof.md](roof.md) | Dachkonfigurator: Formen, Traufe ohne First-Anhebung, Zwerchgiebel, Dachfenster/Gauben (Maße, Traufdurchbruch, Rechtsklick, 8 cm + Hilfslinien ausgerichtet), Ziegel vorerst aus |
+| [flaechen-ueberlappung.md](flaechen-ueberlappung.md) | Keine deckungsgleichen Flächen (Z-Fight); gemeinsame Kante bleibt erlaubt |
 | [downpipes.md](downpipes.md) | Fallrohre (mehrgeschossig), Nische/Schmuck-Durchbruch, Schellen, Regenrinne |
 | [gallery.md](gallery.md) | QA-Galerie: alle Standards im Raster, Abstand, Zufall, Projekt-Schutz |
 | [arrivieren-hauswand.md](arrivieren-hauswand.md) | Arrivieren: Hauswand-Zufall, Regelwerk-JSON, Feedback-Schleife |

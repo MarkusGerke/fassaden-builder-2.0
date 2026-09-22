@@ -12,8 +12,9 @@ Toolbar-Button **Fassade** zwischen 2D und 3D.
 |---|---|
 | Rendering | Wie 3D (Perspektive, Himmel, Schatten, Bloom) — `render3dFrame` |
 | Orbit | **Aus** — keine freie Navigation |
-| Blickzentrum | Horizontal: Welt-AABB-Mitte des Baukörpers; vertikal: Mitte zwischen `minY` und `maxY` aller Studio-Wände |
-| Abstand | Aus FOV/Seitenverhältnis so, dass Fassadenbreite und -höhe ins Bild passen, plus **mindestens eine Geschosshöhe** (`activeWallHeight()`) Rand |
+| Blickzentrum | Horizontal: Welt-AABB-Mitte; vertikal: Mitte zwischen Sockel und **First** (`contentMaxY` / `sceneContentMaxY`, nicht nur Wandkrone) |
+| Abstand | FOV so, dass Breite und Höhe **inkl. Dach** + mind. eine Geschosshöhe Rand passen |
+| Kamerahöhe | Über lookY angehoben (`cameraElevateCm`, ca. 12 % Bauhöhe / 0,35 Geschoss) — Blick leicht nach unten, Dach oben vollständig im Bild (v2.0.511) |
 | Kompass | Wie 2D: `setCompassYaw` → `currentElevation` + `syncPresentCamera()` (45°-Raster); Kamera `lookAt` auf Ziel (sonst bleibt 3D-Blickrichtung) |
 | Persistenz | `AppView` `'present'` in `persistence.ts` |
 

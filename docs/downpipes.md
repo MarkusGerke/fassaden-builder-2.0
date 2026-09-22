@@ -14,7 +14,7 @@ Mehrgeschossige Fallrohre als Gebäude-Fixture plus Dachrinne (Titanzink-Look).
   - Aufsatz: `fill.flush`-Cutouts (kein Wandloch, nur Schmuck).
   - Nische: dieselben Cutouts wie das Wandloch; bei `breakDecor` aus bleibt das Loch, Schmuck läuft durch.
 - **Rohrschellen** (Ring + Lasche zur Wand) entlang der Achse ca. alle 2 m, Aufsatz und Nische. **v2.0.408:** Aufsatz-Lasche geht über den 8-cm-Spalt und den Paneel-/Bossenvorstand bis zum Wandkörper.
-- **Dachrinne** bleibt Traufen-Sweep; Farbe wählbar (`roof.gutterColor`, Default wie Fallrohr). Bei aktivem Dach+Rinne: kurzer Ablaufstutzen am Rohrokopf.
+- **Dachrinne** bleibt Traufen-Sweep; Farbe wählbar (`roof.gutterColor`, Default wie Fallrohr). Die Oberkante liegt auf der Dachhaut der Traufspitze (v2.0.582). Steht das Rohr an einer Wand mit Rinne, führt ein Schwanenhals (Einhangstutzen, zwei Bögen à 72°, schräges Zwischenstück) vom Rinnenboden auf die Rohrachse; das lotrechte Rohr endet dort. An einer Giebelwand ohne Rinne kein Bogen. Rohrschellen bleiben am lotrechten Stück.
 
 ## Daten
 

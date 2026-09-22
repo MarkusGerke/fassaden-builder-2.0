@@ -1,13 +1,8 @@
 import { createSignal, onCleanup, onMount } from 'solid-js'
-import { HStack, Stack } from 'styled-system/jsx'
-import { IconButton, SegmentGroup, Slider, Field } from '@/components/ui'
+import { Stack } from 'styled-system/jsx'
+import { SegmentGroup, Slider, Field } from '@/components/ui'
 import { FieldRow } from '@/composites/FieldRow'
 import { Box } from 'styled-system/jsx'
-import {
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  HelpCircleIcon,
-} from 'lucide-solid'
 import {
   clickId,
   isButtonActive,
@@ -21,7 +16,8 @@ export type ChromeExtrasAppProps = {
 }
 
 /**
- * Scope-Bar, Strichstärke, Collapse, Wand-Gizmo ±, Nav-Hilfe — Park.
+ * Scope-Bar und Strichstärke — Park.
+ * Einklappen und Nav-Hilfe liegen nicht in dieser Leiste.
  */
 export function ChromeExtrasApp(props: ChromeExtrasAppProps) {
   const [tick, setTick] = createSignal(0)
@@ -61,36 +57,6 @@ export function ChromeExtrasApp(props: ChromeExtrasAppProps) {
 
   return (
     <Stack gap="2" data-park-chrome-extras="" class="park-chrome-extras" color="fg.default">
-      <HStack gap="2" flexWrap="wrap" alignItems="center">
-        <IconButton
-          aria-label="Linke Spalte einklappen"
-          variant="surface"
-          bg="white"
-          size="sm"
-          onClick={() => clickId('ui-left-collapse')}
-        >
-          <ChevronLeftIcon />
-        </IconButton>
-        <IconButton
-          aria-label="Rechte Spalte einklappen"
-          variant="surface"
-          bg="white"
-          size="sm"
-          onClick={() => clickId('ui-right-collapse')}
-        >
-          <ChevronRightIcon />
-        </IconButton>
-        <IconButton
-          aria-label="Navigation"
-          variant="surface"
-          bg="white"
-          size="sm"
-          onClick={() => clickId('nav-help-btn')}
-        >
-          <HelpCircleIcon />
-        </IconButton>
-      </HStack>
-
       {scopeVisible() ? (
         <SegmentGroup.Root
           value={scope()}

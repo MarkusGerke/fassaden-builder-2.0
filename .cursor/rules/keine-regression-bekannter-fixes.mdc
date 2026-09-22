@@ -7,7 +7,7 @@ alwaysApply: true
 
 ## Prozess (bei jeder Änderung)
 
-1. **Vor dem Edit:** Passt die Änderung an CSS/Layout/Himmel/Orbit/Schatten/Bloom? → kurz gegen diese Liste und die verlinkten Rules prüfen.
+1. **Vor dem Edit:** Passt die Änderung an CSS/Layout/Himmel/Orbit/Schatten/Bloom oder an Flächen, die sich berühren? → kurz gegen diese Liste und die verlinkten Rules prüfen.
 2. **Kein „temporäres“ Zurückdrehen** eines dokumentierten Fixes, nur weil ein anderes Symptom auftaucht — erst Lösung finden, die **beide** Ziele hält.
 3. **Nach dem Fix eines Regressionsbugs:** Rule + `docs/changelog.md` (Symptom / Ursache / was nicht rückgängig) + Version — wie `fehler-versuche-dokumentieren.mdc`.
 
@@ -18,14 +18,31 @@ alwaysApply: true
 | Bühne blitzt/springt bei Auswahl | Farb-Filter wieder in den **Flex-Flow** (Dock wächst) | Filter **absolut** im **dauerhaft reservierten** Band; Dock-`min-height` inkl. Band | v2.0.461 / v2.0.470 / v2.0.471, `docs/ux.md` |
 | Farb-Kacheln abgeschnitten | Filter absolut **ohne** reserviertes Band | Band in Dock-Höhe + Filter absolute `top:0` im Band | |
 | Farb-Kacheln zerquetscht | `padding-top` auf `#opening-library-items` (frisst die festen 6,5 rem) | Nie Items-Padding; Band außerhalb der Kartenzeile | v2.0.471 |
+| Sektion „Szene“ (Pfützen/Nebel) unsichtbar | Globales `display:none` auf `[data-settings-section="colors"]` | Bühne = `scene`; Farben-Hide nur Objekt-Toolbars | v2.0.554, `docs/ux.md` |
+| Wetter/Schneefall in Park nicht sichtbar | Nur Vanilla-Sektion, Park-`SceneToolbarApp` ohne Item | Wetter-Accordion in `SceneToolbarApp` + Vanilla-IDs | v2.0.555, `docs/snow.md` |
+| Park-Akkordeon offen ohne Inhalt | `expand-height` / Auto-Open Maße beim Mount | `height:auto` open, kein Expand-Height, kein Empty-Auto-Open | v2.0.570, `docs/park-restore.md` |
+| Bibliothek „Fenster“ leer nach Auswahl | `LibraryDockApp` Unmount zerstört Adopt-Hosts | Mount behalten + `data-open`; Restore/Recreate | v2.0.571, `docs/park-restore.md` |
+| Accordion-Klick trifft Trigger, bleibt closed | FormMirror stale `<Show>`-Accessor + Effect/`tick`-Race; Stage schreibt `ui-right-collapsed` | Kein Show-Callback; Effect nur Signatur; Dock nie unmounten; Stage-Collapse nicht persistieren | v2.0.572, `docs/park-restore.md` |
+| Teilung/Flügel/Sprossen in Park tot | FormMirror ohne `.toolbar-stepper`; ±-Skip v2.0.530 | `toolbarStepper` + enger Number-Skip; Hinge-Adopt | v2.0.573, `docs/park-restore.md` |
+| Kein Schnee trotz Schneefall an | Tick an `animationsPaused` gekoppelt → `activeCount` 0 | Schnee-Tick `paused: false` (Pause ≠ Wetter) | v2.0.558, `docs/snow.md` |
+| Decke unsichtbar trotz cover=1 | Ground-Mood-Albedo jeden Frame Steingrau | Cover→Ground-Lerp + Dach-Tint | v2.0.560, `docs/snow.md` |
+| Decke unsichtbar trotz weißem Hex | Ground-Mood `albedo * ambient`; kein Dach-Tint | Overlay-Meshes `syncSettledCover` | v2.0.562, `docs/snow.md` |
+| Flocken fallen durch Decke/Bänke | Nur `groundY`-Kollision | Landepads + Höhenfeld, settled flakes | v2.0.563, `docs/snow.md` |
+| Boden ohne Schatten / Geister-Schnee | Ground-Overlay-Plane; Pad-Expand | Overlay weg; Pads ohne Aufweitung | v2.0.564, `docs/snow.md` |
+| Boden ohne Schatten + kein liegender Schnee | Overlay / Coverage-Shader auf `groundMat` / weißes Albedo-Lerp | Ground-Mood-Remap nach PCSS (`uGroundSnowCover`); Innenboden kein Pad | v2.0.565, `docs/snow.md` |
+| Schnee hört auf / Decke weg / Orbit leer | 70 % liegen **ohne** Fall-Reserve; Orbit-Budget kappen; Weiß-Wash ohne Licht | Liegen ja, aber ≥40 % fallen weiter; Orbit volle Zahl; Luma-Mix nach Licht | v2.0.566 / v2.0.568, `docs/snow.md` |
+| Cover=1, Uniforms=1, Decke unsichtbar | Albedo-Ratio-Remap (`lit/albedo`); Overlay-Plane; `groundMat`-Weiß-Lerp | Luma-Mix nach Licht **und** liegende Flocken auf Pads | v2.0.568, `docs/snow.md` |
+| Cover=1, Hof ohne Decke | Ground-Mood-Cover nur in `applySunLighting` | `setGroundMoodSnowCover` im Schnee-Tick; Pads nur bei Dirty | v2.0.567, `docs/snow.md` |
 | Orbit-Schatten hart / Wandfarbe springt | PCSS-Lite, DPR 1 im Render-Orbit | siehe `orbit-visual-stability.mdc` | |
 | Grauer/schwarzer Kasten mit Bloom | Composer auf Default-FB; Bloom bei Orbit aus | `bloom-canvas-kasten.mdc` | |
 | Schwarze Punkte im Himmel | Sterne tagsüber mit BACKGROUND ohne Exposure | Sterne nur nachts + gleiche Display-Exposure | v2.0.468, `celestial-sky.md` |
 | Touch 3D kein Orbit | Nur Cmd/Ctrl-`beginNav3d` | `shouldTouchChromeBeginOrbit3d` | v2.0.469 |
 | Erker/Außenwand zu breit | `panelFlip: false` / Depth-Tweaks | `erker-aussenkante.mdc` | |
 | Schatten-Look „verbessern“ | Penumbra/Density ohne Auftrag | `schatten-qualitaet-soll.mdc` |
+| Schachbrett an der Traufecke, Gesims fehlt | Plattenrand bis in die Gehrung; Gesims an der Traufe weglassen; Mansardenstirn per Lauflänge | Rand nur neben der Wand; Gesims 1 cm unter der Untersicht; lotrecht am Quereinzug | v2.0.580, `docs/roof.md` |
 | Idle ~10 fps mit Markisen | Wind → `liveMotion` jedes Frame; PCSS-Lite / DPR 1 | Wind erst nach Idle-Skip ticken; Stoffe im Stillstand stehen | v2.0.474, `docs/performance.md`, `docs/wind.md` |
 | Leere App / UI startet nicht | `ScrollArea.Thumb` per `defaultProps` oder gestylte Scrollbar+Thumb-Wrapper | ungestyltes Ark `Scrollbar` → Kind `Thumb` (`ScrollbarWithThumb`) | v2.0.534, `docs/agent-smoke-check.md` |
+| Flackern, Streifen, Karo an einer Kante | Zweite Fläche in derselben Ebene; nur `polygonOffset` | Eine Fläche weglassen oder messbar versetzen. Gemeinsame Kante bleibt | `keine-flaechen-ueberlappung.mdc`, `docs/flaechen-ueberlappung.md` |
 
 ## Konflikt zweier Nutzerwünsche
 

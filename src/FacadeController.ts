@@ -29,7 +29,20 @@ import {
   type FacadeDecorKind,
 } from './studio/facadeDecor'
 import { resolveProfile } from './profiles/registry'
-import { applyPlinthOpeningFragmentDiscard, bayMouthLocalXGapsForWall, buildProfilePaths, clipProfileSectionAboveCm, createPlinthProfileSweepGeometry, createProfileSweepGeometry, createSimpleProfileBarGeometry, disposePlinthOpeningDiscard, scaleProfileSectionAxes, transformProfileSection, transformProfileSectionAnchored, openingFrameProfileOutwardCm } from './utils/profilePaths'
+import {
+  applyPlinthOpeningFragmentDiscard,
+  bayMouthLocalXGapsForWall,
+  buildProfilePaths,
+  clipProfileSectionAboveCm,
+  createPlinthProfileSweepGeometry,
+  createProfileSweepGeometry,
+  createSimpleProfileBarGeometry,
+  disposePlinthOpeningDiscard,
+  scaleProfileSectionAxes,
+  transformProfileSection,
+  transformProfileSectionAnchored,
+  openingFrameProfileOutwardCm,
+} from './utils/profilePaths'
 import { clampFacadeState, edgeIsJoined, storeyStructuralDepthCm } from './utils/walls'
 import {
   labelWorldDeltaFromStates,
@@ -77,6 +90,7 @@ import {
 } from './windows/openingExtras'
 import { applyMeshColor, applyOrthographicGlassSeeThrough, applyRenderExteriorSurfaceLook, applyRenderInteriorSurfaceLook, applySurfaceFinish, applyWorkModeSurfaceLook, createTintedMaterial, ensureShadowDepthMaterial, getExteriorEnvFillFactor, getGlassEnvironment, markWindowFrameSurface, materialIsGlassLike } from './utils/threeColors'
 import { applyFacadeShadeShader, applyInteriorShadeShader, facadeOutwardLocalZ } from './utils/facadeShade'
+import { applySnowCoverageToObject3D } from './lighting/snowCoverage'
 import { openingGlassConfig } from './utils/glassConfig'
 import { DEFAULT_STUDIO_PANEL } from './studio/constants'
 import { layoutPanelTiles } from './studio/panelLayout'
@@ -2462,7 +2476,8 @@ export class FacadeController {
         color: new THREE.Color(built.tileColor),
         roughness: 0.88,
         metalness: 0.02,
-        side: THREE.FrontSide,
+        // Mansarden-Bänder haben nach innen zeigende Normalen → FrontSide = unsichtbare Straßenfront
+        side: roof.kind === 'mansard' ? THREE.DoubleSide : THREE.FrontSide,
         shadowSide: THREE.FrontSide,
       })
       const roofMesh = new THREE.Mesh(built.roof, tileMat)
@@ -3488,6 +3503,7 @@ export class FacadeController {
   private finalizeGeometryRebuild() {
     this.applyPointLightOccluders()
     this.applyFacadeBacklitShade()
+    this.applySnowCoverageMaterials()
     if (!this.lodSettings.enabled) {
       this.forceAllHighDetail()
     } else {
@@ -3495,6 +3511,45 @@ export class FacadeController {
     }
     // Nach High-Fenstern: Empfang erst setzen (Meshes starten mit receiveShadow=false).
     this.syncLabelShadowReceivers()
+  }
+
+  /**
+   * Schneedecke-Shader auf Dach, Decke und ≤15°-Teilen (Vorschau + Render).
+   * Cover=0 → unsichtbar; Uniforms kommen aus `SnowRuntime`.
+   */
+  /** Wurzeln für liegende Schneedecke (Dach, Profile, Bänke, …). */
+  getSnowCoverRoots(): THREE.Object3D[] {
+    return [
+      this.roofGroup,
+      this.indoorFloorGroup,
+      this.wallGroup,
+      this.profileGroup,
+      ...this.outerSillMeshes,
+      ...this.innerSillMeshes,
+      ...this.pedimentMeshes,
+      ...this.profileMeshes,
+      ...this.stairMeshes,
+      ...this.rollerShutterGroups,
+    ]
+  }
+
+  applySnowCoverageMaterials() {
+    if (this.presentationMode === 'draft') return
+    const visit = (obj: THREE.Object3D) => applySnowCoverageToObject3D(obj)
+    for (const mesh of this.meshes.values()) visit(mesh)
+    for (const mesh of this.studioCladdingMeshes) visit(mesh)
+    for (const mesh of this.claddingLodHighMeshes) visit(mesh)
+    for (const mesh of this.claddingLodLowMeshes) visit(mesh)
+    for (const mesh of this.profileMeshes) visit(mesh)
+    for (const mesh of this.outerSillMeshes) visit(mesh)
+    for (const mesh of this.innerSillMeshes) visit(mesh)
+    for (const mesh of this.pedimentMeshes) visit(mesh)
+    for (const mesh of this.stairMeshes) visit(mesh)
+    for (const group of this.rollerShutterGroups) visit(group)
+    visit(this.roofGroup)
+    visit(this.indoorFloorGroup)
+    visit(this.wallGroup)
+    visit(this.profileGroup)
   }
 
   /** Gegenlicht: Seiten und Oberseiten wie die Front abdunkeln, ohne Front-Schraffur. */
@@ -4421,6 +4476,7 @@ export class FacadeController {
       wall,
       this.pointLightOccludersEnabled ? THREE.DoubleSide : THREE.FrontSide,
     )
+    const baySide = isStudioWall(wall) && wall.bayRole === 'side'
     let mesh = this.meshes.get(wall.id)
     if (!mesh) {
       mesh = new THREE.Mesh(geometry, wallMaterial)

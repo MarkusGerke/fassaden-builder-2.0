@@ -45,6 +45,8 @@ Mount: `mountLiveShellApp` → `#park-live-shell`. Adapter: `src/ui/liveShellBri
 
 **Noch FormMirror / Tree-Scan:** Domain-Felder und Ebenen-Klicks weiter über Vanilla-IDs. **Geplant:** Export/Plan Park; FormMirror ablösen.
 
+**Park-Restore (v2.0.552):** Bedien-Parität über **Adopt-Slots** (`data-park-adopt`) in Hybrid-FormMirror — siehe [park-restore.md](park-restore.md). Kein zweites sichtbares Vanilla-Chrome.
+
 ## Bridge (ältere Inseln / Intern)
 
 Regel: Domäne bleibt in der App; `@fassaden/ui` bekommt nur **View-Models** + Mount-Funktionen. Keine `Wall`/`Opening`/`EditorState`-Imports in der Lib.
@@ -117,6 +119,9 @@ Nach CLI: Slot-Recipes in `theme/recipes/index.ts` unter `slotRecipes` prüfen.
 - **Ebenen-Aktionen:** Navigation Menu erntet `.os-menu` unsichtbar (`html.fb-harvest-menu`); Vanilla-`.layer-more-btn` bleibt.
 - **ScrollArea:** `ScrollbarWithThumb` nur mit **ungestyltem** Ark `Scrollbar` + Kind `Thumb` (Recipe-Klassen als `class`). Gestylte `withContext`-Wrapper für Scrollbar/Thumb nesten den Thumb außerhalb von `ScrollAreaScrollbarProvider` → `ContextError`, leere App (v2.0.529 unzureichend, Fix v2.0.534). Nie `defaultProps` auf Thumb. Smoke-Check: [agent-smoke-check.md](agent-smoke-check.md).
 - **FormMirror Accordion:** controlled `value` — nie reaktives `defaultValue` (MutationObserver würde sonst Maße wieder öffnen).
+- **FormMirror Accordion Höhe (v2.0.570):** kein `expand-height` beim controlled Mount-Open (sonst `--height: 0`); Park-CSS `open → height:auto`; kein Auto-Open beim ersten Scan.
+- **LibraryDock Adopt (v2.0.571 / v2.0.572):** Hosts bei Unmount zurück nach `#library-mode`; Dock nie wegen Auswahl/Stage unmounten (`data-open` / `data-dock-collapsed`).
+- **FormMirror Show (v2.0.572):** keine Callback-Accessor auf `section()`/`block()` — sonst stale `<Show>` und Accordion stuck-closed.
 - **Bibliothek-Register:** Ark `Tabs` (`variant="line"`), nicht SegmentGroup.
 - **Ebenen-⋯:** Ark `Menu` + `Portal` (nicht NavigationMenu in Card mit `overflow:hidden`).
 - **Touch (v2.0.533 / v2.0.535):** `html.ui-touch-chrome` + Park: keine linke/rechte Spalte, Bühnen-Chrome aus außer `#history-toolbar`. Bearbeiten → Ark `Drawer` unten mit `snapPoints` (25–100 % vh, Session wie Vanilla), sichtbarem `Backdrop`, Scroll im Content (`draggable={false}`).
@@ -129,7 +134,8 @@ Nach CLI: Slot-Recipes in `theme/recipes/index.ts` unter `slotRecipes` prüfen.
 - **FormMirror NumberInput:** immer `Input` + `Control` mit Increment/Decrement — sonst nur Pfeile ohne Wert.
 - **Checkbox CSS:** Park-Overrides nur auf `[data-part='root']` — nie auf alle `[data-scope='checkbox']` (Control teilt den Scope; `width: fit-content !important` kollabiert die Box auf ~2 px).
 - **Accordion ItemBody:** Padding über Klasse `.accordion__itemBody` (Slot hat oft kein `data-part`); ohne Padding + `overflow:hidden` am Content wirkt die Control-Kante abgeschnitten.
-- **FormMirror:** Vanilla-Stepper (± neben `input[type=number]`) nicht spiegeln; `.scope-toggle` als `toggleRow` in einer Zeile.
+- **FormMirror:** Vanilla ± neben `input[type=number]` nicht spiegeln; `.toolbar-stepper[id]` als `toolbarStepper` (v2.0.573); Write über Vanilla ± (v2.0.574); `.scope-toggle` als `toggleRow`.
+- **FormMirror Adopt:** u. a. `window-hinge-modes` (ganzes `#window-hinge-section`-Details); Cleanup ohne Remount-Race (`placedHost`/Registry); Anchor ohne `hidden`.
 - **ScrollArea content:** nicht `minW: min-content` (schneidet Checkboxen/Felder links ab).
 
 ## Struktur
