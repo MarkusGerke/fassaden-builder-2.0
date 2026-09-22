@@ -1791,10 +1791,10 @@ export const PROFILE_FACE_BIAS_CM = 0.2
 
 /**
  * Außen-/Innenbank: Abstand der Brett-Rückseite von der Wandfläche (cm).
- * Ohne Gap liegt die Rückseite in der Wandebene → ab mittlerer Zoom-Stufe Z-Fight
- * (kleine Rechtecke links/rechts der Bank). Profile nutzen 0,2 cm — für große Bank-Quadrate zu wenig.
+ * Rückfläche der Box ist entfernt (`createOuterSillBoardGeometry`) — 0,2 cm reicht
+ * wie bei Profilen; 8 cm ließ die Bank sichtbar schweben.
  */
-export const SILL_FACE_BIAS_CM = 8
+export const SILL_FACE_BIAS_CM = 0.2
 
 /**
  * Mindest-Forward der Querschnitts-Fußplatte bei Öffnungsprofilen (cm).

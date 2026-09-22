@@ -39,7 +39,7 @@ Kern: `src/utils/archForms.ts`, `openingGeometry.ts`. Schichten-Vertrag (Shell/F
 Nur Fenster mit `y > 0`. Hydrate/`ensureWindowSills` ergänzt fehlende Felder. UI `#window-sill-section` nur bei `type === 'window'`.
 
 - **Innen (`sillInner`):** Brett (Tiefe × Stärke), symmetrischer Überstand (`overhang`, Default 8 cm). An/Aus über Bibliothek Profile (**Keines** / **Brett**).
-- **Außen (`sillOuter`):** `board` (Quader ohne wandseitige Fläche, Tiefe max 16 cm `OUTER_SILL_MAX_CM`, Gefälle; v2.0.559) oder `profile` (Sweep `buildSillOuterPaths`). Überstand symmetrisch. Oberkante bündig mit unterer Laibung. Brett-Pivot `SILL_FACE_BIAS_CM` vor der Fassade.
+- **Außen (`sillOuter`):** `board` (Quader ohne wandseitige Fläche, Tiefe max 16 cm `OUTER_SILL_MAX_CM`, Gefälle; v2.0.559) oder `profile` (Sweep `buildSillOuterPaths`). Überstand symmetrisch. Oberkante bündig mit unterer Laibung. Brett-Pivot `SILL_FACE_BIAS_CM` **0,2** vor der Paneelfläche (v2.0.584; früher 8 → sichtbares Schweben). Stoß: normale Hausecke `SILL_JOIN_CORNER_PAD_CM` 2, Erker-Schenkel `SILL_JOIN_ZFIGHT_PAD_CM` 96; Schnitt durch die Öffnung → keine Bank (`clipOuterSillLayoutToJoins`). Erker-Mund-Skip unverändert.
 - **Profil-Wahl (v2.0.455):** Bibliothek Profile — **Keines** (`enabled: false`) → **Brett** → Bankprofile. Rechts keine Anzeigen-Checkbox und keine Farb-Swatches; bei aktivem Objekt Maße/Finish/Profil-Optionen. Rollläden: eigener Bibliothek-Tab.
 
 Orientierung: 90°-Drehung, Spiegeln oben/unten und vorne/hinten. Innenbank an Innenkante; Außenbank-Sweep an Oberkante der Bankplatte.

@@ -1033,6 +1033,72 @@ function clipSegmentOutsidePolyline(
 }
 
 /**
+ * Streifen-Zeichnung: jede Schichtkante ist eine Linie über die Wand und wird
+ * nur von der Öffnungsmaske (Laibung + Sturz, jede Bogenform) geschnitten.
+ * Die Maske selbst ist die Schnittlinie — nicht die Fasen-Facette des Meshes.
+ */
+export function coalesceStripDrawingLines(
+  segments: number[][],
+  wall: StudioDrawingWall,
+  courseYs: number[],
+): number[][] {
+  const halfW = wall.width / 2
+  const halfH = wall.height / 2
+  const project = wall.panel?.projectDepth ?? 4
+  const flip = wall.panelFlip !== false
+  const depth = wall.depth ?? 32
+  const bodyZ = flip ? -project : depth + project
+  const masks = wall.openings
+    .filter((opening) => !opening.hidden && openingCutsWall(opening))
+    .map((opening) => openingMaskPolyline(opening, 0))
+  // Mesh-Kanten (Fasen-Facette, 2-cm-Schritte) gehören nicht in die Streifenzeichnung.
+  const kept: number[][] = []
+  const boundaryYs = new Set<number>()
+  for (const seg of segments) {
+    if (Math.abs(seg[1]! - seg[4]!) > 0.45) continue
+    const y = (seg[1]! + seg[4]!) / 2 + halfH
+    if (y < 1 || y > wall.height - 1) boundaryYs.add(Math.round(y * 10) / 10)
+  }
+  const lineYs = [...courseYs, ...boundaryYs]
+  for (const y of lineYs) {
+    let spans: Array<{ x0: number; y0: number; x1: number; y1: number }> = [
+      { x0: 0, y0: y, x1: wall.width, y1: y },
+    ]
+    for (const mask of masks) {
+      const next: typeof spans = []
+      for (const span of spans) {
+        next.push(...clipSegmentOutsidePolyline(span.x0, span.y0, span.x1, span.y1, mask))
+      }
+      spans = next
+    }
+    for (const span of spans) {
+      if (Math.hypot(span.x1 - span.x0, span.y1 - span.y0) < 0.5) continue
+      kept.push([
+        span.x0 - halfW,
+        span.y0 - halfH,
+        bodyZ,
+        span.x1 - halfW,
+        span.y1 - halfH,
+        bodyZ,
+      ])
+    }
+  }
+  for (const mask of masks) {
+    for (let i = 0, j = mask.length - 1; i < mask.length; j = i, i += 1) {
+      const a = mask[j]!
+      const b = mask[i]!
+      if (Math.hypot(b.x - a.x, b.y - a.y) < 0.15) continue
+      kept.push([a.x - halfW, a.y - halfH, bodyZ, b.x - halfW, b.y - halfH, bodyZ])
+    }
+  }
+  kept.push(
+    [-halfW, -halfH, bodyZ, -halfW, halfH, bodyZ],
+    [halfW, -halfH, bodyZ, halfW, halfH, bodyZ],
+  )
+  return kept
+}
+
+/**
  * Zeichnungs-Kante in Wand-XY: trifft die Öffnung nur im **Maskenloch** (Bogen, nicht Bounding-Box).
  * Schultersteine am Rund-/Tudorbogen bleiben stehen; Glas und Freiraum nicht.
  */

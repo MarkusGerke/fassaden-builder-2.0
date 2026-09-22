@@ -13,6 +13,9 @@ import {
   clipOuterSillLayoutToJoins,
   openingFlanksBayMouth,
   openingOuterSillConflictsBayMouth,
+  sillJoinInsetFromNeighbor,
+  SILL_JOIN_CORNER_PAD_CM,
+  SILL_JOIN_ZFIGHT_PAD_CM,
 } from './openings'
 import { STUDIO_MASONRY, DEFAULT_STUDIO_PANEL } from '../studio/constants'
 import { WALL_DEPTH } from '../constants/presets'
@@ -208,6 +211,30 @@ describe('clipOuterSillLayoutToJoins', () => {
 
   it('lässt die Bank weg wenn der Stoß die Öffnung anschneiden würde', () => {
     expect(clipOuterSillLayoutToJoins(raw, opening, 192, { start: 0, end: 60 })).toBeNull()
+  })
+
+  it('lässt Seitenfenster an der Hausecke mit voller Bank (kleines Corner-Pad)', () => {
+    const side = { x: 96, width: 96 }
+    const sideRaw = {
+      ...raw,
+      xLeft: 80,
+      xRight: 208,
+      width: 128,
+    }
+    const inset = 24 + SILL_JOIN_CORNER_PAD_CM
+    const next = clipOuterSillLayoutToJoins(sideRaw, side, 672, { start: inset, end: inset })
+    expect(next).not.toBeNull()
+    expect(next!.width).toBe(128)
+    expect(next!.xLeft).toBe(80)
+  })
+})
+
+describe('sillJoinInsetFromNeighbor', () => {
+  it('nutzt kleines Pad an normaler Hausecke und großes am Erker-Schenkel', () => {
+    expect(sillJoinInsetFromNeighbor(0, { yawDeg: 90, depth: 24 })).toBe(24 + SILL_JOIN_CORNER_PAD_CM)
+    expect(
+      sillJoinInsetFromNeighbor(0, { yawDeg: 90, depth: 24, bayRole: 'side' }),
+    ).toBe(24 + SILL_JOIN_ZFIGHT_PAD_CM)
   })
 })
 describe('openingFlanksBayMouth', () => {

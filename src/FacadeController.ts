@@ -67,6 +67,7 @@ import {
   normalizeOpeningArch,
   openingCutsWall,
   openingFillMode,
+  coalesceStripDrawingLines,
   filterStudioDrawingSegments,
   openingHasRoundMask,
   openingMaskPolyline,
@@ -78,6 +79,7 @@ import {
   openingShowsGlazing,
   openingActsAsWindow,
 } from './utils/openingGeometry'
+import { visiblePanelRowRange } from './studio/panelLayout'
 import { resolveCladding, windowModelKey } from './meshes/catalog'
 import { loadCladdingTemplates, loadWindowProfileTemplates } from './meshes/loadMeshes'
 import { LEAF_OPEN_INWARD, createGruenderzeitWindowMesh, gruenderzeitConfigForOpening, isLeafMotionTag, windowAssemblyDepth, type LeafMotionTag } from './windows/gruenderzeit'
@@ -2862,10 +2864,11 @@ export class FacadeController {
   private filterCladdingEdgesOutsideOpenings(
     edges: THREE.BufferGeometry,
     wall: Wall,
+    stripCourseYs?: number[],
   ): THREE.BufferGeometry {
     const pos = edges.getAttribute('position')
     if (!pos || pos.count < 2) return edges
-    const kept: number[] = []
+    const pairs: number[][] = []
     for (let i = 0; i < pos.count; i += 2) {
       const segs = filterStudioDrawingSegments(
         pos.getX(i),
@@ -2876,8 +2879,14 @@ export class FacadeController {
         pos.getZ(i + 1),
         wall,
       )
-      for (const seg of segs) kept.push(...seg)
+      for (const seg of segs) pairs.push(seg)
     }
+    const lines =
+      stripCourseYs && stripCourseYs.length > 0
+        ? coalesceStripDrawingLines(pairs, wall, stripCourseYs)
+        : pairs
+    const kept: number[] = []
+    for (const seg of lines) kept.push(...seg)
     edges.dispose()
     const filtered = new THREE.BufferGeometry()
     filtered.setAttribute('position', new THREE.Float32BufferAttribute(kept, 3))
@@ -2907,11 +2916,28 @@ export class FacadeController {
       obj.userData.lodTier === 'high' ||
       obj.userData.lodTier === 'plinth' ||
       obj.userData.lodTier === 'light'
+    const stripCourses =
+      wall &&
+      isStudioWall(wall) &&
+      obj.userData.lodTier === 'high' &&
+      wall.panel?.pattern === 'strip'
+    let stripCourseYs: number[] | undefined
+    if (stripCourses && wall) {
+      const { rowCuts, firstVisibleRow, lastVisibleRow } = visiblePanelRowRange(
+        wall.height,
+        wall.panel as Parameters<typeof visiblePanelRowRange>[1],
+      )
+      const joint = wall.panel?.joint ?? 0.8
+      stripCourseYs = []
+      for (let i = firstVisibleRow; i <= lastVisibleRow; i += 1) {
+        stripCourseYs.push(rowCuts[i]! + joint / 2, rowCuts[i + 1]! - joint / 2)
+      }
+    }
     if (wall && isStudioWall(wall) && claddingLike && !isOpeningMesh) {
-      edges = this.filterCladdingEdgesOutsideOpenings(edges, wall)
+      edges = this.filterCladdingEdgesOutsideOpenings(edges, wall, stripCourseYs)
     }
     const archPolys = obj.geometry.userData.drawingArchPolylines as number[][] | undefined
-    if (Array.isArray(archPolys) && archPolys.length > 0) {
+    if (!stripCourses && Array.isArray(archPolys) && archPolys.length > 0) {
       const attr = edges.getAttribute('position')
       const kept: number[] = attr ? Array.from(attr.array as ArrayLike<number>) : []
       for (const poly of archPolys) {
@@ -6209,16 +6235,26 @@ export class FacadeController {
       for (const opening of wall.openings) {
         if (opening.hidden) continue
         const sill = opening.sillOuter
-        if (!sill?.enabled || !openingActsAsWindow(opening) || opening.y <= 0) continue
-        if (basementWindowEnabled(opening)) continue
+        if (!sill?.enabled || !openingActsAsWindow(opening) || opening.y <= 0) {
+          continue
+        }
+        if (basementWindowEnabled(opening)) {
+          continue
+        }
         const mouthGaps = bayMouthLocalXGapsForWall(this.state, wall)
-        if (openingOuterSillConflictsBayMouth(opening, sill, mouthGaps)) continue
+        if (openingOuterSillConflictsBayMouth(opening, sill, mouthGaps)) {
+          continue
+        }
         const normalized = normalizeOpeningSillOuter(sill)
-        if (outerSillUsesProfile(normalized)) continue
+        if (outerSillUsesProfile(normalized)) {
+          continue
+        }
         const insets = this.sillJoinInsets(wall)
         const rawLayout = resolveOuterSillLayout(opening, normalized)
         const layout = clipOuterSillLayoutToJoins(rawLayout, opening, wall.width, insets)
-        if (!layout) continue
+        if (!layout) {
+          continue
+        }
         const depth = Math.max(1, layout.depth)
         const thickness = Math.max(0.5, layout.thickness)
         const width = Math.max(1, layout.width)

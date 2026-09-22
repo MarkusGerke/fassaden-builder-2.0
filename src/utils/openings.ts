@@ -475,22 +475,26 @@ export function clampOuterSillLayoutForBayMouths(
   return { ...layout, xLeft, xRight, width }
 }
 
-/** Abstand gegen Z-Fight / PCSS-Flecken in der Ferne an 90°-Stößen (eine Fensterachse). */
+/** Abstand gegen Z-Fight an 90°-Stößen zu einem **Erker-Schenkel** (eine Fensterachse). */
 export const SILL_JOIN_ZFIGHT_PAD_CM = 96
+/** Normale Hausecke (zwei Außenwände): nur Wandstärke + kleiner Puffer — sonst fehlen Seitenfenster. */
+export const SILL_JOIN_CORNER_PAD_CM = 2
 
 export function sillJoinInsetFromNeighbor(
   wallYawDeg: number,
-  neighbor: Pick<Wall, 'yawDeg' | 'depth'> | undefined,
+  neighbor: Pick<Wall, 'yawDeg' | 'depth' | 'bayRole'> | undefined,
 ): number {
   if (!neighbor) return 0
   const yawDiff = Math.abs((((wallYawDeg ?? 0) - (neighbor.yawDeg ?? 0)) % 360) + 360) % 360
   if (yawDiff < 8 || Math.abs(yawDiff - 180) < 8) return 0
-  return Math.max(8, neighbor.depth ?? 24) + SILL_JOIN_ZFIGHT_PAD_CM
+  const pad = neighbor.bayRole ? SILL_JOIN_ZFIGHT_PAD_CM : SILL_JOIN_CORNER_PAD_CM
+  return Math.max(8, neighbor.depth ?? 24) + pad
 }
 
 /**
  * Bank nicht in die Nachbarwand (Erker-Schenkel) ziehen.
  * Würde die Öffnung selbst angeschnitten → `null` (kein Stummel, kein Fern-Z-Fight).
+ * Normale Hausecken: kleines Pad (`SILL_JOIN_CORNER_PAD_CM`); Erker-Schenkel: großes Pad.
  */
 export function clipOuterSillLayoutToJoins(
   layout: OuterSillLayout,

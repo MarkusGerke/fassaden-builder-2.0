@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.582'
+export const APP_VERSION = '2.0.584'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,24 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.584',
+    date: '2026-09-22',
+    title: 'Außenbänke an der Fassade',
+    changes: [
+      'Fensterbänke sitzen wieder an der Wand und unter dem jeweiligen Fenster',
+      'Volle Bankbreite an normalen Hausecken; Erker-Mund-Ausnahmen bleiben',
+    ],
+  },
+  {
+    version: '2.0.583',
+    date: '2026-09-22',
+    title: 'Streifen an der Öffnung',
+    changes: [
+      'Streifen laufen bis an Laibung und Bogen',
+      'In der Zeichnung ist jede Fuge eine Linie und endet an der Öffnung',
+    ],
+  },
   {
     version: '2.0.582',
     date: '2026-09-22',

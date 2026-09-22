@@ -2,6 +2,34 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Außenbänke an der Fassade (2026-09-22) — v2.0.584
+
+**Symptom:** Nach dem Streifen-Fix fehlten Außenbänke an Seitenfenstern; nach dem ersten Restore schwebten sie und wirkten falsch platziert/breit.
+
+**Nicht geholfen:** Bank an der Stoßkante kürzen (Stummel, off-center, „schwebt“). `SILL_JOIN_ZFIGHT_PAD_CM` 96 auch an normalen Hausecken (Inset ≈ Wandtiefe+96 → Seitenfenster `null`).
+
+**Ursache:** (1) Stoß-Pad 96 an jeder Ecke nullte volle Banken. (2) `SILL_FACE_BIAS_CM` 8 setzte die Brett-Rückseite ~7 cm vor die Paneelfläche — sichtbar als Schweben, sobald die Banken wieder da waren.
+
+**Fix:** Hausecke `SILL_JOIN_CORNER_PAD_CM` **2**, Erker-Schenkel weiter **96**; Mund-Skip unverändert. `SILL_FACE_BIAS_CM` **0,2** (Rückfläche der Box bleibt entfernt).
+
+**Nicht:** Bias wieder auf 8. Pad 96 an normalen Ecken. Join-Clip zu Stümmeln verkürzen statt `null`.
+
+Docs: [opening-features.md](opening-features.md).
+
+### Streifen an Laibung und Bogen (2026-09-22) — v2.0.583
+
+**Symptom:** Horizontale Streifen enden vor dem Bogen. In der Zeichnung ist dieselbe Fuge in viele kurze Stücke zerlegt.
+
+**Nicht geholfen:** First nur wenn `maxT` unter der Fase liegt — `maxT` ist an jedem Rest die volle Fase. Offset-Ketten über Punkt-Identität erzeugen an der Bogenkappe keine Deckfläche. Eine flache Lippe auf Boss-Tiefe und das Zurückziehen der Fasen-Miter in den Ring lassen die erhabene Front weiter innen enden (an der Tür etwa 9 cm vor dem Bogen bei y = 288 cm). Kanten aus `EdgesGeometry` zu filtern, solange die Fase rund um die Maske stehen bleibt: die 2-cm-Facette ist die Treppe.
+
+**Ursache:** Die Rest-Bosse zieht jede Kante um die Fase ein, auch Laibung und Sturz. Die Zeichnung malt diese Facetten.
+
+**Fix:** Bei Streifen schneidet die Öffnungsmaske die Front (`extrudeStripCutByMask`). Die Fase liegt nur an waagerechten Schichtfugen und endet auf der Maske. Rechteck-Streifen haben keinen seitlichen Einzug. Die Zeichnung setzt jede Schichtkante neu und schneidet sie mit `openingMaskPolyline`; die Maske selbst ist die Schnittlinie (`coalesceStripDrawingLines`).
+
+**Nicht:** Die Fase wieder um den Bogen legen. Streifen-Zeichnung wieder aus den Mesh-Kanten der Fase bauen.
+
+Docs: [panel-geometry.md](panel-geometry.md).
+
 ### Rinne oben an der Dachkante (2026-09-22) — v2.0.582
 
 **Symptom:** Die Halbrundrinne schließt mit der Oberkante an der Dachunterseite an. Sie soll an der Dachkante oben enden, der Bogen hängt darunter.

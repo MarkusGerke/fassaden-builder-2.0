@@ -2273,27 +2273,85 @@ function extrudeInsetRingFrustum(
   if (!surf) return false
 
   const usableTops = surf.tops.filter((top) => Math.abs(ringArea(top)) >= 0.05)
-  if (usableTops.length === 0) return false
-
   const zAt = (t: number) => baseZ + (frontZ - baseZ) * Math.min(1, Math.max(0, t / chamfer))
-
-  for (const strip of surf.strips) {
-    for (let k = 0; k < strip.base.length - 1; k += 1) {
-      const b0 = strip.base[k]!
-      const b1 = strip.base[k + 1]!
-      const t0 = strip.top[k]!
-      const t1 = strip.top[k + 1]!
-      addQuad(
-        positions,
-        normals,
-        indices,
-        p(b0.x, b0.y, baseZ),
-        p(b1.x, b1.y, baseZ),
-        p(t1.x, t1.y, zAt(t1.t)),
-        p(t0.x, t0.y, zAt(t0.t)),
-      )
+  const drawStrips = () => {
+    for (const strip of surf.strips) {
+      for (let k = 0; k < strip.base.length - 1; k += 1) {
+        const b0 = strip.base[k]!
+        const b1 = strip.base[k + 1]!
+        const t0 = strip.top[k]!
+        const t1 = strip.top[k + 1]!
+        addQuad(
+          positions,
+          normals,
+          indices,
+          p(b0.x, b0.y, baseZ),
+          p(b1.x, b1.y, baseZ),
+          p(t1.x, t1.y, zAt(t1.t)),
+          p(t0.x, t0.y, zAt(t0.t)),
+        )
+      }
     }
   }
+  if (usableTops.length === 0) {
+    // Schmaler als zwei Fasen: First ist die Fläche (tops bleiben leer). Die Streifen
+    // nicht verwerfen — sonst fehlt die Fase und der Streifen endet vor der Rundung.
+    // Miter am Bogen schießt aus der Restform. Zurück auf die Strecke ziehen,
+    // Höhe trotzdem voll (frontZ): sonst fällt der Streifen vor der Rundung ab.
+    const insideRing = (pt: Pt2, ring: Pt2[]) => {
+      let inside = false
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
+        const a = ring[i]!
+        const c = ring[j]!
+        if (a.y > pt.y !== c.y > pt.y) {
+          const x = a.x + ((pt.y - a.y) * (c.x - a.x)) / (c.y - a.y)
+          if (pt.x < x) inside = !inside
+        }
+      }
+      return inside
+    }
+    const clampTop = (base: Pt2, top: { x: number; y: number; t: number }) => {
+      if (insideRing(top, bossRing)) return top
+      let lo = 0
+      let hi = 1
+      for (let s = 0; s < 16; s += 1) {
+        const m = (lo + hi) / 2
+        const q = { x: base.x + (top.x - base.x) * m, y: base.y + (top.y - base.y) * m }
+        if (insideRing(q, bossRing)) lo = m
+        else hi = m
+      }
+      return {
+        x: base.x + (top.x - base.x) * lo,
+        y: base.y + (top.y - base.y) * lo,
+        t: top.t,
+      }
+    }
+    const deck: Pt2[] = []
+    for (const strip of surf.strips) {
+      const tops = strip.top.map((pt, i) => clampTop(strip.base[i]!, pt))
+      for (let k = 0; k < strip.base.length - 1; k += 1) {
+        const b0 = strip.base[k]!
+        const b1 = strip.base[k + 1]!
+        const t0 = tops[k]!
+        const t1 = tops[k + 1]!
+        addQuad(
+          positions,
+          normals,
+          indices,
+          p(b0.x, b0.y, baseZ),
+          p(b1.x, b1.y, baseZ),
+          p(t1.x, t1.y, frontZ),
+          p(t0.x, t0.y, frontZ),
+        )
+      }
+      for (let k = 0; k < tops.length - 1; k += 1) deck.push(tops[k]!)
+    }
+    const deckA = Math.abs(ringArea(deck))
+    if (deckA >= 0.5) fillRingFront(deck, p, frontZ, positions, normals, indices)
+    return true
+  }
+
+  drawStrips()
 
   for (const top of usableTops) {
     fillRingFront(top, p, frontZ, positions, normals, indices)
@@ -2372,6 +2430,149 @@ function fillMonotoneArcFront(
     const ring = arcCapFrontRing(rect, top, 'top')
     if (ring) fillRingFront(ring, p, z, positions, normals, indices)
   }
+}
+
+function clipPolyHalfPlane(
+  poly: Pt2[],
+  nx: number,
+  ny: number,
+  c: number,
+): Pt2[] {
+  if (poly.length < 3) return []
+  const out: Pt2[] = []
+  for (let i = 0; i < poly.length; i += 1) {
+    const a = poly[i]!
+    const b = poly[(i + 1) % poly.length]!
+    const da = nx * a.x + ny * a.y - c
+    const db = nx * b.x + ny * b.y - c
+    const aIn = da >= -1e-4
+    const bIn = db >= -1e-4
+    if (aIn && bIn) out.push({ x: b.x, y: b.y })
+    else if (aIn !== bIn) {
+      const den = da - db
+      const t = Math.abs(den) < 1e-9 ? 0 : da / den
+      out.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t })
+      if (bIn) out.push({ x: b.x, y: b.y })
+    }
+  }
+  return cleanRing(out)
+}
+
+/** Aufeinanderfolgende, wirklich gerade Kanten zu einer Fuge zusammenziehen. */
+function mergeStraightRingEdges(ring: Pt2[]): Pt2[] {
+  if (ring.length < 4) return ring
+  const out: Pt2[] = []
+  for (let i = 0; i < ring.length; i += 1) {
+    const prev = ring[(i - 1 + ring.length) % ring.length]!
+    const cur = ring[i]!
+    const next = ring[(i + 1) % ring.length]!
+    const d1x = cur.x - prev.x
+    const d1y = cur.y - prev.y
+    const d2x = next.x - cur.x
+    const d2y = next.y - cur.y
+    const l1 = Math.hypot(d1x, d1y)
+    const l2 = Math.hypot(d2x, d2y)
+    const cross = l1 > 1e-4 && l2 > 1e-4 ? (d1x * d2y - d1y * d2x) / (l1 * l2) : 1
+    if (Math.abs(cross) < 0.002) continue
+    out.push(cur)
+  }
+  return out.length >= 3 ? out : ring
+}
+
+/**
+ * Streifen an der Öffnung: die Laibung und der Sturz sind die Schnittmaske.
+ * Die Fase läuft nur an den waagerechten Schichtfugen und endet auf der Maske.
+ * Entlang der Maske bleibt die Bossenfront auf voller Tiefe.
+ */
+function extrudeStripCutByMask(
+  ringIn: Pt2[],
+  chamfer: number,
+  p: (wx: number, wy: number, z: number) => THREE.Vector3,
+  baseZ: number,
+  frontZ: number,
+  positions: number[],
+  normals: number[],
+  indices: number[],
+): boolean {
+  const ring = mergeStraightRingEdges(ringCcw(cleanRing(ringIn)))
+  if (ring.length < 3 || chamfer <= 1e-6) return false
+  const n = ring.length
+  const joint: boolean[] = []
+  for (let i = 0; i < n; i += 1) {
+    const a = ring[i]!
+    const b = ring[(i + 1) % n]!
+    const len = Math.hypot(b.x - a.x, b.y - a.y)
+    joint.push(len >= 6 && Math.abs(b.y - a.y) <= 0.45)
+  }
+  const inward = joint.map((isJoint, i) => {
+    if (!isJoint) return null
+    const a = ring[i]!
+    const b = ring[(i + 1) % n]!
+    const len = Math.hypot(b.x - a.x, b.y - a.y) || 1
+    const nx = -(b.y - a.y) / len
+    const ny = (b.x - a.x) / len
+    return { nx, ny, c: nx * a.x + ny * a.y + chamfer, edge: nx * a.x + ny * a.y }
+  })
+  let front = ring.map((pt) => ({ x: pt.x, y: pt.y }))
+  for (const side of inward) {
+    if (!side) continue
+    front = clipPolyHalfPlane(front, side.nx, side.ny, side.c)
+    if (front.length < 3) break
+  }
+  const outward = frontZ < baseZ ? -1 : 1
+  const emitPoly = (poly: Pt2[], zAt: (pt: Pt2) => number) => {
+    const ccw = ringCcw(cleanRing(poly))
+    if (ccw.length < 3 || Math.abs(ringArea(ccw)) < 0.05) return
+    const tris = triangulateOutlineRing(ccw)
+    for (const tri of tris) {
+      const pts = [ccw[tri[0]!]!, ccw[tri[1]!]!, ccw[tri[2]!]!]
+      const va = p(pts[0].x, pts[0].y, zAt(pts[0]))
+      const vb = p(pts[1].x, pts[1].y, zAt(pts[1]))
+      const vc = p(pts[2].x, pts[2].y, zAt(pts[2]))
+      const nz =
+        (vb.x - va.x) * (vc.y - va.y) - (vb.y - va.y) * (vc.x - va.x)
+      if (nz * outward < 0) addTri(positions, normals, indices, va, vc, vb)
+      else addTri(positions, normals, indices, va, vb, vc)
+    }
+  }
+  if (front.length >= 3) emitPoly(front, () => frontZ)
+  for (let i = 0; i < n; i += 1) {
+    const side = inward[i]
+    if (!side) continue
+    let bevel = ring.map((pt) => ({ x: pt.x, y: pt.y }))
+    bevel = clipPolyHalfPlane(bevel, -side.nx, -side.ny, -side.c)
+    bevel = clipPolyHalfPlane(bevel, side.nx, side.ny, side.edge - 0.02)
+    for (let j = 0; j < n; j += 1) {
+      if (j === i || !inward[j]) continue
+      const other = inward[j]!
+      const keepNx = side.nx - other.nx
+      const keepNy = side.ny - other.ny
+      const keepC = side.edge - other.edge
+      bevel = clipPolyHalfPlane(bevel, -keepNx, -keepNy, -keepC)
+    }
+    const zAt = (pt: Pt2) => {
+      const dist = side.nx * pt.x + side.ny * pt.y - side.edge
+      const t = Math.min(1, Math.max(0, dist / chamfer))
+      return baseZ + (frontZ - baseZ) * t
+    }
+    emitPoly(bevel, zAt)
+  }
+  for (let i = 0; i < n; i += 1) {
+    if (joint[i]) continue
+    const a = ring[i]!
+    const b = ring[(i + 1) % n]!
+    if (Math.hypot(b.x - a.x, b.y - a.y) < 0.05) continue
+    addQuad(
+      positions,
+      normals,
+      indices,
+      p(a.x, a.y, baseZ),
+      p(b.x, b.y, baseZ),
+      p(b.x, b.y, frontZ),
+      p(a.x, a.y, frontZ),
+    )
+  }
+  return true
 }
 
 /** Trapez-Boss der Restkontur; false = kein Boss (kein Diamant-Fallback). */
@@ -2493,9 +2694,28 @@ function extrudeFrustum(
       return
     }
     // Outline-Reste (L/Zwickel): nur Trapez der Kontur — nie Rechteck-Diamant.
-    if (!extrudeRemnantTrapezoidBoss(rect, chamfer, p, bodyFrontZ, taperFrontZ, positions, normals, indices, remnantFlush)) {
+    // Streifen: Maske schneidet, Fase nur an der Schichtfuge.
+    if (panel.pattern === 'strip') {
       const ring = remnantOutline(rect)
-      if (ring) fillRingFront(ring, p, bodyFrontZ, positions, normals, indices)
+      if (
+        ring &&
+        extrudeStripCutByMask(ring, chamfer, p, bodyFrontZ, taperFrontZ, positions, normals, indices)
+      ) {
+        return
+      }
+    }
+    if (!extrudeRemnantTrapezoidBoss(rect, chamfer, p, bodyFrontZ, taperFrontZ, positions, normals, indices, remnantFlush)) {
+      extrudeStone(
+        { ...rect, taperDepth: 0 },
+        wall,
+        panel,
+        miter,
+        positions,
+        normals,
+        indices,
+        [],
+        { back: bodyFrontZ, front: taperFrontZ },
+      )
     }
     return
   }
@@ -2504,10 +2724,31 @@ function extrudeFrustum(
   // Ganzes dieselbe Fase wie volle Steine (Dachfläche mit First, wo sie schmal ist).
   // Kein Band-Boss mehr als Rückfall — der hatte eine andere, steilere Fase.
   if (Boolean(rect.bottomArc?.length) || Boolean(rect.topArc?.length)) {
+    if (panel.pattern === 'strip') {
+      const ring = remnantOutline(rect)
+      if (
+        ring &&
+        extrudeStripCutByMask(ring, chamfer, p, bodyFrontZ, taperFrontZ, positions, normals, indices)
+      ) {
+        return
+      }
+    }
     if (extrudeRemnantTrapezoidBoss(rect, chamfer, p, bodyFrontZ, taperFrontZ, positions, normals, indices, remnantFlush)) {
       return
     }
-    fillMonotoneArcFront(rect, p, bodyFrontZ, positions, normals, indices)
+    // Boss ohne Deckfläche: Lippe auf Boss-Tiefe, Kontur folgt dem Bogen.
+    // Auf Steinfront-Tiefe endet der erhabene Streifen als gerade Kante vor der Rundung.
+    extrudeStone(
+      { ...rect, taperDepth: 0 },
+      wall,
+      panel,
+      miter,
+      positions,
+      normals,
+      indices,
+      [],
+      { back: bodyFrontZ, front: taperFrontZ },
+    )
     return
   }
 
@@ -2535,7 +2776,11 @@ function extrudeFrustum(
 
   const minFront = 0.05
   // Iso: gleiche Maße an allen vier Seiten. Keil (`lr`): nur links/rechts.
-  const insetX = Math.max(0, Math.min(chamferX, rect.width / 2 - minFront / 2))
+  // Streifen haben keine seitliche Fase: Laibung und Wandende schneiden die Front.
+  const insetX =
+    panel.pattern === 'strip'
+      ? 0
+      : Math.max(0, Math.min(chamferX, rect.width / 2 - minFront / 2))
   const insetY = Math.max(0, Math.min(chamferY, rect.height / 2 - minFront / 2))
 
   let tx0 = atStart ? x0 : x0 + insetX
