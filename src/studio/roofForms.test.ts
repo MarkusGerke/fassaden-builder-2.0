@@ -92,6 +92,23 @@ describe('roofForms – Satteldach', () => {
     expect(geo.roof.getAttribute('position').count).toBeGreaterThan(0)
   })
 
+  it('Kasten-Traufe: Füllung zwischen Wandoberkante und Dachunterseite (Soffit)', () => {
+    const env = envelopeFor('gable', rect(), { overhang: 48 })
+    const geo = buildRoofEnvelopeGeometry(env)
+    expect(geo.gable).not.toBeNull()
+    const pos = geo.gable!.getAttribute('position')
+    expect(pos.count).toBeGreaterThan(24)
+    let minY = Infinity
+    let maxY = -Infinity
+    for (let i = 0; i < pos.count; i += 1) {
+      const y = pos.getY(i)
+      minY = Math.min(minY, y)
+      maxY = Math.max(maxY, y)
+    }
+    expect(minY).toBeLessThanOrEqual(env.wallTopY + 1)
+    expect(maxY).toBeGreaterThanOrEqual(env.eaveY - env.tv - 1)
+  })
+
   it('Firstrichtung manuell (N–S) dreht den First auf die kurze Achse', () => {
     const env = envelopeFor('gable', rect(), { ridgeDeg: 0 })
     // First entlang Z → Spannweite in X: 960 / 2 = 480
@@ -112,6 +129,11 @@ describe('roofForms – Satteldach', () => {
     expect(b.x).toBeCloseTo(960, 3)
     const geo = buildRoofEnvelopeGeometry(env)
     expect(geo.gutterEdgeActive[eastIdx]).toBe(false)
+  })
+
+  it('ridgeRiseCm setzt First über Traufe (pitch nur Fallback)', () => {
+    const env = envelopeFor('gable', rect(), { ridgeRiseCm: 200, pitch: 12 })
+    expect(env.ridgeY - env.eaveY).toBeCloseTo(200, 3)
   })
 
   it('Traufüberstand verlängert die Traufe, Firsthöhe bleibt', () => {

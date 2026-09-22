@@ -16,6 +16,8 @@ Maschinenlesbar: [`src/arrivieren/rules/hauswand-regelwerk.json`](../src/arrivie
 
 ## Harte Regeln
 
+**Erker (Rendering, main):** Schenkel ohne Schatten-Cast/Receive; Schenkel-Rahmen/Laibung dimmen wie die Wand (`facadeShadeWallLock`). Nachbarfenster am Mund ohne Fensterbänke (`openingOuterSillConflictsBayMouth`).
+
 1. **Zufall:** Fassaden-Stapel vor dem Setzen **leer** (keine Alt-Öffnungen/Profile) — `applyHauswandGeneration` leert den Stapel, dann nur Plan-Inhalt. **Ansichtsmodus nie wechseln** (Fassade bleibt Fassade).
 2. **Eingang Pflicht:** EG mindestens **Tür 96 / 144×320** oder **Tor 288×320** (`hauswandPlanHasEntrance`). Liegt ab 1. OG ein **Fensterpaar 96+96** (96 cm Zwischenraum), dann EG **Tor 288** oder **Tür 96 + Fenster 96** an denselben X-Positionen.
 3. **Geschosse Zufall:** nur **2–5**, nie 1; Schwerpunkt **3–4** (`weights.storeys` in JSON).

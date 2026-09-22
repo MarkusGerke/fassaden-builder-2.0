@@ -8,6 +8,7 @@ import { resolveCladding } from '../meshes/catalog'
 import { CLADDING_OFFSET_V1 } from '../constants/presets'
 import {
   findAdjacentWall,
+  isBaySurfaceWall,
   isStudioWall,
   plinthProfileForwardBoost,
   plinthMiterEnds,
@@ -40,12 +41,13 @@ import { wallDecorFallbackColor } from '../constants/colorPalettes'
 import { wallCornice, wallHasCornice } from './cornice'
 import { wallHasTrimBands, wallTrimBands } from './trimBands'
 import {
-  clampOuterSillLayoutForBayMouths,
-  openingFlanksBayMouth,
+  clipOuterSillLayoutToJoins,
   defaultOpeningTrimForProfile,
   normalizeOpeningSillOuter,
+  openingOuterSillConflictsBayMouth,
   outerSillUsesProfile,
   resolveOuterSillLayout,
+  sillJoinInsetFromNeighbor,
 } from './openings'
 import {
   DEFAULT_DOWNPIPE_NICHE_WIDTH_CM,
@@ -649,8 +651,26 @@ export function bayMouthLocalXGapsForWall(state: FacadeState, wall: Wall): Array
     if (sides.length < 2) continue
     const mouthA = wallStartPoint(sides[0]!)
     const mouthB = wallEndPoint(sides[sides.length - 1]!)
+    const half = wall.width / 2
     const range = projectMouthLocalRange(wall, mouthA, mouthB)
-    if (range && range.x1 - range.x0 > 0.5) gaps.push(range)
+    // Öffnungs-X ist 0…width; projectMouth ist zentriert (−w/2…w/2).
+    if (range && range.x1 - range.x0 > 0.5) {
+      gaps.push({ x0: range.x0 + half, x1: range.x1 + half })
+    }
+    // Nach Split liegt der Mund an Start/Ende der Restwand, nicht in der Wandmitte.
+    // Schenkel-Ende trifft die Front — sonst scheinen Seitenbänke durch die Front.
+    const start = wallStartPoint(wall)
+    const end = wallEndPoint(wall)
+    const joinPts = [mouthA, mouthB]
+    for (const id of meta.wallIds) {
+      const m = byId.get(id)
+      if (!m || m.id === wall.id) continue
+      joinPts.push(wallStartPoint(m), wallEndPoint(m))
+    }
+    const near = (a: { x: number; z: number }, b: { x: number; z: number }) =>
+      Math.hypot(a.x - b.x, a.z - b.z) < 4
+    if (joinPts.some((p) => near(start, p))) gaps.push({ x0: -96, x1: 0 })
+    if (joinPts.some((p) => near(end, p))) gaps.push({ x0: wall.width, x1: wall.width + 96 })
   }
   return gaps
 }
@@ -692,7 +712,7 @@ function buildBayCorniceWraps(state: FacadeState, visibleIds: Set<string>): BayC
         if (!isStudioWall(lower)) continue
         if (meta.wallIds.includes(lower.id) || lower.id === host.id) continue
         if (Math.round(lower.y / wallHeight) !== bayFloor - 1) continue
-        if (!wallHasCornice(lower, 'top')) continue
+        if (!wallHasPanels(lower) || !wallHasCornice(lower, 'top')) continue
         const range = projectMouthLocalRange(lower, mouthA, mouthB)
         if (!range || range.x1 - range.x0 <= 0.5) continue
         lowerHits.push(lower)
@@ -1981,19 +2001,34 @@ function buildSillOuterPaths(state: FacadeState): ProfilePath[] {
       (building ? normalizeFacadeDecor(building.facadeDecor).panels === false : false)
     for (const opening of wall.openings) {
       if (opening.hidden) continue
+      if (isBaySurfaceWall(wall)) continue
       const sill = opening.sillOuter
       if (!sill?.enabled || opening.type !== 'window' || opening.y <= 0) continue
       const mouthGaps = bayMouthLocalXGapsForWall(state, wall)
-      if (openingFlanksBayMouth(opening, mouthGaps)) continue
+      if (openingOuterSillConflictsBayMouth(opening, sill, mouthGaps)) continue
       const normalized = normalizeOpeningSillOuter(sill)
       if (!outerSillUsesProfile(normalized)) continue
       const profile = resolveProfile(normalized.profileId!, state.customProfiles)
       if (!profile?.projecting || !profile.section) continue
-      const layout = clampOuterSillLayoutForBayMouths(
+      const yaw = wall.yawDeg ?? 0
+      const neighbors = building?.walls ?? []
+      const insets = {
+        start: sillJoinInsetFromNeighbor(
+          yaw,
+          findAdjacentWall(wall, 'start', neighbors, { ignorePlanLink: true }),
+        ),
+        end: sillJoinInsetFromNeighbor(
+          yaw,
+          findAdjacentWall(wall, 'end', neighbors, { ignorePlanLink: true }),
+        ),
+      }
+      const layout = clipOuterSillLayoutToJoins(
         resolveOuterSillLayout(opening, normalized),
         opening,
-        bayMouthLocalXGapsForWall(state, wall),
+        wall.width,
+        insets,
       )
+      if (!layout) continue
       const zOffset = profileZOffset(wall)
       const x0 = studio ? layout.xLeft - wall.width / 2 : wall.x + layout.xLeft
       const x1 = studio ? layout.xRight - wall.width / 2 : wall.x + layout.xRight

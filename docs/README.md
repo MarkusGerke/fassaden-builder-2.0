@@ -40,6 +40,7 @@
 | [flaechen-ueberlappung.md](flaechen-ueberlappung.md) | Keine deckungsgleichen Flächen (Z-Fight); gemeinsame Kante bleibt erlaubt |
 | [downpipes.md](downpipes.md) | Fallrohre (mehrgeschossig), Nische/Schmuck-Durchbruch, Schellen, Regenrinne |
 | [gallery.md](gallery.md) | QA-Galerie: alle Standards im Raster, Abstand, Zufall, Projekt-Schutz |
+| [arrivieren-hauswand.md](arrivieren-hauswand.md) | Arrivieren: Hauswand-Zufall, Regelwerk-JSON, Feedback-Schleife |
 | [deploy-allinkl.md](deploy-allinkl.md) | Auto-Deploy auf All-Inkl (GitHub Actions, FTPS, Passwortschutz) |
 | [versioning.md](versioning.md) | App-Version, Release Notes, Quellen-Dialog, GitHub-Link, Pflege-Workflow |
 | [credits.md](credits.md) | Quellen, Lizenzen, Danksagung |

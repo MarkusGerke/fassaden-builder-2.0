@@ -111,7 +111,7 @@ planFacesWithHoles(plan)
 | `src/utils/sunLighting.ts` | Weichheit aus Elevation, Shadow-Camera, Kelvin |
 | `src/utils/lightingMood.ts` | Schichten-Intensitäten aus Sonne + Szenenfarben |
 | `src/lighting/groundMood.ts` | Boden-Fill (`ground-mood-v6`, Albedo × Sonnen-Ambient; Schatten nur Standard-PCSS) |
-| `src/utils/facadeShade.ts` | Gegenlicht: Seiten/Oberseiten; Schrift: ganze Glyphe + eigene Dims (v0.7.252/254) |
+| `src/utils/facadeShade.ts` | Gegenlicht: Seiten/Oberseiten; Schrift; **v2.0.560** `facadeShadeWallLock` Erker-Schenkel |
 | `src/main.ts` | Szene-UI, ein Pass, Tagesanimation |
 | `src/windows/gruenderzeit.ts` | Glas: kein `castShadow`, `transmission = 0`; Holz/Türfüllung ohne `receiveShadow` (v0.7.191) |
 | `src/windows/loadWindows.ts` | GLTF-Fenster: Holz ohne `receiveShadow` |
@@ -164,6 +164,7 @@ Glas: dunkles Klarglas, CubeCamera-EnvMap der Szene von außerhalb. `transmissio
 ## Bekannte Fallstricke
 
 - **Fassaden-Schattenseite tag-hell / Hemi-Dim wirkungslos (v2.0.364):** Der Gegenlicht-Patch skalierte `reflectedLight.indirectDiffuse` direkt nach `#include <lights_fragment_begin>` — dort ist es in Three r183 noch **0** (Hemi/Probe/IBL werden erst in `lights_fragment_end` via `RE_IndirectDiffuse` addiert). Nur Direct wurde gedimmt. Jetzt: `FACADE_SHADE_INDIRECT_PATCH` **vor** `lights_fragment_end` auf `irradiance`, `iblIrradiance`, `radiance`. Gleiche Falle wie beim Innen-Shader (v2.0.349–352). Runtime-Nachweis: `hemiInt` 0,63 + Wand-Env 0,58 bei `facadeHemiDim` 0,84 → Schattenseite ≈ Sonnenseite. **Nicht** wieder nach `lights_fragment_begin` verschieben.
+- **Erker-Schenkel Sohlbank sonnenhell (v2.0.560):** `facadeShadeNormalMode` lässt nach oben zeigende Rahmen-/Laibungsflächen hell, die Schenkelwand ist im Gegenlicht dunkel. Fix: `facadeShadeWallLock` (Gegenlicht aus Wand-Z). Nicht durch Cast-an oder Bank-Z-Fight ersetzen.
 
 - **Schatten kleben nach Verschieben (v2.0.320):** Orbit-Lite-Hold (~1 s) + Debounce unterdrückten den Bake nach Wand/Öffnung-Commit. Fix: `flushSunShadowMap({ force: true })` / `forceShadowBakePending`. Während aktiver Kamerageste weiter unterdrücken — nicht jedes Orbit-Frame forcen.
 - **Sonnen-Slider: Schatten kleben / springen (v2.0.182 → v2.0.201 → v2.0.202):** Scrub ohne Bake → Schatten bis Loslassen stehen; Debounce-Bake → sichtbare Sprünge. Scrub: sofort 1×/Lighting-Frame; Tagzyklus darf Debounce behalten.

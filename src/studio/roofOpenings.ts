@@ -113,7 +113,7 @@ function mansardBands(building: Building, roof: RoofConfig): {
   const ring: XZ[] = []
   for (const e of edges) ring.push(e.a)
   const oriented = orientRingCcw(ring)
-  const overhangs = overhangPerEdge(edges, roof.overhang)
+  const overhangs = overhangPerEdge(edges, roof)
   const eave = offsetPolygonPerEdge(oriented, overhangs)
   const eaveY = storeyTopY(building, floors.length - 1)
   const breakRise = roof.ridgeHeight * 0.55

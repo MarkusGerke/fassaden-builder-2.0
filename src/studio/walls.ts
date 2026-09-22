@@ -1790,6 +1790,13 @@ export function studioPanelFaceLocalZ(wall: Wall): number {
 export const PROFILE_FACE_BIAS_CM = 0.2
 
 /**
+ * Außen-/Innenbank: Abstand der Brett-Rückseite von der Wandfläche (cm).
+ * Ohne Gap liegt die Rückseite in der Wandebene → ab mittlerer Zoom-Stufe Z-Fight
+ * (kleine Rechtecke links/rechts der Bank). Profile nutzen 0,2 cm — für große Bank-Quadrate zu wenig.
+ */
+export const SILL_FACE_BIAS_CM = 8
+
+/**
  * Mindest-Forward der Querschnitts-Fußplatte bei Öffnungsprofilen (cm).
  * Zusammen mit FACE_BIAS und starkem polygonOffset (Units −16) distanzfest.
  */
@@ -2033,7 +2040,7 @@ export function outerSillBoardPose(
     : wall.depth
   return {
     translateZ: outward * (depth / 2),
-    localZ: outerWallZ,
+    localZ: outerWallZ + outward * SILL_FACE_BIAS_CM,
     tiltX: outward,
   }
 }
@@ -2709,6 +2716,15 @@ export function isInteriorWall(wall: Wall): boolean {
 /** Erker-Fläche (Front/Schenkel/Host-Segment mit bayWindow) — für Paneel-Gehrung. */
 export function isBaySurfaceWall(wall: Pick<Wall, 'bayRole' | 'bayParentId' | 'bayWindow'>): boolean {
   return Boolean(wall.bayRole || wall.bayParentId || wall.bayWindow)
+}
+
+/**
+ * Erker-Schenkel und Rund-Erker: kein Sonnen-Cast/Receive.
+ * `syncLabelShadowReceivers` / Punktlicht-Okklusion dürfen das nicht wieder anschalten —
+ * sonst PCSS-Pillen auf der Front in der Ferne (v2.0.552 → Regression, Fix v2.0.559).
+ */
+export function wallOmitsBaySideShadows(wall: Pick<Wall, 'bayRole'>): boolean {
+  return wall.bayRole === 'side' || wall.bayRole === 'arc'
 }
 
 export function pointsMeet(

@@ -52,12 +52,14 @@ import {
   wallWorldDeltaFromStates,
 } from './utils/liveDrag'
 import {
-  clampOuterSillLayoutForBayMouths,
+  clipOuterSillLayoutToJoins,
   openingFlanksBayMouth,
   openingHasProfile,
+  openingOuterSillConflictsBayMouth,
   normalizeOpeningSillOuter,
   outerSillUsesProfile,
   resolveOuterSillLayout,
+  sillJoinInsetFromNeighbor,
 } from './utils/openings'
 import {
   ARCH_MESH_SEGMENTS,
@@ -166,7 +168,8 @@ import { planFacesWithHoles } from './studio/floorPlan'
 import { notchSlabRingAtOpenings } from './studio/slabNotches'
 import { floorIndex, storeyFloorSurfaceY, storeyTopY } from './utils/layers'
 import { ROOF_WALL_TOP_TRIM_CM } from './studio/roofForms'
-import { isStudioWall, leafOpenSignForWall, outerSillBoardPose, studioFacadeOutwardLocalZ, studioFacadeSelectionLocalZ, studioPanelFaceLocalZ, studioProfileAnchorLocalZ, studioWallTransform, studioWindowOriginZ, wallEndPoint, wallHasPanels, wallStartPoint, windowDepthForwardSign } from './studio/walls'
+import { findAdjacentWall, isBaySurfaceWall, isStudioWall, leafOpenSignForWall, outerSillBoardPose, SILL_FACE_BIAS_CM, studioFacadeOutwardLocalZ, studioFacadeSelectionLocalZ, studioPanelFaceLocalZ, studioProfileAnchorLocalZ, studioWallTransform, studioWindowOriginZ, wallEndPoint, wallHasPanels, wallOmitsBaySideShadows, wallStartPoint, windowDepthForwardSign } from './studio/walls'
+import { createOuterSillBoardGeometry } from './studio/sillGeometry'
 import { bayWallSkirtDropCm } from './studio/bayWindow'
 import { buildMansardRoof, listRoofEdges, normalizeRoof } from './studio/roof'
 import {
@@ -221,12 +224,20 @@ const DEPTH_LAYER_MORTAR_UNITS = 8
 const DEPTH_LAYER_WALL_SHELL_UNITS = 16
 /** Laibung: vor Stein-/Mörtel-Seitenflächen am Jamb (negativ = näher), Factor bleibt +1. */
 const REVEAL_DEPTH_UNITS = -6
+/** Fensterbank: stärker als Profile (−16), große koplanare Quads beim Rauszoomen. */
+const SILL_DEPTH_UNITS = -48
 
 /** Nach `finish*`/`applyWorkModeSurfaceLook` aufrufen — die setzen Units auf 1 zurück. */
 function applyDepthLayerOffset(material: THREE.Material, units: number): void {
   material.polygonOffset = true
   material.polygonOffsetFactor = 1
   material.polygonOffsetUnits = units
+}
+
+function applySillDepthOffset(material: THREE.Material): void {
+  material.polygonOffset = true
+  material.polygonOffsetFactor = -2
+  material.polygonOffsetUnits = SILL_DEPTH_UNITS
 }
 
 export class FacadeController {
@@ -643,18 +654,53 @@ export class FacadeController {
     mesh.layers.enable(SHADOW_LAYER_EXTERIOR)
   }
 
+  private wallOmitsBaySideShadowsById(wallId: string | undefined): boolean {
+    if (!wallId) return false
+    const wall = findWall(this.state, wallId)
+    return Boolean(wall && wallOmitsBaySideShadows(wall))
+  }
+
+  private applyStudioWallBodyShadows(mesh: THREE.Mesh, wall: Wall): void {
+    const omit = wallOmitsBaySideShadows(wall)
+    mesh.castShadow = !omit
+    mesh.receiveShadow = !omit
+  }
+
+  /** Schenkel-Fenster/Laibung: kein Cast — sonst PCSS-Pillen auf der Front in der Ferne. */
+  private suppressBaySideOpeningShadows(root: THREE.Object3D): void {
+    root.traverse((child) => {
+      if (!(child instanceof THREE.Mesh)) return
+      child.castShadow = false
+      child.receiveShadow = false
+      this.lockBaySideFacadeShade(child)
+    })
+  }
+
+  /**
+   * Schenkel im Gegenlicht: Rahmen-Oberseite und Innen-Laibung dimmen wie die Wand,
+   * nicht über die Flächennormale (sonst bleibt die Sohlbank sonnenhell).
+   */
+  private lockBaySideFacadeShade(mesh: THREE.Mesh): void {
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+    for (const mat of mats) {
+      if (!mat) continue
+      delete mat.userData.skipFacadeShade
+      mat.userData.facadeShadeWallLock = true
+    }
+  }
+
   /**
    * Wandkörper empfängt immer (Innenraum v0.7.237 + Freistreifen).
    * Paneele/Mörtel: Empfang wenn `claddingReceiveShadows` (2D-Front Farbe, 3D, Arbeit) —
    * Zeichnung und Streiflicht-Ost/West aus (Acne). Gesims/Zierband casten immer.
    * Laibung/Sockel: wie Paneele + zusätzlich bei Punktlicht-Raum-Okklusion.
+   * Erker-Schenkel: Cast/Receive bleiben aus (`wallOmitsBaySideShadows`).
    */
   private syncLabelShadowReceivers() {
     for (const [wallId, mesh] of this.meshes) {
       const wall = findWall(this.state, wallId)
       if (!wall || !isStudioWall(wall)) continue
-      mesh.receiveShadow = true
-      mesh.castShadow = true
+      this.applyStudioWallBodyShadows(mesh, wall)
     }
     const claddingLists = [this.studioCladdingMeshes, this.claddingLodHighMeshes, this.claddingLodLowMeshes]
     for (const list of claddingLists) {
@@ -663,6 +709,11 @@ export class FacadeController {
       }
     }
     for (const mesh of this.profileMeshes) {
+      if (this.wallOmitsBaySideShadowsById(mesh.userData.wallId as string | undefined)) {
+        mesh.castShadow = false
+        mesh.receiveShadow = false
+        continue
+      }
       const wallPart = mesh.userData.wallPart as string | undefined
       if (wallPart === 'cornice' || wallPart === 'trimBand') {
         mesh.castShadow = true
@@ -672,6 +723,10 @@ export class FacadeController {
       }
     }
     for (const mesh of this.revealMeshes) {
+      if (this.wallOmitsBaySideShadowsById(mesh.userData.wallId as string | undefined)) {
+        mesh.receiveShadow = false
+        continue
+      }
       mesh.receiveShadow = this.revealShouldReceiveShadow(mesh)
     }
     // Stufen-Geometrie: immer empfangen (Selbst-/Werfschatten), nicht wie große Paneelflächen.
@@ -700,6 +755,10 @@ export class FacadeController {
   private syncOpeningReceiveShadows() {
     const enable = this.claddingReceiveShadows
     const apply = (root: THREE.Object3D) => {
+      if (this.wallOmitsBaySideShadowsById(root.userData.wallId as string | undefined)) {
+        this.suppressBaySideOpeningShadows(root)
+        return
+      }
       root.traverse((child) => {
         if (!(child instanceof THREE.Mesh)) return
         if (child.userData.shadowOccluder || child.userData.role === 'guideRail') return
@@ -820,9 +879,13 @@ export class FacadeController {
       mat.shadowSide = THREE.FrontSide
     }
 
-    for (const mesh of this.meshes.values()) {
-      mesh.castShadow = true
-      mesh.receiveShadow = true
+    for (const [wallId, mesh] of this.meshes) {
+      const wall = findWall(this.state, wallId)
+      if (wall && isStudioWall(wall)) this.applyStudioWallBodyShadows(mesh, wall)
+      else {
+        mesh.castShadow = true
+        mesh.receiveShadow = true
+      }
       this.syncWallMeshLightLayers(mesh)
       if (enable) {
         mesh.customDistanceMaterial = this.shadowDistanceMaterial
@@ -835,8 +898,9 @@ export class FacadeController {
     }
     for (const mesh of this.revealMeshes) {
       // Nische: Tunnel dichtet ab; sichtbare Fläche wirft nicht (kein Selbstschatten).
-      mesh.castShadow = mesh.userData.sealedNiche !== true
-      mesh.receiveShadow = this.revealShouldReceiveShadow(mesh)
+      const baySide = this.wallOmitsBaySideShadowsById(mesh.userData.wallId as string | undefined)
+      mesh.castShadow = !baySide && mesh.userData.sealedNiche !== true
+      mesh.receiveShadow = !baySide && this.revealShouldReceiveShadow(mesh)
       this.syncWallMeshLightLayers(mesh)
       if (enable && mesh.castShadow) {
         mesh.customDistanceMaterial = this.shadowDistanceMaterial
@@ -845,7 +909,7 @@ export class FacadeController {
       }
     }
     for (const mesh of this.innerSillMeshes) {
-      mesh.castShadow = true
+      mesh.castShadow = !this.wallOmitsBaySideShadowsById(mesh.userData.wallId as string | undefined)
     }
     const exteriorLists = [
       this.studioCladdingMeshes,
@@ -858,7 +922,9 @@ export class FacadeController {
     ]
     for (const list of exteriorLists) {
       for (const mesh of list) {
-        mesh.castShadow = true
+        const omit = this.wallOmitsBaySideShadowsById(mesh.userData.wallId as string | undefined)
+        mesh.castShadow = !omit
+        if (omit) continue
         if (enable) {
           mesh.customDistanceMaterial = this.shadowDistanceMaterial
         } else if (mesh.customDistanceMaterial === this.shadowDistanceMaterial) {
@@ -867,6 +933,10 @@ export class FacadeController {
       }
     }
     const applyOpeningTree = (root: THREE.Object3D) => {
+      if (this.wallOmitsBaySideShadowsById(root.userData.wallId as string | undefined)) {
+        this.suppressBaySideOpeningShadows(root)
+        return
+      }
       root.traverse((child) => {
         if (!(child instanceof THREE.Mesh)) return
         if (child.userData.role === 'guideRail') return
@@ -2349,7 +2419,13 @@ export class FacadeController {
           az /= n
           return Math.hypot(ax - cx, az - cz) < 120
         })
-        if (!hasBayAbove) {
+        const maxWallFloor = buildingWalls.reduce(
+          (max, w) => (isStudioWall(w) ? Math.max(max, floorIndex(w, building.wallHeight)) : max),
+          0,
+        )
+        // Oberkanten-Platte nur am obersten Erker — sonst sichtbarer grauer Balken an der
+        // Geschossfuge (Decke der Etage darüber schließt den Kasten).
+        if (!hasBayAbove && hostFloor >= maxWallFloor) {
           addBaySoffit(soffitShape, hostTop, soffitMat, building.id)
         }
       }
@@ -3485,6 +3561,11 @@ export class FacadeController {
       if (mesh.userData.kind === 'rollerShutter') return
       const sign = facadeOutwardLocalZ(wall.panelFlip)
       const isLabel = mesh.userData.lodTier === 'label'
+      // Fenster sitzen mit yaw+π; Objekt-Z zeigt dann nach außen — Wand-Z wäre invertiert.
+      const windowTree =
+        this.windowInstances.includes(mesh) ||
+        this.windowLodLowInstances.includes(mesh) ||
+        this.casingInstances.includes(mesh)
       mesh.traverse((child) => {
         if (!(child instanceof THREE.Mesh)) return
         if (child.userData.role === 'guideRail') return
@@ -3508,9 +3589,19 @@ export class FacadeController {
           ) {
             continue
           }
+          if (
+            wall &&
+            wallOmitsBaySideShadows(wall) &&
+            this.meshes.get(id ?? '') !== mesh
+          ) {
+            delete mat.userData.skipFacadeShade
+            mat.userData.facadeShadeWallLock = true
+          }
           if (mat.userData.skipFacadeShade === true) continue
           if (id && this.wallInteriorMaterials.get(id) === mat) continue
-          applyFacadeShadeShader(mat, sign, { label: isLabel })
+          const shadeSign =
+            mat.userData.facadeShadeWallLock === true && windowTree ? -sign : sign
+          applyFacadeShadeShader(mat, shadeSign, { label: isLabel })
         }
       })
     }
@@ -4281,6 +4372,21 @@ export class FacadeController {
     return findBuildingForWall(this.state, wall.id)?.walls ?? []
   }
 
+  private sillJoinInsets(wall: Wall): { start: number; end: number } {
+    const walls = this.buildingWalls(wall)
+    const yaw = wall.yawDeg ?? 0
+    return {
+      start: sillJoinInsetFromNeighbor(
+        yaw,
+        findAdjacentWall(wall, 'start', walls, { ignorePlanLink: true }),
+      ),
+      end: sillJoinInsetFromNeighbor(
+        yaw,
+        findAdjacentWall(wall, 'end', walls, { ignorePlanLink: true }),
+      ),
+    }
+  }
+
   private disposeWallBodyMaterials(id: string) {
     const exterior = this.wallMaterials.get(id)
     if (exterior) {
@@ -4374,16 +4480,14 @@ export class FacadeController {
     let mesh = this.meshes.get(wall.id)
     if (!mesh) {
       mesh = new THREE.Mesh(geometry, wallMaterial)
-      mesh.castShadow = !baySide
-      mesh.receiveShadow = !baySide
+      this.applyStudioWallBodyShadows(mesh, wall)
       this.wallGroup.add(mesh)
       this.meshes.set(wall.id, mesh)
     } else {
       mesh.geometry.dispose()
       mesh.geometry = geometry
       mesh.material = wallMaterial
-      mesh.castShadow = !baySide
-      mesh.receiveShadow = !baySide
+      this.applyStudioWallBodyShadows(mesh, wall)
     }
     mesh.userData = { kind: 'wall', wallId: wall.id, buildingId: wall.buildingId }
     mesh.position.set(transform.position.x, transform.position.y, transform.position.z)
@@ -4490,7 +4594,7 @@ export class FacadeController {
         interiorMaterial.shadowSide = THREE.FrontSide
         // Offene Laibung innen: Innen-Shade, kein Fassaden-Gegenlicht (sonst exteriorSurface).
         // Nische/Konche: beide Außen-Finish + Gegenlicht (v2.0.414 — sonst bleiben sie weiß).
-        if (!sealedNiche) {
+        if (!sealedNiche && !wallOmitsBaySideShadows(wall)) {
           interiorMaterial.userData.skipFacadeShade = true
         }
         // Paneel-Wrap: Außenlaibung = Mörtelbett hinter den Return-Steinen (Gruppe 0),
@@ -4512,7 +4616,8 @@ export class FacadeController {
             ? [exteriorMaterial, interiorMaterial]
             : exteriorMaterial
         const mesh = new THREE.Mesh(geometry, materials)
-        mesh.castShadow = true
+        mesh.castShadow = !wallOmitsBaySideShadows(wall)
+        if (wallOmitsBaySideShadows(wall)) this.lockBaySideFacadeShade(mesh)
         mesh.userData.sealedNiche = sealedNiche
         // Nische/Konche: von außen sichtbar beidseitig; Gegenlicht wie Fassade (v2.0.414).
         if (mesh.userData.sealedNiche) {
@@ -4525,6 +4630,17 @@ export class FacadeController {
           // Lichtdichte über Shadow-Tunnel; sichtbare Nische wirft nicht selbst
           // (vermeidet Selbstabschattung der Rückwand).
           mesh.castShadow = false
+        } else if (wallOmitsBaySideShadows(wall)) {
+          // Schenkel: Innenlaibung/Sohlbank wie Außenwand dimmen — sonst bleibt die
+          // Brüstung im ¾-Blick sonnenweiß (skipFacadeShade + N·L nach oben).
+          this.finishExteriorMaterial(exteriorMaterial)
+          this.finishExteriorMaterial(interiorMaterial)
+          exteriorMaterial.userData.facadeShadeWallLock = true
+          interiorMaterial.userData.facadeShadeWallLock = true
+          if (wrapMortarMaterial) {
+            this.finishExteriorMaterial(wrapMortarMaterial)
+            wrapMortarMaterial.userData.facadeShadeWallLock = true
+          }
         } else {
           // Gleiche CubeCamera-EnvMap wie Paneele/Wand — sonst bleibt die Laibung
           // nachts schwarz, während die Fassade IBL-Grau spiegelt.
@@ -4536,7 +4652,7 @@ export class FacadeController {
           }
         }
         // Sonne + Punktlicht: Empfang wie Paneele (auch Nische/Konche).
-        mesh.receiveShadow = this.revealShouldReceiveShadow(mesh)
+        mesh.receiveShadow = !wallOmitsBaySideShadows(wall) && this.revealShouldReceiveShadow(mesh)
         mesh.renderOrder = 2
         // Tiefenrang Laibung vor Stein-Seitenflächen (Units), gleicher Factor wie Steine (+1):
         // Factor −1 (v2.0.244/248) zog per Slope-Term eine Kante vor; Units +1 (= Steine)
@@ -4789,6 +4905,7 @@ export class FacadeController {
         }
 
         this.finishOpeningFrameTree(instance)
+        if (wallOmitsBaySideShadows(wall)) this.suppressBaySideOpeningShadows(instance)
 
         if (tier === 'high' && basementWindowEnabled(opening)) {
           const grilleGeometry = createBasementGrilleGeometry(wall, opening)
@@ -4799,8 +4916,8 @@ export class FacadeController {
               metalness: 0.55,
             })
             const grilleMesh = new THREE.Mesh(grilleGeometry, grilleMaterial)
-            grilleMesh.castShadow = true
-            grilleMesh.receiveShadow = true
+            grilleMesh.castShadow = !wallOmitsBaySideShadows(wall)
+            grilleMesh.receiveShadow = !wallOmitsBaySideShadows(wall)
             grilleMesh.userData.lodTier = 'high'
             grilleMesh.userData.buildingId = buildingId
             grilleMesh.userData.wallId = wall.id
@@ -5052,7 +5169,7 @@ export class FacadeController {
                 else this.finishExteriorMaterial(material)
                 applyDepthLayerOffset(material, DEPTH_LAYER_TILE_UNITS)
                 const mesh = new THREE.Mesh(geometry, material)
-                mesh.castShadow = true
+                mesh.castShadow = !wallOmitsBaySideShadows(wall)
                 mesh.userData.lodTier = 'low'
                 mesh.userData.buildingId = buildingId
                 mesh.userData.wallId = wall.id
@@ -5170,7 +5287,7 @@ export class FacadeController {
                 this.finishExteriorMaterial(material)
                 applyDepthLayerOffset(material, DEPTH_LAYER_TILE_UNITS)
                 const mesh = new THREE.Mesh(geometry, material)
-                mesh.castShadow = true
+                mesh.castShadow = !wallOmitsBaySideShadows(wall)
                 mesh.userData.lodTier = 'high'
                 mesh.userData.buildingId = buildingId
                 mesh.userData.wallId = wall.id
@@ -5980,20 +6097,35 @@ export class FacadeController {
     for (const wall of getVisibleWalls(this.state)) {
       if (buildingId && wall.buildingId !== buildingId) continue
       if (this.wallIsBare(wall)) continue
+      if (isStudioWall(wall) && isBaySurfaceWall(wall)) continue
       for (const opening of wall.openings) {
         if (opening.hidden) continue
         const sill = opening.sillInner
         if (!sill?.enabled || !openingActsAsWindow(opening) || opening.y <= 0) continue
         if (basementWindowEnabled(opening)) continue
+        const insets = this.sillJoinInsets(wall)
+        const overhang = sill.overhang ?? 8
+        const rawLayout = {
+          xLeft: opening.x - overhang,
+          xRight: opening.x + opening.width + overhang,
+          width: opening.width + overhang * 2,
+          yTop: opening.y,
+          yBottom: opening.y - Math.max(0.5, sill.thickness ?? 4),
+          depth: Math.max(1, sill.depth ?? 16),
+          thickness: Math.max(0.5, sill.thickness ?? 4),
+          angleDeg: 0,
+        }
+        const layout = clipOuterSillLayoutToJoins(rawLayout, opening, wall.width, insets)
+        if (!layout) continue
         const mouthGaps = bayMouthLocalXGapsForWall(this.state, wall)
         if (openingFlanksBayMouth(opening, mouthGaps)) continue
+        if (openingOuterSillConflictsBayMouth(opening, sill, mouthGaps)) continue
         // Konche: Innenbank sitzt an der Wandinnenkante und ragt in die Kalotte
         // (weißer Oval-Fleck hinten unten). Außenbank bleibt.
         if (opening.type === 'conch') continue
-        const depth = Math.max(1, sill.depth ?? 16)
-        const thickness = Math.max(0.5, sill.thickness ?? 4)
-        const overhang = sill.overhang ?? 8
-        const sillWidth = opening.width + overhang * 2
+        const depth = layout.depth
+        const thickness = layout.thickness
+        const sillWidth = layout.width
         const color = sill.color ?? '#ffffff'
         const geometry = new THREE.BoxGeometry(sillWidth, thickness, depth)
         const material = createTintedMaterial(
@@ -6002,19 +6134,21 @@ export class FacadeController {
           sill.finish ?? wall.profileFinish,
         )
         this.finishExteriorMaterial(material)
+        applySillDepthOffset(material)
         const mesh = new THREE.Mesh(geometry, material)
         mesh.frustumCulled = false
-        mesh.castShadow = true
+        const overlapsJoin = rawLayout.xLeft < insets.start || rawLayout.xRight > wall.width - insets.end
+        mesh.castShadow = !overlapsJoin
         mesh.receiveShadow = true
         mesh.userData.originalMaterial = material
 
-        const localX = opening.x + opening.width / 2 - wall.width / 2
+        const localX = layout.xLeft + sillWidth / 2 - wall.width / 2
         const localY = opening.y - thickness / 2 - wall.height / 2
         const inward = isStudioWall(wall) ? -windowDepthForwardSign(wall) : -1
         const innerFaceZ = isStudioWall(wall)
           ? ((wall.panelFlip ?? false) ? wall.depth : 0)
           : 0
-        const localZ = innerFaceZ + inward * (depth / 2)
+        const localZ = innerFaceZ + inward * (depth / 2 + SILL_FACE_BIAS_CM)
 
         if (isStudioWall(wall)) {
           const world = localToWorld(wall, localX, localY, localZ)
@@ -6070,6 +6204,7 @@ export class FacadeController {
     for (const wall of getVisibleWalls(this.state)) {
       if (buildingId && wall.buildingId !== buildingId) continue
       if (this.wallIsBare(wall)) continue
+      if (isStudioWall(wall) && isBaySurfaceWall(wall)) continue
       const treatAsBareWall = this.wallTreatAsBare(wall)
       for (const opening of wall.openings) {
         if (opening.hidden) continue
@@ -6077,32 +6212,37 @@ export class FacadeController {
         if (!sill?.enabled || !openingActsAsWindow(opening) || opening.y <= 0) continue
         if (basementWindowEnabled(opening)) continue
         const mouthGaps = bayMouthLocalXGapsForWall(this.state, wall)
-        if (openingFlanksBayMouth(opening, mouthGaps)) continue
+        if (openingOuterSillConflictsBayMouth(opening, sill, mouthGaps)) continue
         const normalized = normalizeOpeningSillOuter(sill)
         if (outerSillUsesProfile(normalized)) continue
-        const layout = clampOuterSillLayoutForBayMouths(
-          resolveOuterSillLayout(opening, normalized),
-          opening,
-          bayMouthLocalXGapsForWall(this.state, wall),
-        )
+        const insets = this.sillJoinInsets(wall)
+        const rawLayout = resolveOuterSillLayout(opening, normalized)
+        const layout = clipOuterSillLayoutToJoins(rawLayout, opening, wall.width, insets)
+        if (!layout) continue
         const depth = Math.max(1, layout.depth)
         const thickness = Math.max(0.5, layout.thickness)
         const width = Math.max(1, layout.width)
         const color = normalized.color ?? wall.profileColor ?? DEFAULT_PROFILE_COLOR
-        const geometry = new THREE.BoxGeometry(width, thickness, depth)
         const angleRad = ((layout.angleDeg ?? 0) * Math.PI) / 180
         const board = outerSillBoardPose(wall, depth, { treatAsBareWall })
-        // Pivot an der Oberkante (bündig mit Öffnungs-Unterkante), Neigung senkt nur die Tropfkante.
-        geometry.translate(0, -thickness / 2, board.translateZ)
+        const geometry = createOuterSillBoardGeometry(
+          width,
+          thickness,
+          depth,
+          board.translateZ,
+          board.tiltX,
+        )
         const material = createTintedMaterial(
           this.profileMaterial,
           color,
           normalized.finish ?? wall.profileFinish,
         )
         this.finishExteriorMaterial(material)
+        applySillDepthOffset(material)
         const mesh = new THREE.Mesh(geometry, material)
         mesh.frustumCulled = false
-        mesh.castShadow = true
+        const overlapsJoin = rawLayout.xLeft < insets.start || rawLayout.xRight > wall.width - insets.end
+        mesh.castShadow = !overlapsJoin
         mesh.receiveShadow = true
         mesh.userData.originalMaterial = material
 

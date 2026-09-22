@@ -127,6 +127,16 @@ export function roofKindUsesPitch(kind: RoofKind): boolean {
   return kind !== 'mansard'
 }
 
+/** Sattel/Krüppelwalm: Firsthöhe (cm) statt Neigung als Hauptmaß. */
+export function roofKindUsesRidgeRise(kind: RoofKind): boolean {
+  return kind === 'gable' || kind === 'halfHip'
+}
+
+/** Trauf-Überstand als Kastentraufe an Kanten mit geometrischem Überstand. */
+export function roofKindUsesBoxedEave(_kind?: RoofKind): boolean {
+  return true
+}
+
 export function roofKindUsesRidgeDir(kind: RoofKind): boolean {
   // Mansarde und Walm: dieselbe Achse wie Sattel (welche Kanten Stirn sind).
   // Pult: Hochseite, kein richtungsloser First.
@@ -285,6 +295,35 @@ function ridgeAxisDir(roof: RoofConfig, eave: XZ[]): XZ {
   return yawToDirXZ(roof.ridgeDeg)
 }
 
+/** Halbe Spannweite lotrecht zur Firstachse (Außenring). */
+export function halfSpanPerpendicularToRidge(outer: XZ[], roof: RoofConfig): number {
+  const d = ridgeAxisDir(roof, outer)
+  const n = { x: -d.z, z: d.x }
+  let sMin = Infinity
+  let sMax = -Infinity
+  for (const p of outer) {
+    const s = n.x * p.x + n.z * p.z
+    sMin = Math.min(sMin, s)
+    sMax = Math.max(sMax, s)
+  }
+  return Math.max(40, (sMax - sMin) * 0.5)
+}
+
+/** Neigung (°) aus Firsthöhe über Traufe und Grundriss-Spannweite. */
+export function roofPitchDegFromRidgeRise(ridgeRiseCm: number, outer: XZ[], roof: RoofConfig): number {
+  const half = halfSpanPerpendicularToRidge(outer, roof)
+  const tan = Math.max(0.05, ridgeRiseCm) / half
+  const deg = (Math.atan(tan) * 180) / Math.PI
+  return Math.min(85, Math.max(5, deg))
+}
+
+function effectivePitchDegForPlanes(kind: RoofKind, outer: XZ[], roof: RoofConfig): number {
+  if (roofKindUsesRidgeRise(kind) && roof.ridgeRiseCm !== undefined) {
+    return roofPitchDegFromRidgeRise(roof.ridgeRiseCm, outer, roof)
+  }
+  return roof.pitch
+}
+
 /** Pult: Richtung zur Hochseite. Auto = Innen-Normale der längsten Traufkante. */
 function shedHighDir(roof: RoofConfig, eave: XZ[]): XZ {
   if (roof.ridgeDeg === null || roof.ridgeDeg === undefined) {
@@ -400,7 +439,8 @@ export function buildRoofPlanes(
   flush: boolean[],
   roof: RoofConfig,
 ): RoofPlane[] {
-  const ctx: PlaneBuildContext = { eave, eaveY, flush, tan: pitchTan(roof.pitch), roof }
+  const pitchDeg = effectivePitchDegForPlanes(kind, eave, roof)
+  const ctx: PlaneBuildContext = { eave, eaveY, flush, tan: pitchTan(pitchDeg), roof }
   let planes: RoofPlane[]
   switch (kind) {
     case 'gable':

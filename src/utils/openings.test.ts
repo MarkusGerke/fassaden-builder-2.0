@@ -6,12 +6,13 @@ import {
   anchoredOpeningX,
   resetOpenings,
   resolveOuterSillLayout,
-  clampOuterSillLayoutForBayMouths,
-  openingFlanksBayMouth,
   updateOpening,
   createOpening,
   defaultOuterSillDepth,
   replaceOpeningsFromSource,
+  clipOuterSillLayoutToJoins,
+  openingFlanksBayMouth,
+  openingOuterSillConflictsBayMouth,
 } from './openings'
 import { STUDIO_MASONRY, DEFAULT_STUDIO_PANEL } from '../studio/constants'
 import { WALL_DEPTH } from '../constants/presets'
@@ -187,6 +188,48 @@ describe('resetOpenings', () => {
   })
 })
 
+describe('clipOuterSillLayoutToJoins', () => {
+  const opening = { x: 48, width: 96 }
+  const raw = {
+    xLeft: 32,
+    xRight: 160,
+    width: 128,
+    yTop: 128,
+    yBottom: 124,
+    depth: 16,
+    thickness: 4,
+    angleDeg: 5,
+  }
+
+  it('lässt die Bank unverändert ohne Stoß-Inset', () => {
+    const next = clipOuterSillLayoutToJoins(raw, opening, 384, { start: 0, end: 0 })
+    expect(next?.width).toBe(128)
+  })
+
+  it('lässt die Bank weg wenn der Stoß die Öffnung anschneiden würde', () => {
+    expect(clipOuterSillLayoutToJoins(raw, opening, 192, { start: 0, end: 60 })).toBeNull()
+  })
+})
+describe('openingFlanksBayMouth', () => {
+  it('erkennt Nachbarfenster in 96 cm am Erker-Mund', () => {
+    const mouth = [{ x0: 192, x1: 384 }]
+    expect(openingFlanksBayMouth({ x: 96, width: 96 }, mouth)).toBe(true)
+    expect(openingFlanksBayMouth({ x: 384, width: 96 }, mouth)).toBe(true)
+    expect(openingFlanksBayMouth({ x: 0, width: 48 }, mouth)).toBe(false)
+  })
+})
+
+describe('openingOuterSillConflictsBayMouth', () => {
+  const mouth = [{ x0: 192, x1: 384 }]
+  const sill = { enabled: true, mode: 'board' as const, overhang: 16, depth: 16, thickness: 4 }
+
+  it('erkennt Überstand und Nachbarn in einer Achse am Mund', () => {
+    expect(openingOuterSillConflictsBayMouth({ x: 96, width: 96 }, sill, mouth)).toBe(true)
+    expect(openingOuterSillConflictsBayMouth({ x: 384, width: 96 }, sill, mouth)).toBe(true)
+    expect(openingOuterSillConflictsBayMouth({ x: 0, width: 48 }, sill, mouth)).toBe(false)
+  })
+})
+
 describe('resolveOuterSillLayout', () => {
   it('setzt die Oberkante auf die Öffnungs-Unterkante', () => {
     const layout = resolveOuterSillLayout(
@@ -294,25 +337,5 @@ describe('defaultOuterSillDepth', () => {
       { donorWalls: [{ openings: [donor] }] },
     )
     expect(created.frameColor).toBe('#010203')
-  })
-})
-
-describe('openingFlanksBayMouth', () => {
-  it('erkennt Nachbarfenster links und rechts am Mund', () => {
-    const mouth = [{ x0: 100, x1: 200 }]
-    expect(openingFlanksBayMouth({ x: 0, width: 96 }, mouth)).toBe(true)
-    expect(openingFlanksBayMouth({ x: 204, width: 96 }, mouth)).toBe(true)
-    expect(openingFlanksBayMouth({ x: 48, width: 96 }, mouth)).toBe(false)
-  })
-})
-
-describe('clampOuterSillLayoutForBayMouths', () => {
-  it('kürzt Überstand Richtung Erker-Mund', () => {
-    const opening = { x: 0, width: 96, y: 128, type: 'window' as const, id: 'o1' }
-    const sill = { enabled: true, mode: 'board' as const, overhang: 16, depth: 16, thickness: 4 }
-    const base = resolveOuterSillLayout(opening, sill)
-    const clamped = clampOuterSillLayoutForBayMouths(base, opening, [{ x0: 100, x1: 200 }])
-    expect(clamped.xRight).toBe(100)
-    expect(clamped.width).toBe(100 - base.xLeft)
   })
 })

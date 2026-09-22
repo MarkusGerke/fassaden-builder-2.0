@@ -200,9 +200,18 @@ export interface RoofConfig {
   pitchLower: number
   /** Obere Mansarden-Neigung (Grad), flacher. */
   pitchUpper: number
-  /** Traufüberstand horizontal (cm) an belegten Fassadenseiten. */
+  /** Fallback-Traufüberstand (cm), wenn Kante/Kompass keinen Wert hat. */
   overhang: number
-  /** Firsthöhe über Traufe (cm). */
+  /** Überstand je Traufkante (`roofEdgeKey`), überschreibt Kompass/Fallback. */
+  edgeOverhangCm?: Record<string, number>
+  /** Kurzweg Überstand N/O/S/W (cm) für alle Kanten dieser Außenseite. */
+  overhangCompass?: Partial<Record<'N' | 'O' | 'S' | 'W', number>>
+  /**
+   * Sattel/Krüppelwalm: lotrechte Firsthöhe über Traufe (cm) — Hauptmaß statt Neigung.
+   * Mansarde: ungenutzt (dort `ridgeHeight`).
+   */
+  ridgeRiseCm?: number
+  /** Firsthöhe über Traufe (cm) — Mansarde. */
   ridgeHeight: number
   /** Ziegelfarbe. */
   tileColor: string

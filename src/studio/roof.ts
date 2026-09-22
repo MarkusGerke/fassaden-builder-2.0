@@ -29,6 +29,7 @@ import {
 import { layoutPanelTiles } from './panelLayout'
 import { MASONRY_KIND_PATTERNS, PANEL_KIND_PATTERNS } from './constants'
 import {
+  appendEaveBoxSkirtToArrays,
   buildRoofEnvelope,
   buildRoofEnvelopeGeometry,
   complementIntervals,
@@ -50,7 +51,15 @@ import {
 import { isStudioWall, wallEndPoint, wallHasPanels, wallStartPoint } from './walls'
 
 export type { RoofConfig, RoofTileProfile }
-export { ROOF_KIND_LABELS, ROOF_KINDS, roofKindUsesPitch, roofKindUsesRidgeDir } from './roofForms'
+export {
+  ROOF_KIND_LABELS,
+  ROOF_KINDS,
+  roofKindUsesPitch,
+  roofKindUsesRidgeDir,
+  roofKindUsesRidgeRise,
+  roofPitchDegFromRidgeRise,
+  roofKindUsesBoxedEave,
+} from './roofForms'
 
 const TILE_PATTERNS: StudioPanelPattern[] = [
   ...PANEL_KIND_PATTERNS.filter((p) => p !== 'strip'),
@@ -110,6 +119,12 @@ export function normalizeRoof(raw?: Partial<RoofConfig> | null): RoofConfig {
   const crossGables = normalizeCrossGables(base.crossGables)
   const skylights = normalizeSkylights(base.skylights)
   const dormers = normalizeDormers(base.dormers)
+  const edgeOverhangCm = normalizeEdgeOverhangCm(base.edgeOverhangCm)
+  const overhangCompass = normalizeOverhangCompass(base.overhangCompass)
+  const ridgeRiseCm =
+    base.ridgeRiseCm !== undefined && Number.isFinite(base.ridgeRiseCm)
+      ? snap8(clamp(base.ridgeRiseCm, 40, 600))
+      : undefined
   return {
     enabled: Boolean(base.enabled),
     hidden: Boolean(base.hidden),
@@ -126,6 +141,9 @@ export function normalizeRoof(raw?: Partial<RoofConfig> | null): RoofConfig {
     pitchLower: clamp(base.pitchLower, 45, 80),
     pitchUpper: clamp(base.pitchUpper, 10, 45),
     overhang: clamp(base.overhang, 0, 120),
+    ...(ridgeRiseCm !== undefined ? { ridgeRiseCm } : {}),
+    ...(edgeOverhangCm ? { edgeOverhangCm } : {}),
+    ...(overhangCompass ? { overhangCompass } : {}),
     ridgeHeight: clamp(base.ridgeHeight, 80, 600),
     tileColor: typeof base.tileColor === 'string' && base.tileColor ? base.tileColor : DEFAULT_ROOF.tileColor,
     gutter: base.gutter !== false,
@@ -147,6 +165,42 @@ export function normalizeRoof(raw?: Partial<RoofConfig> | null): RoofConfig {
 function clamp(n: number, min: number, max: number): number {
   if (!Number.isFinite(n)) return min
   return Math.min(max, Math.max(min, n))
+}
+
+const COMPASS_DIRS = new Set(['N', 'O', 'S', 'W'])
+
+function normalizeEdgeOverhangCm(
+  raw?: Record<string, number> | null,
+): Record<string, number> | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const out: Record<string, number> = {}
+  for (const [key, val] of Object.entries(raw)) {
+    if (!Number.isFinite(val)) continue
+    out[key] = snap8(clamp(val, 0, 120))
+  }
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
+function normalizeOverhangCompass(
+  raw?: Partial<Record<'N' | 'O' | 'S' | 'W', number>> | null,
+): Partial<Record<'N' | 'O' | 'S' | 'W', number>> | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const out: Partial<Record<'N' | 'O' | 'S' | 'W', number>> = {}
+  for (const dir of COMPASS_DIRS) {
+    const val = raw[dir as 'N' | 'O' | 'S' | 'W']
+    if (val === undefined || !Number.isFinite(val)) continue
+    out[dir as 'N' | 'O' | 'S' | 'W'] = snap8(clamp(val, 0, 120))
+  }
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
+/** Wirksamer Überstand (cm) für eine Traufkante. */
+export function effectiveEdgeOverhangCm(edge: RoofEdgeInfo, roof: RoofConfig): number {
+  const direct = roof.edgeOverhangCm?.[edge.key]
+  if (direct !== undefined) return direct
+  const compass = roof.overhangCompass?.[edge.compass as 'N' | 'O' | 'S' | 'W']
+  if (compass !== undefined) return compass
+  return roof.overhang
 }
 
 /**
@@ -504,7 +558,7 @@ export interface RoofEdgeInfo {
   wallId?: string
   /** Gespeicherter Modus (fehlend = `auto`). */
   mode: RoofEdgeMode
-  /** Wirksam bündig: `flush`, oder `auto` und Wand ohne Paneele. */
+  /** Wirksam bündig (Rinne/Giebel): `flush`, oder `auto` und Wand ohne Paneele. Unabhängig vom Traufüberstand. */
   flush: boolean
 }
 
@@ -568,9 +622,17 @@ function listRoofEdgesForRing(building: Building, roof: RoofConfig, outer: XZ[])
   return edges
 }
 
-/** Traufüberstand nur bei explizit bündiger Kante aus — `auto`+nackte Wand bleibt ohne Rinne, darf aber überstehen. */
-export function overhangPerEdge(edges: RoofEdgeInfo[], overhang: number): number[] {
-  return edges.map((edge) => (edge.mode === 'flush' ? 0 : overhang))
+/** Traufüberstand nur bei explizit bündiger Kante aus — sonst Kante/Kompass/Fallback. */
+export function overhangPerEdge(
+  edges: RoofEdgeInfo[],
+  roofOrOverhang: RoofConfig | number,
+): number[] {
+  if (typeof roofOrOverhang === 'number') {
+    const overhang = roofOrOverhang
+    return edges.map((edge) => (edge.mode === 'flush' ? 0 : overhang))
+  }
+  const roof = roofOrOverhang
+  return edges.map((edge) => (edge.mode === 'flush' ? 0 : effectiveEdgeOverhangCm(edge, roof)))
 }
 
 /** Firstachse: gespeicherter Winkel, sonst die längste Ringkante. */
@@ -1777,10 +1839,9 @@ function roofBase(building: Building, roof: RoofConfig): {
   if (!face || face.outer.length < 3) return null
   const outer = orientRingCcw(face.outer)
   const edges = listRoofEdgesForRing(building, roof, outer)
-  const edgeOverhang = overhangPerEdge(edges, roof.overhang)
-  // Traufe: Ebenen am Wandring (`outer`). An der Wandlinie y≈eaveY, Spitze tiefer um oh·tan
-  // (Neigung verlängert nach außen — v2.0.481). eaveY = wallTop + tv → Soffit an Wand = wallTop.
-  // v2.0.505 zog zusätzlich oh·tan ab → Doppelzählung, Dach/Gesims verzerrt (revert v2.0.506).
+  const edgeOverhang = overhangPerEdge(edges, roof)
+  // Traufe: eaveY = Wandoberkante + Plattendicke. Überstand je Kante (`overhangPerEdge`).
+  // Kein extra oh·tan auf eaveY (v2.0.506 Doppelzählung).
   const topFloor = floors.length - 1
   const wallTopY = storeyTopY(building, topFloor)
   const pitchForSlab = roof.kind === 'mansard' ? roof.pitchLower : roof.pitch
@@ -1823,13 +1884,16 @@ export function roofEnvelopeForBuilding(building: Building, rawRoof?: Partial<Ro
 export function roofRidgeHeightCm(building: Building, rawRoof?: Partial<RoofConfig> | null): number {
   const roof = normalizeRoof(rawRoof ?? building.roof)
   if (roof.kind === 'mansard') return roof.ridgeHeight
+  if (roof.ridgeRiseCm !== undefined && (roof.kind === 'gable' || roof.kind === 'halfHip')) {
+    return roof.ridgeRiseCm
+  }
   const env = roofEnvelopeForBuilding(building, roof)
   return env ? Math.max(0, env.ridgeY - env.eaveY) : 0
 }
 
 /**
  * Berliner Mansarde: Ziegel (oder glatte Bänder) auf den Mänteln, Firstziegel,
- * optional gehrungene Rinne. Bündige Kanten: Überstand 0, keine Rinne.
+ * optional gehrungene Rinne. Explizit bündige Kanten: Überstand 0; Auto-bündig: keine Rinne trotz Überstand.
  */
 function buildMansardRoofForBuilding(
   building: Building,
@@ -1841,7 +1905,7 @@ function buildMansardRoofForBuilding(
   const base = roofBase(building, roof)
   if (!base) return false
   const { positions, normals, uvs, indices } = sinks
-  const { eave, eaveY, edgeOverhang, holes } = base
+  const { outer, eave, eaveY, wallTopY, edgeOverhang, holes } = base
   const smooth = roofEffectiveCovering(roof) === 'smooth'
   const breakRise = roof.ridgeHeight * 0.55
   const upperRise = roof.ridgeHeight - breakRise
@@ -1861,7 +1925,7 @@ function buildMansardRoofForBuilding(
     normals,
     uvs,
     indices,
-    eave,
+    outer,
     breakPoly,
     eaveY,
     eaveY + breakRise,
