@@ -47,6 +47,8 @@ export const LIBRARY_TAB_EDIT_SECTIONS: Record<string, string[]> = {
   sceneSun: ['sun'],
   sceneBloom: ['bloom'],
   sceneLights: ['sceneLights'],
+  sceneWeather: ['weather'],
+  sceneStage: ['scene'],
   sceneFile: ['file'],
 }
 
@@ -55,6 +57,8 @@ export const SCENE_LIBRARY_TABS = [
   'sceneSun',
   'sceneBloom',
   'sceneLights',
+  'sceneWeather',
+  'sceneStage',
   'sceneFile',
 ] as const
 export type SceneLibraryTab = (typeof SCENE_LIBRARY_TABS)[number]
@@ -69,6 +73,8 @@ export const SCENE_LIBRARY_TILES: ReadonlyArray<{
   { tab: 'sceneSun', label: 'Licht & Schatten', sections: ['sun'] },
   { tab: 'sceneBloom', label: 'Schein', sections: ['bloom'] },
   { tab: 'sceneLights', label: 'Lampen & Leuchten', sections: ['sceneLights'] },
+  { tab: 'sceneWeather', label: 'Wetter', sections: ['weather'] },
+  { tab: 'sceneStage', label: 'Szene', sections: ['scene'] },
   { tab: 'sceneFile', label: 'Datei', sections: ['file'] },
 ]
 
@@ -77,7 +83,15 @@ export function isSceneLibraryTab(tab: string): tab is SceneLibraryTab {
 }
 
 /** Settings-Sektionen, die aus der Szene-Toolbar (nicht Auswahl) kommen. */
-export const SCENE_EDIT_SECTIONS = new Set(['view', 'sun', 'bloom', 'sceneLights', 'file'])
+export const SCENE_EDIT_SECTIONS = new Set([
+  'view',
+  'sun',
+  'bloom',
+  'sceneLights',
+  'weather',
+  'scene',
+  'file',
+])
 
 export function isSceneEditFocus(sections: string[] | null | undefined): boolean {
   return Boolean(sections?.some((id) => SCENE_EDIT_SECTIONS.has(id)))

@@ -59,6 +59,7 @@ import { basementWindowEnabled } from '../studio/basementWindow'
 import { findBuildingForWall, getAllWalls, getVisibleWalls } from './buildings'
 import { storeyTopY } from './layers'
 import { ROOF_WALL_TOP_TRIM_CM } from '../studio/roofForms'
+import { roofEaveCorniceDropCm } from '../studio/roof'
 import { normalizeFacadeDecor } from '../studio/facadeDecor'
 
 export interface Vec2 {
@@ -874,6 +875,7 @@ function buildCornicePaths(state: FacadeState): ProfilePath[] {
     if (!visibleIds.has(wall.id)) continue
     if (!wallHasCornice(wall)) continue
     const cornice = wallCornice(wall)
+    const building = findBuildingForWall(state, wall.id)
     const profile = resolveProfile(cornice.profileId ?? 'traufgesims70x150', state.customProfiles)
     if (!profile?.projecting || !profile.section) continue
 
@@ -885,26 +887,31 @@ function buildCornicePaths(state: FacadeState): ProfilePath[] {
       : cornice.edge === 'bottom'
         ? wall.y
         : wall.y + wall.height
-    // Unter Dach: Gesims unter die gekürzte Wandkante und unter die geneigte Soffit
-    // (Krone ragt um Profil-Tiefe × tan nach außen — nicht skippen, v2.0.507).
+    // Bündige Giebel: Gesims unter die gekürzte Wandkante
+    // (Krone ragt um Profil-Tiefe × tan nach außen — absenken, nicht löschen, v2.0.507).
+    // Traufe mit Überstand: Oberkante 1 cm unter der waagerechten Untersicht.
     let corniceDropCm = 0
     if (cornice.edge === 'top') {
-      const building = findBuildingForWall(state, wall.id)
       const floors = building?.floors
       if (building?.roof?.enabled && floors && floors.length > 0) {
         const topY = storeyTopY(building, floors.length - 1)
         const wallTopWorld = wall.y + wall.height
         if (Math.abs(wallTopWorld - topY) < 1.5) {
-          const pitchDeg =
-            building.roof.kind === 'mansard' ? building.roof.pitchLower : building.roof.pitch
-          const tan = Math.tan((Math.min(85, Math.max(1, pitchDeg ?? 40)) * Math.PI) / 180)
-          const native = profileSectionNativeExtents(profile.section)
-          const fwd =
-            native.forward *
-            (Number.isFinite(cornice.sectionScaleForward)
-              ? (cornice.sectionScaleForward as number)
-              : (cornice.scale ?? 1))
-          corniceDropCm = Math.max(ROOF_WALL_TOP_TRIM_CM + 2, fwd * tan + 2)
+          const eaveDrop = roofEaveCorniceDropCm(building, wall.id)
+          if (eaveDrop > 0) {
+            corniceDropCm = eaveDrop
+          } else {
+            const pitchDeg =
+              building.roof.kind === 'mansard' ? building.roof.pitchLower : building.roof.pitch
+            const tan = Math.tan((Math.min(85, Math.max(1, pitchDeg ?? 40)) * Math.PI) / 180)
+            const native = profileSectionNativeExtents(profile.section)
+            const fwd =
+              native.forward *
+              (Number.isFinite(cornice.sectionScaleForward)
+                ? (cornice.sectionScaleForward as number)
+                : (cornice.scale ?? 1))
+            corniceDropCm = Math.max(ROOF_WALL_TOP_TRIM_CM + 2, fwd * tan + 2)
+          }
           edgeY = studio ? wall.height / 2 - corniceDropCm : wall.y + wall.height - corniceDropCm
         }
       }

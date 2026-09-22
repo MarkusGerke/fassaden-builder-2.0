@@ -16,9 +16,21 @@ Jedes **Fenster** und jede **Tür** ist eine `Opening` mit Blendrahmen, Flügeln
 | Maske/Bogen | `src/utils/openingGeometry.ts`, `src/utils/archForms.ts` |
 | Hydrate | `src/utils/hydrate.ts` |
 | UI | `index.html`, `src/main.ts` |
+| Park (v2.0.573 / v2.0.574) | FormMirror `toolbarStepper` + Adopt `window-hinge-modes` am `#window-hinge-section`-Details — siehe [park-restore.md](park-restore.md) Slice 2 |
 | Zubehör | `src/studio/pediment.ts`, Sills, `basementWindow.ts`, `stairs.ts`, Rollläden |
 
-Verwandte Docs: [ux.md](ux.md), [opening-motion.md](opening-motion.md), [roller-shutter.md](roller-shutter.md), [panel-geometry.md](panel-geometry.md).
+Verwandte Docs: [ux.md](ux.md), [opening-motion.md](opening-motion.md), [roller-shutter.md](roller-shutter.md), [panel-geometry.md](panel-geometry.md), [park-restore.md](park-restore.md).
+
+## Park-Erreichbarkeit (v2.0.573)
+
+| Steuerung | Park |
+|---|---|
+| Flügel-Anzahl, Teilung v/h, Sprossen, OL-Teilung | FormMirror `toolbarStepper` (`.toolbar-stepper[id]`) |
+| Scharnier / Öffnungsart | Adopt `#window-hinge-section` (`window-hinge-modes`) |
+| Holzmaße / profilierte Sprossen | FormMirror `number`/`checkbox` (Smoke) |
+| Bogen-Form-Karten | noch Lücke → park-restore Slice 4 |
+
+**Nicht** „Domain weg“ — Vanilla-HTML/`gruenderzeit` unverändert; ohne FormMirror/Adopt war die Bedienung in der Park-Leiste unsichtbar.
 
 ## Ist-Bestand (Individualisierung)
 

@@ -1,0 +1,33 @@
+---
+description: Flächen dürfen nicht deckungsgleich in derselben Ebene liegen — sonst Flackern
+alwaysApply: true
+---
+
+# Keine deckungsgleichen Flächen
+
+Nutzer-Regel (2026-09-22): Eine Lösung darf **niemals** sein, dass zwei oder mehr Flächen direkt aufeinanderliegen. Das ergibt Flackern, Streifen und Karo-Muster (Z-Fight).
+
+## Verboten
+
+Flächige Deckungsgleichheit: zwei oder mehr Dreiecke/Quads (auch in verschiedenen Meshes oder Farben) belegen **dieselbe Ebene über eine Fläche**, nicht nur eine Linie.
+
+Beispiele, die schon so aussahen:
+
+- Giebelfüllung auf der Dachkante → Karo entlang der ganzen Schräge (Pult, Sattel).
+- Stirnbrett auf dem Plattenrand → Flackern über der Regenrinne (Mansarde).
+- Kappe in der Wandebene, während der Ortgang noch übersteht → Streifen unter der Ecke, weil die Kappe durch die Platte schneidet.
+
+`polygonOffset`, Bias oder „ein bisschen Depth“ ist **keine** Lösung. Die Flächen liegen weiter aufeinander; der nächste Fix baut das Artefakt wieder ein.
+
+## Erlaubt
+
+- Flächen treffen sich an einer **Kante** oder Ecke (Dach sitzt auf der Wand, Plattenrand trifft die Füllung nur an der Unterkante).
+- Eine Fläche **weglassen**, wenn die andere die Stelle schon schließt (Kastentraufe ersetzt den Plattenrand an der Traufe).
+- Eine Fläche **messbar** daneben legen: vor die Kante oder in die Wand (0,4 cm), sodass sie sich nicht mehr decken. Null-Abstand zählt als Deckungsgleichheit.
+- `side: DoubleSide` an **einer** Fläche. Das ist keine zweite Fläche.
+
+## Beim Bauen
+
+Vor dem Ablegen einer neuen Fläche prüfen, ob an dieser Stelle schon eine liegt (anderes Mesh, andere Farbe, Unterseite, Rand, Füllwand). Liegt sie dort, eine von beiden entfernen oder auseinanderlegen. Nicht beide behalten und den Versatz auf später schieben.
+
+Docs: `docs/flaechen-ueberlappung.md`.

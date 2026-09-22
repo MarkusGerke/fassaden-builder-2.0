@@ -762,6 +762,7 @@ import {
 import { resolveLightingMood } from './utils/lightingMood'
 import {
   applyGroundMoodShader,
+  setGroundMoodSnowCover,
   setGroundShadowHard,
   updateGroundMoodUniformValues,
 } from './lighting/groundMood'
@@ -898,6 +899,14 @@ import {
   normalizeGroundPuddleSettings,
   type GroundPuddleSettings,
 } from './lighting/groundPuddles'
+import {
+  DEFAULT_SNOW_WEATHER_SETTINGS,
+  normalizeSnowWeatherSettings,
+  snowOvercastFactors,
+  snowPuddleStrengthScale,
+  type SnowWeatherSettings,
+} from './lighting/snowWeather'
+import { SnowRuntime } from './scene/snowRuntime'
 import {
   applyLodPreset,
   DEFAULT_LOD_SETTINGS,
@@ -1250,7 +1259,25 @@ let objectFocusAnim: {
 let objectFocusApplying = false
 if (import.meta.env.DEV) {
   const dbg = (window as unknown as { __fbDebug?: Record<string, unknown> }).__fbDebug
-  if (dbg) dbg.controls = controls
+  if (dbg) {
+    dbg.controls = controls
+    dbg.listOpenings = () =>
+      getAllWalls(state).flatMap((wall) =>
+        wall.openings.map((opening) => ({
+          wallId: wall.id,
+          openingId: opening.id,
+          type: opening.type,
+        })),
+      )
+    dbg.selectOpening = (
+      wallId: string,
+      openingId: string,
+      additive = false,
+      part: OpeningPart = 'group',
+    ) => {
+      selectOpening(wallId, openingId, additive, part)
+    }
+  }
 }
 /** ⌘/Ctrl kann auf macOS beim Pointerdown fehlen — keydown/keyup als Fallback. */
 let modKeyHeld = false
@@ -1513,6 +1540,9 @@ siteOffset.add(ground)
 
 const groundPuddleRuntime = new GroundPuddleRuntime()
 siteOffset.add(groundPuddleRuntime.group)
+
+const snowRuntime = new SnowRuntime()
+siteOffset.add(snowRuntime.group)
 
 /** Neutrale Studio-Kugel: nur Innenfläche (BackSide) — von außen hindurchschauen. */
 const studioSphereMat = new THREE.MeshStandardMaterial({
@@ -1891,6 +1921,9 @@ type LibraryTab =
   | 'sceneSun'
   | 'sceneBloom'
   | 'sceneLights'
+  | 'sceneWeather'
+  | 'sceneStage'
+  | 'sceneFile'
 
 /** Objekt-Affinität: welche Bibliothek-Tabs zur aktuellen Auswahl gehören (docs/ux.md). */
 function wallGeomLockedByTouchChrome(): boolean {
@@ -6964,6 +6997,7 @@ let sceneAppearance: SceneAppearance = { ...DEFAULT_SCENE_APPEARANCE }
 let bloomSettings: BloomSettings = { ...DEFAULT_BLOOM_SETTINGS }
 let fogSettings: FogSettings = { ...DEFAULT_FOG_SETTINGS }
 let puddleSettings: GroundPuddleSettings = { ...DEFAULT_GROUND_PUDDLE_SETTINGS }
+let snowSettings: SnowWeatherSettings = { ...DEFAULT_SNOW_WEATHER_SETTINGS }
 let lodSettings: LodSettings = normalizeLodSettings(DEFAULT_LOD_SETTINGS)
 let stageEnvironment: StageEnvironment = loadStageEnvironment()
 
@@ -7063,6 +7097,7 @@ function persistApp() {
     bloom: bloomSettings,
     fog: fogSettings,
     puddles: puddleSettings,
+    snow: snowSettings,
     lod: lodSettings,
   })
 }
@@ -7186,6 +7221,10 @@ function applyPresentationMode() {
   applyStageEnvironmentVisuals()
   applySunLighting({ updateShadowMap: true })
   applyRendererPixelRatio()
+  if (presentationMode !== 'draft' && snowSettings.enabled) {
+    facade.applySnowCoverageMaterials()
+  }
+  syncSnowUi()
   markViewportDirty()
   updateWallLibraryGizmos()
 }
@@ -7369,6 +7408,7 @@ async function loadInitialState(): Promise<void> {
     bloomSettings = normalizeBloomSettings(persisted.bloom)
     fogSettings = normalizeFogSettings(persisted.fog)
     puddleSettings = normalizeGroundPuddleSettings(persisted.puddles)
+    snowSettings = normalizeSnowWeatherSettings(persisted.snow)
     lodSettings = normalizeLodSettings(persisted.lod)
     if (facadeHasNeedsReview(state)) {
       queueMicrotask(() => {
@@ -8609,6 +8649,15 @@ const groundPuddlesSpreadValue = document.querySelector<HTMLOutputElement>('#gro
 const groundPuddlesStrength = document.querySelector<HTMLInputElement>('#ground-puddles-strength')!
 const groundPuddlesStrengthNum = document.querySelector<HTMLInputElement>('#ground-puddles-strength-num')!
 const groundPuddlesStrengthValue = document.querySelector<HTMLOutputElement>('#ground-puddles-strength-value')!
+const snowEnabledInput = document.querySelector<HTMLInputElement>('#snow-enabled')!
+const snowOptions = document.querySelector<HTMLDivElement>('#snow-options')!
+const snowTemp = document.querySelector<HTMLInputElement>('#snow-temp')!
+const snowTempNum = document.querySelector<HTMLInputElement>('#snow-temp-num')!
+const snowTempValue = document.querySelector<HTMLOutputElement>('#snow-temp-value')!
+const snowIntensity = document.querySelector<HTMLInputElement>('#snow-intensity')!
+const snowIntensityValue = document.querySelector<HTMLOutputElement>('#snow-intensity-value')!
+const snowQualityLowBtn = document.querySelector<HTMLButtonElement>('#snow-quality-low')!
+const snowQualityHighBtn = document.querySelector<HTMLButtonElement>('#snow-quality-high')!
 const perfOverlayEnabledInput = document.querySelector<HTMLInputElement>('#perf-overlay-enabled')!
 const lodEnabledInput = document.querySelector<HTMLInputElement>('#lod-enabled')!
 const lodOptions = document.querySelector<HTMLDivElement>('#lod-options')!
@@ -14207,14 +14256,17 @@ function updateGroundPlane() {
 function syncGroundPuddles() {
   const box = buildingWorldBox(getAllWalls(state))
   const { cx, cz } = groundSizeForView()
+  const snowScale = snowSettings.enabled
+    ? snowPuddleStrengthScale(snowRuntime.cover, snowSettings.temperatureC)
+    : 1
   groundPuddleRuntime.sync({
-    enabled: puddleSettings.enabled,
+    enabled: puddleSettings.enabled && snowScale > 0.04,
     view3d: isPerspectiveSceneView(),
     orbitLite: orbitLite || orbitLitePointer,
     count: puddleSettings.count,
     size: puddleSettings.size,
     spread: puddleSettings.spread,
-    strength: puddleSettings.strength,
+    strength: puddleSettings.strength * snowScale,
     groundY: GROUND_Y,
     cx,
     cz,
@@ -15184,6 +15236,16 @@ function applySunLighting(opts?: {
   hemiLight.color.copy(mood.hemiSkyColor)
   hemiLight.groundColor.copy(mood.groundHemiColor)
 
+  // Schnee: leicht überzogen — Sonne dämpfen, Diffus erhöhen (Q10B).
+  const snowOver = snowOvercastFactors(
+    snowSettings.enabled && presentationMode !== 'draft' && isPerspectiveSceneView(),
+    snowSettings.intensity,
+    snowRuntime.cover,
+  )
+  dirLight.intensity *= snowOver.sunMul
+  hemiLight.intensity *= snowOver.hemiMul
+  atmosphereSky.skyLightProbe.intensity *= snowOver.hemiMul
+
   // Paneel/Glas-EnvMap: Farbe + Stärke folgen Tag/Nacht (sonst bleibt Mittelgrau-IBL).
   const envFill = exteriorEnvFillFromCelestial(preCelestial)
   setExteriorEnvFillFactor(envFill)
@@ -15217,6 +15279,9 @@ function applySunLighting(opts?: {
   }
   groundMat.color.set(GROUND_STONE_GRAY)
   updateGroundMoodUniformValues(mood, groundMat.color)
+  const snowGroundCover =
+    snowSettings.enabled && presentationMode !== 'draft' ? snowRuntime.cover : 0
+  setGroundMoodSnowCover(snowGroundCover)
   setGroundShadowHard(presentationUsesWorkLikeShading(presentationMode))
   // Live-Uhr: kein Material-Invalidate / needsUpdate — sonst Shadow-Bake jedes Frame.
   applyWorkModeShadowStyle(!live)
@@ -15468,6 +15533,7 @@ function applyState(
     syncSiteTransform()
     updateGroundPlane()
     syncCameraDistanceLimits()
+    snowRuntime.markOcclusionDirty()
     // Live-Licht: kein Material-Invalidate (grau/dunkel nach Rebuild oder Abwahl).
     // Schatten forcen — sonst Orbit-Lite-Hold + Debounce lassen alte Maps stehen (v2.0.320/372).
     if (roofOnly) {
@@ -16128,6 +16194,8 @@ function renderUi(opts?: { skipLayerList?: boolean }) {
   // Auswahl-Optionen liegen unten; rechte Toolbar nur als DOM-Host (CSS blendet aus).
   selectionToolbar.hidden = !showSelectionUi
   appRoot.classList.toggle('has-selection', showSelectionUi)
+  publishSelectionToolbarSync()
+  publishLibraryDockSync()
   toolbarWall.hidden =
     !hasWall || hasOpening || studioWall || hasRoof || hasCeiling || hasSceneLight || hasDownpipe
   toolbarStudio.hidden =
@@ -23755,6 +23823,7 @@ function bindToolbarStepper(
     input.min = String(opts.min)
     input.step = '1'
     input.value = valueEl.textContent?.trim() || String(opts.min)
+    if (valueEl.id) input.id = valueEl.id
     input.setAttribute('aria-label', root.getAttribute('aria-label') ?? 'Wert')
     valueEl.replaceWith(input)
     valueEl = input
@@ -27374,6 +27443,10 @@ function pickLeafGroundLocal(clientX: number, clientY: number): { x: number; z: 
 }
 
 function softAppendLeaves(additions: ReturnType<typeof createLeafClump>): void {
+  if (snowSettings.enabled) {
+    planStatus.textContent = 'Laub bei Schneefall aus'
+    return
+  }
   if (additions.length === 0) return
   const before = normalizeGroundLeaves(state.groundLeaves).length
   state = appendGroundLeaves(state, additions)
@@ -28807,6 +28880,12 @@ function setView(mode: AppView) {
   }
 
   currentView = mode
+  // Fassade blendet Vorschau/Render-Umschalter aus — Entwurf würde Schnee unsichtbar lassen.
+  if (mode === 'present' && presentationMode === 'draft') {
+    presentationMode = 'preview'
+    savePresentationMode(presentationMode)
+    applyPresentationMode()
+  }
   if (mode !== '3d' && (orbitLite || nav3d || orbitLitePointer)) {
     orbitLitePointer = false
     if (nav3d) endNav3d()
@@ -30606,6 +30685,8 @@ function syncBloomFogUi() {
   syncBloomUi()
   syncFogUi()
   syncPuddleUi()
+  syncSnowUi()
+  applySnowLeavesExclusion()
 }
 
 function syncLodUi() {
@@ -30718,6 +30799,76 @@ function syncPuddleUi() {
   groundPuddlesStrength.value = String(puddleSettings.strength)
   groundPuddlesStrengthNum.value = String(puddleSettings.strength)
   groundPuddlesStrengthValue.textContent = puddleSettings.strength.toFixed(2)
+}
+
+function formatSnowTemp(c: number): string {
+  const rounded = Math.round(c * 10) / 10
+  const body = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)
+  return rounded < 0 ? `−${body.replace('-', '')}` : body
+}
+
+function syncSnowUi() {
+  snowEnabledInput.checked = snowSettings.enabled
+  snowOptions.hidden = !snowSettings.enabled
+  snowTemp.value = String(snowSettings.temperatureC)
+  snowTempNum.value = String(snowSettings.temperatureC)
+  snowTempValue.textContent = formatSnowTemp(snowSettings.temperatureC)
+  snowIntensity.value = String(snowSettings.intensity)
+  snowIntensityValue.textContent = snowSettings.intensity.toFixed(2)
+  snowQualityLowBtn.classList.toggle('active', snowSettings.quality === 'low')
+  snowQualityHighBtn.classList.toggle('active', snowSettings.quality === 'high')
+  const hints = [
+    document.querySelector<HTMLElement>('#snow-visibility-hint'),
+    document.querySelector<HTMLElement>('#snow-visibility-hint-park'),
+  ]
+  const draft = presentationMode === 'draft'
+  const not3d = currentView !== '3d' && currentView !== 'present'
+  const show = snowSettings.enabled && (draft || not3d)
+  const text = draft
+    ? 'Schnee ist in Entwurf aus. Bitte Darstellung auf Vorschau oder Render stellen.'
+    : not3d
+      ? 'Schnee nur in 3D und Fassade sichtbar.'
+      : ''
+  for (const hint of hints) {
+    if (!hint) continue
+    hint.hidden = !show
+    if (show) hint.textContent = text
+  }
+}
+
+function applySnowLeavesExclusion() {
+  // Q19A: Schnee an → Laub aus (gegenseitig)
+  leafRuntime.root.visible = !snowSettings.enabled
+}
+
+function syncSnowThickSurfaceTints() {
+  snowRuntime.syncSettledCover({
+    ground,
+    surfaceRoots: facadeReady ? facade.getSnowCoverRoots() : [],
+  })
+}
+
+function commitSnowPatch(patch: Partial<SnowWeatherSettings>) {
+  const wasEnabled = snowSettings.enabled
+  snowSettings = normalizeSnowWeatherSettings({ ...snowSettings, ...patch })
+  if (snowSettings.enabled && !wasEnabled) {
+    // Sofort etwas Decke, damit Dach/Boden nicht erst nach Minuten weiß wirken
+    snowRuntime.cover = Math.max(snowRuntime.cover, 0.35)
+    snowRuntime.markOcclusionDirty()
+    if (facadeReady) facade.applySnowCoverageMaterials()
+  }
+  if (!snowSettings.enabled) {
+    snowRuntime.cover = 0
+  }
+  syncSnowUi()
+  applySnowLeavesExclusion()
+  syncSnowThickSurfaceTints()
+  syncGroundPuddles()
+  applySunLighting({ live: true })
+  persistApp()
+  publishSceneToolbarSync()
+  markViewportDirty()
+  if (isPerspectiveSceneView()) render3dFrame()
 }
 
 function commitPuddlePatch(patch: Partial<GroundPuddleSettings>) {
@@ -31015,6 +31166,25 @@ bindSceneDualControl(
   (value) => commitPuddlePatch({ strength: value }),
   (value) => value.toFixed(2),
 )
+
+snowEnabledInput.addEventListener('change', () => {
+  commitSnowPatch({ enabled: snowEnabledInput.checked })
+})
+bindSceneDualControl(
+  snowTemp,
+  snowTempNum,
+  snowTempValue,
+  (value) => commitSnowPatch({ temperatureC: value }),
+  (value) => formatSnowTemp(value),
+)
+snowIntensity.addEventListener('input', () => {
+  const value = Number(snowIntensity.value)
+  if (!Number.isFinite(value)) return
+  snowIntensityValue.textContent = value.toFixed(2)
+  commitSnowPatch({ intensity: value })
+})
+snowQualityLowBtn.addEventListener('click', () => commitSnowPatch({ quality: 'low' }))
+snowQualityHighBtn.addEventListener('click', () => commitSnowPatch({ quality: 'high' }))
 
 if (localStorage.getItem('perf-overlay') === '1') {
   perfOverlayEnabledInput.checked = true
@@ -31596,6 +31766,7 @@ function animate() {
     !paused &&
     !orbitLite &&
     !orbitLitePointer &&
+    !snowSettings.enabled &&
     leafRuntime.count() > 0 &&
     leafRuntime.tick(dayDt, leafWind)
   if (leafMoved) {
@@ -31607,6 +31778,40 @@ function animate() {
     leafWind = { ...leafWind, vx: leafWind.vx * 0.9, vz: leafWind.vz * 0.9 }
   }
 
+  const boxForSnow = buildingWorldBox(getAllWalls(state))
+  const coverBefore = snowRuntime.cover
+  const snowCameraSpawn =
+    currentView === 'present'
+      ? { position: camera.position.clone(), target: controls.target.clone() }
+      : undefined
+  // Schnee unabhängig von „Animationen pausieren“ (Master-Stop gilt für Fenster/Blaulicht/…
+  // — nicht für Wetter). Sonst: Pause an → activeCount 0, kein sichtbarer Schneefall.
+  const snowMoved = snowRuntime.tick(snowSettings, {
+    paused: false,
+    orbitLite: orbitLite || orbitLitePointer,
+    presentationOk: presentationMode !== 'draft',
+    view3d: currentView === '3d' || currentView === 'present',
+    dtSec: dayDt / 1000,
+    buildingBox: boxForSnow.isEmpty() ? null : boxForSnow,
+    cameraSpawn: snowCameraSpawn,
+  })
+  if (snowMoved) {
+    viewportDirty = true
+    if (Math.abs(snowRuntime.cover - coverBefore) > 0.002) syncGroundPuddles()
+    if (snowRuntime.cover > 0.001 || coverBefore > 0.001) {
+      syncSnowThickSurfaceTints()
+    }
+  }
+  if (
+    snowSettings.enabled &&
+    presentationMode !== 'draft' &&
+    (currentView === '3d' || currentView === 'present') &&
+    !orbitLite &&
+    !orbitLitePointer
+  ) {
+    snowRuntime.bakeOcclusionInPlace(renderer, siteOffset, false)
+  }
+
   const liveMotion =
     pathMoved ||
     dayMoved ||
@@ -31616,7 +31821,8 @@ function animate() {
     (!paused && isAwningPlaybackActive()) ||
     (!paused && Boolean(masonryCoursePlayback)) ||
     sceneLightLive ||
-    leafMoved
+    leafMoved ||
+    snowMoved
 
   const perfOn = isPerfOverlayEnabled()
   let perfT0 = 0
@@ -33931,7 +34137,15 @@ roofKind.addEventListener('change', () => {
 })
 roofRidgeDir.addEventListener('change', () => {
   const v = roofRidgeDir.value
-  commitRoofPatch({ ridgeDeg: v === 'auto' ? null : Number(v) })
+  const building = activeBuilding()
+  const prev = normalizeRoof(building.roof)
+  const ridgeDeg = v === 'auto' ? null : Number(v)
+  // Dieselbe Zuordnung wie beim Formwechsel: neue Stirnseiten bündig,
+  // Überstand und Rinne wandern auf die neuen Traufen.
+  commitRoofPatch({
+    ridgeDeg,
+    edgeModes: edgeModesForRoofKind(building, prev.kind, { ...prev, ridgeDeg }),
+  })
 })
 roofCovering.addEventListener('change', () => {
   commitRoofPatch({ covering: roofCovering.value as RoofConfig['covering'] })

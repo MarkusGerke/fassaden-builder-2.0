@@ -100,6 +100,60 @@ function paintLibraryFilterChips(host: HTMLElement): void {
   }
 }
 
+function libraryHome(): HTMLElement | null {
+  return (
+    document.getElementById('library-mode') ??
+    document.getElementById('opening-library')
+  )
+}
+
+/** Hosts nach Unmount zurück in Vanilla — sonst sind Karten für immer weg. */
+function restoreLibraryHosts(itemsId: string, filterId: string): void {
+  const home = libraryHome()
+  if (!home) return
+  const filter = document.getElementById(filterId)
+  const items = document.getElementById(itemsId)
+  if (filter && filter.parentElement !== home) {
+    const before = items && home.contains(items) ? items : home.firstChild
+    home.insertBefore(filter, before)
+  }
+  if (items && items.parentElement !== home) {
+    home.appendChild(items)
+  }
+}
+
+/**
+ * Falls ein früherer Unmount die Nodes zerstört hat: leere Hosts neu anlegen
+ * und Vanilla zum Neubefüllen anstoßen (Tab-Klick → initOpeningLibrary).
+ */
+function ensureLibraryHosts(itemsId: string, filterId: string): {
+  items: HTMLElement | null
+  filter: HTMLElement | null
+  recreated: boolean
+} {
+  const home = libraryHome()
+  if (!home) return { items: null, filter: null, recreated: false }
+  let recreated = false
+  let filter = document.getElementById(filterId)
+  let items = document.getElementById(itemsId)
+  if (!filter) {
+    filter = document.createElement('div')
+    filter.id = filterId
+    filter.className = 'library-filter-row'
+    filter.hidden = true
+    home.insertBefore(filter, home.firstChild)
+    recreated = true
+  }
+  if (!items) {
+    items = document.createElement('div')
+    items.id = itemsId
+    items.className = 'opening-library-items'
+    home.appendChild(items)
+    recreated = true
+  }
+  return { items, filter, recreated }
+}
+
 /**
  * Bibliothek: Register = Ark Tabs (line), Kacheln = ToggleGroup-Recipe auf Vanilla-Karten.
  */
@@ -115,14 +169,30 @@ export function LibraryDockApp(props: LibraryDockAppProps) {
   let itemsSlot!: HTMLDivElement
 
   onMount(() => {
-    const filter = document.getElementById(filterId())
-    const items = document.getElementById(itemsId())
-    if (filter) filterSlot.appendChild(filter)
-    if (items) {
-      itemsSlot.appendChild(items)
-      paintLibraryTiles(items)
+    const placeHosts = () => {
+      const ensured = ensureLibraryHosts(itemsId(), filterId())
+      const filter = ensured.filter
+      const items = ensured.items
+      if (filter && filterSlot && filter.parentElement !== filterSlot) {
+        filterSlot.appendChild(filter)
+      }
+      if (items && itemsSlot && items.parentElement !== itemsSlot) {
+        itemsSlot.appendChild(items)
+      }
+      if (items) paintLibraryTiles(items)
+      if (filter) paintLibraryFilterChips(filter)
+      if (ensured.recreated) {
+        // Vanilla füllt Karten neu (initOpeningLibrary über Tab-Klick) — kein syncEvent-Reentry.
+        const active =
+          document.querySelector<HTMLButtonElement>(
+            `${tabsSel()} .library-tab.active, ${tabsSel()} .library-tab[aria-selected="true"]`,
+          ) ?? document.querySelector<HTMLButtonElement>(`${tabsSel()} .library-tab:not([hidden])`)
+        active?.click()
+      }
+      return { filter, items }
     }
-    if (filter) paintLibraryFilterChips(filter)
+
+    const placed = placeHosts()
 
     let painting = false
     const safePaint = (host: HTMLElement) => {
@@ -148,6 +218,7 @@ export function LibraryDockApp(props: LibraryDockAppProps) {
 
     const unsub = subscribeBus(syncEvent(), () => {
       bump()
+      placeHosts()
       const host = document.getElementById(itemsId())
       if (host) safePaint(host)
       const filterHost = document.getElementById(filterId())
@@ -162,45 +233,53 @@ export function LibraryDockApp(props: LibraryDockAppProps) {
         attributeFilter: ['class', 'hidden', 'aria-selected'],
       })
     }
-    const itemsMo = items
-      ? new MutationObserver((records) => {
-          if (painting) return
-          const structural = records.some((r) => r.type === 'childList')
-          if (!structural) {
-            safePaint(items)
-            return
-          }
-          bump()
+    let itemsMo: MutationObserver | null = null
+    const bindItemsMo = (items: HTMLElement | null) => {
+      itemsMo?.disconnect()
+      if (!items) return
+      itemsMo = new MutationObserver((records) => {
+        if (painting) return
+        const structural = records.some((r) => r.type === 'childList')
+        if (!structural) {
           safePaint(items)
-        })
-      : null
-    if (items) {
-      itemsMo?.observe(items, {
+          return
+        }
+        bump()
+        safePaint(items)
+      })
+      itemsMo.observe(items, {
         childList: true,
         subtree: false,
         attributes: true,
         attributeFilter: ['class'],
       })
     }
-    const filterMo = filter
-      ? new MutationObserver(() => {
-          if (paintingFilter) return
-          safePaintFilter(filter)
-        })
-      : null
-    if (filter) {
-      filterMo?.observe(filter, {
+    bindItemsMo(placed.items)
+
+    let filterMo: MutationObserver | null = null
+    const bindFilterMo = (filter: HTMLElement | null) => {
+      filterMo?.disconnect()
+      if (!filter) return
+      filterMo = new MutationObserver(() => {
+        if (paintingFilter) return
+        safePaintFilter(filter)
+      })
+      filterMo.observe(filter, {
         childList: true,
         subtree: true,
         attributes: true,
         attributeFilter: ['class', 'hidden', 'aria-selected'],
       })
     }
+    bindFilterMo(placed.filter)
+
     onCleanup(() => {
       unsub()
       tabMo.disconnect()
       itemsMo?.disconnect()
       filterMo?.disconnect()
+      // Vor Solid-Destroy: Hosts zurück nach #library-mode
+      restoreLibraryHosts(itemsId(), filterId())
     })
   })
 

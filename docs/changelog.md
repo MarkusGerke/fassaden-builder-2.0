@@ -2,6 +2,269 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Rinne oben an der Dachkante (2026-09-22) — v2.0.582
+
+**Symptom:** Die Halbrundrinne schließt mit der Oberkante an der Dachunterseite an. Sie soll an der Dachkante oben enden, der Bogen hängt darunter.
+
+**Fix:** Envelope-Rinne auf `tipY` (Dachhaut der Traufspitze), Mansarde auf `eaveY`. Die Lasche der Rinneneisen beginnt auf dieser Kante (`v: 0`), nicht darüber. Docs: [roof.md](roof.md).
+
+**Nicht:** Vorderkante 10 mm absenken. Rinne wieder auf die Untersicht (`tipY − tv`, Mansarde `eaveY − 10`) setzen. Lasche wieder über die Dachhaut ziehen.
+
+### Rinneneisen, Wulst, Schwanenhals (2026-09-22) — v2.0.581
+
+**Verhalten:** Halbrunde Rinne behält die Form. Vorne ein Wulst, darunter kurze Rinneneisen (ca. 60 cm, 10 cm Abstand zu Ende und Stutzen). Wo ein Fallrohr an einer Traufwand steht, zwei Bögen à 72° unter der Untersicht bis auf die Rohrachse. Der kurze Stutzen auf der Rohrachse entfällt. Giebelwand ohne Rinne bleibt ohne Bogen.
+
+**Nicht:** Rinneneisen über die Untersicht bis zur Wand. Vorderkante der Rinne absenken. Gefälle, Laubfang, Regenklappe.
+
+Docs: [roof.md](roof.md), [downpipes.md](downpipes.md).
+
+### Traufecke ohne Fragment, Gesims unter der Untersicht (2026-09-22) — v2.0.580
+
+**Symptom:** Die Traufseite ist zu, an der Ecke bleibt ein Schachbrett (zwei Flächen in einer Ebene). Aktiviertes Gesims ist unsichtbar; es soll unter der neuen waagerechten Dachkante liegen.
+
+**Nicht geholfen:** Das Stirnbrett der Rückführung bis auf die Dachhaut ziehen, solange der Plattenrand dieselbe Strecke noch belegt — dann liegen beide in der Ebene (Sattel mit Überstand an allen Kanten, etwa 2200 cm²). Die Mansarden-Stirn an `run < 1` zu erkennen: die Ecken rutschen entlang der Kante, der Abstand in der Draufsicht ist groß, die Fläche bleibt lotrecht, Unterseite und Außenhaut liegen aufeinander.
+
+**Ursache:** Der Plattenrand lief an der bündigen Giebelkante bis in die Gehrung, die Endkappe deckt dieselbe Rückführung. An der Mansarde lag der Seitenrand der Schräge in der lotrechten Stirnebene, das Stirnbrett darin. `roofWallOmitsCornice` hat das Gesims an jeder Traufe mit Überstand ausgelassen.
+
+**Fix:** Plattenrand nur neben der Wand. Rückführung gehört der Endkappe. Mansarden-Unterseite springt nach innen, sobald der Einzug quer zur Kante fehlt; der Seitenrand entfällt, wenn er in der Stirnebene läge. Gesims bleibt, Oberkante 1 cm unter der Untersicht (`roofEaveCorniceDropCm`: Überstand×tan, Mansarde 11 cm). Docs: [roof.md](roof.md).
+
+**Nicht:** Rand wieder über die Wandecke ziehen. Gesims an der Traufe nicht wieder weglassen. Lotrechte Mansardenfläche nicht wieder über die Lauflänge erkennen.
+
+### Keine deckungsgleichen Flächen (2026-09-22) — Konvention
+
+Keine App-Version: nur eine Bau-Regel. Zwei oder mehr Flächen dürfen nicht in derselben Ebene aufeinanderliegen. Eine gemeinsame Kante bleibt erlaubt. `polygonOffset` allein gilt nicht als Lösung. Docs: [flaechen-ueberlappung.md](flaechen-ueberlappung.md).
+
+### Rinne, Traufseite, Pult- und Mansardenkante (2026-09-21) — v2.0.579
+
+**Symptom:** Am Sattel, Walm und Pult keine Regenrinne. Die Seite zwischen Dachkante und Wandkante offen, an der Ecke ein Streifen. Am Pult flackert die Schräge gegen die Wand. An der Mansarde dasselbe seitlich und über der Rinne; die Rinne selbst sitzt, ihre Enden sind offen.
+
+**Nicht geholfen:** `flush` weiter als „keine Rinne“ zu lesen. Die Endkappe nur bis zur Plattenunterseite, oder in der Wandebene, obwohl der Ortgang noch übersteht — die schneidet die Platte (Streifen). Die Giebelfüllung wieder auf die Dachkante legen.
+
+**Ursache:** Nackte Wände setzen `flush`, der Überstand bleibt, die Rinne war an `flush` gekoppelt. Die Endkappe endete unter der Platte; bei überstehendem Ortgang lag sie in der Wand und nicht an der Außenkante. Füllwand und Dachkante teilten sich dieselbe Linie. Die Mansardenplatte hatte keine Seitenränder, das Stirnbrett lag auf der Dachkante. Der Rinnenring ließ die letzte Kante weg, die Endkappe schloss nur das Blech.
+
+**Fix:** Rinne, sobald die Traufe vor der Wand steht. Endkappe bis auf die Dachhaut, nur wenn der Nachbar bündig ist; sonst Eckstück außen. Füllwand 0,4 cm in der Wand, Plattenrand auf der Kante. Mansarde: Seitenrand, Stirnbrett 0,4 cm vor der Kante, Kappe bis auf die Haut. Rinne als Ring geschlossen, offene Enden mit Halbkreis. Docs: [roof.md](roof.md).
+
+**Nicht:** Rinne wieder an `flush` hängen. Wandkappe nicht zurück, wenn der Ortgang übersteht. Füllwand nicht wieder deckungsgleich mit der Dachkante.
+
+### Traufecke geschlossen (2026-09-21) — v2.0.578
+
+**Symptom:** An der Hausecke steht ein schwarzer Keil aus der Wand, von unten ein helles Dreieck, das nicht der Dachkante folgt.
+
+**Ursache:** Die Kastentraufe lief bis zum Gehrungspunkt. Das Ende blieb offen, nachdem die schräge Kappe (v2.0.577) entfernt war. Die Untersicht schnitt die Ecke diagonal.
+
+**Fix:** Untersicht und Stirnbrett senkrecht zur Wand. Endkappe nur in dieser Ebene. Überstehende Nachbarkante: waagerechtes Eckstück bis zur Dachkante, keine Diagonale. Docs: [roof.md](roof.md).
+
+**Nicht:** Endkappe wieder von der Wandecke schräg zum Gehrungspunkt. Untersicht nicht wieder ans Gehrungs-Polygon hängen.
+
+### Keine Phantomflächen an der Traufe (2026-09-21) — v2.0.577
+
+**Symptom:** Je nach Blickwinkel eine zweite Schräge, eine schwarze Fuge unter der Dachkante und kleine Keile an der Ecke.
+
+**Ursache:** Die Endkappe der Kastentraufe lief diagonal zum Gehrungspunkt und stand aus der Wand. Die Giebelfüllung endete an der Plattenunterseite, die Dachoberseite lag darüber offen.
+
+**Fix:** Endkappen entfernt. Giebelfüllung bis an die Dachoberseite. Stirnbrett der Kastentraufe bleibt. Docs: [roof.md](roof.md).
+
+### Traufe folgt der Firstrichtung, halbrunde Rinne, geschlossene Platte (2026-09-21) — v2.0.576
+
+**Symptom:** Nach dem Drehen der Firstrichtung blieben Überstand und Rinne auf der alten Seite. Die Rinne schwebte als Kasten unter der Kante. An Sattel und den anderen Formen waren zwei offene Schrägen zu sehen, je nach Blick eine andere.
+
+**Ursache:** Der Richtungswechsel schrieb nur `ridgeDeg`. `edgeModes` der vorigen Stirnseiten blieb `flush`, der Überstand hängt am Modus. Die Rinne war ein U-Profil 8×6 cm mit Lippe nach innen. Die Platte hatte Ober- und Unterseite, der Rand fehlte an bündigen Kanten und an den Enden der Kastentraufe.
+
+**Fix:** Richtungswechsel setzt `edgeModes` neu. Rinne ist ein Halbkreis, 12 cm, Wand 0,5 cm, Oberkante an der Traufunterseite. Plattenrand überall, Kastentraufe mit Stirnbrett und Endkappen. Docs: [roof.md](roof.md).
+
+### Kastentraufe und Firstrichtung (2026-09-21) — v2.0.575
+
+**Symptom:** Unter der Traufe war das Dach zur Hauswand offen. Mansarde und Walm hatten keine Firstrichtung.
+
+**Ursache:** Die schräge Platte endet an der Traufspitze unter der Wandkrone, ohne waagerechte Untersicht zurück zur Außenwand. `roofKindUsesRidgeDir` ließ Mansarde und Walm aus, obwohl `ridgeDeg` die Stirnkanten schon dreht.
+
+**Fix:** Untersicht im Giebel-Mesh auf Höhe der Traufunterkante, sobald die Traufe geometrisch übersteht (auch bei nackter Wand). Gesims dort weg, an Giebeln bleibt es. Firstrichtung für Mansarde und Walm, Pult bleibt Hochseite. Docs: [roof.md](roof.md).
+
+### Park: Fenster-Teilung / Flügel / Sprossen / Scharnier (2026-09-20) — v2.0.574
+
+**Symptom:** Slice-2-Smoke: Park-Flügel-NumberInput schrieb nicht; Hinge-Host verschwand nach Rescan; Adopt nur innere Liste ohne Überschrift.
+
+**Ursache:** Ark-`onValueChange` allein unzuverlässig für `.toolbar-stepper`; `AdoptSlot`-Cleanup las den Host aus dem schon geleerten Slot-DOM; Adopt-Anchor mit `hidden` → nach Place droppt `hasHiddenAncestor` den Slot → Unmount → Host weg; Adopt nur innere Liste ohne Überschrift.
+
+**Fix:** `nudgeToolbarStepper` / Trigger-`onClick` → Vanilla ±; Adopt-Registry + Cleanup ohne Remount-Race; Anchor ohne `hidden` (Scan über Parent); `data-park-adopt` am ganzen `#window-hinge-section`-`<details open>`; Dev-`__fbDebug.listOpenings` / `selectOpening`. Docs: [park-restore.md](park-restore.md).
+
+### Park: Fenster-Teilung / Flügel / Sprossen / Scharnier (2026-09-20) — v2.0.573
+
+**Symptom:** In Park fehlten Flügel-Anzahl, Teilung, Sprossen und Scharnier/Öffnungsart — Domain und Vanilla-HTML noch da.
+
+**Ursache:** FormMirror scannte keine `.toolbar-stepper`; v2.0.530 übersprang ±-Buttons pauschal. `#window-hinge-mode-list` dynamisch, kein Adopt. Docs (`windows-doors.md`) beschrieben Domain als „erledigt“ ohne Park-Erreichbarkeit.
+
+**Fix:** FormMirror-Typ `toolbarStepper`; `isNumberStepperButton` nur neben Number-Inputs; Adopt `window-hinge-modes`; `bindToolbarStepper` behält Wert-`id`. Coverage-Matrix in [park-restore.md](park-restore.md) Slice 2. Docs: [windows-doors.md](windows-doors.md), [agent-smoke-check.md](agent-smoke-check.md).
+
+### Accordion stuck-closed + Bibliothek-Thrash (2026-09-20) — v2.0.572
+
+**Symptom (GUI-Repro):** Accordion-Klicks treffen Trigger, `data-state` bleibt `closed`, Root `data-value=null`. Viele Solid-`stale <Show>`-Pageerrors aus FormMirror. „Fenster“ nach Thrash erneut leer (`#opening-library-items` missing). Zusätzlich: nach Stage-Toggle bleibt rechte Leiste Breite 0 — Canvas fängt Klicks ab.
+
+**Ursache:** FormMirror `<Show when={section()}>{(sec) => …}` — Accessor wird stale wenn Scan kurz droppt; controlled Accordion bleibt zu. `createEffect` hing an `sections()`/`tick` → Race bei jedem MO-Bump. Dock unmountete noch bei `dockCollapsed` (Stage) und zerstörte Adopt-Hosts. Stage-Collapse schrieb via Splitter-`onCollapse` → `ui-right-collapsed` + localStorage und blieb nach Stage-Ende.
+
+**Fix:** Keine Show-Callback-Accessor für Sektionen/Blocks; `FormMirrorSection` stabil; Effect nur an Signatur-String. LibraryDock immer gemountet (`data-dock-collapsed` statt Unmount). Stage-Collapse nicht als Nutzer-Pref speichern; Prefs beim Verlassen wiederherstellen. Docs: [park-restore.md](park-restore.md).
+
+### Bibliothek-Hosts zerstört + Accordion-Reset (2026-09-20) — v2.0.571
+
+**Symptom:** Tab „Fenster“ leer nach Auswahlwechsel; Einstellungs-Akkordeons wirken tot / klappen zu.
+
+**Ursache (Runtime):** `LiveShellApp` hat `LibraryDockApp` bei `!hasSelection` unmounted. Adopt hatte `#opening-library-items` / `#library-filter-row` in den Park-Slot verschoben — Cleanup stellte sie nicht zurück → Solid destroy → Hosts weg. Smoke: T0 12 Karten, T3 nach Clear `itemsExists: false`, T4 Remount leer. Accordion: Signatur-Reset auf `[]` bei Rescan/Adopt.
+
+**Fix:** Bibliothek mountet solange Dock nicht collapsiert; Sichtbarkeit nur `data-open` (CSS). `LibraryDockApp` restore + recreate Hosts. FormMirror: offene Keys nicht auf `[]` zwingen; Sektionen mit id auch ohne Blocks behalten. Docs: [park-restore.md](park-restore.md).
+
+### Park-Akkordeon: Inhalt Höhe 0 (2026-09-20) — v2.0.570
+
+**Symptom:** Rechte Sektionen (Maße, Animation, …) wirken tot — Chevron kann „offen“ zeigen, Inhalt fehlt; Klicks scheinen wirkungslos. Nutzer verdächtigte `div.p_3` (Padding-Wrapper) als Overlay.
+
+**Ursache:** Nicht Pointer-Events auf `p_3`. Ark `expand-height`-Animation: FormMirror öffnete „Maße“ controlled beim Mount, Zag maß `--height` bevor Controls gerendert waren → Animation endete bei Höhe 0 (`overflow: hidden`). Smoke: Maße `open` + `contentH: 0`; Animation nach Klick `open` + `contentH: 1230`.
+
+**Versuche die nicht halfen (v2.0.569):** Nur Accordion-Signatur härten / kein Block-Reset — State blieb offen, Layout klebte weiter bei 0.
+
+**Fix:** Park-CSS `item-content[data-state=open] { height: auto; animation: none }`; Recipe ohne `expand-height`/`collapse-height`; FormMirror kein Auto-Open beim ersten Bind. Docs: [park-restore.md](park-restore.md), [ui-component-library.md](ui-component-library.md).
+
+### Park: Bibliothek und Inspector kontextuell (2026-09-20) — v2.0.569
+
+**Symptom:** Desktop-Bibliothek blieb ohne Auswahl sichtbar; rechts lagen Objekt- und Szene-Leiste übereinander; FormMirror-Akkordeons ließen sich nicht dauerhaft öffnen.
+
+**Ursache:** `LiveShellApp` zeigte Selection und Scene parallel; Accordion-Reset bei jeder Block-Signatur (Adopt/Button-Klassen); Selection-Erkennung nur über Toolbar-`hidden`.
+
+**Fix:** Bibliothek-Mount nur bei `#app.has-selection` (Desktop); rechts mutual exclusive Inspector vs. Szene/Zufall; Accordion-Signatur nur Sektions-Keys, offene Sektionen behalten; Library/Selection-Sync bei Auswahlwechsel. Docs: [park-restore.md](park-restore.md), [ux.md](ux.md).
+
+### Schnee bleibt sichtbar liegen (2026-09-20) — v2.0.568
+
+- **Symptom:** Cover=1, `groundMoodCover=1`, Flocken fallen — Nutzer sieht trotzdem nirgends liegenden Schnee.
+- **Logs (567):** Uniforms stimmen; `roofKids: 0`; Flocken recyceln sofort (`recycled` > 0, keine liegenden). Albedo-Ratio-Remap nach dem Licht bleibt optisch Stein.
+- **Versuche die nicht halfen:** Nur Uniform im Tick (567); nur Fall-Strom ohne liegende Flocken (566); Overlay-Planes (564/565, Schatten weg).
+- **Fix:** Luma-Mix auf Hof (Ground-Mood v8) und Flächen (Coverage v6) — Decke wird weiß, Schatten bleiben. Flocken bleiben auf Landepads liegen, mindestens 40 % fallen weiter.
+- Docs: `docs/snow.md`.
+
+### Hof-Decke folgt Cover (2026-09-20) — v2.0.567
+
+- **Symptom:** Cover=1, Flocken fallen, trotzdem nirgends liegender Schnee; App ruckelt.
+- **Logs:** `uniCover: 1`, aber `applySunLighting` setzte `snowGroundCover` nur einmal bei Cover 0. `syncSettledCover` baute 36 Pads jeden Frame.
+- **Fix:** `setGroundMoodSnowCover` im Schnee-Tick. Pads nur bei `padsDirty`.
+- Docs: `docs/snow.md`.
+
+### Dauer-Schneefall und flache Decke (2026-09-20) — v2.0.566
+
+- **Soll:** Durchgehender Fall; Decke auf Hof/Dach/Decke/≤15° bleibt; Orbit ändert nichts; Flocke ~5 cm Weltmaß.
+- **Ursache bisher:** 70 % der Flocken setzten sich fest (Fall versiegte). Orbit kürzte das Budget. Dach/Bänke verloren die Decke (kein Hof-Remap, unbeleuchteter Weiß-Mix, `indoorFloorGroup` ohne Shader).
+- **Fix:** Nur fallende Flocken (Treffer → Recycle). Orbit volle Partikelzahl. Coverage-Shader v5: Farbe nach dem Licht, kein Displace, kein Weiß-Wash. Decke auch auf `indoorFloorGroup`.
+- Docs: `docs/snow.md`.
+
+### Schnee auf dem Boden ohne Schattenverlust (2026-09-20) — v2.0.565
+
+- **Symptom:** Nach v2.0.564 weiter kein Schatten auf dem Hof; Schnee bleibt dort nicht sichtbar liegen.
+- **Versuche die nicht halfen:** Weißes Ground-Albedo (Ground-Mood `irradiance = albedo × ambient` bleibt steingrau und wäscht PCSS). Overlay-Plane / Surface-Overlays (`skipFacadeShade`) — sichtbarer Schnee, aber keine Schatten. `applySnowCoverageShader` auf dem Boden mit `opaque_fragment`-Mix 88 % nach unbeleuchtetem Weiß — killt Schatten.
+- **Ursache:** Overlay-Meshes und der Boden-Schnee-Shader lagen über dem Ground-Mood. Innenboden-Pads fingen Flocken auf y≈0.
+- **Fix:** Overlays weg; kein Coverage-Shader auf `groundMat`. Schneedecke nur als **Nach-Licht-Remap** im Ground-Mood (`uGroundSnowCover`: Farbe tauschen, Schattenverhältnis behalten). Innenboden kein Landepad.
+- Docs: `docs/snow.md`.
+
+### Boden-Schatten / keine Geisterflächen (2026-09-20) — v2.0.564
+
+- **Symptom:** Liegender Schnee ja, aber Boden ohne Schatten und ohne Schnee; Flocken schweben vor Fensterbänken.
+- **Ursache:** Boden-Overlay-Plane (`groundCoverVisible: true`) lag über dem Ground-Mood und fraß Schatten. Pads um 8–12 cm aufgeweitet + „thinLedge“-Heuristik.
+- **Fix:** Boden-Overlay weg; Pads exakt auf Mesh-AABB; Boden-Treffer bleiben immer liegen.
+- Docs: `docs/snow.md`.
+
+### Flocken landen auf Flächen (2026-09-20) — v2.0.563
+
+- **Symptom:** Schnee fällt durch Decke, Fensterbänke und horizontale Flächen.
+- **Ursache:** Partikel prüften nur `groundY`. `roofGroup` war leer (`roofChildCount: 0`); Decken lagen in `indoorFloorGroup` und waren kein Cover-Ziel.
+- **Fix:** Landepads (AABB + dünne Gesimse) inkl. Decke/Bodenplatten; Höhenfeld aus der Occlusion-Map; ein Teil der Flocken bleibt auf der Trefferfläche liegen.
+- Docs: `docs/snow.md`.
+
+### Liegende Schneedecke als Overlay (2026-09-20) — v2.0.562
+
+- **Symptom:** `cover` = 1 und Boden-Hex schon `#f0f3f7`, trotzdem „bleibt kein Schnee liegen“.
+- **Ursache:** Ground-Mood setzt `irradiance = Albedo × Ambient` → weißes Albedo bleibt steingrau. Dach-Tint fand 0 Meshes (`roofTinted: 0`). Shader-Injection auf Fassaden-Materialien wirkte nicht.
+- **Fix:** Eigene Overlay-Meshes (Boden-Plane + Dach/Gesims mit Normalen-Schwelle). Unabhängig von Ground-Mood.
+- Docs: `docs/snow.md`.
+
+### Schnee auf Dach / Boden / ≤15° (2026-09-20) — v2.0.561
+
+- **Soll:** Decke auf Dach (auch steil), Boden, horizontale Details ≤ ~15°; senkrechte Fassade frei.
+- **Fix:** Thick-Shader ohne 15°-Cap; Cover-Shader hart bei 15°; `cladding` nicht mehr cover; Dach-Tint auch über `roofPart`; Shader-Reapply bei Decke.
+- Docs: `docs/snow.md`.
+
+### Schneedecke sichtbar (2026-09-20) — v2.0.560
+
+- **Symptom:** Fallende Flocken ja, Decke auf Boden/Dach nein — obwohl Runtime-`cover` bereits 1.
+- **Ursache:** `applySunLighting` setzte jeden Frame `groundMat` auf Steingrau → Ground-Mood `uGroundAlbedo` ohne Schnee. Occlusion-Map setzte Boden unter Dach-Höhe zusätzlich auf sky=0.
+- **Fix:** Ground-Albedo mit Cover Richtung Schnee-Weiß; Dach-Thick-Meshes Albedo-Tint; Thick-Shader ohne Occlusion-Kill.
+- Docs: `docs/snow.md`.
+
+### Schnee: Kreise, Spawn, Decke (2026-09-20) — v2.0.559
+
+- **Symptom:** Flocken als große Quadrate; Spawn auf Dachgeschoss-Höhe; Decke unsichtbar obwohl `cover` bereits 1.
+- **Ursache:** Points ohne Kreis-Map; Fassaden-Spawn an Kamera-Y; Slope-Cap 15° killt typische Dachneigungen; Cover nur über `color_fragment`.
+- **Fix:** Weiche Kreis-Textur ~3 px; Spawn-Y immer über `occYMax`; Thick-Modus steilere Dächer; Mix auch in `opaque_fragment`; Flocken am Boden speisen Decke.
+- Docs: `docs/snow.md`.
+
+### Schnee trotz Animations-Pause (2026-09-20) — v2.0.558
+
+- **Symptom:** Schneefall an, Render, 3D/Fassade, kalt — trotzdem keine Flocken.
+- **Ursache:** Tick nutzte `sunSettings.animationsPaused` → `showFlakes` false, `activeCount` 0.
+- **Fix:** Schnee-Tick mit `paused: false`; Master-Pause gilt nur für Fenster/Blaulicht/Tageszyklus.
+- Docs: `docs/snow.md`.
+
+### Schnee im Fassadenmodus (2026-09-20) — v2.0.557
+
+**Symptom:** Schneefall in Ansicht **Fassade** kaum/nicht sichtbar.
+
+**Ursache:** Flocken spawnten um die ganze Gebäudebox — im engen Fassaden-Blickfeld oft hinter/neben dem Haus. Zusätzlich: Vorschau/Render-Umschalter in Fassade ausgeblendet → steckt man in Entwurf, bleibt Schnee aus.
+
+**Lösung:** In `present` Spawn zwischen Kamera und Fassade; Wechsel zu Fassade setzt Entwurf → Vorschau.
+
+Docs: [snow.md](snow.md).
+
+### Schnee auch in Vorschau (2026-09-20) — v2.0.556
+
+**Symptom:** Schneefall an, Temp kalt, 3D aktiv — trotzdem keine Flocken. Darstellung stand auf **Vorschau**.
+
+**Ursache:** Tick/`group.visible` nur bei `presentationMode === 'render'`. Zusätzlich: `sizeAttenuation` + winzige Weltgröße und AdditiveBlending → Flocken auch in Render leicht unsichtbar.
+
+**Lösung:** Schnee in **Vorschau + Render** (nicht Entwurf); Flocken pixelgroß + NormalBlending; beim Einschalten sofort ~22 % Decke; Hinweis bei Entwurf/2D.
+
+Docs: [snow.md](snow.md).
+
+### Wetter in Park-Szeneleiste (2026-09-20) — v2.0.555
+
+**Symptom:** Schneefall-/Wetter-Editor und teils „Szene“-Inhalt in der Park-Shell nicht auffindbar.
+
+**Ursache:** Park Hard-Cutover: Desktop-rechte Leiste = `SceneToolbarApp` (Hardcoded-Accordion) ohne Wetter. Vanilla `#scene-toolbar-panels` ist `.vanilla-legacy-park` (1×1 px). Touch ohne Auswahl: nur Bibliothek-Kacheln → Bottom-Sheet/`FormMirror` — weder Wetter noch Szene in `SCENE_LIBRARY_TILES`.
+
+**Lösung:**
+- Accordion **Wetter** in `SceneToolbarApp` (nach Animation, vor Szene)
+- Touch-Kacheln **Wetter** + **Szene** (`sceneWeather` / `sceneStage`) + `SCENE_EDIT_SECTIONS`
+- `publishSceneToolbarSync` nach Snow-Patch
+
+Docs: [snow.md](snow.md).
+
+### Szene-Sektion wieder sichtbar (2026-09-20) — v2.0.554
+
+**Symptom:** Sticky-Kopf „Szene“ sichtbar, Inhalt (Pfützen, Nebel, LOD) leer / `display: none`.
+
+**Ursache:** Bühnen-Sektion nutzte `data-settings-section="colors"`. Globales CSS (v2.0.455, Objekt-Farben nur Bibliothek) blendete **alle** `colors`-Sektionen aus — auch die Bühne.
+
+**Lösung:** ID → `scene`; Farben-Hide nur noch auf Objekt-Toolbars (`#selection-toolbar`, `#toolbar-*`). Showcase-Hide analog.
+
+Docs: [ux.md](ux.md), [ui-kit.md](ui-kit.md), [snow.md](snow.md).
+
+### Schneefall (2026-09-20) — v2.0.553
+
+**Neu:** Szene → **Wetter** — Schneefall (Partikel), Decke nach Neigung (≤ ~15°) + Himmelssicht-Occlusion, Dicke auf Boden/Dach. Temperatur-Slider steuert Liegenbleiben vs. Schmelzen; Qualität niedrig/hoch; nur Render + 3D. Pfützen-Crossfade, Laub-Exklusion, leichter Overcast, Pause friert Flocken und Decke. Persistenz nur Einstellungen.
+
+Dateien: `snowWeather.ts`, `snowCoverage.ts`, `snowRuntime.ts`, `FacadeController.ts`, `main.ts`, `index.html`, `persistence.ts`. Docs: [snow.md](snow.md).
+
+### Animationskurven in Park (2026-09-20) — v2.0.552
+
+**Symptom:** FormMirror spiegelte nur `id`-Felder — SVG-Kurveneditor, Einzeln-öffnen-Slider, Uhrzeiten und Datensatz-JSON lagen im geclippten Vanilla-DOM und waren in Park nicht bedienbar.
+
+**Ansatz (Grill):** Hybrid Adopt-Slots (`data-park-adopt`) in FormMirror; Domain-IDs unverändert; Post-Ark-UX eingefroren. Siehe [park-restore.md](park-restore.md).
+
+**Fix:** Wrapper in `index.html`; FormMirror verschiebt Hosts in `.park-adopt-slot` (Anchor bleibt für Scan-Reihenfolge). Slice 1: Fenster/Tür-Animation + Rollladen-Kurve/Schedule.
+
 ### Erker, Zufall, Kellerprofile (2026-09-19) — v2.0.551
 
 **Fensterbretter:** Außenbänke an Fenstern neben dem Erker-Mund werden in X gekürzt (`clampOuterSillLayoutForBayMouths`), Schenkel behalten keine Bänke (`stripHauswandWallDecor`).

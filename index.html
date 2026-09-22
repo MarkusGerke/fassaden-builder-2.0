@@ -1980,7 +1980,12 @@
                   <input id="window-timber-stulp" type="number" min="0.8" max="8" step="0.2" value="2.2" />
                 </div>
               </details>
-              <details id="window-hinge-section" class="toolbar-group toolbar-accordion">
+              <details
+                id="window-hinge-section"
+                class="toolbar-group toolbar-accordion window-hinge-adopt"
+                data-park-adopt="window-hinge-modes"
+                open
+              >
                 <summary class="toolbar-label">Scharnier / Öffnungsart</summary>
                 <div id="window-hinge-mode-list" class="window-hinge-mode-list"></div>
               </details>
@@ -2185,47 +2190,49 @@
             </div>
             <div id="opening-motion-section" class="settings-section toolbar-group" data-settings-section="motion" data-settings-label="Animation" data-settings-order="45">
               <p class="settings-subheading settings-subheading-nested">Öffnen</p>
-              <div class="toolbar-group window-open-block">
+              <div class="toolbar-group window-open-block" data-park-adopt="opening-leaf-open">
                 <span class="toolbar-label">Einzeln öffnen</span>
                 <div id="window-open-group" class="window-open-group"></div>
               </div>
-              <p class="settings-subheading settings-subheading-nested">Kurve</p>
-              <p class="toolbar-hint compact-hint">Öffnen und Schließen getrennt. Punkte ziehen; Klick in die Fläche setzt einen Zwischenpunkt. Kurve = weich, Linie = linear.</p>
-              <div class="toolbar-group">
-                <span class="toolbar-label">Phase</span>
-                <div id="opening-motion-phase-group" class="preset-group">
-                  <button class="preset-btn active" type="button" data-motion-phase="open">Öffnen</button>
-                  <button class="preset-btn" type="button" data-motion-phase="close">Schließen</button>
+              <div data-park-adopt="opening-motion-editor" class="park-adopt-host ui-stack">
+                <p class="settings-subheading settings-subheading-nested">Kurve</p>
+                <p class="toolbar-hint compact-hint">Öffnen und Schließen getrennt. Punkte ziehen; Klick in die Fläche setzt einen Zwischenpunkt. Kurve = weich, Linie = linear.</p>
+                <div class="toolbar-group">
+                  <span class="toolbar-label">Phase</span>
+                  <div id="opening-motion-phase-group" class="preset-group">
+                    <button class="preset-btn active" type="button" data-motion-phase="open">Öffnen</button>
+                    <button class="preset-btn" type="button" data-motion-phase="close">Schließen</button>
+                  </div>
                 </div>
-              </div>
-              <div class="toolbar-group">
-                <span class="toolbar-label">Vorlage</span>
-                <div id="opening-motion-preset-group" class="preset-group">
-                  <button class="preset-btn" type="button" data-motion-preset="window">Fenster</button>
-                  <button class="preset-btn" type="button" data-motion-preset="door">Haustür</button>
-                  <button class="preset-btn" type="button" data-motion-preset="linear">Linear</button>
+                <div class="toolbar-group">
+                  <span class="toolbar-label">Vorlage</span>
+                  <div id="opening-motion-preset-group" class="preset-group">
+                    <button class="preset-btn" type="button" data-motion-preset="window">Fenster</button>
+                    <button class="preset-btn" type="button" data-motion-preset="door">Haustür</button>
+                    <button class="preset-btn" type="button" data-motion-preset="linear">Linear</button>
+                  </div>
                 </div>
-              </div>
-              <svg id="opening-motion-curve" class="opening-motion-curve" viewBox="0 0 280 156" role="img" aria-label="Bewegungskurve"></svg>
-              <div class="toolbar-group toolbar-inline-value">
-                <span class="toolbar-label">Dauer (ms)</span>
-                <input id="opening-motion-duration" type="number" min="80" max="12000" step="50" />
-              </div>
-              <div id="opening-motion-hold-wrap" class="toolbar-group toolbar-inline-value">
-                <span class="toolbar-label">Pause danach (ms)</span>
-                <input id="opening-motion-hold" type="number" min="0" max="8000" step="50" />
-              </div>
-              <div class="toolbar-group toolbar-inline-value">
-                <span class="toolbar-label">Zielwinkel (°)</span>
-                <input id="opening-motion-maxdeg" type="number" min="10" max="120" step="1" />
-              </div>
-              <div id="opening-motion-key-options" class="toolbar-group">
-                <span class="toolbar-label">Gewählter Punkt → nächster</span>
-                <div id="opening-motion-ease-group" class="preset-group">
-                  <button class="preset-btn" type="button" data-motion-ease="smooth">Kurve</button>
-                  <button class="preset-btn" type="button" data-motion-ease="linear">Linie</button>
+                <svg id="opening-motion-curve" class="opening-motion-curve" viewBox="0 0 280 156" role="img" aria-label="Bewegungskurve"></svg>
+                <div class="toolbar-group toolbar-inline-value">
+                  <span class="toolbar-label">Dauer (ms)</span>
+                  <input id="opening-motion-duration" type="number" min="80" max="12000" step="50" />
                 </div>
-                <button type="button" class="preset-btn" id="opening-motion-delete-key">Punkt löschen</button>
+                <div id="opening-motion-hold-wrap" class="toolbar-group toolbar-inline-value">
+                  <span class="toolbar-label">Pause danach (ms)</span>
+                  <input id="opening-motion-hold" type="number" min="0" max="8000" step="50" />
+                </div>
+                <div class="toolbar-group toolbar-inline-value">
+                  <span class="toolbar-label">Zielwinkel (°)</span>
+                  <input id="opening-motion-maxdeg" type="number" min="10" max="120" step="1" />
+                </div>
+                <div id="opening-motion-key-options" class="toolbar-group">
+                  <span class="toolbar-label">Gewählter Punkt → nächster</span>
+                  <div id="opening-motion-ease-group" class="preset-group">
+                    <button class="preset-btn" type="button" data-motion-ease="smooth">Kurve</button>
+                    <button class="preset-btn" type="button" data-motion-ease="linear">Linie</button>
+                  </div>
+                  <button type="button" class="preset-btn" id="opening-motion-delete-key">Punkt löschen</button>
+                </div>
               </div>
               <p class="settings-subheading settings-subheading-nested">Abspielen</p>
               <div class="action-row">
@@ -2235,7 +2242,7 @@
               <button type="button" class="preset-btn" id="opening-motion-play-cycle">Öffnen → Pause → Schließen</button>
               <button type="button" class="preset-btn" id="opening-motion-stop" hidden>Stopp</button>
               <p class="settings-subheading settings-subheading-nested">Uhrzeiten</p>
-              <div id="opening-motion-schedule" class="toolbar-group day-schedule-editor">
+              <div id="opening-motion-schedule" class="toolbar-group day-schedule-editor" data-park-adopt="opening-motion-schedule">
                 <span class="toolbar-label">Uhrzeiten</span>
                 <p class="toolbar-hint compact-hint">Ein = öffnen, Aus = schließen (Tageszeit / Tagzyklus).</p>
                 <div class="day-schedule-on">
@@ -2256,9 +2263,11 @@
                 </div>
               </div>
               <p class="settings-subheading settings-subheading-nested">Datensatz</p>
-              <span class="toolbar-label">Datensatz</span>
-              <p class="toolbar-hint compact-hint">JSON kopieren und später einfügen (oder an den Assistenten geben), um genau diese Kurven zu übernehmen.</p>
-              <textarea id="opening-motion-dataset" class="opening-motion-dataset" rows="7" spellcheck="false"></textarea>
+              <div data-park-adopt="opening-motion-dataset" class="park-adopt-host ui-stack">
+                <span class="toolbar-label">Datensatz</span>
+                <p class="toolbar-hint compact-hint">JSON kopieren und später einfügen (oder an den Assistenten geben), um genau diese Kurven zu übernehmen.</p>
+                <textarea id="opening-motion-dataset" class="opening-motion-dataset" rows="7" spellcheck="false"></textarea>
+              </div>
               <div class="action-row">
                 <button type="button" class="preset-btn" id="opening-motion-copy">Kopieren</button>
                 <button type="button" class="preset-btn" id="opening-motion-apply">Übernehmen</button>
@@ -2293,29 +2302,31 @@
                   <option value="metal">Metallisch</option>
                 </select>
                 <p class="settings-subheading settings-subheading-nested">Animation</p>
-                <span class="toolbar-label">Animation</span>
-                <div id="roller-shutter-phase-group" class="preset-group">
-                  <button class="preset-btn active" type="button" data-roller-phase="lower">Runterfahren</button>
-                  <button class="preset-btn" type="button" data-roller-phase="raise">Hochfahren</button>
-                </div>
-                <div id="roller-shutter-preset-group" class="preset-group">
-                  <button class="preset-btn" type="button" data-roller-preset="soft" title="Durchgehend weich">Ein Zug</button>
-                  <button class="preset-btn" type="button" data-roller-preset="linear" title="Gleichmäßige Geschwindigkeit">Linear</button>
-                  <button class="preset-btn" type="button" data-roller-preset="cable" title="Hand für Hand am Gurt/Kabel, mit kurzen Pausen">Kabelzug</button>
-                </div>
-                <p class="toolbar-hint compact-hint">Ein Zug = durchgehend. Kabelzug = organisch Hand für Hand wie früher am Gurt. Punkte ziehen; Klick setzt Zwischenpunkt.</p>
-                <svg id="roller-shutter-motion-curve" class="opening-motion-curve" viewBox="0 0 280 156" role="img" aria-label="Rollladen-Bewegungskurve"></svg>
-                <div class="toolbar-group toolbar-inline-value">
-                  <span class="toolbar-label">Dauer (s)</span>
-                  <input id="roller-shutter-duration" type="number" min="0.1" max="12" step="0.1" value="1.8" title="Animationsdauer in Sekunden" />
-                </div>
-                <div id="roller-shutter-key-options" class="toolbar-group">
-                  <span class="toolbar-label">Gewählter Punkt → nächster</span>
-                  <div id="roller-shutter-ease-group" class="preset-group">
-                    <button class="preset-btn" type="button" data-roller-ease="smooth">Kurve</button>
-                    <button class="preset-btn" type="button" data-roller-ease="linear">Linie</button>
+                <div data-park-adopt="roller-motion-editor" class="park-adopt-host ui-stack">
+                  <span class="toolbar-label">Animation</span>
+                  <div id="roller-shutter-phase-group" class="preset-group">
+                    <button class="preset-btn active" type="button" data-roller-phase="lower">Runterfahren</button>
+                    <button class="preset-btn" type="button" data-roller-phase="raise">Hochfahren</button>
                   </div>
-                  <button type="button" class="preset-btn" id="roller-shutter-delete-key">Punkt löschen</button>
+                  <div id="roller-shutter-preset-group" class="preset-group">
+                    <button class="preset-btn" type="button" data-roller-preset="soft" title="Durchgehend weich">Ein Zug</button>
+                    <button class="preset-btn" type="button" data-roller-preset="linear" title="Gleichmäßige Geschwindigkeit">Linear</button>
+                    <button class="preset-btn" type="button" data-roller-preset="cable" title="Hand für Hand am Gurt/Kabel, mit kurzen Pausen">Kabelzug</button>
+                  </div>
+                  <p class="toolbar-hint compact-hint">Ein Zug = durchgehend. Kabelzug = organisch Hand für Hand wie früher am Gurt. Punkte ziehen; Klick setzt Zwischenpunkt.</p>
+                  <svg id="roller-shutter-motion-curve" class="opening-motion-curve" viewBox="0 0 280 156" role="img" aria-label="Rollladen-Bewegungskurve"></svg>
+                  <div class="toolbar-group toolbar-inline-value">
+                    <span class="toolbar-label">Dauer (s)</span>
+                    <input id="roller-shutter-duration" type="number" min="0.1" max="12" step="0.1" value="1.8" title="Animationsdauer in Sekunden" />
+                  </div>
+                  <div id="roller-shutter-key-options" class="toolbar-group">
+                    <span class="toolbar-label">Gewählter Punkt → nächster</span>
+                    <div id="roller-shutter-ease-group" class="preset-group">
+                      <button class="preset-btn" type="button" data-roller-ease="smooth">Kurve</button>
+                      <button class="preset-btn" type="button" data-roller-ease="linear">Linie</button>
+                    </div>
+                    <button type="button" class="preset-btn" id="roller-shutter-delete-key">Punkt löschen</button>
+                  </div>
                 </div>
                 <div class="action-row action-row-stack">
                   <button type="button" class="preset-btn" id="roller-shutter-play-lower">Rollo schließen</button>
@@ -2324,7 +2335,7 @@
                 </div>
                 <button type="button" class="preset-btn" id="roller-shutter-stop" hidden>Stopp</button>
                 <p class="settings-subheading settings-subheading-nested">Uhrzeiten</p>
-                <div id="roller-shutter-schedule" class="toolbar-group day-schedule-editor">
+                <div id="roller-shutter-schedule" class="toolbar-group day-schedule-editor" data-park-adopt="roller-shutter-schedule">
                   <span class="toolbar-label">Uhrzeiten</span>
                   <p class="toolbar-hint compact-hint">Ein = hochfahren, Aus = runterfahren.</p>
                   <div class="day-schedule-on">
@@ -3165,6 +3176,43 @@
                 </div>
               </div>
 
+              <div class="settings-section ui-stack" data-settings-section="weather" data-settings-label="Wetter" data-settings-order="25">
+                <div class="toolbar-group">
+                  <label class="toolbar-check">
+                    <input id="snow-enabled" type="checkbox" />
+                    Schneefall
+                  </label>
+                  <p class="toolbar-hint compact-hint">
+                    Nur im Render-Modus und in 3D. Schnee bleibt auf flachen und leicht geneigten Flächen (Dach, Gesimse, Bänke); senkrechte Fassade bleibt weitgehend frei.
+                  </p>
+                </div>
+                <div id="snow-options" class="ui-stack" hidden>
+                  <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                    <span class="toolbar-label">Lufttemperatur (°C)</span>
+                    <output id="snow-temp-value">−2</output>
+                  </div>
+                  <input id="snow-temp" type="range" min="-20" max="20" step="0.5" value="-2" aria-label="Lufttemperatur" />
+                  <input id="snow-temp-num" type="number" min="-20" max="20" step="0.5" value="-2" />
+                  <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                    <span class="toolbar-label">Intensität</span>
+                    <output id="snow-intensity-value">0.55</output>
+                  </div>
+                  <input id="snow-intensity" type="range" min="0" max="1" step="0.01" value="0.55" aria-label="Schneefall-Intensität" />
+                  <div class="toolbar-group toolbar-inline-value ui-field-inline">
+                    <span class="toolbar-label">Qualität</span>
+                    <div class="preset-group" role="group" aria-label="Schnee-Qualität">
+                      <button type="button" class="preset-btn active" id="snow-quality-low">Niedrig</button>
+                      <button type="button" class="preset-btn" id="snow-quality-high">Hoch</button>
+                    </div>
+                  </div>
+                  <p class="toolbar-hint compact-hint">
+                    In 3D und Fassade (Vorschau oder Render). Unter 0 °C bleibt Schnee liegen; darüber schmilzt die Decke.
+                    Schneefall läuft unabhängig von „Animationen pausieren“.
+                  </p>
+                  <p id="snow-visibility-hint" class="toolbar-hint compact-hint" hidden></p>
+                </div>
+              </div>
+
               <div id="arrivieren-settings-section" class="settings-section ui-stack" data-settings-section="arrivieren" data-settings-label="Arrivieren" data-settings-order="28">
                 <p class="toolbar-hint compact-hint">Regelbasierter Hauswand-Zufall (Geschosse, Achsen, EG, Erker). Gewichte nur in <code>hauswand-regelwerk.json</code>.</p>
                 <div class="toolbar-group toolbar-inline-value ui-field-inline">
@@ -3222,7 +3270,7 @@
                 <button id="building-rotate-cw" type="button" title="Im Uhrzeigersinn (−45°)">−45°</button>
               </div>
 
-              <div class="settings-section" data-settings-section="colors" data-settings-label="Szene" data-settings-order="40">
+              <div class="settings-section" data-settings-section="scene" data-settings-label="Szene" data-settings-order="40">
                 <div class="toolbar-group" hidden>
                   <span class="toolbar-label">Umgebung</span>
                   <div class="preset-group" style="margin: 0; gap: 6px">

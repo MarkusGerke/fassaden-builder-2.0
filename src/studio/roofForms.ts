@@ -81,6 +81,12 @@ export const ROOF_WALL_CAP_INSET_CM = 48
 export const ROOF_FILL_FACE_OUTSET_CM = 0.8
 
 /**
+ * Giebelfüllung an Kanten ohne Kastentraufe: knapp in die Wand, die Dachkante bleibt davor.
+ * Liegt die Füllung auf der Dachkante, flackert die ganze Schräge (Pult, Giebel).
+ */
+const ROOF_FILL_ONWALL_INSET_CM = 0.4
+
+/**
  * Füllwände greifen unter die (bereits gekürzte) Wandoberkante (cm).
  */
 export const ROOF_FILL_SEAL_CM = 2
@@ -122,7 +128,9 @@ export function roofKindUsesPitch(kind: RoofKind): boolean {
 }
 
 export function roofKindUsesRidgeDir(kind: RoofKind): boolean {
-  return kind === 'gable' || kind === 'halfHip' || kind === 'shed'
+  // Mansarde und Walm: dieselbe Achse wie Sattel (welche Kanten Stirn sind).
+  // Pult: Hochseite, kein richtungsloser First.
+  return kind === 'gable' || kind === 'halfHip' || kind === 'shed' || kind === 'mansard' || kind === 'hip'
 }
 
 export function planeY(p: RoofPlane, q: XZ): number {
@@ -569,6 +577,29 @@ function pushQuad(sink: Sink, a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vecto
   pushTri(sink, a, c, d)
 }
 
+/** Senkrechter Rand zwischen Ober- und Unterkante, Normale nach außen. */
+function pushEdgeRim(
+  sink: Sink,
+  p0: XZ,
+  p1: XZ,
+  y0Top: number,
+  y1Top: number,
+  y0Bot: number,
+  y1Bot: number,
+  outward: XZ,
+) {
+  const A = new THREE.Vector3(p0.x, y0Top, p0.z)
+  const B = new THREE.Vector3(p1.x, y1Top, p1.z)
+  const C = new THREE.Vector3(p1.x, y1Bot, p1.z)
+  const D = new THREE.Vector3(p0.x, y0Bot, p0.z)
+  const nrm = new THREE.Vector3().crossVectors(
+    new THREE.Vector3().subVectors(B, A),
+    new THREE.Vector3().subVectors(C, A),
+  )
+  if (nrm.x * outward.x + nrm.z * outward.z >= 0) pushQuad(sink, A, B, C, D)
+  else pushQuad(sink, A, D, C, B)
+}
+
 /** Polygon in Plan-Koordinaten triangulieren und auf eine Höhenfunktion heben. */
 function pushLiftedPolygon(
   sink: Sink,
@@ -683,15 +714,66 @@ function pointOnSegment(p: XZ, a: XZ, b: XZ, tol: number): boolean {
   return Math.hypot(p.x - (a.x + abx * t), p.z - (a.z + abz * t)) <= tol
 }
 
-/** Index der Traufkante, auf der beide Punkte liegen; −1 wenn keine. */
-function eaveEdgeOf(env: RoofEnvelope, u: XZ, v: XZ): number {
-  const n = env.eave.length
+function ringEdgeIndex(ring: XZ[], u: XZ, v: XZ, tol = 0.05): number {
+  const n = ring.length
   for (let i = 0; i < n; i += 1) {
-    const a = env.eave[i]
-    const b = env.eave[(i + 1) % n]
-    if (pointOnSegment(u, a, b, 0.05) && pointOnSegment(v, a, b, 0.05)) return i
+    const a = ring[i]!
+    const b = ring[(i + 1) % n]!
+    if (pointOnSegment(u, a, b, tol) && pointOnSegment(v, a, b, tol)) return i
   }
   return -1
+}
+
+/** Index der Traufkante, auf der beide Punkte liegen; −1 wenn keine. */
+function eaveEdgeOf(env: RoofEnvelope, u: XZ, v: XZ): number {
+  return ringEdgeIndex(env.eave, u, v)
+}
+
+/**
+ * Parameter auf u→v, der neben der Wand liegt. Die Gehrung ragt über die
+ * Wandecke hinaus; dort darf kein Plattenrand liegen (Endkappe / Stirnbrett).
+ * Steht die Kante vor der Wand, bleibt der ganze Abschnitt — der Rand ist dann
+ * die Außenkante, nicht die Wandlinie.
+ */
+function rimIntervalAlongsideWall(
+  env: RoofEnvelope,
+  edgeIdx: number,
+  u: XZ,
+  v: XZ,
+): [number, number] | null {
+  const wallA = env.outer[edgeIdx]
+  const wallB = env.outer[(edgeIdx + 1) % env.outer.length]
+  if (!wallA || !wallB) return [0, 1]
+  const dx = v.x - u.x
+  const dz = v.z - u.z
+  const len2 = dx * dx + dz * dz
+  if (len2 < 1) return [0, 1]
+  const tOf = (p: XZ) => ((p.x - u.x) * dx + (p.z - u.z) * dz) / len2
+  const lineDist = (p: XZ) => {
+    const t = tOf(p)
+    return Math.hypot(p.x - (u.x + dx * t), p.z - (u.z + dz * t))
+  }
+  if (lineDist(wallA) > 1.5 && lineDist(wallB) > 1.5) return [0, 1]
+  const t0 = Math.max(0, Math.min(tOf(wallA), tOf(wallB)))
+  const t1 = Math.min(1, Math.max(tOf(wallA), tOf(wallB)))
+  if (t1 - t0 < 1e-4) return null
+  return [t0, t1]
+}
+
+function edgeStandsOffWall(env: RoofEnvelope, index: number): boolean {
+  const n = Math.min(env.outer.length, env.eave.length)
+  if (index < 0 || index >= n) return false
+  const wallA = env.outer[index]!
+  const wallB = env.outer[(index + 1) % env.outer.length]!
+  const tipA = env.eave[index]!
+  const tipB = env.eave[(index + 1) % env.eave.length]!
+  const midWall = { x: (wallA.x + wallB.x) / 2, z: (wallA.z + wallB.z) / 2 }
+  const midTip = { x: (tipA.x + tipB.x) / 2, z: (tipA.z + tipB.z) / 2 }
+  return Math.hypot(midTip.x - midWall.x, midTip.z - midWall.z) >= 1
+}
+
+function eaveHasBoxedSoffit(env: RoofEnvelope, index: number): boolean {
+  return Boolean(env.isEave[index]) && edgeStandsOffWall(env, index)
 }
 
 /**
@@ -725,7 +807,7 @@ export interface RoofEnvelopeGeometry {
   gutterEdgeActive: boolean[]
   /** Je Traufkante: Parameter-Intervalle [t0,t1] ohne Rinne (Traufdurchbruch). */
   gutterGaps: Array<Array<[number, number]>>
-  /** Y für `buildGutterGeometry` (Rinne unter der Plattenkante). */
+  /** Oberkante der Rinne: Dachhaut an der Traufspitze. */
   gutterEaveY: number
 }
 
@@ -910,26 +992,35 @@ export function buildRoofEnvelopeGeometry(
       if (edgeIdx < 0) continue
       // Stirn vor dem Zwerchgiebel weglassen (dort sitzt die Giebelwand).
       if (footprints.some((f) => f.edgeIdx === edgeIdx)) continue
-      const flush = env.flush[edgeIdx]
-      // Giebel bündig: Füllwand schließt an die Dachhaut — keine Stirn (sonst 13-cm-Stufe + Linie über die Wand hinaus).
-      if (flush) continue
+      // Kastentraufe schließt diese Kante selbst (Stirnbrett). Sonst nur die Plattenstärke,
+      // auch auf der Wand — die Füllwand sitzt 0,4 cm dahinter, sonst flackert die Schräge.
+      if (eaveHasBoxedSoffit(env, edgeIdx)) continue
+      // Nur der Abschnitt neben der Wand. Die Rückführung hinter der Ecke gehört der
+      // Endkappe — derselbe Rand dort ergibt das Schachbrett an der Ortgangecke.
+      const along = rimIntervalAlongsideWall(env, edgeIdx, u, v)
+      if (!along) continue
       const yuTop = top(u)
       const yvTop = top(v)
       const yuBot = bottom(u)
       const yvBot = bottom(v)
       const out = edgeOutwardXZ(env.eave[edgeIdx], env.eave[(edgeIdx + 1) % env.eave.length])
       // Traufdurchbruch: Stirn nur außerhalb der Gaubenbreite.
-      for (const [t0, t1] of complementIntervals(cutsOn(u, v))) {
+      for (const [c0, c1] of complementIntervals(cutsOn(u, v))) {
+        const t0 = Math.max(c0, along[0])
+        const t1 = Math.min(c1, along[1])
+        if (t1 - t0 < 1e-4) continue
         const p0 = lerpXZ(u, v, t0)
         const p1 = lerpXZ(u, v, t1)
-        const A = new THREE.Vector3(p0.x, yuTop + (yvTop - yuTop) * t0, p0.z)
-        const B = new THREE.Vector3(p1.x, yuTop + (yvTop - yuTop) * t1, p1.z)
-        const C = new THREE.Vector3(p1.x, yuBot + (yvBot - yuBot) * t1, p1.z)
-        const D = new THREE.Vector3(p0.x, yuBot + (yvBot - yuBot) * t0, p0.z)
-        const nrm = new THREE.Vector3()
-          .crossVectors(new THREE.Vector3().subVectors(B, A), new THREE.Vector3().subVectors(C, A))
-        if (nrm.x * out.x + nrm.z * out.z >= 0) pushQuad(roofSink, A, B, C, D)
-        else pushQuad(roofSink, A, D, C, B)
+        pushEdgeRim(
+          roofSink,
+          p0,
+          p1,
+          yuTop + (yvTop - yuTop) * t0,
+          yuTop + (yvTop - yuTop) * t1,
+          yuBot + (yvBot - yuBot) * t0,
+          yuBot + (yvBot - yuBot) * t1,
+          out,
+        )
       }
     }
   }
@@ -947,6 +1038,15 @@ export function buildRoofEnvelopeGeometry(
       const bottom = (p: XZ) => planeY(face.plane, p) - tv
       pushLiftedPolygon(roofSink, face.poly, top, true)
       pushLiftedPolygon(roofSink, face.poly, bottom, false)
+      const m = face.poly.length
+      for (let i = 0; i < m; i += 1) {
+        const u = face.poly[i]!
+        const v = face.poly[(i + 1) % m]!
+        if (ringEdgeIndex(foot, u, v) < 0) continue
+        if (pointOnSegment(u, a, b, 1.5) && pointOnSegment(v, a, b, 1.5)) continue
+        const out = edgeOutwardXZ(u, v)
+        pushEdgeRim(roofSink, u, v, top(u), top(v), bottom(u), bottom(v), out)
+      }
     }
     // Frontgiebel auf der Traufkante: von Seal-Unterkante bis Dach-Unterseite.
     const front = [foot[0], foot[1]]
@@ -977,17 +1077,24 @@ export function buildRoofEnvelopeGeometry(
     const a = env.outer[i]
     const b = env.outer[(i + 1) % n]
     if (Math.hypot(b.x - a.x, b.z - a.z) < 0.5) continue
-    const gableFlush = Boolean(env.flush[i])
-    const botY = gableFlush ? wallTopY : eaveFillBottomY
-    const outset = gableFlush ? 0 : ROOF_FILL_FACE_OUTSET_CM
+    // Kastentraufe endet an der Plattenunterseite. Jede andere Kante läuft bis an die
+    // Dachhaut, aber 0,4 cm in der Wand — auf der Kante flackert sie gegen die Schräge.
+    const boxed = eaveHasBoxedSoffit(env, i)
+    const botY = boxed ? eaveFillBottomY : wallTopY
+    const outset = boxed ? ROOF_FILL_FACE_OUTSET_CM : -ROOF_FILL_ONWALL_INSET_CM
     const samples = envelopeAlongSegment(env.planes, a, b)
     const out = edgeOutwardXZ(a, b)
     const gaps = cutsOn(a, b)
+    const yOnFill = (t: number, sampleY: number) => {
+      if (boxed) return Math.max(botY, sampleY - tv)
+      const p = lerpXZ(a, b, t)
+      return Math.max(botY, envelopeY(env.planes, { x: p.x + out.x * outset, z: p.z + out.z * outset }))
+    }
     for (let s = 0; s + 1 < samples.length; s += 1) {
       const s0 = samples[s]
       const s1 = samples[s + 1]
-      const yA = Math.max(botY, s0.y - (gableFlush ? 0 : tv))
-      const yB = Math.max(botY, s1.y - (gableFlush ? 0 : tv))
+      const yA = yOnFill(s0.t, s0.y)
+      const yB = yOnFill(s1.t, s1.y)
       if (yA - botY < 0.05 && yB - botY < 0.05) continue
       // Traufdurchbruch: Füllwand nur außerhalb der Gaubenfront (sonst Z-Fight mit der Gaubenwand).
       for (const [t0, t1] of complementIntervals(gaps, s0.t, s1.t)) {
@@ -1047,16 +1154,20 @@ export function buildRoofEnvelopeGeometry(
     }
   }
 
+  appendEaveSoffits(env, gableSink, footprints, cutsOn)
+
   const gutterEdgeActive = env.isEave.map((eave, i) => {
-    if (!eave || env.flush[i]) return false
+    // `flush` ist auch „nackte Wand“ / Stirnmaske — der Überstand bleibt, die Rinne auch.
+    // Explizit bündig hat Überstand 0, dann steht die Kante nicht vor der Wand.
+    if (!eave || !edgeStandsOffWall(env, i)) return false
     // Keine Rinne vor dem Zwerchgiebel.
     return !footprints.some((f) => f.edgeIdx === i)
   })
   const gutterGaps = env.eave.map((p, i) => cutsOn(p, env.eave[(i + 1) % env.eave.length]))
-  // Rinne an der Traufspitze (Unterseite der Überstandsfläche), nicht an der Wandplatte.
+  // Rinne schließt oben an der Dachkante an (Traufspitze), nicht an der Untersicht.
   const tipYs: number[] = []
   for (let i = 0; i < env.eave.length; i += 1) {
-    if (!env.isEave[i] || env.flush[i]) continue
+    if (!env.isEave[i] || !edgeStandsOffWall(env, i)) continue
     const a = env.eave[i]
     const b = env.eave[(i + 1) % env.eave.length]
     tipYs.push(envelopeY(env.planes, { x: (a.x + b.x) / 2, z: (a.z + b.z) / 2 }))
@@ -1068,7 +1179,254 @@ export function buildRoofEnvelopeGeometry(
     gable: toGeometry(gableSink),
     gutterEdgeActive,
     gutterGaps,
-    gutterEaveY: tipY - tv + 4,
+    gutterEaveY: tipY,
+  }
+}
+
+interface EdgeFrame {
+  wallA: XZ
+  wallB: XZ
+  out: XZ
+  along: XZ
+  dist: number
+  /** Wandenden, senkrecht um den Überstand versetzt — nicht die Gehrung. */
+  p0: XZ
+  p1: XZ
+}
+
+/** Senkrechter Versatz der Wandkante. Null, wenn die Traufe auf der Wand liegt. */
+function edgeFrame(env: RoofEnvelope, index: number): EdgeFrame | null {
+  const n = Math.min(env.outer.length, env.eave.length)
+  if (index < 0 || index >= n) return null
+  const wallA = env.outer[index]!
+  const wallB = env.outer[(index + 1) % env.outer.length]!
+  const tipA = env.eave[index]!
+  const tipB = env.eave[(index + 1) % env.eave.length]!
+  const len = Math.hypot(wallB.x - wallA.x, wallB.z - wallA.z)
+  if (len < 0.5) return null
+  const out = edgeOutwardXZ(wallA, wallB)
+  const along = { x: (wallB.x - wallA.x) / len, z: (wallB.z - wallA.z) / len }
+  const midWall = { x: (wallA.x + wallB.x) / 2, z: (wallA.z + wallB.z) / 2 }
+  const midTip = { x: (tipA.x + tipB.x) / 2, z: (tipA.z + tipB.z) / 2 }
+  const dist = (midTip.x - midWall.x) * out.x + (midTip.z - midWall.z) * out.z
+  if (dist < 1) return null
+  return {
+    wallA,
+    wallB,
+    out,
+    along,
+    dist,
+    p0: { x: wallA.x + out.x * dist, z: wallA.z + out.z * dist },
+    p1: { x: wallB.x + out.x * dist, z: wallB.z + out.z * dist },
+  }
+}
+
+function xzDist(a: XZ, b: XZ): number {
+  return Math.hypot(a.x - b.x, a.z - b.z)
+}
+
+function pushSoffitQuad(sink: Sink, w0: XZ, w1: XZ, e1: XZ, e0: XZ, y: number) {
+  const A = new THREE.Vector3(w0.x, y, w0.z)
+  const B = new THREE.Vector3(w1.x, y, w1.z)
+  const C = new THREE.Vector3(e1.x, y, e1.z)
+  const D = new THREE.Vector3(e0.x, y, e0.z)
+  const nrm = new THREE.Vector3().crossVectors(
+    new THREE.Vector3().subVectors(B, A),
+    new THREE.Vector3().subVectors(C, A),
+  )
+  if (nrm.y > 0) pushQuad(sink, A, D, C, B)
+  else pushQuad(sink, A, B, C, D)
+}
+
+function pushDownTri(sink: Sink, a: XZ, b: XZ, c: XZ, y: number) {
+  const A = new THREE.Vector3(a.x, y, a.z)
+  const B = new THREE.Vector3(b.x, y, b.z)
+  const C = new THREE.Vector3(c.x, y, c.z)
+  const nrm = new THREE.Vector3().crossVectors(
+    new THREE.Vector3().subVectors(B, A),
+    new THREE.Vector3().subVectors(C, A),
+  )
+  if (nrm.lengthSq() < 1e-8) return
+  if (nrm.y > 0) pushTri(sink, A, C, B)
+  else pushTri(sink, A, B, C)
+}
+
+/** Schluss in der Ebene Wand→senkrechte Spitze, von der Untersicht bis auf die Dachhaut. */
+function appendPerpCap(
+  sink: Sink,
+  env: RoofEnvelope,
+  wallPt: XZ,
+  tipPt: XZ,
+  soffitY: number,
+  facing: XZ,
+) {
+  if (xzDist(wallPt, tipPt) < 1) return
+  const samples = envelopeAlongSegment(env.planes, wallPt, tipPt)
+  for (let s = 0; s + 1 < samples.length; s += 1) {
+    const s0 = samples[s]!
+    const s1 = samples[s + 1]!
+    // Bis zur Dachoberseite. Nur bis zur Unterseite bleibt die Plattenwange offen.
+    const y0 = s0.y
+    const y1 = s1.y
+    if (y0 <= soffitY + 0.05 && y1 <= soffitY + 0.05) continue
+    const p0 = {
+      x: wallPt.x + (tipPt.x - wallPt.x) * s0.t,
+      z: wallPt.z + (tipPt.z - wallPt.z) * s0.t,
+    }
+    const p1 = {
+      x: wallPt.x + (tipPt.x - wallPt.x) * s1.t,
+      z: wallPt.z + (tipPt.z - wallPt.z) * s1.t,
+    }
+    pushEdgeRim(
+      sink,
+      p0,
+      p1,
+      Math.max(y0, soffitY),
+      Math.max(y1, soffitY),
+      soffitY,
+      soffitY,
+      facing,
+    )
+  }
+}
+
+/**
+ * Waagerechtes Eckstück bis zur Gehrung, wenn die Nachbarkante vor der Wand steht.
+ * `neighborBoxed`: Nachbar ist selbst Kastentraufe, sein Stirnbrett geht bis auf die Dachhaut.
+ * Sonst deckt der Plattenrand die Stärke. Die Rückführung hinter der Wandecke hat
+ * keinen Plattenrand — dort schließt die Endkappe.
+ */
+function appendCornerSoffit(
+  sink: Sink,
+  env: RoofEnvelope,
+  wall: XZ,
+  perp: XZ,
+  miter: XZ,
+  neighborPerp: XZ,
+  soffitY: number,
+  neighborBoxed: boolean,
+) {
+  pushDownTri(sink, wall, perp, neighborPerp, soffitY)
+  pushDownTri(sink, perp, miter, neighborPerp, soffitY)
+  const fascia = (p: XZ, q: XZ, fromTop: boolean) => {
+    if (xzDist(p, q) < 1) return
+    const mid = { x: (p.x + q.x) / 2, z: (p.z + q.z) / 2 }
+    const vx = mid.x - wall.x
+    const vz = mid.z - wall.z
+    const len = Math.hypot(vx, vz) || 1
+    const yAt = (pt: XZ) => {
+      const top = envelopeY(env.planes, pt)
+      return fromTop ? top : top - env.tv
+    }
+    pushEdgeRim(
+      sink,
+      p,
+      q,
+      Math.max(yAt(p), soffitY),
+      Math.max(yAt(q), soffitY),
+      soffitY,
+      soffitY,
+      { x: vx / len, z: vz / len },
+    )
+  }
+  fascia(perp, miter, true)
+  fascia(miter, neighborPerp, neighborBoxed)
+}
+
+/** Stirnbrett entlang der Dachkante zwischen senkrechter Spitze und Gehrung. */
+function appendEaveFascia(sink: Sink, env: RoofEnvelope, p: XZ, q: XZ, soffitY: number, awayFrom: XZ) {
+  if (xzDist(p, q) < 1) return
+  const mid = { x: (p.x + q.x) / 2, z: (p.z + q.z) / 2 }
+  const vx = mid.x - awayFrom.x
+  const vz = mid.z - awayFrom.z
+  const len = Math.hypot(vx, vz) || 1
+  pushEdgeRim(
+    sink,
+    p,
+    q,
+    envelopeY(env.planes, p),
+    envelopeY(env.planes, q),
+    soffitY,
+    soffitY,
+    { x: vx / len, z: vz / len },
+  )
+}
+
+/**
+ * Kastentraufe: waagerechte Untersicht von der Außenwand bis zur senkrechten
+ * Traufspitze, auf Höhe der Plattenunterkante. Die Gehrung zieht die Untersicht
+ * nicht schräg aus der Wand. Nur Traufen mit Überstand. Zwerchgiebel und
+ * Traufdurchbrüche lassen dieselbe Lücke wie die Stirn.
+ */
+function appendEaveSoffits(
+  env: RoofEnvelope,
+  sink: Sink,
+  footprints: Array<{ edgeIdx: number }>,
+  cutsOn: (p: XZ, q: XZ) => Array<[number, number]>,
+): void {
+  const n = Math.min(env.outer.length, env.eave.length)
+  const lerp = (p: XZ, q: XZ, t: number): XZ => ({
+    x: p.x + (q.x - p.x) * t,
+    z: p.z + (q.z - p.z) * t,
+  })
+  const foot = new Set(footprints.map((f) => f.edgeIdx))
+  const boxed = (i: number) => eaveHasBoxedSoffit(env, i) && !foot.has(i)
+  for (let i = 0; i < n; i += 1) {
+    // `flush` heißt hier auch „nackte Wand“ oder Stirnmaske — der Überstand bleibt.
+    // Nur echte Traufen mit Abstand Wand→Spitze. Bündig (`overhang` 0) fällt durch.
+    if (!boxed(i)) continue
+    const fr = edgeFrame(env, i)
+    if (!fr) continue
+    const prev = (i + n - 1) % n
+    const next = (i + 1) % n
+    const prevFr = foot.has(prev) ? null : edgeFrame(env, prev)
+    const nextFr = foot.has(next) ? null : edgeFrame(env, next)
+    const nextBoxed = boxed(next)
+    const mid = { x: (fr.p0.x + fr.p1.x) / 2, z: (fr.p0.z + fr.p1.z) / 2 }
+    const y = envelopeY(env.planes, mid) - env.tv
+    const tipA = env.eave[i]!
+    const tipB = env.eave[(i + 1) % env.eave.length]!
+    const faceStart = { x: -fr.along.x, z: -fr.along.z }
+    for (const [t0, t1] of complementIntervals(cutsOn(fr.wallA, fr.wallB))) {
+      if (t1 - t0 < 1e-4) continue
+      const w0 = lerp(fr.wallA, fr.wallB, t0)
+      const w1 = lerp(fr.wallA, fr.wallB, t1)
+      const e0 = lerp(fr.p0, fr.p1, t0)
+      const e1 = lerp(fr.p0, fr.p1, t1)
+      // Stirnbrett 0,4 cm vor der Dachkante, sonst flackert es über der Rinne.
+      const lip = 0.4
+      const e0o = { x: e0.x + fr.out.x * lip, z: e0.z + fr.out.z * lip }
+      const e1o = { x: e1.x + fr.out.x * lip, z: e1.z + fr.out.z * lip }
+      pushSoffitQuad(sink, w0, w1, e1o, e0o, y)
+      pushEdgeRim(
+        sink,
+        e0o,
+        e1o,
+        envelopeY(env.planes, e0),
+        envelopeY(env.planes, e1),
+        y,
+        y,
+        fr.out,
+      )
+      // Nachbar steht vor der Wand: Eckstück auf der Außenkante. Eine Kappe in der
+      // Wandebene schneidet dann die Dachplatte (Streifen unter der Ecke).
+      if (t0 <= 1e-4 && prevFr && xzDist(tipA, fr.p0) > 1) {
+        appendCornerSoffit(sink, env, fr.wallA, fr.p0, tipA, prevFr.p1, y, boxed(prev))
+      } else if (t0 <= 1e-4) {
+        appendPerpCap(sink, env, fr.wallA, fr.p0, y, faceStart)
+        appendEaveFascia(sink, env, fr.p0, tipA, y, fr.wallA)
+      } else {
+        appendPerpCap(sink, env, w0, e0, y, faceStart)
+      }
+      if (t1 < 1 - 1e-4) {
+        appendPerpCap(sink, env, w1, e1, y, fr.along)
+      } else if (nextFr && !nextBoxed && xzDist(tipB, fr.p1) > 1) {
+        appendCornerSoffit(sink, env, fr.wallB, fr.p1, tipB, nextFr.p0, y, false)
+      } else if (!nextBoxed) {
+        appendPerpCap(sink, env, fr.wallB, fr.p1, y, fr.along)
+        appendEaveFascia(sink, env, fr.p1, tipB, y, fr.wallB)
+      }
+    }
   }
 }
 

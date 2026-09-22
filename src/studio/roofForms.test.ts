@@ -6,10 +6,12 @@ import {
   clipPolygonByHalfPlane,
   crossGableFootprint,
   edgeCompassLabel,
+  edgeOutwardXZ,
   orientRingCcw,
   roofEdgeKey,
   roofEnvelopeHeightAt,
   yawToDirXZ,
+  roofKindUsesRidgeDir,
   type XZ,
 } from './roofForms'
 import { offsetPolygonPerEdge } from './roof'
@@ -186,6 +188,274 @@ describe('roofForms – Zwerchgiebel', () => {
     expect(geo.gable).not.toBeNull()
     // Rinne an der Zwerchgiebel-Kante aus
     expect(geo.gutterEdgeActive[edgeIdx]).toBe(false)
+  })
+})
+
+describe('roofForms – Kastentraufe', () => {
+  it('Untersicht liegt auf der Unterkante der Traufspitze und reicht an die Wand', () => {
+    const env = envelopeFor('gable', rect(), { overhang: 40, pitch: 45 })
+    const edge = env.isEave.findIndex(Boolean)
+    expect(edge).toBeGreaterThanOrEqual(0)
+    const tipA = env.eave[edge]!
+    const tipB = env.eave[(edge + 1) % env.eave.length]!
+    const mid = { x: (tipA.x + tipB.x) / 2, z: (tipA.z + tipB.z) / 2 }
+    const soffitY = roofEnvelopeHeightAt(env, mid) - env.tv
+    expect(soffitY).toBeLessThan(env.eaveY - 20)
+    const geo = buildRoofEnvelopeGeometry(env)
+    const pos = geo.gable!.getAttribute('position')
+    const wallA = env.outer[edge]!
+    const wallB = env.outer[(edge + 1) % env.outer.length]!
+    let onSoffit = 0
+    let onWall = 0
+    for (let i = 0; i < pos.count; i += 1) {
+      if (Math.abs(pos.getY(i) - soffitY) > 0.3) continue
+      onSoffit += 1
+      const x = pos.getX(i)
+      const z = pos.getZ(i)
+      const dx = wallB.x - wallA.x
+      const dz = wallB.z - wallA.z
+      const len2 = dx * dx + dz * dz || 1
+      let t = ((x - wallA.x) * dx + (z - wallA.z) * dz) / len2
+      t = Math.max(0, Math.min(1, t))
+      const dist = Math.hypot(x - (wallA.x + dx * t), z - (wallA.z + dz * t))
+      if (dist < 1.5) onWall += 1
+    }
+    expect(onSoffit).toBeGreaterThan(6)
+    expect(onWall).toBeGreaterThan(0)
+  })
+
+  it('nackte Wand (flush, Überstand bleibt) bekommt trotzdem eine Untersicht', () => {
+    const outer = rect()
+    const roof = normalizeRoof({ ...DEFAULT_ROOF, enabled: true, kind: 'gable', pitch: 45, overhang: 40 })
+    const eave = offsetPolygonPerEdge(outer, outer.map(() => roof.overhang))
+    const env = buildRoofEnvelope({
+      kind: 'gable',
+      outer,
+      eave,
+      eaveY: 448,
+      flush: outer.map(() => true),
+      roof,
+    })
+    expect(env).not.toBeNull()
+    const geo = buildRoofEnvelopeGeometry(env!)
+    const pos = geo.gable!.getAttribute('position')
+    const edge = env!.isEave.findIndex(Boolean)
+    const tipA = env!.eave[edge]!
+    const tipB = env!.eave[(edge + 1) % env!.eave.length]!
+    const soffitY = roofEnvelopeHeightAt(env!, { x: (tipA.x + tipB.x) / 2, z: (tipA.z + tipB.z) / 2 }) - env!.tv
+    let onSoffit = 0
+    for (let i = 0; i < pos.count; i += 1) {
+      if (Math.abs(pos.getY(i) - soffitY) <= 0.3) onSoffit += 1
+    }
+    expect(onSoffit).toBeGreaterThan(6)
+    expect(geo.gutterEdgeActive.filter(Boolean).length).toBe(2)
+  })
+
+  it('Stirnbrett an der Dachoberkante, Ecke ohne schräge Kappe', () => {
+    const env = envelopeFor('gable', rect(), { overhang: 40, pitch: 45 })
+    const edge = env.isEave.findIndex(Boolean)
+    const tipA = env.eave[edge]!
+    const tipB = env.eave[(edge + 1) % env.eave.length]!
+    const wallA = env.outer[edge]!
+    const wallB = env.outer[(edge + 1) % env.outer.length]!
+    const out = edgeOutwardXZ(wallA, wallB)
+    const midWall = { x: (wallA.x + wallB.x) / 2, z: (wallA.z + wallB.z) / 2 }
+    const midTip = { x: (tipA.x + tipB.x) / 2, z: (tipA.z + tipB.z) / 2 }
+    const dist = (midTip.x - midWall.x) * out.x + (midTip.z - midWall.z) * out.z
+    const p0 = { x: wallA.x + out.x * dist, z: wallA.z + out.z * dist }
+    const prev = (edge + env.outer.length - 1) % env.outer.length
+    const prevA = env.outer[prev]!
+    const prevB = env.outer[(prev + 1) % env.outer.length]!
+    const prevOut = edgeOutwardXZ(prevA, prevB)
+    const prevMidW = { x: (prevA.x + prevB.x) / 2, z: (prevA.z + prevB.z) / 2 }
+    const prevTipA = env.eave[prev]!
+    const prevTipB = env.eave[(prev + 1) % env.eave.length]!
+    const prevMidT = { x: (prevTipA.x + prevTipB.x) / 2, z: (prevTipA.z + prevTipB.z) / 2 }
+    const prevDist = (prevMidT.x - prevMidW.x) * prevOut.x + (prevMidT.z - prevMidW.z) * prevOut.z
+    const neighbor = { x: prevB.x + prevOut.x * prevDist, z: prevB.z + prevOut.z * prevDist }
+    const corner = {
+      x: (p0.x + tipA.x + neighbor.x) / 3,
+      z: (p0.z + tipA.z + neighbor.z) / 3,
+    }
+    const diag = {
+      x: wallA.x + (tipA.x - wallA.x) / 3,
+      z: wallA.z + (tipA.z - wallA.z) / 3,
+    }
+    const perp = { x: wallA.x + out.x * (dist / 3), z: wallA.z + out.z * (dist / 3) }
+    const topY = roofEnvelopeHeightAt(env, midTip)
+    const soffitY = topY - env.tv
+    const geo = buildRoofEnvelopeGeometry(env)
+    const pos = geo.gable!.getAttribute('position')
+    const index = geo.gable!.getIndex()!
+    let atTop = 0
+    let cap = 0
+    let shelf = 0
+    let perpCap = 0
+    const edgeLen = Math.hypot(tipB.x - tipA.x, tipB.z - tipA.z) || 1
+    const edx = (tipB.x - tipA.x) / edgeLen
+    const edz = (tipB.z - tipA.z) / edgeLen
+    for (let i = 0; i < pos.count; i += 1) {
+      const x = pos.getX(i)
+      const z = pos.getZ(i)
+      const t = (x - tipA.x) * edx + (z - tipA.z) * edz
+      const d = Math.hypot(x - (tipA.x + edx * t), z - (tipA.z + edz * t))
+      if (t >= -1 && t <= edgeLen + 1 && d < 2 && Math.abs(pos.getY(i) - topY) < 0.5) atTop += 1
+    }
+    for (let i = 0; i < index.count; i += 3) {
+      let x = 0
+      let y = 0
+      let z = 0
+      for (let k = 0; k < 3; k += 1) {
+        const vi = index.getX(i + k)
+        x += pos.getX(vi)
+        y += pos.getY(vi)
+        z += pos.getZ(vi)
+      }
+      x /= 3
+      y /= 3
+      z /= 3
+      if (Math.hypot(x - diag.x, z - diag.z) < 8 && y > soffitY + 2) cap += 1
+      if (Math.hypot(x - corner.x, z - corner.z) < 10 && Math.abs(y - soffitY) < 0.4) shelf += 1
+      if (Math.hypot(x - perp.x, z - perp.z) < 6 && y > soffitY + 2) perpCap += 1
+    }
+    expect(atTop).toBeGreaterThan(0)
+    expect(cap).toBe(0)
+    // Ortgang steht ebenfalls vor: Eckstück auf der Außenkante, keine Kappe in der Wand.
+    expect(shelf).toBeGreaterThan(0)
+    expect(perpCap).toBe(0)
+  })
+
+  it('Walm: Eckstück folgt der Dachkante', () => {
+    const env = envelopeFor('hip', rect(), { overhang: 40, pitch: 45 })
+    const edge = 0
+    expect(env.isEave[edge]).toBe(true)
+    expect(env.isEave[(edge + 1) % env.isEave.length]).toBe(true)
+    const tipA = env.eave[edge]!
+    const wallA = env.outer[edge]!
+    const wallB = env.outer[(edge + 1) % env.outer.length]!
+    const out = edgeOutwardXZ(wallA, wallB)
+    const midWall = { x: (wallA.x + wallB.x) / 2, z: (wallA.z + wallB.z) / 2 }
+    const tipB = env.eave[(edge + 1) % env.eave.length]!
+    const midTip = { x: (tipA.x + tipB.x) / 2, z: (tipA.z + tipB.z) / 2 }
+    const dist = (midTip.x - midWall.x) * out.x + (midTip.z - midWall.z) * out.z
+    const p0 = { x: wallA.x + out.x * dist, z: wallA.z + out.z * dist }
+    const prev = env.outer.length - 1
+    const prevA = env.outer[prev]!
+    const prevB = env.outer[0]!
+    const prevOut = edgeOutwardXZ(prevA, prevB)
+    const prevMidW = { x: (prevA.x + prevB.x) / 2, z: (prevA.z + prevB.z) / 2 }
+    const prevTipA = env.eave[prev]!
+    const prevTipB = env.eave[0]!
+    const prevMidT = { x: (prevTipA.x + prevTipB.x) / 2, z: (prevTipA.z + prevTipB.z) / 2 }
+    const prevDist = (prevMidT.x - prevMidW.x) * prevOut.x + (prevMidT.z - prevMidW.z) * prevOut.z
+    const neighbor = { x: prevB.x + prevOut.x * prevDist, z: prevB.z + prevOut.z * prevDist }
+    const corner = {
+      x: (p0.x + tipA.x + neighbor.x) / 3,
+      z: (p0.z + tipA.z + neighbor.z) / 3,
+    }
+    const diag = {
+      x: wallA.x + (tipA.x - wallA.x) / 3,
+      z: wallA.z + (tipA.z - wallA.z) / 3,
+    }
+    const soffitY = roofEnvelopeHeightAt(env, midTip) - env.tv
+    const geo = buildRoofEnvelopeGeometry(env)
+    const pos = geo.gable!.getAttribute('position')
+    const index = geo.gable!.getIndex()!
+    let cap = 0
+    let shelf = 0
+    for (let i = 0; i < index.count; i += 3) {
+      let x = 0
+      let y = 0
+      let z = 0
+      for (let k = 0; k < 3; k += 1) {
+        const vi = index.getX(i + k)
+        x += pos.getX(vi)
+        y += pos.getY(vi)
+        z += pos.getZ(vi)
+      }
+      x /= 3
+      y /= 3
+      z /= 3
+      if (Math.hypot(x - diag.x, z - diag.z) < 8 && y > soffitY + 2) cap += 1
+      if (Math.hypot(x - corner.x, z - corner.z) < 10 && Math.abs(y - soffitY) < 0.4) shelf += 1
+    }
+    expect(cap).toBe(0)
+    expect(shelf).toBeGreaterThan(0)
+  })
+
+  it('bündiger Giebel: Endkappe in der Wandebene', () => {
+    const env = envelopeFor('gable', rect(), { overhang: 40, pitch: 45 }, [false, true, false, true])
+    expect(env.isEave[0]).toBe(true)
+    expect(env.isEave[1]).toBe(false)
+    const wallA = env.outer[0]!
+    const wallB = env.outer[1]!
+    const tipA = env.eave[0]!
+    const tipB = env.eave[1]!
+    const out = edgeOutwardXZ(wallA, wallB)
+    const midWall = { x: (wallA.x + wallB.x) / 2, z: (wallA.z + wallB.z) / 2 }
+    const midTip = { x: (tipA.x + tipB.x) / 2, z: (tipA.z + tipB.z) / 2 }
+    const dist = (midTip.x - midWall.x) * out.x + (midTip.z - midWall.z) * out.z
+    const perp = { x: wallA.x + out.x * (dist / 3), z: wallA.z + out.z * (dist / 3) }
+    const len = Math.hypot(wallB.x - wallA.x, wallB.z - wallA.z) || 1
+    const along = { x: (wallB.x - wallA.x) / len, z: (wallB.z - wallA.z) / len }
+    const side = { x: wallA.x - along.x * 20, z: wallA.z - along.z * 20 }
+    const soffitY = roofEnvelopeHeightAt(env, midTip) - env.tv
+    const topAtWall = roofEnvelopeHeightAt(env, wallA)
+    const geo = buildRoofEnvelopeGeometry(env)
+    const pos = geo.gable!.getAttribute('position')
+    const index = geo.gable!.getIndex()!
+    let sideCap = 0
+    let perpCap = 0
+    let capReachesTop = 0
+    for (let i = 0; i < pos.count; i += 1) {
+      if (
+        Math.hypot(pos.getX(i) - wallA.x, pos.getZ(i) - wallA.z) < 0.15 &&
+        Math.abs(pos.getY(i) - topAtWall) < 1
+      ) {
+        capReachesTop += 1
+      }
+    }
+    for (let i = 0; i < index.count; i += 3) {
+      let x = 0
+      let y = 0
+      let z = 0
+      for (let k = 0; k < 3; k += 1) {
+        const vi = index.getX(i + k)
+        x += pos.getX(vi)
+        y += pos.getY(vi)
+        z += pos.getZ(vi)
+      }
+      x /= 3
+      y /= 3
+      z /= 3
+      if (y <= soffitY + 2) continue
+      if (Math.hypot(x - side.x, z - side.z) < 8) sideCap += 1
+      if (Math.hypot(x - perp.x, z - perp.z) < 6) perpCap += 1
+    }
+    expect(sideCap).toBe(0)
+    expect(perpCap).toBeGreaterThan(0)
+    expect(capReachesTop).toBeGreaterThan(0)
+  })
+
+  it('Pult: Füllwand sticht nicht durch die Dachhaut', () => {
+    const env = envelopeFor('shed', rect(), { overhang: 40, pitch: 45 })
+    const geo = buildRoofEnvelopeGeometry(env)
+    const pos = geo.gable!.getAttribute('position')
+    let above = 0
+    for (let i = 0; i < pos.count; i += 1) {
+      const y = roofEnvelopeHeightAt(env, { x: pos.getX(i), z: pos.getZ(i) })
+      if (pos.getY(i) > y + 0.6) above += 1
+    }
+    expect(above).toBe(0)
+  })
+})
+
+describe('roofForms – Firstrichtung', () => {
+  it('Mansarde und Walm nutzen dieselbe Achsen-Auswahl wie der Sattel', () => {
+    expect(roofKindUsesRidgeDir('mansard')).toBe(true)
+    expect(roofKindUsesRidgeDir('hip')).toBe(true)
+    expect(roofKindUsesRidgeDir('gable')).toBe(true)
+    expect(roofKindUsesRidgeDir('shed')).toBe(true)
   })
 })
 

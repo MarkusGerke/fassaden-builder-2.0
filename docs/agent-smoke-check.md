@@ -19,6 +19,15 @@ Nach **jeder** Änderung an Park/Bridge/Live-Shell (`packages/ui/**`, `src/ui/**
 - Panda-Recipe geändert → `npm run codegen`.
 - Größere UI-Änderungen → `npx vite build` (Compile reicht; WebGL in Sandbox-Browsern darf fehlen).
 
+## Bei Opening-division / FormMirror-Änderungen
+
+- Fenster wählen (Dev: `__fbDebug.selectOpening(wallId, openingId)` nach `listOpenings()`).
+- Sektion **Teilung** öffnen — Accordion bleibt offen, Inhalt sichtbar (Höhe > 0).
+- Flügel 1→2 (Park NumberInput-Pfeile); Sprossen senkrecht +1.
+- Scharnier/Öffnungsart: Select je Flügel im Adopt-Slot (`[data-park-adopt-slot="window-hinge-modes"]`).
+- Nach Flügel-Änderung: Hinge-Host bleibt im Slot; Selects aktualisieren sich.
+- Optional: „Profilierte Sprossen“ + ein Holzmaß-Feld ändern.
+
 ## ScrollArea (Wiederholungsfehler)
 
 `Thumb` **nur** als Kind von Ark-`Scrollbar` (`ScrollbarWithThumb` mit **ungestyltem** `@ark-ui/solid/scroll-area`). Niemals `defaultProps` auf Thumb, niemals styled `Scrollbar` + styled `Thumb` nesten — sonst leere App.

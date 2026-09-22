@@ -20,6 +20,12 @@ import {
   type GroundPuddleSettings,
 } from '../lighting/groundPuddles'
 import {
+  DEFAULT_SNOW_WEATHER_SETTINGS,
+  isSnowWeatherSettings,
+  normalizeSnowWeatherSettings,
+  type SnowWeatherSettings,
+} from '../lighting/snowWeather'
+import {
   DEFAULT_LOD_SETTINGS,
   isLodSettings,
   normalizeLodSettings,
@@ -80,6 +86,7 @@ export interface PersistedAppState {
   bloom?: BloomSettings
   fog?: FogSettings
   puddles?: GroundPuddleSettings
+  snow?: SnowWeatherSettings
   lod?: LodSettings
 }
 
@@ -208,6 +215,9 @@ export function loadPersistedState(): PersistedAppState | null {
       puddles: isGroundPuddleSettings(parsed.puddles)
         ? normalizeGroundPuddleSettings(parsed.puddles)
         : { ...DEFAULT_GROUND_PUDDLE_SETTINGS },
+      snow: isSnowWeatherSettings(parsed.snow)
+        ? normalizeSnowWeatherSettings(parsed.snow)
+        : { ...DEFAULT_SNOW_WEATHER_SETTINGS },
       lod: isLodSettings(parsed.lod) ? normalizeLodSettings(parsed.lod) : { ...DEFAULT_LOD_SETTINGS },
     }
   } catch {

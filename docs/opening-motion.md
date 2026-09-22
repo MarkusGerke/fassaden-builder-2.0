@@ -86,7 +86,8 @@ Hydrate: fehlendes `Opening.motion` erhält den Typ-Default (Fenster vs. Tür). 
 | `src/FacadeController.ts` | `applyOpeningLeafDegrees` ohne Mesh-Rebuild |
 | `src/ui/openingMotionEditor.ts` | SVG-Editor, Play-Buttons, Datensatz-Feld |
 | `src/main.ts` | Abspielen im Animate-Loop, Schedule-Crossings, Commit der Ruhewinkel |
-| `index.html` | `#opening-motion-section` Reiter Animation |
+| `index.html` | `#opening-motion-section` Reiter Animation; Park-Adopt-Slots (`data-park-adopt`, v2.0.552) |
+| `packages/ui/.../FormMirror.tsx` | Hybrid: Adopt-Hosts in Park-Slots (siehe [park-restore.md](park-restore.md)) |
 
 `cloneWall` kopiert `motion` tief.
 

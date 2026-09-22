@@ -19,6 +19,7 @@ describe('groundMood shader', () => {
 void main() {
   #include <lights_fragment_begin>
   #include <lights_fragment_end>
+  #include <opaque_fragment>
 }
 `,
         vertexShader: `#include <common>
@@ -32,6 +33,8 @@ void main() {
     )
     expect(fragmentShader).not.toContain('getShadow(')
     expect(fragmentShader).toContain('irradiance = uGroundAlbedo * uGroundAmbient')
+    expect(fragmentShader).toContain('uGroundSnowCover')
+    expect(fragmentShader).toContain('luma / 0.38')
     expect(fragmentShader).not.toContain('uShadowSkyColor')
     expect(fragmentShader).not.toContain('uContactMap')
     expect(material.envMapIntensity).toBe(0)

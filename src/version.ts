@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.551'
+export const APP_VERSION = '2.0.582'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,292 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.582',
+    date: '2026-09-22',
+    title: 'Rinne an der Dachkante',
+    changes: ['Die Regenrinne schließt oben an der Dachkante an'],
+  },
+  {
+    version: '2.0.581',
+    date: '2026-09-22',
+    title: 'Rinneneisen und Schwanenhals',
+    changes: [
+      'Die Regenrinne hat einen vorderen Wulst und kurze Rinneneisen',
+      'Das Fallrohr läuft mit zwei Bögen unter die Traufe',
+    ],
+  },
+  {
+    version: '2.0.580',
+    date: '2026-09-22',
+    title: 'Traufecke und Gesims',
+    changes: [
+      'Die Fragmente an der geschlossenen Traufecke sind weg',
+      'Das Gesims liegt unter der waagerechten Dachkante',
+    ],
+  },
+  {
+    version: '2.0.579',
+    date: '2026-09-21',
+    title: 'Rinne und geschlossene Traufe',
+    changes: [
+      'Die Regenrinne hängt wieder an Sattel, Walm und Pult',
+      'Die Seite zwischen Dachkante und Wand ist zu',
+      'Pult und Mansarde flackern nicht mehr an der Kante',
+      'Die Enden der Rinne sind geschlossen',
+    ],
+  },
+  {
+    version: '2.0.578',
+    date: '2026-09-21',
+    title: 'Traufecke geschlossen',
+    changes: [
+      'Die Kastentraufe ist am Giebel zu, ohne schwarzen Keil',
+      'An der Hausecke folgt die Untersicht der Dachkante',
+    ],
+  },
+  {
+    version: '2.0.577',
+    date: '2026-09-21',
+    title: 'Keine zweite Dachschräge',
+    changes: [
+      'Die kleinen Keile an der Traufecke sind weg',
+      'Die Giebelwand schließt an die Dachfläche an, ohne schwarze Fuge',
+    ],
+  },
+  {
+    version: '2.0.576',
+    date: '2026-09-21',
+    title: 'Traufe dreht mit, Rinne sitzt an der Kante',
+    changes: [
+      'Firstrichtung nimmt Überstand und Regenrinne mit auf die neue Traufe',
+      'Die Regenrinne ist ein Halbkreis und sitzt an der Dachkante',
+      'Die Dachplatte ist geschlossen, von jeder Seite eine Schräge',
+    ],
+  },
+  {
+    version: '2.0.575',
+    date: '2026-09-21',
+    title: 'Dach sitzt auf der Wand, Firstrichtung überall',
+    changes: [
+      'Unter der Traufe schließt eine Untersicht von der Hauswand bis zur Dachkante',
+      'An diesen Traufen entfällt das Gesims, an den Giebeln bleibt es',
+      'Mansarde und Walm haben eine Firstrichtung wie der Sattel; das Pult behält die Hochseite',
+    ],
+  },
+  {
+    version: '2.0.574',
+    date: '2026-09-20',
+    title: 'Fenster-Teilung: Stepper und Scharnier zuverlässig',
+    changes: [
+      'Flügel-/Sprossen-Stepper in der rechten Leiste schreiben wieder zuverlässig',
+      'Scharnier / Öffnungsart bleibt nach Flügel-Änderung in den Einstellungen',
+    ],
+  },
+  {
+    version: '2.0.573',
+    date: '2026-09-20',
+    title: 'Fenster-Teilung wieder in den Einstellungen',
+    changes: [
+      'Flügel-Anzahl, Teilung, Sprossen und Oberlicht-Teilung wieder in der rechten Leiste',
+      'Scharnierseite und Öffnungsart (Dreh/Kipp/Drehkipp) wieder bedienbar',
+    ],
+  },
+  {
+    version: '2.0.572',
+    date: '2026-09-20',
+    title: 'Akkordeon-Klicks und Bibliothek stabil',
+    changes: [
+      'Einstellungs-Sektionen öffnen zuverlässig (kein feststeckendes Closed mehr)',
+      'Bibliothek-Karten bleiben auch nach Auswahlwechsel und Stage-Toggle erhalten',
+      'Nach Bühnenmodus klappt die rechte Leiste wieder aus (Klicks erreichen die Einstellungen)',
+    ],
+  },
+  {
+    version: '2.0.571',
+    date: '2026-09-20',
+    title: 'Bibliothek Fenster wieder gefüllt',
+    changes: [
+      'Bibliothek-Tab Fenster zeigt nach Auswahl wieder die Kacheln',
+      'Auswahlwechsel zerstört die Bibliothek-Karten nicht mehr',
+      'Einstellungs-Akkordeons bleiben nach dem Öffnen stabil offen',
+    ],
+  },
+  {
+    version: '2.0.570',
+    date: '2026-09-20',
+    title: 'Park-Akkordeon: Inhalt sichtbar beim Öffnen',
+    changes: [
+      'Rechte Einstellungs-Sektionen zeigen ihren Inhalt wieder, sobald sie geöffnet sind',
+      'Kein leeres „offen“ mehr (Chevron oben, Felder unsichtbar)',
+    ],
+  },
+  {
+    version: '2.0.569',
+    date: '2026-09-20',
+    title: 'Park: Bibliothek und Inspector kontextuell',
+    changes: [
+      'Desktop: Bibliothek unten nur bei Auswahl',
+      'Rechts bei Auswahl nur Objekt-Einstellungen — Szene/Zufall erst wieder ohne Auswahl',
+      'Akkordeons in der rechten Leiste lassen sich wieder öffnen und bleiben offen',
+    ],
+  },
+  {
+    version: '2.0.568',
+    date: '2026-09-20',
+    title: 'Schnee bleibt sichtbar liegen',
+    changes: [
+      'Flocken bleiben auf Hof, Decke und ≤15°-Flächen liegen — der Fall geht daneben weiter',
+      'Hof und Flächen werden mit der Decke deutlich weiß, Schatten bleiben sichtbar',
+    ],
+  },
+  {
+    version: '2.0.567',
+    date: '2026-09-20',
+    title: 'Schneedecke folgt wieder dem Cover',
+    changes: [
+      'Liegender Schnee auf dem Hof erscheint wieder, sobald die Decke wächst — nicht erst beim nächsten Licht-Update',
+      'Landepads werden nicht mehr jeden Frame neu gebaut (weniger Ruckeln bei Schneefall)',
+    ],
+  },
+  {
+    version: '2.0.566',
+    date: '2026-09-20',
+    title: 'Dauer-Schneefall und Decke überall',
+    changes: [
+      'Es schneit durchgehend, solange Schneefall an und kalt ist — Flocken bleiben nicht liegen und fressen den Fall nicht',
+      'Dach, Decke und ≤15°-Teile behalten dieselbe flache Schneedecke wie der Hof, mit sichtbaren Schatten',
+      'Beim Orbit bleibt die Flockenanzahl gleich; Flocken sind ~5 cm groß und werden beim Ranzoomen nicht kleiner',
+    ],
+  },
+  {
+    version: '2.0.565',
+    date: '2026-09-20',
+    title: 'Schnee auf dem Boden, Schatten bleiben',
+    changes: [
+      'Schneedecke liegt auf dem echten Boden, ohne Overlay-Plane — Fassadenschatten bleiben sichtbar',
+      'Keine weißen Geisterflächen mehr: Decken-Overlays und Boden-Schnee-Shader entfernt',
+    ],
+  },
+  {
+    version: '2.0.564',
+    date: '2026-09-20',
+    title: 'Boden-Schatten und keine Geisterflächen',
+    changes: [
+      'Boden-Overlay entfernt — Schatten bleiben auf dem echten Boden, Schnee liegt dort als Flocken',
+      'Landepads ohne Aufweitung: kein Schnee mehr in der Luft vor Fensterbänken',
+    ],
+  },
+  {
+    version: '2.0.563',
+    date: '2026-09-20',
+    title: 'Schnee bleibt auf Decke, Bänken und Flächen',
+    changes: [
+      'Flocken landen auf Decke, Fensterbänken und horizontalen Flächen ≤15° statt hindurchzufallen',
+      'Liegende Flocken bleiben sichtbar auf der Fläche',
+    ],
+  },
+  {
+    version: '2.0.562',
+    date: '2026-09-20',
+    title: 'Liegende Schneedecke als Overlay',
+    changes: [
+      'Schnee bleibt sichtbar auf Boden, Dach und Flächen ≤15° (eigene Decken-Meshes, nicht nur Boden-Tint)',
+    ],
+  },
+  {
+    version: '2.0.561',
+    date: '2026-09-20',
+    title: 'Schnee auf Dach, Boden und ≤15°',
+    changes: [
+      'Schneedecke: Dach (auch steil) + Boden + horizontale Details bis ~15° (Gesimse, Bänke, …)',
+      'Senkrechte Wandschale ohne Schnee-Shader; Dach-Tint auch über roofPart ohne kind=roof',
+    ],
+  },
+  {
+    version: '2.0.560',
+    date: '2026-09-20',
+    title: 'Schneedecke sichtbar auf Boden und Dach',
+    changes: [
+      'Boden wird weiß bei Schnee (Ground-Mood-Albedo folgte sonst immer Steingrau trotz voller Decke)',
+      'Dachflächen zusätzlich per Albedo-Tint verschneit',
+    ],
+  },
+  {
+    version: '2.0.559',
+    date: '2026-09-20',
+    title: 'Schnee: Kreise, Spawn, Decke',
+    changes: [
+      'Flocken rund und kleiner (~3 px) statt große Quadrate',
+      'Spawn immer über dem Dach; Decke auf Dach/Boden auch bei steileren Neigungen sichtbar',
+    ],
+  },
+  {
+    version: '2.0.558',
+    date: '2026-09-20',
+    title: 'Schnee trotz Animations-Pause',
+    changes: [
+      'Schneefall läuft auch wenn „Animationen pausieren“ an ist (Pause gilt nur für Fenster/Blaulicht/Tageszyklus)',
+    ],
+  },
+  {
+    version: '2.0.557',
+    date: '2026-09-20',
+    title: 'Schnee im Fassadenmodus',
+    changes: [
+      'Schneeflocken im Fassadenmodus vor der Kamera (nicht hinterm Haus)',
+      'Wechsel zu Fassade hebt Entwurf auf Vorschau — sonst kein Schnee (Umschalter dort ausgeblendet)',
+    ],
+  },
+  {
+    version: '2.0.556',
+    date: '2026-09-20',
+    title: 'Schnee auch in Vorschau sichtbar',
+    changes: [
+      'Schneefall läuft in Vorschau und Render (nicht nur Render) — Flocken sofort erkennbar',
+      'Flocken größer/kontrastreicher; beim Einschalten sofort leichte Decke auf Dach/Boden',
+      'Hinweis, wenn Entwurf oder 2D aktiv ist',
+    ],
+  },
+  {
+    version: '2.0.555',
+    date: '2026-09-20',
+    title: 'Wetter in Park-Szeneleiste',
+    changes: [
+      'Schneefall-Einstellungen unter Wetter in der rechten Park-Leiste (ohne Objektauswahl)',
+      'Temp, Intensität und Qualität wie in der Vanilla-Sektion',
+      'Touch: Bibliothek-Kacheln Wetter und Szene → Bottom-Sheet',
+    ],
+  },
+  {
+    version: '2.0.554',
+    date: '2026-09-20',
+    title: 'Szene-Sektion wieder sichtbar',
+    changes: [
+      'Rechte Leiste: Sektion „Szene“ (Pfützen, Nebel, Detail-Reduktion) wieder sichtbar',
+      'Intern: data-settings-section="scene" statt "colors" — Farben-Hide traf die Bühne nicht mehr',
+    ],
+  },
+  {
+    version: '2.0.553',
+    date: '2026-09-20',
+    title: 'Schneefall',
+    changes: [
+      'Szene → Wetter: Schneefall mit Temperatur, Intensität und Qualität',
+      'Schnee bleibt auf flachen Flächen (Dach, Gesimse, Bänke); senkrechte Fassade weitgehend frei',
+      'Decke wächst bei Frost, schmilzt bei Wärme',
+    ],
+  },
+  {
+    version: '2.0.552',
+    date: '2026-09-20',
+    title: 'Animationskurven in Park',
+    changes: [
+      'Fenster/Tür- und Rollladen-Kurveneditor wieder in der rechten Leiste (Park-Adopt)',
+      'Einzeln öffnen, Uhrzeiten und Datensatz-JSON wieder bedienbar',
+      'Play/Kopieren bleiben Park-Buttons; Domain weiter über Vanilla-IDs',
+    ],
+  },
   {
     version: '2.0.551',
     date: '2026-09-19',

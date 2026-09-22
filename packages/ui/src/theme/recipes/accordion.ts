@@ -52,13 +52,15 @@ export const accordion = defineSlotRecipe({
     itemContent: {
       overflow: 'hidden',
       borderRadius: 'var(--accordion-radius)',
+      // Kein expand-height: controlled Open beim Mount misst --height=0 → Inhalt klebt unsichtbar.
+      // Höhe steuert Zag/Collapsible; Park-CSS erzwingt open→auto / closed→0 (style.css).
       _open: {
-        animationName: 'expand-height, fade-in',
-        animationDuration: 'normal',
+        animationName: 'fade-in',
+        animationDuration: 'fast',
       },
       _closed: {
-        animationName: 'collapse-height, fade-out',
-        animationDuration: 'normal',
+        animationName: 'fade-out',
+        animationDuration: 'fast',
       },
     },
   },

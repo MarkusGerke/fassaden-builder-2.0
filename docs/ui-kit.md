@@ -78,7 +78,7 @@ Scrollbare Panels und Toolbars nutzen **32px Gap** zwischen Sektionen (nicht `pa
 
 - `#opening-measures-section`, `#opening-colors-section` → `.ui-stack`
 - `#sill-inner-accordion`, `#sill-outer-accordion` → `.ui-stack` + Inline-Zeilen (kein `toolbar-row-2`); Außenbank ohne sichtbare Profil-Picker-Zeile (Karten via `.sidebar-library-picker` ausgeblendet)
-- **v2.0.455:** Objekt-„anzeigen“-Checkboxen und Sidebar-`.color-swatches` / `data-settings-section="colors"` per CSS ausgeblendet — Präsenz und Farbe nur Bibliothek
+- **v2.0.455:** Objekt-„anzeigen“-Checkboxen und Sidebar-`.color-swatches` / Objekt-`data-settings-section="colors"` per CSS ausgeblendet — Präsenz und Farbe nur Bibliothek. **v2.0.554:** Hide nur noch auf `#selection-toolbar` / `#toolbar-*`; Bühnen-Sektion heißt `scene` (nicht mehr `colors`).
 - Studio `#toolbar-studio` Maße/Farben analog
 - IDs unverändert (Regel `keine-ui-loeschen`)
 
