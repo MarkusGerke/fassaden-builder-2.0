@@ -253,10 +253,6 @@ import {
 } from './ui/galleryMode'
 import { initArrivierenUi, type ArrivierenModeHost } from './ui/arrivierenMode'
 import {
-  initArrivierenUi,
-  type ArrivierenModeHost,
-} from './ui/arrivierenMode'
-import {
   EXPORT_JPG_QUALITY,
   buildExportFilename,
   composeExportGrid,

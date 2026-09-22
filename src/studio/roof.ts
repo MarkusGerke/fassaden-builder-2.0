@@ -29,7 +29,6 @@ import {
 import { layoutPanelTiles } from './panelLayout'
 import { MASONRY_KIND_PATTERNS, PANEL_KIND_PATTERNS } from './constants'
 import {
-  appendEaveBoxSkirtToArrays,
   buildRoofEnvelope,
   buildRoofEnvelopeGeometry,
   complementIntervals,
