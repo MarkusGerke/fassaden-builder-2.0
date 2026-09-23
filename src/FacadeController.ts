@@ -97,6 +97,10 @@ import { openingGlassConfig } from './utils/glassConfig'
 import { DEFAULT_STUDIO_PANEL } from './studio/constants'
 import { layoutPanelTiles } from './studio/panelLayout'
 import {
+  clipTilesToGableProfile,
+  gablePanelClipForWall,
+} from './studio/gableAsWall'
+import {
   createPanelAtlasStrips,
   createStudioPanelAtlasGeometry,
   disposePanelAtlasTexture,
@@ -173,7 +177,7 @@ import { ROOF_WALL_TOP_TRIM_CM } from './studio/roofForms'
 import { findAdjacentWall, isBaySurfaceWall, isStudioWall, leafOpenSignForWall, outerSillBoardPose, SILL_FACE_BIAS_CM, studioFacadeOutwardLocalZ, studioFacadeSelectionLocalZ, studioPanelFaceLocalZ, studioProfileAnchorLocalZ, studioWallTransform, studioWindowOriginZ, wallEndPoint, wallHasPanels, wallOmitsBaySideShadows, wallStartPoint, windowDepthForwardSign } from './studio/walls'
 import { createOuterSillBoardGeometry } from './studio/sillGeometry'
 import { bayWallSkirtDropCm } from './studio/bayWindow'
-import { buildMansardRoof, listRoofEdges, normalizeRoof } from './studio/roof'
+import { buildMansardRoof, listRoofEdges, normalizeRoof, roofEnvelopeForBuilding } from './studio/roof'
 import {
   buildDormerMeshes,
   buildSkylightMeshes,
@@ -2493,8 +2497,26 @@ export class FacadeController {
 
       if (built.gable) {
         // Giebel-/Füllwände über der Traufe (Sattel/Walm/Krüppelwalm/Pult): Wandfarbe, matt.
+        // Default-Giebelfarbe → erste Giebel-Host-Wandfarbe (sonst DEFAULT_WALL_COLOR).
+        let gableColor = built.gableColor
+        const roofGable = (roof.gableColor ?? DEFAULT_WALL_COLOR).replace(/\s/g, '').toLowerCase()
+        const defaultWall = DEFAULT_WALL_COLOR.replace(/\s/g, '').toLowerCase()
+        if (roofGable === defaultWall) {
+          const edges = listRoofEdges(building, roof)
+          const env = roofEnvelopeForBuilding(building, roof)
+          for (const edge of edges) {
+            if (!edge.wallId) continue
+            const isGableEdge = edge.flush || (env ? !env.isEave[edge.index] : false)
+            if (!isGableEdge) continue
+            const host = building.walls.find((item) => item.id === edge.wallId)
+            if (host?.wallColor) {
+              gableColor = host.wallColor
+              break
+            }
+          }
+        }
         const gableMat = new THREE.MeshStandardMaterial({
-          color: new THREE.Color(built.gableColor),
+          color: new THREE.Color(gableColor),
           roughness: 0.92,
           metalness: 0.0,
           side: THREE.DoubleSide,
@@ -2505,6 +2527,7 @@ export class FacadeController {
         gableMesh.receiveShadow = true
         gableMesh.userData.kind = 'roof'
         gableMesh.userData.roofPart = 'shell'
+        gableMesh.userData.gableFill = true
         gableMesh.userData.buildingId = building.id
         gableMesh.userData.originalMaterial = gableMat
         this.roofGroup.add(gableMesh)
@@ -5093,7 +5116,15 @@ export class FacadeController {
         ) {
           try {
             const claddingColor = wall.claddingColor ?? wall.wallColor ?? DEFAULT_WALL_COLOR
-            const tiles = layoutPanelTiles(geomWall, panel, neighborWalls)
+            // Giebel: Layout bis Dachschräge, dann Steine auf das Dreieck clippen.
+            const gableClip = building ? gablePanelClipForWall(building, geomWall) : null
+            const layoutWall = gableClip
+              ? { ...geomWall, height: Math.max(geomWall.height, gableClip.extendedHeight) }
+              : geomWall
+            let tiles = layoutPanelTiles(layoutWall, panel, neighborWalls)
+            if (gableClip) {
+              tiles = clipTilesToGableProfile(tiles, gableClip.maxLocalYAt, geomWall.height)
+            }
 
             const stages = tileColorStageCount(panel.tileColorVariety ?? 0)
             const palette = buildTileColorPalette(
@@ -5108,14 +5139,14 @@ export class FacadeController {
               if (this.isDraftPresentation()) {
                 // Lange Wände: mehrere Atlas-Streifen, damit Steine nicht zu „Brei“ verpixelt werden.
                 const strips = createPanelAtlasStrips(
-                  geomWall,
+                  layoutWall,
                   panel,
                   tiles,
                   claddingColor,
                   seedKey,
                 )
                 for (const strip of strips) {
-                  const geometry = createStudioPanelAtlasGeometry(geomWall, {
+                  const geometry = createStudioPanelAtlasGeometry(layoutWall, {
                     startCm: strip.startCm,
                     lengthCm: strip.lengthCm,
                   })
@@ -5145,7 +5176,7 @@ export class FacadeController {
               const geos =
                 this.isPreviewPresentation()
                   ? createStudioPanelFlatGeometriesByColorIndex(
-                      geomWall,
+                      layoutWall,
                       panel,
                       useMultiColor ? stages : 1,
                       seedKey,
@@ -5154,7 +5185,7 @@ export class FacadeController {
                     )
                   : useMultiColor
                     ? createStudioPanelGeometriesByColorIndex(
-                        geomWall,
+                        layoutWall,
                         panel,
                         stages,
                         seedKey,
@@ -5166,18 +5197,20 @@ export class FacadeController {
                         {
                           stageIndex: 0,
                           // Bei persistierten Zonen echtes Raster (sonst eine Platte ohne Modulwechsel).
+                          // Giebel-Extension: immer geklipptes Raster (Low-Platte wäre Rechteck).
                           geometry:
+                            gableClip ||
                             (geomWall.claddingZones && geomWall.claddingZones.length > 0) ||
                             (geomWall.courseOverrides && geomWall.courseOverrides.length > 0)
                               ? createStudioPanelGeometry(
-                                  geomWall,
+                                  layoutWall,
                                   panel,
                                   neighborWalls,
                                   tiles,
                                   panelGeomOpts,
                                 )
                               : createStudioPanelLowGeometry(
-                                  geomWall,
+                                  layoutWall,
                                   panel,
                                   neighborWalls,
                                   panelGeomOpts,
@@ -5212,8 +5245,8 @@ export class FacadeController {
 
               if (panel.joint > 0) {
                 const mortarGeometry = this.isPreviewPresentation()
-                  ? createStudioMortarFlatGeometry(geomWall, panel, neighborWalls, tiles)
-                  : createStudioMortarGeometry(geomWall, panel, neighborWalls, tiles)
+                  ? createStudioMortarFlatGeometry(layoutWall, panel, neighborWalls, tiles)
+                  : createStudioMortarGeometry(layoutWall, panel, neighborWalls, tiles)
                 if (mortarGeometry) {
                   const mortarColor = panel.jointColor ?? DEFAULT_JOINT_COLOR
                   const mortarMaterial = createTintedMaterial(
@@ -5258,6 +5291,7 @@ export class FacadeController {
                       wall.wallFinish,
                     )
                     applyWorkModeSurfaceLook(plinthMaterial)
+                    plinthMaterial.userData.facadeShadeNormalMode = true
                     const plinthMesh = new THREE.Mesh(plinthGeometry, plinthMaterial)
                     plinthMesh.castShadow = true
                     plinthMesh.receiveShadow = this.plinthShouldReceiveShadow()
@@ -5283,7 +5317,7 @@ export class FacadeController {
             } else if (!this.isPerfPresentation()) {
               const geos = useMultiColor
                 ? createStudioPanelGeometriesByColorIndex(
-                    geomWall,
+                    layoutWall,
                     panel,
                     stages,
                     seedKey,
@@ -5295,7 +5329,7 @@ export class FacadeController {
                     {
                       stageIndex: 0,
                       geometry: createStudioPanelGeometry(
-                        geomWall,
+                        layoutWall,
                         panel,
                         neighborWalls,
                         tiles,
@@ -5337,7 +5371,7 @@ export class FacadeController {
                   prev.geometry.dispose()
                   this.studioCladdingMeshes.splice(i, 1)
                 }
-                const mortarGeometry = createStudioMortarGeometry(geomWall, panel, neighborWalls, tiles)
+                const mortarGeometry = createStudioMortarGeometry(layoutWall, panel, neighborWalls, tiles)
                 if (mortarGeometry) {
                   const mortarColor = panel.jointColor ?? DEFAULT_JOINT_COLOR
                   const mortarMaterial = createTintedMaterial(
@@ -5419,6 +5453,7 @@ export class FacadeController {
                 plinthColor,
                 wall.wallFinish,
               )
+              plinthMaterial.userData.facadeShadeNormalMode = true
               const plinthMesh = new THREE.Mesh(plinthGeometry, plinthMaterial)
               plinthMesh.castShadow = true
               plinthMesh.receiveShadow = this.plinthShouldReceiveShadow()
@@ -5511,6 +5546,7 @@ export class FacadeController {
         material.side = THREE.DoubleSide
         material.shadowSide = THREE.FrontSide
         this.finishExteriorMaterial(material)
+        material.userData.facadeShadeNormalMode = true
         const mesh = new THREE.Mesh(geometry, material)
         mesh.castShadow = true
         mesh.receiveShadow = true
@@ -6040,6 +6076,8 @@ export class FacadeController {
         path.finish ?? wall?.profileFinish,
       )
       this.finishExteriorMaterial(material)
+      // Gegenlicht über Flächennormale — Oberseiten von Gesims/Sockel/Bank dimmen im Umbra.
+      material.userData.facadeShadeNormalMode = true
       const mesh = new THREE.Mesh(geometry, material)
       // Sonst flackern Profile/Bänke beim Orbit (falsche Bounding-Sphere vs. Wand-Transform).
       mesh.frustumCulled = false
@@ -6161,6 +6199,7 @@ export class FacadeController {
         )
         this.finishExteriorMaterial(material)
         applySillDepthOffset(material)
+        material.userData.facadeShadeNormalMode = true
         const mesh = new THREE.Mesh(geometry, material)
         mesh.frustumCulled = false
         const overlapsJoin = rawLayout.xLeft < insets.start || rawLayout.xRight > wall.width - insets.end
@@ -6275,6 +6314,7 @@ export class FacadeController {
         )
         this.finishExteriorMaterial(material)
         applySillDepthOffset(material)
+        material.userData.facadeShadeNormalMode = true
         const mesh = new THREE.Mesh(geometry, material)
         mesh.frustumCulled = false
         const overlapsJoin = rawLayout.xLeft < insets.start || rawLayout.xRight > wall.width - insets.end

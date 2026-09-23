@@ -2185,7 +2185,22 @@ function buildEnvelopeRoofForBuilding(
     roof,
   })
   if (!env) return false
-  const built = buildRoofEnvelopeGeometry(env, roof.crossGables ?? [], roof.pitch, extraHoles, eaveCuts)
+  // Paneele/Mauerwerk decken den Giebel — keine doppelte Füllwand auf der Wandlinie.
+  // Kastentraufe (Soffit/Stirn) bleibt; nur der vertikale Fill-Loop skippt.
+  const skipFillEdgeIndices = new Set<number>()
+  for (const edge of base.edges) {
+    if (!edge.wallId) continue
+    const wall = building.walls.find((item) => item.id === edge.wallId)
+    if (wall && wallHasPanels(wall)) skipFillEdgeIndices.add(edge.index)
+  }
+  const built = buildRoofEnvelopeGeometry(
+    env,
+    roof.crossGables ?? [],
+    roof.pitch,
+    extraHoles,
+    eaveCuts,
+    skipFillEdgeIndices,
+  )
   appendBufferGeometry(built.roof, sinks.positions, sinks.normals, sinks.uvs, sinks.indices)
   built.roof.dispose()
   if (built.gable) {

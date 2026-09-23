@@ -2,6 +2,14 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Giebel als Wand, Nacht, Schatten-Tops (2026-09-23) — v2.0.589
+
+**Giebel (2A):** Vertikale Dach-Füllwände (`roofPart: shell`, `gableFill`) verhalten sich wie die Host-Wand: LMB wählt die Wand, RMB öffnet das Wand-Kontextmenü (`resolveGableHostWallId` in `pickFromEvent`). Paneele/Mauerwerk werden bis unter die Dachhaut gelegt (`gablePanelClipForWall` + `clipTilesToGableProfile`); die Dach-Füllwand auf der Wandlinie entfällt, wenn die Kante Paneele hat (`skipFillEdgeIndices` in `buildRoofEnvelopeGeometry`). Kastentraufe/Soffit bleiben. Default-Giebelfarbe folgt der ersten Giebel-Host-Wand, wenn `roof.gableColor` der Wand-Default ist.
+
+**Nacht / Gegenlicht (1A/3A):** `dimMask = 1.0` (kein `sideOrTop×0,82`) → horizontale Tops (Bank/Gesims/Sockel/Treppe) dimmen voll; Cache `facade-backlit-v23`. `EXTERIOR_SHADE_NIGHT` dunkler; `envFill` Sternennacht **0,006**; `skyIntensity` Deep-Night-Cap **0,0035**. `facadeShadeNormalMode` an Sockel/Profil/Bank/Treppe.
+
+Dateien: `gableAsWall.ts`, `roofForms.ts`, `roof.ts`, `FacadeController.ts`, `main.ts`, `facadeShade.ts`, `lightingMood.ts`, `celestialSky.ts`. Docs: [roof.md](roof.md), [shadows.md](shadows.md), [lighting-mood.md](lighting-mood.md).
+
 ### Außenbänke an der Fassade (2026-09-22) — v2.0.584
 
 **Symptom:** Nach dem Streifen-Fix fehlten Außenbänke an Seitenfenstern; nach dem ersten Restore schwebten sie und wirkten falsch platziert/breit.

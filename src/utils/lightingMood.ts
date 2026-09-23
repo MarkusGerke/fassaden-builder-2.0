@@ -67,7 +67,7 @@ export function resolveLightingMood(
     0.005,
     (settings.ambient / contrast) * celestial.skyAmbientFactor,
   )
-  if (isDeepNight) skyIntensity = Math.min(skyIntensity, 0.014)
+  if (isDeepNight) skyIntensity = Math.min(skyIntensity, 0.0035)
   else if (celestial.activeLight === 'moon') {
     const moonCap = civilTwilight ? 0.1 : 0.042
     skyIntensity = Math.min(skyIntensity, moonCap)

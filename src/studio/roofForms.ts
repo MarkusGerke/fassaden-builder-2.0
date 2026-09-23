@@ -981,6 +981,8 @@ export function buildRoofEnvelopeGeometry(
   pitchDeg = 45,
   extraHoles: XZ[][] = [],
   eaveCuts: RoofEaveCut[] = [],
+  /** Vertikale Füllwand auf der Wandlinie weglassen (Paneele decken den Giebel). */
+  skipFillEdgeIndices?: ReadonlySet<number>,
 ): RoofEnvelopeGeometry {
   const roofSink: Sink = { positions: [], normals: [], uvs: [], indices: [] }
   const gableSink: Sink = { positions: [], normals: [], uvs: [], indices: [] }
@@ -1114,6 +1116,7 @@ export function buildRoofEnvelopeGeometry(
   // Füllwände auf der Wandlinie. Giebel: ab Geschosskante (kein Trim-Spalt); Traufe: unter die gekürzte Wand.
   const n = env.outer.length
   for (let i = 0; i < n; i += 1) {
+    if (skipFillEdgeIndices?.has(i)) continue
     const a = env.outer[i]
     const b = env.outer[(i + 1) % n]
     if (Math.hypot(b.x - a.x, b.z - a.z) < 0.5) continue

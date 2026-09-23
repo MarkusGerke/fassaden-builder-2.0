@@ -649,6 +649,7 @@ import {
   effectiveEdgeOverhangCm,
   type RoofConfig,
 } from './studio/roof'
+import { resolveGableHostWallId } from './studio/gableAsWall'
 import {
   ROOF_DORMER_KINDS,
   ROOF_DORMER_LABELS,
@@ -27291,6 +27292,9 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
   // bleibt: keine Auswahl durch eine näher liegende Wand hindurch.
   let bestRoof: { distance: number; roof: NonNullable<ReturnType<typeof resolveRoofHit>>['roof'] } | null =
     null
+  let bestGableWall: { distance: number; wallId: string } | null = null
+  const gableNormal = new THREE.Vector3()
+  const gableNormalMatrix = new THREE.Matrix3()
   for (const hit of hits) {
     const resolved = resolveRoofHit(hit.object)
     if (!resolved) continue
@@ -27306,6 +27310,25 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
       if (front && hit.distance > front.t + behindSlack) continue
       if (!roofBeatsFacadeMesh(hit.distance, nearestFacadeMeshDist)) continue
     }
+    // Vertikale Giebelfüllung → Host-Wand (LMB/RMB wie Studio-Wand).
+    if (resolved.roof.part === 'shell' && hit.point && hit.face) {
+      const building = state.buildings.find((item) => item.id === resolved.roof.buildingId)
+      if (building) {
+        gableNormal.copy(hit.face.normal)
+        gableNormalMatrix.getNormalMatrix(hit.object.matrixWorld)
+        gableNormal.applyMatrix3(gableNormalMatrix).normalize()
+        const wallId = resolveGableHostWallId(building, hit.point, gableNormal)
+        if (wallId) {
+          const wall = getWall(state, wallId)
+          if (wall && isWallVisibleInState(state, wall)) {
+            if (!bestGableWall || hit.distance < bestGableWall.distance) {
+              bestGableWall = { distance: hit.distance, wallId }
+            }
+            continue
+          }
+        }
+      }
+    }
     // Fixture bevorzugt vor bloßer Dachhaut bei gleichem Abstand.
     const better =
       !bestRoof ||
@@ -27314,6 +27337,9 @@ function pickFromEvent(event: { clientX: number; clientY: number }): {
     if (better) {
       bestRoof = { distance: hit.distance, roof: resolved.roof }
     }
+  }
+  if (bestGableWall && (!bestRoof || bestGableWall.distance <= bestRoof.distance + 0.5)) {
+    return { wallId: bestGableWall.wallId, wallPart: 'cladding' }
   }
   if (bestRoof) return { roof: bestRoof.roof }
 

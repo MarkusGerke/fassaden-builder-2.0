@@ -47,7 +47,8 @@ describe('facadeShade', () => {
     expect(shader.fragmentShader).toContain('vFacadeView')
     expect(shader.fragmentShader).toContain('#include <lights_fragment_begin>')
     expect(shader.fragmentShader).toContain('dimMask')
-    expect(shader.fragmentShader).toContain('sideOrTop * 0.82')
+    expect(shader.fragmentShader).toContain('// v2.0.589')
+    expect(shader.fragmentShader).not.toContain('sideOrTop * 0.82')
     expect(shader.fragmentShader).toContain('horizExtra')
     expect(shader.fragmentShader).not.toContain('edgeShade')
     expect(shader.vertexShader).not.toContain('vDirectionalShadowCoord[ 0 ].z -=')
@@ -109,7 +110,7 @@ describe('facadeShade', () => {
     expect(shader.uniforms.uWallLock.value).toBe(1)
     expect(shader.fragmentShader).toContain('uNormalBacklit * (1.0 - uWallLock)')
     expect(shader.fragmentShader).toContain('max(uNormalBacklit, uWallLock)')
-    expect(shader.fragmentShader).toContain('sideOrTop * 0.82 * (1.0 - uWallLock)')
+    expect(shader.fragmentShader).not.toContain('sideOrTop * 0.82 * (1.0 - uWallLock)')
     expect(shader.fragmentShader).toContain('faceSun - sunOnFront')
     expect(shader.fragmentShader).toContain('mix(0.22, 0.85, uWallLock)')
   })
@@ -153,7 +154,7 @@ describe('facadeShade', () => {
     expect(shader.fragmentShader).toContain('uLabelHemiDim')
     expect(shader.fragmentShader).toContain('dimMask')
     expect(shader.fragmentShader).toContain('horizExtra')
-    expect(shader.fragmentShader).toContain('sideOrTop * 0.82')
+    expect(shader.fragmentShader).not.toContain('sideOrTop * 0.82')
     expect(shader.vertexShader).toContain(
       `vDirectionalShadowCoord[ 0 ].z -= ${LABEL_SHADOW_COORD_Z_BIAS.toFixed(4)}`,
     )

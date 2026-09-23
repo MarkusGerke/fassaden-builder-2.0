@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.584'
+export const APP_VERSION = '2.0.589'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,17 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.589',
+    date: '2026-09-23',
+    title: 'Giebel als Wand, dunklere Nacht, Schatten-Tops',
+    changes: [
+      'Giebelfläche wählt die Host-Wand (Links-/Rechtsklick wie Studio-Wand)',
+      'Paneele/Mauerwerk laufen in den Giebeldreieck; Dach-Füllwand entfällt dort',
+      'Nacht: Fassade und Himmel dunkler (EnvFill, Sky, Exterior-Shade)',
+      'Horizontale Flächen (Bank, Gesims, Sockel, Treppe) dimmen voll mit dem Gegenlicht',
+    ],
+  },
   {
     version: '2.0.584',
     date: '2026-09-22',

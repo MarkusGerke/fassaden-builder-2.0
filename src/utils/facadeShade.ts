@@ -92,15 +92,15 @@ const INTERIOR_SHADE_NIGHT: Pick<
   interiorIndirectGain: 0.45,
 }
 
-/** Unter Horizont: kein volles Hemi auf der Fassade (v2.0.352 FULL wirkte wie Tag bei falscher Höhe). */
+/** Unter Horizont: Fassade fast schwarz ohne Mond/Lampen (v2.0.589). */
 const EXTERIOR_SHADE_NIGHT: Pick<
   FacadeShadeParams,
   'directDim' | 'hemiDim' | 'labelDirectDim' | 'labelHemiDim'
 > = {
-  directDim: 0.28,
-  hemiDim: 0.2,
-  labelDirectDim: 0.14,
-  labelHemiDim: 0.16,
+  directDim: 0.05,
+  hemiDim: 0.035,
+  labelDirectDim: 0.04,
+  labelHemiDim: 0.045,
 }
 
 /** Leitet Abdunklungsstärke aus Sonnen-Slidern ab (Wände + stärkere Schrift-Werte). */
@@ -248,9 +248,9 @@ const FACADE_SHADE_DIRECT_PATCH = `
             sunOnFront = dot(facadeRef, directionalLights[0].direction);
           #endif
           float backlit = 1.0 - smoothstep(-0.28, -0.04, sunOnFront);
-          // Front (sideOrTop≈0): volles Gegenlicht-Dim. Flache horizontale Facetten: stärker dimmen
-          // (v2.0.370/371). v2.0.428: kein Kanten-wallUnlit mehr.
-          float dimMask = max(mix(1.0 - sideOrTop * 0.82 * (1.0 - uWallLock), 1.0, uLabelShade), max(uNormalBacklit, uWallLock));
+          // v2.0.589: horizontale Flächen (Bank, Gesims, Sockel, Treppe, Laibung) voll mitdimmen —
+          // zuvor sideOrTop×0,82 → Tops blieben im Umbra hell.
+          float dimMask = max(mix(1.0, 1.0, uLabelShade), max(uNormalBacklit, uWallLock));
           facadeDim = clamp(backlit * dimMask, 0.0, 1.0);
           #if ( NUM_DIR_LIGHTS > 0 )
             // Schenkel-Sohlbank: Flächen die mehr Sonne sehen als die Wand (oben)
@@ -319,7 +319,7 @@ export function applyFacadeShadeShader(
   material.userData.facadeShadeApplied = true
   const prevKey = material.customProgramCacheKey?.bind(material)
   material.customProgramCacheKey = () =>
-    `${prevKey ? prevKey() : ''}|facade-backlit-v22${isLabel ? '|label' : ''}`
+    `${prevKey ? prevKey() : ''}|facade-backlit-v23${isLabel ? '|label' : ''}`
   const prevCompile = material.onBeforeCompile
   material.onBeforeCompile = (shader, renderer) => {
     prevCompile?.(shader, renderer)

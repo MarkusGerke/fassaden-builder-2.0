@@ -229,9 +229,9 @@ export function resolveCelestialState(settings: SunSettings): CelestialState {
   }
 }
 
-/** EnvMap-Stärke für Paneel/Glas: Tag voll, Mond gedämpft, Sternennacht fast aus. */
+/** EnvMap-Stärke für Paneel/Glas: Tag voll, Mond gedämpft, Sternennacht nahezu aus. */
 export function exteriorEnvFillFromCelestial(celestial: CelestialState): number {
-  if (celestial.activeLight === 'night') return 0.05
+  if (celestial.activeLight === 'night') return 0.006
   const postSunsetDim = exteriorKeyDimAfterSunset(celestial.sun.elevationRad)
   const dayEnv = THREE.MathUtils.lerp(1, 0.42, celestial.twilightFactor) * postSunsetDim
   if (celestial.activeLight === 'sun') return dayEnv
