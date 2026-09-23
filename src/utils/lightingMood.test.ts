@@ -150,7 +150,7 @@ describe('lightingMood', () => {
       palette,
       '#888',
     )
-    expect(mood.skyIntensity).toBeLessThan(0.02)
+    expect(mood.skyIntensity).toBeLessThanOrEqual(0.0035)
     expect(mood.keyCastShadow).toBe(false)
     expect(mood.hemiSkyColor.r + mood.hemiSkyColor.g + mood.hemiSkyColor.b).toBeLessThan(0.2)
   })

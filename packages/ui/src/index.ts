@@ -54,4 +54,7 @@ export {
   type ChromeExtrasAppProps,
   type LiveShellAppProps,
   type FormMirrorProps,
+  type FacadeTourHost,
+  type FacadeTourAppProps,
+  FacadeTourApp,
 } from './bridge'

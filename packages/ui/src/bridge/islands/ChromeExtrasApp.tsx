@@ -1,8 +1,7 @@
 import { createSignal, onCleanup, onMount } from 'solid-js'
-import { Stack } from 'styled-system/jsx'
-import { SegmentGroup, Slider, Field } from '@/components/ui'
+import { Box, Stack } from 'styled-system/jsx'
+import { Field, SegmentGroup, Slider } from '@/components/ui'
 import { FieldRow } from '@/composites/FieldRow'
-import { Box } from 'styled-system/jsx'
 import {
   clickId,
   isButtonActive,
@@ -17,7 +16,6 @@ export type ChromeExtrasAppProps = {
 
 /**
  * Scope-Bar und Strichstärke — Park.
- * Einklappen und Nav-Hilfe liegen nicht in dieser Leiste.
  */
 export function ChromeExtrasApp(props: ChromeExtrasAppProps) {
   const [tick, setTick] = createSignal(0)

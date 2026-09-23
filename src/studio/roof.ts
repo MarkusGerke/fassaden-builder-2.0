@@ -39,6 +39,7 @@ import {
   isRoofKind,
   orientRingCcw,
   ROOF_SLAB_THICKNESS_CM,
+  ROOF_WALL_TOP_TRIM_CM,
   roofEdgeKey,
   roofSlabVerticalCm,
   roofEnvelopeHeightAt,
@@ -578,6 +579,22 @@ export function listRoofEdges(building: Building, roof: RoofConfig): RoofEdgeInf
   const outer = roofOuterRing(building)
   if (!outer) return []
   return listRoofEdgesForRing(building, roof, outer)
+}
+
+/**
+ * Oberkanten-Kürzung für Traufwände unter Dach (cm).
+ * Bündige Giebel: 0 (volle Geschosshöhe). Traufe: `ROOF_WALL_TOP_TRIM_CM`.
+ * Wandkörper und Cladding müssen denselben Wert nutzen — sonst stechen Paneelkanten durchs Dach.
+ */
+export function roofWallTopTrimCm(building: Building, wall: Wall): number {
+  const floors = building.floors
+  if (!building.roof?.enabled || !floors || floors.length === 0) return 0
+  if (Math.abs(wall.y + wall.height - storeyTopY(building, floors.length - 1)) >= 1.5) return 0
+  const edges = listRoofEdges(building, normalizeRoof(building.roof))
+  const wallEdges = edges.filter((e) => e.wallId === wall.id)
+  if (wallEdges.length === 0) return 0
+  const gableFlush = wallEdges.every((e) => e.flush)
+  return gableFlush ? 0 : ROOF_WALL_TOP_TRIM_CM
 }
 
 function listRoofEdgesForRing(building: Building, roof: RoofConfig, outer: XZ[]): RoofEdgeInfo[] {

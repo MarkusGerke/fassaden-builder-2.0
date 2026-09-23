@@ -12,6 +12,8 @@ export type LeftChromeAppProps = {
   /** Vanilla `#layer-list` — Sync-Quelle für TreeView (bleibt `.vanilla-legacy-park`). */
   layerListId?: string
   creditsButtonId?: string
+  layersVisible?: () => boolean
+  subscribeLayers?: (listener: () => void) => () => void
 }
 
 /**
@@ -31,7 +33,11 @@ export function LeftChromeApp(props: LeftChromeAppProps) {
           <Box fontSize="xl" fontWeight="bold" letterSpacing="tight" minW="0">
             Fassaden-Builder 2.0
           </Box>
-          <FileMenuIsland onAction={props.onFileAction} />
+          <FileMenuIsland
+            onAction={props.onFileAction}
+            layersVisible={props.layersVisible}
+            subscribeLayers={props.subscribeLayers}
+          />
         </HStack>
         <HStack gap="2" alignItems="center" flexWrap="wrap">
           <div ref={attachRelease} class="park-release-slot" />

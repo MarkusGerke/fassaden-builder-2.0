@@ -6,7 +6,7 @@
 export const GITHUB_REPO = 'https://github.com/MarkusGerke/fassaden-builder-2.0'
 
 /** Aktuelle SemVer-Version (wird unter dem Titel angezeigt). */
-export const APP_VERSION = '2.0.589'
+export const APP_VERSION = '2.0.593'
 
 export interface ReleaseNote {
   version: string
@@ -19,6 +19,40 @@ export interface ReleaseNote {
 
 /** Neueste Version zuerst. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.593',
+    date: '2026-09-23',
+    title: 'Dachuntersicht dunkler im Schatten',
+    changes: [
+      'Kastentraufen-Untersicht und Dachplatten-Unterseite dimmen im Schatten mit (nicht mehr hell neben der Wand)',
+    ],
+  },
+  {
+    version: '2.0.592',
+    date: '2026-09-23',
+    title: 'Wandkanten nicht mehr durchs Dach',
+    changes: [
+      'Giebel-Mauerwerk endet unter der Dach-Unterseite (keine Kantenlinien durch die Schräge)',
+      'Traufwand-Paneele wie der Wandkörper gekürzt',
+    ],
+  },
+  {
+    version: '2.0.591',
+    date: '2026-09-23',
+    title: 'Giebel-Mörtel unter Dachschräge',
+    changes: [
+      'Mörtelplatte am Giebel folgt der Dachschräge (kein weißes Rechteck über dem First)',
+    ],
+  },
+  {
+    version: '2.0.590',
+    date: '2026-09-23',
+    title: 'Giebel-Paneele ausgerichtet, Tops dunkler',
+    changes: [
+      'Giebel-Mauerwerk sitzt wieder bündig unter der Dachschräge (kein Versatz nach unten)',
+      'Gesims-/Sockel-Oberseiten dimmen im Umbra mit der Wand (nicht mehr sonnenhell)',
+    ],
+  },
   {
     version: '2.0.589',
     date: '2026-09-23',

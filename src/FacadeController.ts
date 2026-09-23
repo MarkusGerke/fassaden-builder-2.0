@@ -173,11 +173,10 @@ import {
 import { planFacesWithHoles } from './studio/floorPlan'
 import { notchSlabRingAtOpenings } from './studio/slabNotches'
 import { floorIndex, storeyFloorSurfaceY, storeyTopY } from './utils/layers'
-import { ROOF_WALL_TOP_TRIM_CM } from './studio/roofForms'
 import { findAdjacentWall, isBaySurfaceWall, isStudioWall, leafOpenSignForWall, outerSillBoardPose, SILL_FACE_BIAS_CM, studioFacadeOutwardLocalZ, studioFacadeSelectionLocalZ, studioPanelFaceLocalZ, studioProfileAnchorLocalZ, studioWallTransform, studioWindowOriginZ, wallEndPoint, wallHasPanels, wallOmitsBaySideShadows, wallStartPoint, windowDepthForwardSign } from './studio/walls'
 import { createOuterSillBoardGeometry } from './studio/sillGeometry'
 import { bayWallSkirtDropCm } from './studio/bayWindow'
-import { buildMansardRoof, listRoofEdges, normalizeRoof, roofEnvelopeForBuilding } from './studio/roof'
+import { buildMansardRoof, listRoofEdges, normalizeRoof, roofEnvelopeForBuilding, roofWallTopTrimCm } from './studio/roof'
 import {
   buildDormerMeshes,
   buildSkylightMeshes,
@@ -510,22 +509,7 @@ export class FacadeController {
 
   private createStudioWallBodyGeometry(wall: Wall, neighborWalls: Wall[]): THREE.BufferGeometry {
     const building = findBuildingForWall(this.state, wall.id)
-    const floors = building?.floors
-    const underRoof = Boolean(
-      building?.roof?.enabled &&
-        floors &&
-        floors.length > 0 &&
-        Math.abs(wall.y + wall.height - storeyTopY(building, floors.length - 1)) < 1.5,
-    )
-    // Giebel (bündig): Wand volle Geschosshöhe — sonst sitzt das Dreieck über einer 6-cm-Stufe.
-    let topTrimCm = 0
-    let gableFlush = false
-    if (underRoof && building) {
-      const edges = listRoofEdges(building, normalizeRoof(building.roof))
-      const wallEdges = edges.filter((e) => e.wallId === wall.id)
-      gableFlush = wallEdges.length > 0 && wallEdges.every((e) => e.flush)
-      topTrimCm = gableFlush ? 0 : ROOF_WALL_TOP_TRIM_CM
-    }
+    const topTrimCm = building ? roofWallTopTrimCm(building, wall) : 0
     return createStudioWallGeometry(wall, neighborWalls, {
       treatAsBareWall: this.wallTreatAsBare(wall),
       // Sockel-Decor aus: kein barePlinth (sonst Wandband statt Paneele in der Sockelzone).
@@ -2486,6 +2470,11 @@ export class FacadeController {
         side: roof.kind === 'mansard' ? THREE.DoubleSide : THREE.FrontSide,
         shadowSide: THREE.FrontSide,
       })
+      // Unterseite der Dachplatte: Gegenlicht-Shade (v2.0.593).
+      if (!this.isPerfPresentation()) {
+        tileMat.userData.facadeShadeNormalMode = true
+        this.finishExteriorMaterial(tileMat)
+      }
       const roofMesh = new THREE.Mesh(built.roof, tileMat)
       roofMesh.castShadow = true
       roofMesh.receiveShadow = true
@@ -2521,7 +2510,11 @@ export class FacadeController {
           metalness: 0.0,
           side: THREE.DoubleSide,
         })
-        if (!this.isPerfPresentation()) this.finishExteriorMaterial(gableMat)
+        // Shell = Giebelfüllung + Kastentraufen-Untersicht/Stirn (v2.0.593 Shade).
+        if (!this.isPerfPresentation()) {
+          gableMat.userData.facadeShadeNormalMode = true
+          this.finishExteriorMaterial(gableMat)
+        }
         const gableMesh = new THREE.Mesh(built.gable, gableMat)
         gableMesh.castShadow = true
         gableMesh.receiveShadow = true
@@ -3669,6 +3662,20 @@ export class FacadeController {
     for (const mesh of this.windowInstances) shadeMesh(mesh)
     for (const mesh of this.windowLodLowInstances) shadeMesh(mesh)
     for (const mesh of this.casingInstances) shadeMesh(mesh)
+    // Dachhaut + Shell (Untersicht/Stirn/Giebelfüllung): ohne wallId sonst kein Shade.
+    for (const child of this.roofGroup.children) {
+      if (!(child instanceof THREE.Mesh)) continue
+      if (child.userData.kind !== 'roof') continue
+      const part = child.userData.roofPart as string | undefined
+      if (part !== 'shell' && part !== 'tiles') continue
+      const buildingId = child.userData.buildingId as string | undefined
+      const building = buildingId
+        ? this.state.buildings.find((b) => b.id === buildingId)
+        : undefined
+      const refWall = building?.walls.find((w) => isStudioWall(w))
+      if (!refWall) continue
+      shadeMesh(child, refWall.id)
+    }
   }
 
   updatePerformanceLod(camera: THREE.Camera, viewportHeight: number) {
@@ -5116,11 +5123,20 @@ export class FacadeController {
         ) {
           try {
             const claddingColor = wall.claddingColor ?? wall.wallColor ?? DEFAULT_WALL_COLOR
-            // Giebel: Layout bis Dachschräge, dann Steine auf das Dreieck clippen.
+            // Giebel: Layout bis Dach-Unterseite, dann Steine auf das Dreieck clippen.
+            // Traufe: Cladding wie Wandkörper kürzen — sonst stechen Paneelkanten durchs Dach.
+            // localY zentriert auf layoutWall.height — Mesh-Transform muss dieselbe Höhe nutzen
+            // (v2.0.590 Y-Versatz; gilt auch für Trauf-Trim).
             const gableClip = building ? gablePanelClipForWall(building, geomWall) : null
+            const eaveTrimCm =
+              !gableClip && building ? roofWallTopTrimCm(building, geomWall) : 0
             const layoutWall = gableClip
               ? { ...geomWall, height: Math.max(geomWall.height, gableClip.extendedHeight) }
-              : geomWall
+              : eaveTrimCm > 0
+                ? { ...geomWall, height: Math.max(1, geomWall.height - eaveTrimCm) }
+                : geomWall
+            const claddingPlacement =
+              layoutWall.height !== geomWall.height ? wallPlacement(layoutWall) : transform
             let tiles = layoutPanelTiles(layoutWall, panel, neighborWalls)
             if (gableClip) {
               tiles = clipTilesToGableProfile(tiles, gableClip.maxLocalYAt, geomWall.height)
@@ -5166,8 +5182,12 @@ export class FacadeController {
                   mesh.userData.wallId = wall.id
                   tagPickable(mesh, { kind: 'wall', wallId: wall.id, wallPart: 'cladding' })
                   mesh.userData.originalMaterial = material
-                  mesh.position.set(transform.position.x, transform.position.y, transform.position.z)
-                  mesh.rotation.y = transform.rotationY
+                  mesh.position.set(
+                    claddingPlacement.position.x,
+                    claddingPlacement.position.y,
+                    claddingPlacement.position.z,
+                  )
+                  mesh.rotation.y = claddingPlacement.rotationY
                   mesh.visible = false
                   this.claddingGroup.add(mesh)
                   targetList.push(mesh)
@@ -5236,8 +5256,12 @@ export class FacadeController {
                 tagPickable(mesh, { kind: 'wall', wallId: wall.id, wallPart: 'cladding' })
                 mesh.receiveShadow = this.claddingMeshShouldReceiveShadow(mesh)
                 mesh.userData.originalMaterial = material
-                mesh.position.set(transform.position.x, transform.position.y, transform.position.z)
-                mesh.rotation.y = transform.rotationY
+                mesh.position.set(
+                  claddingPlacement.position.x,
+                  claddingPlacement.position.y,
+                  claddingPlacement.position.z,
+                )
+                mesh.rotation.y = claddingPlacement.rotationY
                 mesh.visible = false
                 this.claddingGroup.add(mesh)
                 targetList.push(mesh)
@@ -5245,8 +5269,20 @@ export class FacadeController {
 
               if (panel.joint > 0) {
                 const mortarGeometry = this.isPreviewPresentation()
-                  ? createStudioMortarFlatGeometry(layoutWall, panel, neighborWalls, tiles)
-                  : createStudioMortarGeometry(layoutWall, panel, neighborWalls, tiles)
+                  ? createStudioMortarFlatGeometry(
+                      layoutWall,
+                      panel,
+                      neighborWalls,
+                      tiles,
+                      gableClip?.maxLocalYAt,
+                    )
+                  : createStudioMortarGeometry(
+                      layoutWall,
+                      panel,
+                      neighborWalls,
+                      tiles,
+                      gableClip?.maxLocalYAt,
+                    )
                 if (mortarGeometry) {
                   const mortarColor = panel.jointColor ?? DEFAULT_JOINT_COLOR
                   const mortarMaterial = createTintedMaterial(
@@ -5267,8 +5303,12 @@ export class FacadeController {
                   tagPickable(mortarMesh, { kind: 'wall', wallId: wall.id, wallPart: 'cladding' })
                   mortarMesh.receiveShadow = this.claddingMeshShouldReceiveShadow(mortarMesh)
                   mortarMesh.userData.originalMaterial = mortarMaterial
-                  mortarMesh.position.set(transform.position.x, transform.position.y, transform.position.z)
-                  mortarMesh.rotation.y = transform.rotationY
+                  mortarMesh.position.set(
+                    claddingPlacement.position.x,
+                    claddingPlacement.position.y,
+                    claddingPlacement.position.z,
+                  )
+                  mortarMesh.rotation.y = claddingPlacement.rotationY
                   mortarMesh.visible = false
                   this.claddingGroup.add(mortarMesh)
                   this.studioCladdingMeshes.push(mortarMesh)
@@ -5355,8 +5395,12 @@ export class FacadeController {
                 tagPickable(mesh, { kind: 'wall', wallId: wall.id, wallPart: 'cladding' })
                 mesh.receiveShadow = this.claddingMeshShouldReceiveShadow(mesh)
                 mesh.userData.originalMaterial = material
-                mesh.position.set(transform.position.x, transform.position.y, transform.position.z)
-                mesh.rotation.y = transform.rotationY
+                mesh.position.set(
+                  claddingPlacement.position.x,
+                  claddingPlacement.position.y,
+                  claddingPlacement.position.z,
+                )
+                mesh.rotation.y = claddingPlacement.rotationY
                 mesh.visible = false
                 this.claddingGroup.add(mesh)
                 targetList.push(mesh)
@@ -5371,7 +5415,13 @@ export class FacadeController {
                   prev.geometry.dispose()
                   this.studioCladdingMeshes.splice(i, 1)
                 }
-                const mortarGeometry = createStudioMortarGeometry(layoutWall, panel, neighborWalls, tiles)
+                const mortarGeometry = createStudioMortarGeometry(
+                  layoutWall,
+                  panel,
+                  neighborWalls,
+                  tiles,
+                  gableClip?.maxLocalYAt,
+                )
                 if (mortarGeometry) {
                   const mortarColor = panel.jointColor ?? DEFAULT_JOINT_COLOR
                   const mortarMaterial = createTintedMaterial(
@@ -5391,8 +5441,12 @@ export class FacadeController {
                   tagPickable(mortarMesh, { kind: 'wall', wallId: wall.id, wallPart: 'cladding' })
                   mortarMesh.receiveShadow = this.claddingMeshShouldReceiveShadow(mortarMesh)
                   mortarMesh.userData.originalMaterial = mortarMaterial
-                  mortarMesh.position.set(transform.position.x, transform.position.y, transform.position.z)
-                  mortarMesh.rotation.y = transform.rotationY
+                  mortarMesh.position.set(
+                    claddingPlacement.position.x,
+                    claddingPlacement.position.y,
+                    claddingPlacement.position.z,
+                  )
+                  mortarMesh.rotation.y = claddingPlacement.rotationY
                   mortarMesh.visible = false
                   this.claddingGroup.add(mortarMesh)
                   this.studioCladdingMeshes.push(mortarMesh)

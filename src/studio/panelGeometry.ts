@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import type { Opening, StudioPanelConfig, Wall } from '../types/facade'
+import { clipRectBandToGableProfile } from './gableAsWall'
 import {
   ARCH_CURVE_SEGMENTS,
   ARCH_MESH_SEGMENTS,
@@ -3500,6 +3501,8 @@ export function createStudioMortarGeometry(
   panel: StudioPanelConfig,
   allWalls: Wall[] = [],
   precomputedTiles?: PanelTile[],
+  /** Giebel: Oberkante der Mörtelplatte der Dachschräge folgen (v2.0.591). */
+  maxLocalYAt?: (localX: number) => number,
 ): THREE.BufferGeometry | null {
   const joint = panel.joint ?? 0
   const rawJointDepth = panel.jointDepth ?? 0
@@ -3526,7 +3529,7 @@ export function createStudioMortarGeometry(
   const mortarX0 = tiles.length > 0 ? Math.min(...tiles.map((t) => t.x)) : band.x
   const mortarX1 = tiles.length > 0 ? Math.max(...tiles.map((t) => t.x + t.width)) : band.x + band.width
   const mortarBand = { ...band, x: mortarX0, width: Math.max(CLIP_EPS, mortarX1 - mortarX0) }
-  const fullRects = flushClipPartsToOpeningJambs(
+  let fullRects = flushClipPartsToOpeningJambs(
     mergeNarrowClipParts(
       clipPolysMinusArches(
         clipTileAgainstHoles(mortarBand, holes),
@@ -3540,6 +3543,10 @@ export function createStudioMortarGeometry(
     wall.openings,
     PANEL_OPENING_CLEARANCE,
   )
+  // Ohne Clip bleibt die volle Extended-Band-Platte hinter dem gekürzten Raster sichtbar.
+  if (maxLocalYAt) {
+    fullRects = clipRectBandToGableProfile(fullRects, maxLocalYAt)
+  }
 
   const xAt = (wx: number, z: number) =>
     wallLocalX(wall, wx, z, projectDepth, backZ, miter.start, miter.end)
@@ -4833,6 +4840,7 @@ function buildStudioPanelFlatJointGeometry(
   panel: StudioPanelConfig,
   allWalls: Wall[],
   tiles: PanelTile[],
+  maxLocalYAt?: (localX: number) => number,
 ): THREE.BufferGeometry | null {
   const joint = Math.max(0, panel.joint ?? 0)
   if (joint <= 1e-6) return null
@@ -4849,6 +4857,10 @@ function buildStudioPanelFlatJointGeometry(
   )
   parts = mergeNarrowClipParts(parts, minClipRemnantWidth(panel.panelWidth))
   parts = flushClipPartsToOpeningJambs(parts, wall.openings, PANEL_OPENING_CLEARANCE)
+  // Extended-Band minus gekürzte Steine = weiße Fläche über dem First — Band clippen.
+  if (maxLocalYAt) {
+    parts = clipRectBandToGableProfile(parts, maxLocalYAt)
+  }
   for (const tile of tiles) {
     const inset = {
       x: tile.x + halfJ,
@@ -4929,7 +4941,8 @@ export function createStudioMortarFlatGeometry(
   panel: StudioPanelConfig,
   allWalls: Wall[] = [],
   precomputedTiles?: PanelTile[],
+  maxLocalYAt?: (localX: number) => number,
 ): THREE.BufferGeometry | null {
   const tiles = precomputedTiles ?? layoutPanelTiles(wall, panel, allWalls)
-  return buildStudioPanelFlatJointGeometry(wall, panel, allWalls, tiles)
+  return buildStudioPanelFlatJointGeometry(wall, panel, allWalls, tiles, maxLocalYAt)
 }

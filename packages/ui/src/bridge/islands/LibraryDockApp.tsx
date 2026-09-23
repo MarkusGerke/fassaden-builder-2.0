@@ -321,7 +321,13 @@ export function LibraryDockApp(props: LibraryDockAppProps) {
           onValueChange={(d) => {
             if (!d.value) return
             const tab = tabs().find((t) => t.value === d.value)
-            if (tab?.id) document.getElementById(tab.id)?.click()
+            if (!tab?.id) return
+            const btn = document.getElementById(tab.id)
+            if (btn instanceof HTMLButtonElement) {
+              // Verstecktes Vanilla-Tab: click() reicht; zusätzlich explizit auslösen.
+              btn.hidden = false
+              btn.click()
+            }
             bump()
           }}
         >

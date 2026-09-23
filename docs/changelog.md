@@ -2,6 +2,50 @@
 
 Historische Release-Notizen der Architektur/Features. Nutzer-Release-Notes: `src/version.ts` (`RELEASES`). Aktuelle Feature-Docs: [README.md](README.md).
 
+### Dachuntersicht dunkler im Schatten (2026-09-23) — v2.0.593
+
+**Symptom:** Kastentraufen-Untersicht / Dachplatten-Unterkante blieb hell, während die Wand im Gegenlicht dunkel war.
+
+**Ursache:** Dach-`shell`/`tiles` ohne `applyFacadeBacklitShade` (kein `wallId` → Early-Out). Nach unten zeigende Flächen wurden wie Tops nur bei Wand-Gegenlicht gedimmt — ohne Shade-Shader wirkungslos.
+
+**Fix:** (1C) Shade auf Roof-`shell`+`tiles` mit `facadeShadeNormalMode`. (2B) Shader: `downFacing` immer → `facadeDim`; Tops weiter `upFacing × wallBacklit`. Cache `facade-backlit-v25`.
+
+Dateien: `facadeShade.ts`, `FacadeController.ts`. Docs: [shadows.md](shadows.md), [roof.md](roof.md).
+
+### Wandkanten nicht mehr durchs Dach (2026-09-23) — v2.0.592
+
+**Symptom:** Weiße punktierte Wandkanten (Giebeldreieck + waagerechte Traufkante) schienen durch die Dachschräge.
+
+**Ursache:** (1) `gablePanelClipForWall` schnitt auf `envelopeY` (Dachhaut-Oberseite) − 0,5 cm — Paneele steckten in der Platte (`tv` ≈ 10/cos). (2) Trauf-Cladding blieb auf voller `wall.height`, während der Wandkörper schon `ROOF_WALL_TOP_TRIM_CM` kürzte.
+
+**Fix:** Clip auf Unterseite `envelopeY − env.tv − 0,5`. Cladding und Wandkörper teilen `roofWallTopTrimCm`; bei Trim/Extension `wallPlacement(layoutWall)`.
+
+Dateien: `gableAsWall.ts`, `roof.ts`, `FacadeController.ts`. Docs: [roof.md](roof.md).
+
+### Giebel-Mörtel unter Dachschräge (2026-09-23) — v2.0.591
+
+**Symptom:** Giebel-Mauerwerk war dreieckig gekürzt, dahinter ragte eine weiße Rechteckplatte über First und Ortgang hinaus.
+
+**Ursache:** `clipTilesToGableProfile` kürzte nur Steine; `createStudioMortarGeometry` / Flat-Joint spannten weiter `visiblePanelRowRect` über die volle Extended-Höhe. Ohne Steine darüber blieb die Mörtelplatte sichtbar.
+
+**Nicht geholfen:** Nur Dach-Füllwand weglassen (`skipFillEdgeIndices`) — die weiße Fläche war Cladding-Mörtel, nicht Roof-Fill.
+
+**Fix:** `clipRectBandToGableProfile` (Vertikalstreifen, Min. von `maxLocalYAt` an den Kanten) in Mörtel- und Flat-Joint-APIs; `FacadeController` übergibt `gableClip.maxLocalYAt`.
+
+Dateien: `gableAsWall.ts`, `panelGeometry.ts`, `FacadeController.ts`. Docs: [roof.md](roof.md).
+
+### Giebel-Paneele ausgerichtet, Tops dunkler (2026-09-23) — v2.0.590
+
+**Symptom:** (1) Giebel-Mauerwerk saß zu tief (durchschnittlich um `(H_ext−H)/2`), schnitt durchs Gesims, ließ weißes Dreieck unter dem First. (2) Gesims-/Sockel-Oberseiten blieben im Umbra weiß, obwohl die Wand dunkel war.
+
+**Ursache:** (1) Paneel-Geometrie nutzte `layoutWall.height` (Giebel-Extension) für `localY`, der Mesh-`transform` blieb auf `wall.height` → Y-Versatz. (2) `facadeShadeNormalMode` bewertete Tops mit `N·L` zur Sonne (von oben → „belichtet“), während die Wand korrekt über Außen-Z im Gegenlicht war.
+
+**Fix:** Cladding-Meshes mit `wallPlacement(layoutWall)` platzieren. Shader: bei `upness` Gegenlicht über Wand-Z + `facadeDim = max(..., upness * wallBacklit)`; Cache `facade-backlit-v24`.
+
+**Nicht:** Giebel-Extension rückgängig machen; `normalMode` an Sockel/Gesims entfernen (Rahmen brauchen ihn).
+
+Dateien: `FacadeController.ts`, `facadeShade.ts`. Docs: [roof.md](roof.md), [shadows.md](shadows.md).
+
 ### Giebel als Wand, Nacht, Schatten-Tops (2026-09-23) — v2.0.589
 
 **Giebel (2A):** Vertikale Dach-Füllwände (`roofPart: shell`, `gableFill`) verhalten sich wie die Host-Wand: LMB wählt die Wand, RMB öffnet das Wand-Kontextmenü (`resolveGableHostWallId` in `pickFromEvent`). Paneele/Mauerwerk werden bis unter die Dachhaut gelegt (`gablePanelClipForWall` + `clipTilesToGableProfile`); die Dach-Füllwand auf der Wandlinie entfällt, wenn die Kante Paneele hat (`skipFillEdgeIndices` in `buildRoofEnvelopeGeometry`). Kastentraufe/Soffit bleiben. Default-Giebelfarbe folgt der ersten Giebel-Host-Wand, wenn `roof.gableColor` der Wand-Default ist.

@@ -243,13 +243,18 @@ const FACADE_SHADE_DIRECT_PATCH = `
           // Wand im Gegenlicht ist (v2.0.560). Gegenlicht aus Wand-Z, kein Side/Top-Nachlass.
           facadeSideOrTop = sideOrTop;
           float sunOnFront = 0.0;
+          // v2.0.590 / v2.0.593: horizontal getrennt — Tops (oben) vs. Untersichten (unten).
+          float upFacing = smoothstep(0.35, 0.85, objN.y);
+          float downFacing = smoothstep(0.35, 0.85, -objN.y);
+          float horiz = max(upFacing, downFacing);
           #if ( NUM_DIR_LIGHTS > 0 )
-            vec3 facadeRef = normalize(mix(normalize(vFacadeView), geometryNormal, uNormalBacklit * (1.0 - uWallLock)));
+            // Tops nicht per N·L zur Sonne (Sonne von oben hält sie sonst hell).
+            float normalAmt = uNormalBacklit * (1.0 - uWallLock) * (1.0 - horiz);
+            vec3 facadeRef = normalize(mix(normalize(vFacadeView), geometryNormal, normalAmt));
             sunOnFront = dot(facadeRef, directionalLights[0].direction);
           #endif
           float backlit = 1.0 - smoothstep(-0.28, -0.04, sunOnFront);
-          // v2.0.589: horizontale Flächen (Bank, Gesims, Sockel, Treppe, Laibung) voll mitdimmen —
-          // zuvor sideOrTop×0,82 → Tops blieben im Umbra hell.
+          // v2.0.589: horizontale Flächen voll mitdimmen (kein sideOrTop×0,82).
           float dimMask = max(mix(1.0, 1.0, uLabelShade), max(uNormalBacklit, uWallLock));
           facadeDim = clamp(backlit * dimMask, 0.0, 1.0);
           #if ( NUM_DIR_LIGHTS > 0 )
@@ -257,7 +262,14 @@ const FACADE_SHADE_DIRECT_PATCH = `
             // auch bei Streiflicht dimmen — sonst bleibt der untere Rahmen hell.
             float faceSun = dot(geometryNormal, directionalLights[0].direction);
             facadeDim = max(facadeDim, uWallLock * clamp(faceSun - sunOnFront, 0.0, 1.0));
+            // Oberseiten: wenn die Wand im Gegenlicht ist, Tops mindestens so stark dimmen.
+            float wallSun = dot(normalize(vFacadeView), directionalLights[0].direction);
+            float wallBacklit = 1.0 - smoothstep(-0.28, -0.04, wallSun);
+            facadeDim = max(facadeDim, upFacing * wallBacklit);
           #endif
+          // v2.0.593: Dach-/Kastentraufen-Untersicht immer dimmen (Sonne trifft sie nicht;
+          // Helligkeit kam nur vom fehlenden Shade neben abgedunkelter Wand).
+          facadeDim = max(facadeDim, downFacing);
           float directAmt = mix(uDirectDim, uLabelDirectDim, uLabelShade);
           facadeHemiAmt = mix(uHemiDim, uLabelHemiDim, uLabelShade);
           reflectedLight.directDiffuse *= mix(1.0, directAmt, facadeDim);
@@ -319,7 +331,7 @@ export function applyFacadeShadeShader(
   material.userData.facadeShadeApplied = true
   const prevKey = material.customProgramCacheKey?.bind(material)
   material.customProgramCacheKey = () =>
-    `${prevKey ? prevKey() : ''}|facade-backlit-v23${isLabel ? '|label' : ''}`
+    `${prevKey ? prevKey() : ''}|facade-backlit-v25${isLabel ? '|label' : ''}`
   const prevCompile = material.onBeforeCompile
   material.onBeforeCompile = (shader, renderer) => {
     prevCompile?.(shader, renderer)

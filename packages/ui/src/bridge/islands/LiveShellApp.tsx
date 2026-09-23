@@ -12,6 +12,7 @@ import { LibraryDockApp, type LibraryDockAppProps } from './LibraryDockApp'
 import { SelectionToolbarApp, type SelectionToolbarAppProps } from './SelectionToolbarApp'
 import { FormMirror } from './FormMirror'
 import { SceneToolbarApp, type SceneToolbarAppProps } from './SceneToolbarApp'
+import { FacadeTourApp, type FacadeTourHost } from './FacadeTourApp'
 import { clickId } from '../vanillaBind'
 
 /** Tabs + Filterband + Kartenzeile (kein Vertikal-Greifer). */
@@ -59,6 +60,11 @@ export type LiveShellAppProps = {
   selection?: SelectionToolbarAppProps
   library?: LibraryDockAppProps
   chromeExtras?: { syncEvent?: string }
+  facadeTour?: {
+    host: FacadeTourHost
+    shouldAutoStart: () => boolean
+    onCompleted: () => void
+  }
 }
 
 function adopt(id: string, host: HTMLElement | undefined): void {
@@ -273,6 +279,15 @@ export function LiveShellApp(props: LiveShellAppProps) {
       color="fg.default"
     >
       <ScopeOfferToast />
+      <Show when={props.facadeTour}>
+        {(tour) => (
+          <FacadeTourApp
+            host={tour().host}
+            shouldAutoStart={tour().shouldAutoStart}
+            onCompleted={tour().onCompleted}
+          />
+        )}
+      </Show>
       <Splitter.RootProvider value={main} h="100%" w="100%" minH="0" minW="0">
         <Splitter.Panel id="left">
           <ScrollArea.Frame h="100%" minH="0" bg="gray.1">

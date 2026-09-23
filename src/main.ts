@@ -339,6 +339,7 @@ import {
   findBuildingForWall,
   getActiveBuilding,
   getAllWalls,
+  getVisibleWalls,
   insertBuildingClone,
   isWallVisibleInState,
   mapAllWalls,
@@ -928,7 +929,9 @@ import {
   publishSelectionToolbarSync,
   publishLibraryDockSync,
   publishChromeExtrasSync,
+  publishLayersVisibleSync,
 } from './ui/liveShellBridge'
+import { saveLayersVisible } from './play/facadeOnboarding'
 import { initCreditsUi } from './ui/creditsDialog'
 import {
   isPerfOverlayEnabled,
@@ -7442,6 +7445,9 @@ function setUiLeftCollapsed(collapsed: boolean) {
   } catch {
     /* ignore */
   }
+  // Datei → Ebenen: dieselbe Sichtbarkeit (kein Sync während set → sonst Rekursion).
+  saveLayersVisible(!collapsed)
+  queueMicrotask(() => publishLayersVisibleSync())
   requestAnimationFrame(() => {
     window.dispatchEvent(new Event('resize'))
   })
@@ -29731,6 +29737,26 @@ initLiveShell({
     }
   },
   subscribeView: subscribeChromeView,
+  isUiLeftCollapsed,
+  setUiLeftCollapsed,
+  facadeTourHost: {
+    setLibraryTab: (tab) => setLibraryTab(tab as LibraryTab),
+    ensureWallSelected: () => {
+      if (editor.selectedWallIds.length > 0) return
+      const wall = getVisibleWalls(state)[0]
+      if (wall) ensureWallSelected(wall.id)
+    },
+    ensureOpeningSelected: () => {
+      if (editor.selectedOpenings.length > 0) return
+      for (const wall of getVisibleWalls(state)) {
+        const opening = wall.openings.find((item) => item.type !== 'door')
+        if (opening) {
+          selectOpening(wall.id, opening.id, false)
+          return
+        }
+      }
+    },
+  },
 })
 void document.querySelector('#ui-island-file-menu')
 void document.querySelector('#ui-island-view-mode')

@@ -21,7 +21,7 @@ const GABLE_PICK_XZ_CM = 40
 const GABLE_EXTRA_MIN_CM = 2
 /** Proben für envelopeY leicht vor der Außenkante (cm). */
 const GABLE_SAMPLE_OUTSET_CM = 0.5
-/** Paneel-Oberkante knapp unter der Dachhaut (cm). */
+/** Paneel-Oberkante knapp unter der Dach-Unterseite (cm), nicht unter der Oberhaut. */
 const GABLE_UNDER_SKIN_CM = 0.5
 const MIN_TILE = 0.05
 const CLIP_EPS = 0.05
@@ -101,9 +101,12 @@ export function gablePanelClipForWall(
       x: start.x + (end.x - start.x) * t + outward.x * GABLE_SAMPLE_OUTSET_CM,
       z: start.z + (end.z - start.z) * t + outward.z * GABLE_SAMPLE_OUTSET_CM,
     }
-    const roofY = envelopeY(env.planes, p)
-    if (!Number.isFinite(roofY)) return wall.height
-    return Math.max(0, roofY - wall.y - GABLE_UNDER_SKIN_CM)
+    // envelopeY = Dachhaut-Oberseite; Paneele müssen unter der Platten-Unterseite bleiben
+    // (sonst stechen Steinkanten durch die Schräge, v2.0.592).
+    const roofTopY = envelopeY(env.planes, p)
+    if (!Number.isFinite(roofTopY)) return wall.height
+    const soffitY = roofTopY - env.tv
+    return Math.max(0, soffitY - wall.y - GABLE_UNDER_SKIN_CM)
   }
 
   let extendedHeight = wall.height
@@ -141,6 +144,57 @@ export function clipTilesToGableProfile(
     const height = cutY - tile.y
     if (height <= MIN_TILE) continue
     out.push({ ...tile, height })
+  }
+  return out
+}
+
+/** Streifenbreite für Mörtel-/Platten-Clip unter die Dachschräge (cm). */
+const GABLE_BAND_STRIP_CM = 4
+
+/**
+ * Rechteck-Band (Mörtelplatte, Flat-Joint) in Vertikalstreifen unter die Giebelschräge schneiden.
+ * Pro Streifen gilt das Minimum von `maxLocalYAt` an den Kanten — kein Überstand über die Dachhaut.
+ * Rechtecke mit Bogen/`outline` werden unverändert durchgereicht (Öffnungsreste).
+ */
+export function clipRectBandToGableProfile<
+  T extends { x: number; y: number; width: number; height: number; outline?: unknown; bottomArc?: unknown; topArc?: unknown },
+>(
+  parts: T[],
+  maxLocalYAt: (localX: number) => number,
+  stripWidthCm: number = GABLE_BAND_STRIP_CM,
+): T[] {
+  const stripW = Math.max(MIN_TILE, stripWidthCm)
+  const out: T[] = []
+  for (const part of parts) {
+    if (part.outline || part.bottomArc || part.topArc) {
+      out.push(part)
+      continue
+    }
+    const x0 = part.x
+    const x1 = part.x + part.width
+    const y0 = part.y
+    const y1 = part.y + part.height
+    if (part.width <= CLIP_EPS || part.height <= CLIP_EPS) continue
+    let x = x0
+    while (x < x1 - CLIP_EPS) {
+      const next = Math.min(x1, x + stripW)
+      const cutY = Math.min(
+        y1,
+        maxLocalYAt(x),
+        maxLocalYAt((x + next) * 0.5),
+        maxLocalYAt(next),
+      )
+      if (cutY > y0 + MIN_TILE) {
+        out.push({
+          ...part,
+          x,
+          y: y0,
+          width: next - x,
+          height: cutY - y0,
+        })
+      }
+      x = next
+    }
   }
   return out
 }

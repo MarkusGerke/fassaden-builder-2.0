@@ -28,6 +28,11 @@ export { LibraryDockApp, type LibraryDockAppProps } from './islands/LibraryDockA
 export { ChromeExtrasApp, type ChromeExtrasAppProps } from './islands/ChromeExtrasApp'
 export { LiveShellApp, type LiveShellAppProps } from './islands/LiveShellApp'
 export {
+  FacadeTourApp,
+  type FacadeTourAppProps,
+  type FacadeTourHost,
+} from './islands/FacadeTourApp'
+export {
   mountLiveShellApp,
   mountSceneToolbarApp,
   mountViewportChromeApp,

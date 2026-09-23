@@ -1,15 +1,28 @@
 /**
  * Park Live-Shell: eine Splitter-Welt (Ark). Vanilla-IDs bleiben im DOM, nicht im Layout.
  */
-import { mountLiveShellApp, mountAppLoadingIsland, type FileMenuAction, subscribeBus, publishBus } from '@fassaden/ui'
+import {
+  mountLiveShellApp,
+  mountAppLoadingIsland,
+  type FileMenuAction,
+  subscribeBus,
+  publishBus,
+  type FacadeTourHost,
+} from '@fassaden/ui'
 import '@fassaden/ui/park.css'
 import { APP_VERSION } from '../version'
+import {
+  isTourCompleted,
+  setTourCompleted,
+  loadLayersVisible,
+} from '../play/facadeOnboarding'
 
 export const SCENE_TOOLBAR_SYNC = 'fb:scene-toolbar-sync'
 export const VIEWPORT_CHROME_SYNC = 'fb:viewport-chrome-sync'
 export const SELECTION_TOOLBAR_SYNC = 'fb:selection-toolbar-sync'
 export const LIBRARY_DOCK_SYNC = 'fb:library-dock-sync'
 export const CHROME_EXTRAS_SYNC = 'fb:chrome-extras-sync'
+export const LAYERS_VISIBLE_SYNC = 'fb:layers-visible-sync'
 
 export function publishSceneToolbarSync(): void {
   publishBus(SCENE_TOOLBAR_SYNC)
@@ -31,11 +44,25 @@ export function publishChromeExtrasSync(): void {
   publishBus(CHROME_EXTRAS_SYNC)
 }
 
+export function publishLayersVisibleSync(): void {
+  publishBus(LAYERS_VISIBLE_SYNC)
+}
+
 function clickId(id: string): void {
   document.getElementById(id)?.click()
 }
 
-function onFileAction(action: FileMenuAction): void {
+export type InitLiveShellOpts = {
+  host: HTMLElement
+  getView: () => string
+  setView: (view: string) => void
+  subscribeView: (listener: (value: string) => void) => () => void
+  isUiLeftCollapsed: () => boolean
+  setUiLeftCollapsed: (collapsed: boolean) => void
+  facadeTourHost: FacadeTourHost
+}
+
+function onFileAction(action: FileMenuAction, opts: InitLiveShellOpts): void {
   switch (action) {
     case 'export':
       clickId('save-json')
@@ -48,6 +75,14 @@ function onFileAction(action: FileMenuAction): void {
       break
     case 'showcase':
       clickId('copy-showcase-link')
+      break
+    case 'layers': {
+      const currentlyVisible = !opts.isUiLeftCollapsed()
+      opts.setUiLeftCollapsed(currentlyVisible)
+      break
+    }
+    case 'tour':
+      window.dispatchEvent(new Event('fb:facade-tour-start'))
       break
   }
 }
@@ -78,21 +113,24 @@ export function initAppLoadingIsland(): void {
   mountAppLoadingIsland(host)
 }
 
-export function initLiveShell(opts: {
-  host: HTMLElement
-  getView: () => string
-  setView: (view: string) => void
-  subscribeView: (listener: (value: string) => void) => () => void
-}): void {
+export function initLiveShell(opts: InitLiveShellOpts): void {
   document.documentElement.classList.add('park-shell')
+
+  try {
+    opts.setUiLeftCollapsed(!loadLayersVisible())
+  } catch {
+    opts.setUiLeftCollapsed(true)
+  }
 
   mountLiveShellApp(opts.host, {
     left: {
       versionLabel: `v${APP_VERSION}`,
-      onFileAction,
+      onFileAction: (a) => onFileAction(a, opts),
       releaseHostId: 'ui-island-release',
       layerListId: 'layer-list',
       creditsButtonId: 'app-credits-btn',
+      layersVisible: () => !opts.isUiLeftCollapsed(),
+      subscribeLayers: (listener) => subscribeBus(LAYERS_VISIBLE_SYNC, listener),
     },
     viewport: {
       getView: opts.getView,
@@ -114,6 +152,11 @@ export function initLiveShell(opts: {
     },
     chromeExtras: {
       syncEvent: CHROME_EXTRAS_SYNC,
+    },
+    facadeTour: {
+      host: opts.facadeTourHost,
+      shouldAutoStart: () => !isTourCompleted(),
+      onCompleted: () => setTourCompleted(true),
     },
   })
 

@@ -645,7 +645,7 @@ html.ui-touch-chrome.park-shell [data-park-library-dock] .opening-library-card {
 }
 
 html.ui-touch-chrome.park-shell [data-park-library-dock] .scene-library-tile .opening-library-thumb,
-html.ui-touch-chrome.park-shell [data-park-library-dock] .opening-library-card:not(:has(.opening-library-thumb svg)) .opening-library-thumb {
+html.ui-touch-chrome.park-shell [data-park-library-dock] .opening-library-card:not(:has(.opening-library-thumb svg)):not(:has(.opening-library-thumb-color)):not(:has(.opening-library-thumb-facade)) .opening-library-thumb {
   aspect-ratio: unset !important;
   min-height: calc(0.75rem * 1.25 * 2 + 0.5rem);
   max-height: calc(0.75rem * 1.25 * 2 + 0.5rem);
@@ -661,6 +661,74 @@ html.ui-touch-chrome.park-shell [data-park-library-dock] .opening-library-card:n
   justify-content: center;
   font-size: 0.75rem;
   line-height: 1.25;
+}
+
+/* Farben- und Fassade-Thumbs: volle Kachel, nicht Text-Clamp */
+html.park-shell [data-park-library-dock] .opening-library-thumb-color,
+html.ui-touch-chrome.park-shell [data-park-library-dock] .opening-library-thumb-color {
+  aspect-ratio: 4 / 3 !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  display: block !important;
+  -webkit-line-clamp: unset !important;
+  line-clamp: unset !important;
+  overflow: hidden !important;
+}
+
+html.park-shell [data-park-library-dock] .opening-library-thumb-facade,
+html.ui-touch-chrome.park-shell [data-park-library-dock] .opening-library-thumb-facade {
+  aspect-ratio: 4 / 3 !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  background: #f0ebe3;
+  color: #5a5348;
+}
+
+/* Paneel-SVG füllt die Thumb-Fläche */
+html.park-shell [data-park-library-dock] .opening-library-thumb svg,
+.opening-library-thumb svg {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+
+.fb-facade-tour-content {
+  background: #fff;
+  color: #111;
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+  max-width: 18rem;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+  z-index: 80;
+}
+
+.fb-facade-tour-title {
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+}
+
+.fb-facade-tour-desc {
+  font-size: 0.9rem;
+  line-height: 1.4;
+  opacity: 0.9;
+}
+
+.fb-facade-tour-progress {
+  font-size: 0.75rem;
+  opacity: 0.6;
+  margin-top: 0.5rem;
+}
+
+.fb-facade-tour-control {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 html.ui-touch-chrome.park-shell [data-park-library-dock] .opening-library-card > span:not(.library-card-edit) {
@@ -785,6 +853,12 @@ html.park-shell [data-park-library-dock] .opening-library-thumb {
   aspect-ratio: 4 / 3;
   background: var(--colors-gray-3, #f4f4f5) !important;
   border-radius: var(--radii-l1, 0.125rem);
+}
+
+/* Farbkachel: Park-Grau darf das Swatch nicht überdecken */
+html.park-shell [data-park-library-dock] .opening-library-thumb-color,
+html.park-shell .park-library-items-slot .opening-library-thumb-color {
+  background: var(--lib-swatch, #cccccc) !important;
 }
 
 html.park-shell [data-park-library-dock] .opening-library-card span {
@@ -1057,8 +1131,11 @@ html.park-shell .park-library-items-slot .opening-library-thumb {
 }
 
 html.park-shell .park-library-items-slot .opening-library-thumb svg {
-  max-width: 90%;
-  max-height: 90%;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  display: block;
 }
 
 #viewport {
@@ -6713,4 +6790,5 @@ html.ui-touch-chrome.ui-library-edit-focus #scene-toolbar-panels .settings-secti
   min-width: var(--input-narrow);
   max-width: 100%;
 }
+
 

@@ -2,14 +2,29 @@ import { createSignal, onCleanup, onMount } from 'solid-js'
 import { Portal } from 'solid-js/web'
 import { Button, Menu, SegmentGroup } from '@/components/ui'
 
-export type FileMenuAction = 'export' | 'import' | 'link' | 'showcase'
+export type FileMenuAction = 'export' | 'import' | 'link' | 'showcase' | 'layers' | 'tour'
 
 export type FileMenuIslandProps = {
   onAction: (action: FileMenuAction) => void
+  /** Ebenen gerade sichtbar? Für Menütext. */
+  layersVisible?: () => boolean
+  subscribeLayers?: (listener: () => void) => () => void
 }
 
 /** Park Menu — ersetzt Vanilla `<details class="file-menu">`. */
 export function FileMenuIsland(props: FileMenuIslandProps) {
+  const [tick, setTick] = createSignal(0)
+  onMount(() => {
+    const unsub = props.subscribeLayers?.(() => setTick((t) => t + 1))
+    if (unsub) onCleanup(unsub)
+  })
+
+  const layersLabel = () => {
+    tick()
+    const visible = props.layersVisible?.() ?? false
+    return visible ? 'Ebenen ausblenden' : 'Ebenen einblenden'
+  }
+
   return (
     <Menu.Root
       onSelect={(d) => {
@@ -32,6 +47,9 @@ export function FileMenuIsland(props: FileMenuIslandProps) {
             <Menu.Separator />
             <Menu.Item value="link">Link kopieren</Menu.Item>
             <Menu.Item value="showcase">Showcase-Link kopieren</Menu.Item>
+            <Menu.Separator />
+            <Menu.Item value="layers">{layersLabel()}</Menu.Item>
+            <Menu.Item value="tour">Einführungstour</Menu.Item>
           </Menu.Content>
         </Menu.Positioner>
       </Portal>

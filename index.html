@@ -145,7 +145,7 @@
             <button type="button" class="preset-btn view-mode-btn" data-chrome="3d" id="view-btn-3d">3D</button>
             <button type="button" class="preset-btn view-mode-btn" data-chrome="export" id="view-btn-export" title="Export-Modus: Ansichten nebeneinander">Export</button>
           </div>
-          <div class="view-mode-toggle" role="group" aria-label="Arrivieren Zufall">
+          <div class="view-mode-toggle" role="group" aria-label="Arrivieren Zufall" data-play-expert="1">
             <button type="button" class="preset-btn view-mode-btn" id="arrivieren-viewport-undo" title="Vorheriger Seed" aria-label="Vorheriger Seed" disabled>↩</button>
             <button type="button" class="preset-btn view-mode-btn" id="arrivieren-viewport-random" title="Zufällige Fassade generieren" aria-label="Zufällige Fassade">Zufall</button>
           </div>
@@ -361,9 +361,9 @@
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="sceneSun" id="library-tab-scene-sun" hidden>Licht &amp; Schatten</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="sceneBloom" id="library-tab-scene-bloom" hidden>Schein</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="sceneLights" id="library-tab-scene-lights" hidden>Lampen &amp; Leuchten</button>
-              <button type="button" class="library-tab active" role="tab" aria-selected="true" data-library-tab="windows" id="library-tab-windows" data-library-when="wall">Fenster</button>
+              <button type="button" class="library-tab active" role="tab" aria-selected="true" data-library-tab="facades" id="library-tab-facades" data-library-when="always">Fassaden</button>
+              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="windows" id="library-tab-windows" data-library-when="wall">Fenster</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="doors" id="library-tab-doors" data-library-when="wall">Türen</button>
-              <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="facades" id="library-tab-facades" data-library-when="always">Fassade</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="panels" id="library-tab-panels" data-library-when="wall">Paneele &amp; Mauerwerk</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="walls" id="library-tab-walls" data-library-when="always">Wände</button>
               <button type="button" class="library-tab" role="tab" aria-selected="false" data-library-tab="farbe" id="library-tab-farbe" data-library-when="always">Farben</button>
@@ -3240,7 +3240,7 @@
                 </div>
               </div>
 
-              <div id="arrivieren-settings-section" class="settings-section ui-stack" data-settings-section="arrivieren" data-settings-label="Arrivieren" data-settings-order="28">
+              <div id="arrivieren-settings-section" class="settings-section ui-stack" data-settings-section="arrivieren" data-settings-label="Arrivieren" data-settings-order="28" data-play-expert="1">
                 <p class="toolbar-hint compact-hint">Regelbasierter Hauswand-Zufall (Geschosse, Achsen, EG, Erker). Gewichte nur in <code>hauswand-regelwerk.json</code>.</p>
                 <div class="toolbar-group toolbar-inline-value ui-field-inline">
                   <span class="toolbar-label">Seed</span>
