@@ -204,7 +204,7 @@ export const DEFAULT_STUDIO_PANEL: StudioPanelConfig = {
   tileColorVariance: 0,
   tileColorVariety: 0,
   plinthEnabled: true,
-  plinthHeight: 64,
+  plinthHeight: 48,
   plinthDepth: 8,
   plinthOffsetForward: 0,
   plinthProfileId: 'sockelprofil',
@@ -427,7 +427,7 @@ export function normalizeStudioPanel(
     })(),
     jointColor: typeof raw?.jointColor === 'string' ? raw.jointColor : undefined,
     plinthEnabled: raw?.plinthEnabled !== false,
-    plinthHeight: clampPlinthHeight(raw?.plinthHeight ?? DEFAULT_STUDIO_PANEL.plinthHeight ?? 64),
+    plinthHeight: clampPlinthHeight(raw?.plinthHeight ?? DEFAULT_STUDIO_PANEL.plinthHeight ?? 48),
     plinthDepth: clampPlinthDepth(raw?.plinthDepth ?? DEFAULT_STUDIO_PANEL.plinthDepth ?? 8),
     plinthOffsetForward: clampPlinthOffsetForward(
       raw?.plinthOffsetForward ?? DEFAULT_STUDIO_PANEL.plinthOffsetForward ?? 0,

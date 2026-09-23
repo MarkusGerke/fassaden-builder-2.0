@@ -71,8 +71,8 @@ export function drawPatternPreviewSvg(
     rect.setAttribute('y', String(maxY - tile.y - tile.height))
     rect.setAttribute('width', String(tile.width))
     rect.setAttribute('height', String(tile.height))
-    rect.setAttribute('fill', 'none')
-    rect.setAttribute('stroke', 'currentColor')
+    rect.setAttribute('fill', '#e8e2d8')
+    rect.setAttribute('stroke', '#5c564c')
     rect.setAttribute('stroke-width', '0.6')
     if (tile.shearX) {
       rect.setAttribute(

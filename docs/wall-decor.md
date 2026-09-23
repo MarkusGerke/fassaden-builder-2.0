@@ -7,7 +7,7 @@ Horizontale Profile und Sockel an Studio-Wänden. Geometrie-Details (Gehrung, Cl
 | Element | Wo | Kurz |
 |---|---|---|
 | **Gesims** | Reiter Gesims | Nur an der **oberen** Wandkante; Höhe (8 cm) und Tiefe (4 cm); Farbe, Finish. Profilwahl in der **Bibliothek** (Tab Profile) bzw. Drag auf die Wand. **v2.0.265:** Querschnitt-Vorschau und Dreh-/Spiegel-UI im Studio-Gesims entfernt. **v2.0.230:** Einschalten setzt erstes Bibliothek-Profil (`traufgesims70x150`) und **32 cm** Höhe; Dropdown Geschossgesims (32) / Dachgesims (48) über dem Höhenfeld. **v2.0.253:** Z-Anker = Paneelfläche (`projectDepth`), folgt Tiefe automatisch. **v2.0.381 / v2.0.398 / v2.0.399:** ohne explizite Farbe → sichtbare Fläche (Steine `claddingColor` nur wenn Paneele an, sonst Putz `wallColor`). **v2.0.508:** am Dachgeschoss unter der Traufe abgesenkt (nicht ausgeblendet wie kurz in 507). |
-| **Sockel** | Reiter Sockel | Default-Höhe **64 cm**, Tiefe **8 cm** (v2.0.259); Höhe 8-cm-Raster, Tiefe/Versatz 1 cm; Farbe setzt Körper + Profil; Profil `sockelprofil` ersetzt die Box |
+| **Sockel** | Reiter Sockel | Default-Höhe **48 cm**, Tiefe **8 cm** (v2.0.588; zuvor 64 / 32); Höhe 8-cm-Raster, Tiefe/Versatz 1 cm; Farbe setzt Körper + Profil; Profil `sockelprofil` ersetzt die Box |
 | **Zierbänder** | Reiter Zierbänder | Beliebige Höhe von unten; Band hinzufügen, Duplikat ±16 cm, in 3D vertikal ziehen (8 cm) |
 
 Teil-Selektion in 3D: `wallPart` `cornice` / `plinth` / `trimBand`. Edit-Scope (Auswahl/Typ/Etage/Fassade) gilt für Wand-Edits inkl. Dekor.
@@ -36,7 +36,7 @@ UI: `#studio-cornice-scale` / `#wall-cornice-scale`, `#studio-cornice-offset-for
 | Feld | Default | Bedeutung |
 |---|---|---|
 | `plinthEnabled` | an | aus oder Höhe 0 = kein Sockel |
-| `plinthHeight` | **64 cm** (v2.0.259; zuvor 32) | 8-cm-Schritte |
+| `plinthHeight` | **48 cm** (v2.0.588; zuvor 64) | 8-cm-Schritte |
 | `plinthDepth` | **8 cm** | 1-cm-Schritte; Box und SVG-Tiefe |
 | `plinthOffsetForward` | 0 cm | vor der Paneelfläche |
 | `plinthColor` | Wandfarbe | sichtbare Farbe; setzt auch `plinthProfileColor` |
@@ -47,7 +47,7 @@ UI: `#studio-cornice-scale` / `#wall-cornice-scale`, `#studio-cornice-offset-for
 
 UI: `#studio-plinth-depth`, `#studio-plinth-offset`, `#studio-plinth-color-swatches`, Profilkarten (erste Kachel **Keiner**). Vorschau: Links = Wand, unten = Boden.
 
-**Ecken (v2.0.252):** Gehrung und offene Stirn nur bei fortgesetztem Sockel/Gesims/Zierband auf dem Nachbarn. Ohne Fortsetzung: stumpf an der Plan-Kante, Profil-Sweep mit Stirnkappe (geschlossen). Wandkörper-Gehrung bleibt. Sockelprofil an Außenecken mit Fortsetzung: nach außen längere 45°-Gehrung (Vorzeichen umgekehrt zum Gesims). **v2.0.381:** Tür-Durchschneidung als **X-Spannen** mit Stirnkappen; Kellerfenster weiter CSG (Sturz bleibt); Querschnitt geschlossen (kein hohler Ring). **v2.0.33:** lange CSG-Schrägen im Sockelstreifen entfallen auch im Pier zwischen Kellerfenstern. **v2.0.32:** Zeichnungsfilter trifft Rechteckloch (nicht nur Bogenmaske). **v2.0.31:** Tiefenkanten/Kappen aus; Plan-Kanten-Snap. **v2.0.30:** CSG-Schwellwinkel; Filter über die ganze Strecke.
+**Ecken (v2.0.252 / v2.0.588):** Gehrung bei fortgesetztem Sockel auf dem Nachbarn. **v2.0.588:** Profil-Sweep hat **immer** Stirnkappen (`capStart`/`capEnd`), auch an fortgesetzten Ecken — offene Querschnitte an der Seite sind weg. Farbe Körper und Profil gemeinsam (`plinthColor` / `plinthProfileColor`).
 
 **Schatten:** Sockel wirft/empfängt keine Shadow-Map (v0.7.132, Moiré-Schutz).
 

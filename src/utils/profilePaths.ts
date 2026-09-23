@@ -1967,8 +1967,9 @@ function buildPlinthProfilePaths(state: FacadeState): ProfilePath[] {
         ],
         planMiterStart: isFirst ? pictureFramePlanMiter(startMiter, 'start') : 0,
         planMiterEnd: isLast ? pictureFramePlanMiter(endMiter, 'end') : 0,
-        capStart: isFirst ? !startContinues : true,
-        capEnd: isLast ? !endContinues : true,
+        // Immer Stirnkappen — auch an fortgesetzten Ecken (sonst offene Querschnitte).
+        capStart: true,
+        capEnd: true,
       })
     }
   }
